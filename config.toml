@@ -1,0 +1,14 @@
+# hostname the server is listening on
+hostname = "localhost"
+# port the server is listening on
+port = 25565
+# authenticate with mojang/microsoft
+online-mode = true
+
+# message of the day (server description)
+motd = "Hello from minicraft!"
+# maximum amount of players
+max-players = 8
+
+# minimum packet size before compression
+compression-threshold = 1024
