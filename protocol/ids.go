@@ -38,3 +38,13 @@ const (
 	CB_LoginSuccess      = 0x02
 	CB_SetCompression    = 0x03
 )
+
+// Configuration
+const (
+	CB_Hello               = 0x00
+	CB_PluginMessageConfig = 0x01
+	CB_FinishConfiguration = 0x03
+
+	SB_ClientInformation       = 0x00
+	SB_AcknowledgeFinishConfig = 0x02
+)

@@ -224,7 +224,7 @@ func HandleLogin(ctx context.Context, c *MCConnection, cfg *config.Config, clien
 		return
 	}
 
-	// HandleConfiguration(ctx, c, cfg, uuidStr, name)
+	HandleConfiguration(ctx, c, cfg, uuidStr, name)
 }
 
 func HandleLoginError(c *MCConnection, msg string, err error) {

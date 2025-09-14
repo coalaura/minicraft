@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"io"
-	"unicode/utf8"
 )
 
 const (
@@ -109,14 +108,13 @@ func ReadStringBytes(b []byte) (string, error) {
 }
 
 func WriteString(w io.Writer, str string) error {
-	ln := int32(utf8.RuneCountInString(str))
+	b := []byte(str)
 
-	err := WriteVarInt(w, ln)
-	if err != nil {
+	if err := WriteVarInt(w, int32(len(b))); err != nil {
 		return err
 	}
 
-	_, err = w.Write([]byte(str))
+	_, err := w.Write(b)
 	return err
 }
 
