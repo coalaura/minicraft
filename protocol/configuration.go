@@ -3,45 +3,21 @@ package protocol
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 
 	"github.com/coalaura/minicraft/config"
 )
 
 func HandleConfiguration(ctx context.Context, c *MCConnection, cfg *config.Config, uuid, name string) {
-	var buf bytes.Buffer
+	c.Print("configuration", "processing configuration")
 
-	err := WriteUUIDString(&buf, uuid)
-	if err != nil {
-		HandleLoginError(c, "failed to write uuid", err)
-
-		return
-	}
-
-	err = WriteString(&buf, name)
-	if err != nil {
-		HandleLoginError(c, "failed to write username", err)
-
-		return
-	}
-
-	// properties (VarInt 0 for none)
-	err = WriteVarInt(&buf, 0)
-	if err != nil {
-		HandleLoginError(c, "failed to write properties", err)
-
-		return
-	}
-
-	// has secure profile (false for now, no signed chat)
-	buf.WriteByte(0)
-
-	err = c.WritePacket(Packet{
-		ID:   CB_Hello,
-		Data: buf.Bytes(),
+	err := c.WritePacket(Packet{
+		ID:   CB_FinishConfiguration,
+		Data: []byte{},
 	})
 
 	if err != nil {
-		HandleLoginError(c, "failed to write hello packet", err)
+		HandleConfigurationError(c, "failed to send finish configuration", err)
 
 		return
 	}
@@ -49,25 +25,51 @@ func HandleConfiguration(ctx context.Context, c *MCConnection, cfg *config.Confi
 	for {
 		packet, err := c.ReadPacket()
 		if err != nil {
-			HandleLoginError(c, "failed to read configuration packet", err)
+			HandleConfigurationError(c, "failed to read packet", err)
+
 			return
 		}
+
+		log.Println(packet)
 
 		switch packet.ID {
 		case SB_ClientInformation:
-			// Client preferences (ignore for now)
+			log.Println("[config] received client information")
 		case SB_AcknowledgeFinishConfig:
-			// Client finished config -> go to Play
+			log.Println("[config] client acknowledged finish config, switching to play")
+
 			HandlePlay(ctx, c, cfg, uuid, name)
+
 			return
 		default:
-			log.Warnf("[config] unhandled packet id: %x", packet.ID)
-		}
+			log.Warnf("[config] unhandled packet id: 0x%02X", packet.ID)
 
-		// Server must periodically send FinishConfiguration until client acks
-		c.WritePacket(Packet{
-			ID:   CB_FinishConfiguration,
-			Data: []byte{},
-		})
+			return
+		}
 	}
+}
+
+func HandleConfigurationError(c *MCConnection, msg string, err error) {
+	c.Warn("configuration", "%s: %v", msg, err)
+
+	SendConfigurationDisconnect(c, "Something went wrong")
+}
+
+func SendConfigurationDisconnect(c *MCConnection, reason string) {
+	js, _ := json.Marshal(map[string]any{
+		"text": reason,
+	})
+
+	var b bytes.Buffer
+
+	err := WriteString(&b, string(js))
+	if err != nil {
+		log.Warnf("failed to write configuration disconnect: %v\n", err)
+		return
+	}
+
+	c.WritePacket(Packet{
+		ID:   CB_DisconnectConfig,
+		Data: b.Bytes(),
+	})
 }

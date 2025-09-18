@@ -7,15 +7,22 @@ import (
 	"crypto/rand"
 	"errors"
 	"io"
+	"net"
 )
 
 const (
-	MaxVarIntBytes  = 5
-	MaxVarLongBytes = 10
+	VarSegmentBits = 0x7F
+	VarContinueBit = 0x80
 )
 
+type ExtendedWriter interface {
+	io.Writer
+	io.ByteWriter
+}
+
 type MCConnection struct {
-	rw *bufio.ReadWriter
+	conn net.Conn
+	wbuf *bufio.Writer
 
 	enc cipher.Stream // outbound encrypt
 	dec cipher.Stream // inbound decrypt
@@ -45,59 +52,96 @@ func (r ByteReader) ReadByte() (byte, error) {
 
 func ReadVarInt(r io.ByteReader) (int32, error) {
 	var (
-		n      int
-		result int32
+		value    int32
+		position uint
 	)
 
 	for {
-		if n >= MaxVarIntBytes {
-			return 0, errors.New("varint too long")
-		}
-
-		b, err := r.ReadByte()
+		currentByte, err := r.ReadByte()
 		if err != nil {
 			return 0, err
 		}
 
-		value := int32(b & 0x7F)
+		value |= int32(currentByte&VarSegmentBits) << position
 
-		result |= value << (7 * n)
+		log.Println(position, currentByte, value, currentByte&VarContinueBit)
 
-		n++
-
-		if b&0x80 == 0 {
+		if currentByte&VarContinueBit == 0 {
 			break
+		}
+
+		position += 7
+
+		if position >= 32 {
+			return 0, errors.New("VarInt is too big")
 		}
 	}
 
-	return result, nil
+	log.Println("varint", value)
+
+	return value, nil
 }
 
-func WriteVarInt(w io.Writer, v int32) error {
+func WriteVarInt(w io.ByteWriter, value int32) error {
+	uValue := uint32(value)
+
+	for {
+		if (uValue & ^uint32(VarSegmentBits)) == 0 {
+			return w.WriteByte(byte(uValue))
+		}
+
+		err := w.WriteByte(byte(uValue&VarSegmentBits) | VarContinueBit)
+		if err != nil {
+			return err
+		}
+
+		uValue >>= 7
+	}
+}
+
+func ReadVarLong(r io.ByteReader) (int64, error) {
 	var (
-		i   int
-		buf [5]byte
+		value    int64
+		position uint
 	)
 
 	for {
-		temp := byte(v & 0x7F)
-
-		v >>= 7
-		if v != 0 {
-			temp |= 0x80
+		currentByte, err := r.ReadByte()
+		if err != nil {
+			return 0, err
 		}
 
-		buf[i] = temp
+		value |= int64(currentByte&VarSegmentBits) << position
 
-		i++
-
-		if v == 0 {
+		if currentByte&VarContinueBit == 0 {
 			break
+		}
+
+		position += 7
+
+		if position >= 64 {
+			return 0, errors.New("VarLong is too big")
 		}
 	}
 
-	_, err := w.Write(buf[:i])
-	return err
+	return value, nil
+}
+
+func WriteVarLong(w io.ByteWriter, value int64) error {
+	uValue := uint64(value)
+
+	for {
+		if (uValue & ^uint64(VarSegmentBits)) == 0 {
+			return w.WriteByte(byte(uValue))
+		}
+
+		err := w.WriteByte(byte(uValue&uint64(VarSegmentBits)) | VarContinueBit)
+		if err != nil {
+			return err
+		}
+
+		uValue >>= 7
+	}
 }
 
 func ReadStringBytes(b []byte) (string, error) {
@@ -107,7 +151,7 @@ func ReadStringBytes(b []byte) (string, error) {
 	return ReadString(&rd, 32767)
 }
 
-func WriteString(w io.Writer, str string) error {
+func WriteString(w ExtendedWriter, str string) error {
 	b := []byte(str)
 
 	if err := WriteVarInt(w, int32(len(b))); err != nil {
@@ -134,7 +178,7 @@ func ReadBytes(r *bytes.Reader) ([]byte, error) {
 	return buf, err
 }
 
-func WriteBytes(w io.Writer, b []byte) error {
+func WriteBytes(w ExtendedWriter, b []byte) error {
 	err := WriteVarInt(w, int32(len(b)))
 	if err != nil {
 		return err

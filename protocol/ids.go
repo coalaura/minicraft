@@ -14,7 +14,7 @@ const (
 
 // Serverbound packet IDs by state
 const (
-	SB_Handshake = 0x00 // Handshake
+	SB_Handshake = 0x00
 )
 
 // Status
@@ -28,23 +28,29 @@ const (
 // Login status
 const (
 	// Login serverbound
-	SB_LoginStart         = 0x00
-	SB_EncryptionResponse = 0x01
-	SB_LoginAcknowledged  = 0x03
+	SB_LoginStart          = 0x00
+	SB_EncryptionResponse  = 0x01
+	SB_LoginPluginResponse = 0x02
+	SB_LoginAcknowledged   = 0x03
+	SB_LoginCookieResponse = 0x04
 
 	// Login clientbound
-	CB_DisconnectLogin   = 0x00
-	CB_EncryptionRequest = 0x01
-	CB_LoginSuccess      = 0x02
-	CB_SetCompression    = 0x03
+	CB_DisconnectLogin    = 0x00
+	CB_EncryptionRequest  = 0x01
+	CB_LoginSuccess       = 0x02
+	CB_SetCompression     = 0x03
+	CB_LoginPluginRequest = 0x04
+	CB_LoginCookieRequest = 0x05
 )
 
 // Configuration
 const (
-	CB_Hello               = 0x00
+	// Clientbound
 	CB_PluginMessageConfig = 0x01
+	CB_DisconnectConfig    = 0x02
 	CB_FinishConfiguration = 0x03
 
+	// Serverbound
 	SB_ClientInformation       = 0x00
 	SB_AcknowledgeFinishConfig = 0x02
 )

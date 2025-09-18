@@ -7,13 +7,15 @@ import (
 	"crypto/aes"
 	"errors"
 	"io"
+	"net"
 
 	"github.com/coalaura/minicraft/crypto"
 )
 
-func NewConn(rwc io.ReadWriteCloser) *MCConnection {
+func NewConn(conn net.Conn) *MCConnection {
 	return &MCConnection{
-		rw: bufio.NewReadWriter(bufio.NewReader(rwc), bufio.NewWriter(rwc)),
+		conn: conn,
+		wbuf: bufio.NewWriter(conn),
 	}
 }
 
@@ -33,32 +35,43 @@ func (c *MCConnection) EnableEncryption(secret []byte) error {
 	return nil
 }
 
-func (c *MCConnection) Flush() error {
-	return c.rw.Flush()
+func (c *MCConnection) ReadByte() (byte, error) {
+	var buf [1]byte
+
+	if _, err := io.ReadFull(c.conn, buf[:]); err != nil {
+		return 0, err
+	}
+
+	if c.dec != nil {
+		c.dec.XORKeyStream(buf[:], buf[:])
+	}
+
+	return buf[0], nil
 }
 
 func (c *MCConnection) SetCompression(threshold int) {
 	c.compThr = threshold
 }
 
-func (c *MCConnection) ReadRaw(n int) ([]byte, error) {
-	buf := make([]byte, n)
+func (c *MCConnection) Read(p []byte) (int, error) {
+	for i := range p {
+		b, err := c.ReadByte()
+		if err != nil {
+			if i == 0 {
+				return 0, err
+			}
 
-	_, err := io.ReadFull(c.rw, buf)
-	if err != nil {
-		return nil, err
+			return i, err
+		}
+
+		p[i] = b
 	}
 
-	if c.dec != nil {
-		c.dec.XORKeyStream(buf, buf)
-	}
-
-	return buf, nil
+	return len(p), nil
 }
 
 func (c *MCConnection) ReadPacket() (*Packet, error) {
-	// Outer length (VarInt), possibly encrypted
-	ln, err := ReadVarInt(c.rw)
+	ln, err := ReadVarInt(c)
 	if err != nil {
 		return nil, err
 	}
@@ -67,8 +80,9 @@ func (c *MCConnection) ReadPacket() (*Packet, error) {
 		return nil, io.ErrUnexpectedEOF
 	}
 
-	payload, err := c.ReadRaw(int(ln))
-	if err != nil {
+	payload := make([]byte, ln)
+
+	if _, err := io.ReadFull(c, payload); err != nil {
 		return nil, err
 	}
 
@@ -157,7 +171,7 @@ func (c *MCConnection) WritePacket(packet Packet) error {
 				return err
 			}
 
-			_, err = inner.Write(payload)
+			_, err = buf.Write(payload)
 			if err != nil {
 				return err
 			}
@@ -183,10 +197,10 @@ func (c *MCConnection) WritePacket(packet Packet) error {
 		c.enc.XORKeyStream(out, out)
 	}
 
-	_, err = c.rw.Write(out)
+	_, err = c.wbuf.Write(out)
 	if err != nil {
 		return err
 	}
 
-	return c.rw.Flush()
+	return c.wbuf.Flush()
 }

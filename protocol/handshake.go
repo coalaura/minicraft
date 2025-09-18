@@ -33,15 +33,17 @@ type ServerInfo struct {
 func HandleConnection(ctx context.Context, conn net.Conn, cfg *config.Config) {
 	defer conn.Close()
 
-	log.Printf("new connection from %s\n", conn.RemoteAddr())
-
 	c := NewConn(conn)
+
+	c.Print("handshake", "new connection")
 
 	state := StateHandshake
 
 	for {
 		packet, err := c.ReadPacket()
 		if err != nil {
+			log.Warnf("failed to read handshake packet: %v\n", err)
+
 			return
 		}
 
@@ -60,9 +62,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, cfg *config.Config) {
 
 			_ = addr
 
-			var portBuf [2]byte
-
-			_, _ = br.Read(portBuf[:])
+			io.ReadFull(rd, make([]byte, 2))
 
 			next, _ := ReadVarInt(&rd)
 

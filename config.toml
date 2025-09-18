@@ -11,4 +11,4 @@ motd = "Hello from minicraft!"
 max-players = 8
 
 # minimum packet size before compression
-compression-threshold = 1024
+compression-threshold = 512
