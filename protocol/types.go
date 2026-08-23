@@ -64,8 +64,6 @@ func ReadVarInt(r io.ByteReader) (int32, error) {
 
 		value |= int32(currentByte&VarSegmentBits) << position
 
-		log.Println(position, currentByte, value, currentByte&VarContinueBit)
-
 		if currentByte&VarContinueBit == 0 {
 			break
 		}
@@ -76,8 +74,6 @@ func ReadVarInt(r io.ByteReader) (int32, error) {
 			return 0, errors.New("VarInt is too big")
 		}
 	}
-
-	log.Println("varint", value)
 
 	return value, nil
 }

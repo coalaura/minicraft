@@ -83,7 +83,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, cfg *config.Config) {
 			case SB_StatusRequest:
 				var info ServerInfo
 
-				info.Version.Name = "1.21.8"
+				info.Version.Name = "1.21.11"
 				info.Version.Protocol = ProtocolVersion
 				info.Players.Max = cfg.MaxPlayers
 				info.Players.Online = 0

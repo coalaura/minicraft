@@ -1,7 +1,7 @@
 package protocol
 
-// Version 1.21.8
-const ProtocolVersion = 772
+// Version 1.21.11
+const ProtocolVersion = 774
 
 // States
 const (
@@ -52,5 +52,5 @@ const (
 
 	// Serverbound
 	SB_ClientInformation       = 0x00
-	SB_AcknowledgeFinishConfig = 0x02
+	SB_AcknowledgeFinishConfig = 0x03
 )
