@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"crypto/aes"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net"
@@ -122,13 +123,20 @@ func (c *MCConnection) ReadPacket() (*Packet, error) {
 
 	rest, _ := io.ReadAll(br)
 
-	return &Packet{
+	pkt := &Packet{
 		ID:   id,
 		Data: rest,
-	}, nil
+	}
+
+	c.logPacket("RECV", pkt)
+
+	return pkt, nil
 }
 
 func (c *MCConnection) WritePacket(packet Packet) error {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+
 	var inner bytes.Buffer
 
 	err := WriteVarInt(&inner, packet.ID)
@@ -193,6 +201,8 @@ func (c *MCConnection) WritePacket(packet Packet) error {
 
 	out := pkt.Bytes()
 
+	c.logPacket("SEND", &packet)
+
 	if c.enc != nil {
 		c.enc.XORKeyStream(out, out)
 	}
@@ -203,4 +213,26 @@ func (c *MCConnection) WritePacket(packet Packet) error {
 	}
 
 	return c.wbuf.Flush()
+}
+
+func (c *MCConnection) logPacket(direction string, p *Packet) {
+	if log == nil {
+		return
+	}
+
+	data := p.Data
+
+	if len(data) > 64 {
+		data = data[:64]
+	}
+
+	log.Printf(
+		"[net] %s %s -> id=%d (0x%x) len=%d data=%s\n",
+		direction,
+		c.conn.RemoteAddr(),
+		p.ID,
+		p.ID,
+		len(p.Data),
+		hex.EncodeToString(data),
+	)
 }

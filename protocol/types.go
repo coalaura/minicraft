@@ -5,9 +5,11 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"io"
 	"net"
+	"sync"
 )
 
 const (
@@ -23,6 +25,8 @@ type ExtendedWriter interface {
 type MCConnection struct {
 	conn net.Conn
 	wbuf *bufio.Writer
+
+	wmu sync.Mutex // serializes outbound writes (keep-alive goroutine + handler loop)
 
 	enc cipher.Stream // outbound encrypt
 	dec cipher.Stream // inbound decrypt
@@ -182,6 +186,34 @@ func WriteBytes(w ExtendedWriter, b []byte) error {
 
 	_, err = w.Write(b)
 	return err
+}
+
+func WriteInt(w ExtendedWriter, value int32) error {
+	return binary.Write(w, binary.BigEndian, value)
+}
+
+func WriteLong(w ExtendedWriter, value int64) error {
+	return binary.Write(w, binary.BigEndian, value)
+}
+
+func WriteShort(w ExtendedWriter, value int16) error {
+	return binary.Write(w, binary.BigEndian, value)
+}
+
+func WriteFloat(w ExtendedWriter, value float32) error {
+	return binary.Write(w, binary.BigEndian, value)
+}
+
+func WriteDouble(w ExtendedWriter, value float64) error {
+	return binary.Write(w, binary.BigEndian, value)
+}
+
+func WriteBool(w io.ByteWriter, value bool) error {
+	if value {
+		return w.WriteByte(1)
+	}
+
+	return w.WriteByte(0)
 }
 
 func WriteVarIntToBytes(v int32) ([]byte, error) {
