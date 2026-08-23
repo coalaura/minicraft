@@ -26,16 +26,19 @@ func (x *CFB8) XORKeyStream(dst, src []byte) {
 
 		c := src[i] ^ x.outBlock[0]
 
-		dst[i] = c
+		// CFB8 feedback always consumes the ciphertext byte. For encryption that
+		// is c; for decryption it is the incoming byte. Capture it before writing
+		// dst[i] so in-place operation (dst == src) still feeds back the ciphertext.
+		feedback := c
 
 		if x.decrypt {
-			copy(x.iv, x.iv[1:])
-
-			x.iv[len(x.iv)-1] = src[i]
-		} else {
-			copy(x.iv, x.iv[1:])
-
-			x.iv[len(x.iv)-1] = c
+			feedback = src[i]
 		}
+
+		dst[i] = c
+
+		copy(x.iv, x.iv[1:])
+
+		x.iv[len(x.iv)-1] = feedback
 	}
 }
