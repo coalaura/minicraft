@@ -42,6 +42,12 @@ func HandleConnection(ctx context.Context, conn net.Conn, cfg *config.Config) {
 	for {
 		packet, err := c.ReadPacket()
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				c.Print("net", "disconnected (EOF)")
+
+				return
+			}
+
 			log.Warnf("failed to read handshake packet: %v\n", err)
 
 			return
