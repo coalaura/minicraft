@@ -76,6 +76,7 @@ const (
 	// Serverbound
 	SB_ConfirmTeleport    = 0x00
 	SB_ChunkBatchReceived = 0x0A
+	SB_ClientTickEnd      = 0x0C
 	SB_ClientInfoPlay     = 0x0D
 	SB_KeepAlivePlay      = 0x1B
 	SB_MovePlayerPos      = 0x1D

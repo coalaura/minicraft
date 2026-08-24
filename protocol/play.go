@@ -65,6 +65,8 @@ func HandlePlay(ctx context.Context, c *MCConnection, cfg *config.Config, uuid, 
 			c.Print("play", "confirmed teleport")
 		case SB_ChunkBatchReceived:
 			c.Print("play", "chunk batch received")
+		case SB_ClientTickEnd:
+			// End of client tick; nothing to do for now.
 		case SB_ClientInfoPlay:
 			c.Print("play", "received client information")
 		case SB_KeepAlivePlay:
