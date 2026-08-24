@@ -1,8 +1,11 @@
 package catalog
 
 import (
+	_ "github.com/coalaura/minicraft/internal/generator/babel"
+	_ "github.com/coalaura/minicraft/internal/generator/backrooms"
 	_ "github.com/coalaura/minicraft/internal/generator/fractalvaults"
 	_ "github.com/coalaura/minicraft/internal/generator/mengersponge"
+	_ "github.com/coalaura/minicraft/internal/generator/natural"
 	_ "github.com/coalaura/minicraft/internal/generator/spawnplatform"
 	_ "github.com/coalaura/minicraft/internal/generator/waveterrain"
 )
