@@ -23,7 +23,7 @@ default-game-mode = "creative"
 
 # World generation and spawn settings.
 [world]
-# Procedural world generator: spawn-platform or wave-terrain.
+# Procedural world generator: spawn-platform, wave-terrain or fractal-vaults.
 generator = "spawn-platform"
 
 # Seed passed to the selected world generator.
