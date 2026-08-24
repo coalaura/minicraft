@@ -9,24 +9,23 @@ import (
 )
 
 type Session struct {
-	Conn   *protocol.Connection
-	Config *config.Config
-	Log    Logger
+	Conn    *protocol.Connection
+	Config  *config.Config
+	Log     Logger
+	Runtime *Runtime
 
 	Player *game.Player
-	World  *game.World
 
 	nextTeleportID int32
 	chunksPerTick  float32
 }
 
-func NewSession(conn *protocol.Connection, cfg *config.Config, log Logger) *Session {
+func NewSession(conn *protocol.Connection, cfg *config.Config, runtime *Runtime, log Logger) *Session {
 	return &Session{
-		Conn:   conn,
-		Config: cfg,
-		Log:    log,
-
-		World: game.NewOverworld(),
+		Conn:    conn,
+		Config:  cfg,
+		Log:     log,
+		Runtime: runtime,
 	}
 }
 

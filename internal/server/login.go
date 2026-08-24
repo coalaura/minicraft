@@ -153,7 +153,7 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 		return s.sendLoginDisconnect("Failed to verify username")
 	}
 
-	player.Position = s.World.Spawn
+	player.Position = s.Runtime.World.Spawn
 
 	s.Player = player
 
@@ -206,11 +206,10 @@ func (s *Session) handleOfflineLogin(start protocol.LoginStart) error {
 	uuid := fmt.Sprintf("%s-%s-%s-%s-%s", raw[0:8], raw[8:12], raw[12:16], raw[16:20], raw[20:])
 
 	player := &game.Player{
-		EntityID: 1,
-		UUID:     uuid,
-		Name:     start.Name,
+		UUID: uuid,
+		Name: start.Name,
 
-		Position: s.World.Spawn,
+		Position: s.Runtime.World.Spawn,
 
 		GameMode: game.GameModeCreative,
 	}
@@ -345,9 +344,8 @@ func authenticatePlayer(username, serverHash, ip string) (*game.Player, error) {
 	)
 
 	return &game.Player{
-		EntityID: 1,
-		UUID:     formatted,
-		Name:     name,
+		UUID: formatted,
+		Name: name,
 
 		GameMode: game.GameModeCreative,
 	}, nil

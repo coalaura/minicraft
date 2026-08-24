@@ -17,6 +17,9 @@ const (
 func (s *Session) handlePlay(ctx context.Context) error {
 	s.Log.Printf("[play] %s - entering play state\n", s.Conn.RemoteAddr())
 
+	s.Runtime.RegisterSession(s)
+	defer s.Runtime.RemoveSession(s)
+
 	playCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -135,7 +138,7 @@ func (s *Session) sendPlayLogin() error {
 	login := protocol.PlayLogin{
 		EntityID: s.Player.EntityID,
 		Worlds: []string{
-			s.World.Name,
+			s.Runtime.World.Name,
 		},
 		MaxPlayers:         int32(s.Config.MaxPlayers),
 		ViewDistance:       DefaultViewDistance,
@@ -143,10 +146,10 @@ func (s *Session) sendPlayLogin() error {
 
 		Spawn: protocol.SpawnInfo{
 			DimensionType:    0,
-			Dimension:        s.World.Name,
+			Dimension:        s.Runtime.World.Name,
 			GameMode:         byte(s.Player.GameMode),
 			PreviousGameMode: 0xFF,
-			SeaLevel:         s.World.SeaLevel,
+			SeaLevel:         s.Runtime.World.SeaLevel,
 		},
 
 		EnforcesSecureChat: true,

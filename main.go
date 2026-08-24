@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/coalaura/minicraft/internal/config"
+	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 	"github.com/coalaura/minicraft/internal/server"
 	"github.com/coalaura/plain"
@@ -20,6 +21,7 @@ func main() {
 	log.MustFail(err)
 
 	log.SetLevel(cfg.GetLogLevel())
+	runtime := server.NewRuntime(game.NewOverworld())
 
 	listener, err := net.Listen("tcp", cfg.ListenAddr())
 	log.MustFail(err)
@@ -59,14 +61,14 @@ func main() {
 			continue
 		}
 
-		go handleConnection(ctx, cfg, conn)
+		go handleConnection(ctx, cfg, runtime, conn)
 	}
 }
 
-func handleConnection(ctx context.Context, cfg *config.Config, conn net.Conn) {
+func handleConnection(ctx context.Context, cfg *config.Config, runtime *server.Runtime, conn net.Conn) {
 	defer conn.Close()
 
-	session := server.NewSession(protocol.NewConnection(conn, log), cfg, log)
+	session := server.NewSession(protocol.NewConnection(conn, log), cfg, runtime, log)
 
 	err := session.Run(ctx)
 	if err != nil {
