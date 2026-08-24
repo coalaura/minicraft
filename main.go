@@ -35,6 +35,8 @@ func main() {
 
 	runtime := server.NewRuntime(world)
 
+	runtime.AllowBlockBreaking = cfg.AllowBlockBreaking()
+
 	listener, err := net.Listen("tcp", cfg.ListenAddr())
 	log.MustFail(err)
 

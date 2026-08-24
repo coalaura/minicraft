@@ -112,6 +112,13 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		}
 
 		s.handleMovePlayerStatus(move)
+	case protocol.ServerboundPlayerActionID:
+		action, err := protocol.DecodePlayerAction(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		return s.handlePlayerAction(action)
 	case protocol.ServerboundPlayerCommandID:
 		command, err := protocol.DecodePlayerCommand(packet.Data)
 		if err != nil {
@@ -294,6 +301,49 @@ func (s *Session) handlePlayerCommand(command protocol.PlayerCommand) {
 	case protocol.PlayerCommandStopSprinting:
 		s.Runtime.UpdateSprinting(s, false)
 	}
+}
+
+func (s *Session) handlePlayerAction(action protocol.PlayerAction) error {
+	switch action.Status {
+	case protocol.PlayerActionStartDestroyBlock, protocol.PlayerActionStopDestroyBlock:
+		result, err := s.Runtime.MutateBlock(s, BlockMutationBreak, action.Position, game.Air)
+		if err != nil {
+			return err
+		}
+
+		if !result.Allowed || !result.Changed {
+			state, stateErr := protocolBlockState(result.Block)
+			if stateErr != nil {
+				return stateErr
+			}
+
+			err = s.sendBlockUpdate(action.Position, state)
+			if err != nil {
+				return err
+			}
+		}
+	case protocol.PlayerActionAbortDestroyBlock:
+	default:
+	}
+
+	return s.sendBlockChangedAck(action.Sequence)
+}
+
+func (s *Session) sendBlockChangedAck(sequence int32) error {
+	var wr protocol.PacketWriter
+
+	acknowledgement := protocol.BlockChangedAck{Sequence: sequence}
+	acknowledgement.Encode(&wr)
+
+	err := wr.Err()
+	if err != nil {
+		return err
+	}
+
+	return s.writeRawPacket(protocol.Packet{
+		ID:   protocol.ClientboundBlockChangedAckID,
+		Data: wr.Buffer.Bytes(),
+	})
 }
 
 func (s *Session) handlePlayerInput(input protocol.PlayerInput) {

@@ -25,6 +25,10 @@ func TestConfigDefaults(t *testing.T) {
 		t.Fatalf("game mode = %d, want creative", cfg.GameMode())
 	}
 
+	if !cfg.AllowBlockBreaking() {
+		t.Fatal("block breaking is disabled by default")
+	}
+
 	if cfg.World.Spawn != nil {
 		t.Fatalf("spawn = %+v, want omitted", cfg.World.Spawn)
 	}
@@ -36,6 +40,7 @@ func TestConfigDecodesSectionsAndOptionalSpawn(t *testing.T) {
 max-players = 12
 render-distance = 18
 default-game-mode = "spectator"
+allow-block-breaking = false
 
 [world]
 generator = "wave-terrain"
@@ -54,6 +59,10 @@ spawn = { x = 12.5, y = 80.0, z = -7.5 }
 
 	if cfg.GameMode() != game.GameModeSpectator {
 		t.Fatalf("game mode = %d, want spectator", cfg.GameMode())
+	}
+
+	if cfg.AllowBlockBreaking() {
+		t.Fatal("block breaking is enabled, want disabled")
 	}
 }
 

@@ -21,6 +21,9 @@ render-distance = 12
 # Game mode assigned to new players: survival, creative, adventure, or spectator.
 default-game-mode = "creative"
 
+# Globally allows block breaking when the player's game mode permits it.
+allow-block-breaking = true
+
 # World generation and spawn settings.
 [world]
 # Procedural world generator: spawn-platform, wave-terrain, fractal-vaults or menger-sponge.

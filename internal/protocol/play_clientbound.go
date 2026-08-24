@@ -212,6 +212,15 @@ type PlayKeepAlive struct {
 	ID int64
 }
 
+type BlockChangedAck struct {
+	Sequence int32
+}
+
+type BlockUpdate struct {
+	Position game.BlockPosition
+	State    int32
+}
+
 func (p AddEntity) Encode(wr *PacketWriter) {
 	wr.VarInt(p.EntityID)
 	wr.UUID(p.UUID)
@@ -425,4 +434,13 @@ func (p GameEvent) Encode(wr *PacketWriter) {
 
 func (p PlayKeepAlive) Encode(wr *PacketWriter) {
 	wr.Long(p.ID)
+}
+
+func (p BlockChangedAck) Encode(wr *PacketWriter) {
+	wr.VarInt(p.Sequence)
+}
+
+func (p BlockUpdate) Encode(wr *PacketWriter) {
+	wr.BlockPosition(p.Position)
+	wr.VarInt(p.State)
 }

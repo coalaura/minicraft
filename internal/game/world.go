@@ -50,6 +50,12 @@ func (w *World) SetBlock(position BlockPosition, block Block) {
 	w.overrideMx.Lock()
 	defer w.overrideMx.Unlock()
 
+	if block == w.generatedBlockAt(position) {
+		w.clearBlockOverride(chunk, local)
+
+		return
+	}
+
 	if w.overrides == nil {
 		w.overrides = make(map[ChunkPosition]map[LocalBlockPosition]Block)
 	}
@@ -69,6 +75,18 @@ func (w *World) ClearBlockOverride(position BlockPosition) {
 	w.overrideMx.Lock()
 	defer w.overrideMx.Unlock()
 
+	w.clearBlockOverride(chunk, local)
+}
+
+func (w *World) generatedBlockAt(position BlockPosition) Block {
+	if w.Generator == nil {
+		return Air
+	}
+
+	return w.Generator.BlockAt(w.Seed, position)
+}
+
+func (w *World) clearBlockOverride(chunk ChunkPosition, local LocalBlockPosition) {
 	blocks := w.overrides[chunk]
 	delete(blocks, local)
 

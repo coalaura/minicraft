@@ -111,6 +111,35 @@ func TestWorldOverridesTakePrecedence(t *testing.T) {
 	}
 }
 
+func TestSetBlockRemovesGeneratorEquivalentOverride(t *testing.T) {
+	world := &World{Generator: solidGenerator{block: Stone}}
+
+	position := BlockPosition{X: -17, Y: 12, Z: 16}
+
+	world.SetBlock(position, Air)
+
+	chunk, _ := blockIndex(position)
+	if len(world.overrides[chunk]) != 1 {
+		t.Fatalf("chunk overrides = %d, want 1", len(world.overrides[chunk]))
+	}
+
+	world.SetBlock(position, Stone)
+
+	if len(world.overrides) != 0 {
+		t.Fatalf("world override chunks = %d, want 0", len(world.overrides))
+	}
+}
+
+func TestSetBlockDoesNotStoreGeneratedAir(t *testing.T) {
+	world := &World{}
+
+	world.SetBlock(BlockPosition{X: 1, Y: 2, Z: 3}, Air)
+
+	if world.overrides != nil {
+		t.Fatalf("world overrides = %#v, want nil", world.overrides)
+	}
+}
+
 func TestBlockIndexHandlesNegativeBoundaries(t *testing.T) {
 	tests := []blockIndexTest{
 		{

@@ -1,5 +1,7 @@
 package protocol
 
+import "github.com/coalaura/minicraft/internal/game"
+
 const (
 	PlayerCommandStartSprinting = 1
 	PlayerCommandStopSprinting  = 2
@@ -9,6 +11,10 @@ const (
 
 	MainHand = 0
 	OffHand  = 1
+
+	PlayerActionStartDestroyBlock = 0
+	PlayerActionAbortDestroyBlock = 1
+	PlayerActionStopDestroyBlock  = 2
 )
 
 type MovementFlags byte
@@ -68,6 +74,13 @@ type PlayerCommand struct {
 	EntityID int32
 	Action   int32
 	Data     int32
+}
+
+type PlayerAction struct {
+	Status   int32
+	Position game.BlockPosition
+	Face     int8
+	Sequence int32
 }
 
 type PlayerInput struct {
@@ -224,6 +237,24 @@ func DecodePlayerCommand(data []byte) (PlayerCommand, error) {
 	}
 
 	return command, nil
+}
+
+func DecodePlayerAction(data []byte) (PlayerAction, error) {
+	rd := NewPacketReader(data)
+
+	action := PlayerAction{
+		Status:   rd.VarInt(),
+		Position: rd.BlockPosition(),
+		Face:     int8(rd.Byte()),
+		Sequence: rd.VarInt(),
+	}
+
+	err := rd.Err()
+	if err != nil {
+		return PlayerAction{}, err
+	}
+
+	return action, nil
 }
 
 func DecodePlayerInput(data []byte) (PlayerInput, error) {

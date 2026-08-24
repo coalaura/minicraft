@@ -1,6 +1,10 @@
 package protocol
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/coalaura/minicraft/internal/game"
+)
 
 type PacketReader struct {
 	*bytes.Reader
@@ -71,6 +75,16 @@ func (r *PacketReader) Long() int64 {
 	}
 
 	return value
+}
+
+func (r *PacketReader) BlockPosition() game.BlockPosition {
+	packed := r.Long()
+
+	return game.BlockPosition{
+		X: int32(packed >> 38),
+		Y: int32(packed << 52 >> 52),
+		Z: int32(packed << 26 >> 38),
+	}
 }
 
 func (r *PacketReader) Short() int16 {

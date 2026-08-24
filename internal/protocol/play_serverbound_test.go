@@ -1,6 +1,10 @@
 package protocol
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/coalaura/minicraft/internal/game"
+)
 
 func TestDecodeClientInformation(t *testing.T) {
 	data := []byte{
@@ -120,6 +124,9 @@ func TestDecodeMovementFlags(t *testing.T) {
 
 func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 	packetIDs := map[string]packetIDTest{
+		"block action":   {actual: ServerboundPlayerActionID, expected: 0x28},
+		"block ack":      {actual: ClientboundBlockChangedAckID, expected: 0x04},
+		"block update":   {actual: ClientboundBlockUpdateID, expected: 0x08},
 		"player command": {actual: ServerboundPlayerCommandID, expected: 0x29},
 		"player input":   {actual: ServerboundPlayerInputID, expected: 0x2A},
 		"player loaded":  {actual: ServerboundPlayerLoadedID, expected: 0x2B},
@@ -133,6 +140,67 @@ func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 				t.Fatalf("packet id = %#x, want %#x", packetID.actual, packetID.expected)
 			}
 		})
+	}
+}
+
+func TestDecodePlayerAction(t *testing.T) {
+	data := []byte{
+		PlayerActionStartDestroyBlock,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xDF, 0xFE,
+		0xFF,
+		0xAC, 0x02,
+	}
+
+	action, err := DecodePlayerAction(data)
+	if err != nil {
+		t.Fatalf("decode player action: %v", err)
+	}
+
+	expectedPosition := game.BlockPosition{X: -1, Y: -2, Z: -3}
+	if action.Status != PlayerActionStartDestroyBlock || action.Position != expectedPosition || action.Face != -1 || action.Sequence != 300 {
+		t.Fatalf("player action = %+v", action)
+	}
+}
+
+func TestDecodePlayerActionRejectsTruncatedPacket(t *testing.T) {
+	data := []byte{
+		PlayerActionStartDestroyBlock,
+		0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x30, 0x02,
+		0x01,
+	}
+
+	_, err := DecodePlayerAction(data)
+	if err == nil {
+		t.Fatal("decode truncated player action succeeded")
+	}
+}
+
+func TestBlockPositionRoundTrip(t *testing.T) {
+	positions := []game.BlockPosition{
+		{X: 1, Y: 2, Z: 3},
+		{X: -1, Y: -2, Z: -3},
+		{X: -33554432, Y: -2048, Z: 33554431},
+		{X: 33554431, Y: 2047, Z: -33554432},
+	}
+
+	for _, position := range positions {
+		var wr PacketWriter
+
+		wr.BlockPosition(position)
+		if err := wr.Err(); err != nil {
+			t.Fatalf("encode position %+v: %v", position, err)
+		}
+
+		rd := NewPacketReader(wr.Buffer.Bytes())
+
+		actualB := rd.BlockPosition()
+		if actualB != position {
+			t.Errorf("position round trip = %+v, want %+v", actualB, position)
+		}
+
+		if err := rd.Err(); err != nil {
+			t.Fatalf("decode position %+v: %v", position, err)
+		}
 	}
 }
 

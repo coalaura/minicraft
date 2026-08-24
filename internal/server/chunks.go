@@ -156,6 +156,44 @@ func (s *Session) sendForgetChunk(chunk LoadedChunk) error {
 	})
 }
 
+func (s *Session) sendBlockUpdate(position game.BlockPosition, state int32) error {
+	var wr protocol.PacketWriter
+
+	update := protocol.BlockUpdate{Position: position, State: state}
+
+	update.Encode(&wr)
+
+	err := wr.Err()
+	if err != nil {
+		return err
+	}
+
+	return s.writeRawPacket(protocol.Packet{
+		ID:   protocol.ClientboundBlockUpdateID,
+		Data: wr.Buffer.Bytes(),
+	})
+}
+
+func (s *Session) sendBlockUpdateIfLoaded(position game.BlockPosition, state int32) error {
+	s.chunkMx.Lock()
+	defer s.chunkMx.Unlock()
+
+	if _, loaded := s.loadedChunks[blockLoadedChunk(position)]; !loaded {
+		return nil
+	}
+
+	return s.sendBlockUpdate(position, state)
+}
+
+func (s *Session) hasLoadedBlock(position game.BlockPosition) bool {
+	s.chunkMx.Lock()
+	defer s.chunkMx.Unlock()
+
+	_, loaded := s.loadedChunks[blockLoadedChunk(position)]
+
+	return loaded
+}
+
 func (s *Session) updatePlayerChunks() error {
 	player := s.snapshotPlayer()
 	center := LoadedChunk{
@@ -248,6 +286,22 @@ func chunksInView(center LoadedChunk, radius int32) []LoadedChunk {
 
 func chunkCoordinate(position float64) int32 {
 	return int32(math.Floor(position / ChunkWidth))
+}
+
+func blockChunkCoordinate(position int32) int32 {
+	chunk := position / ChunkWidth
+	if position%ChunkWidth < 0 {
+		chunk--
+	}
+
+	return chunk
+}
+
+func blockLoadedChunk(position game.BlockPosition) LoadedChunk {
+	return LoadedChunk{
+		X: blockChunkCoordinate(position.X),
+		Z: blockChunkCoordinate(position.Z),
+	}
 }
 
 func buildLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChunkWithLight, error) {

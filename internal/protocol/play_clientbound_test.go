@@ -45,6 +45,20 @@ func TestChunkPacketProtocol774(t *testing.T) {
 	assertPacketEncoding(t, forget, []byte{0xFF, 0xFF, 0xFF, 0xFE, 0x01, 0x02, 0x03, 0x04})
 }
 
+func TestBlockUpdateEncode(t *testing.T) {
+	update := BlockUpdate{
+		Position: game.BlockPosition{X: 1, Y: 2, Z: 3},
+		State:    300,
+	}
+
+	expected := []byte{0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x30, 0x02, 0xAC, 0x02}
+	assertPacketEncoding(t, update, expected)
+}
+
+func TestBlockChangedAckEncode(t *testing.T) {
+	assertPacketEncoding(t, BlockChangedAck{Sequence: 300}, []byte{0xAC, 0x02})
+}
+
 func TestPlayerInfoUpdateEncode(t *testing.T) {
 	update := PlayerInfoUpdate{
 		Actions: PlayerInfoActionAddPlayer | PlayerInfoActionUpdateGameMode | PlayerInfoActionUpdateListed,

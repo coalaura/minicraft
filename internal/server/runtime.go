@@ -7,7 +7,9 @@ import (
 )
 
 type Runtime struct {
-	World *game.World
+	World               *game.World
+	BlockMutationPolicy BlockMutationPolicy
+	AllowBlockBreaking  bool
 
 	// Keep each profile/entity transition ordered as one lifecycle event.
 	lifecycleMu  sync.Mutex
@@ -41,8 +43,9 @@ func (r *Runtime) ReleasePlayerSlot() {
 
 func NewRuntime(world *game.World) *Runtime {
 	return &Runtime{
-		World:    world,
-		sessions: make(map[*Session]*game.Player),
+		World:              world,
+		AllowBlockBreaking: true,
+		sessions:           make(map[*Session]*game.Player),
 	}
 }
 

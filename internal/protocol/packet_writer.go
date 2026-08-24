@@ -6,6 +6,8 @@ import (
 	"errors"
 	"math"
 	"strings"
+
+	"github.com/coalaura/minicraft/internal/game"
 )
 
 const (
@@ -49,6 +51,14 @@ func (w *PacketWriter) Long(value int64) {
 	}
 
 	w.err = WriteLong(&w.Buffer, value)
+}
+
+func (w *PacketWriter) BlockPosition(position game.BlockPosition) {
+	packed := (int64(position.X)&0x3FFFFFF)<<38 |
+		(int64(position.Z)&0x3FFFFFF)<<12 |
+		int64(position.Y)&0xFFF
+
+	w.Long(packed)
 }
 
 func (w *PacketWriter) Short(value int16) {

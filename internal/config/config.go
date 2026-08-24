@@ -19,13 +19,14 @@ const (
 )
 
 type ServerConfig struct {
-	Hostname        string `toml:"hostname"`
-	Port            uint   `toml:"port"`
-	OnlineMode      bool   `toml:"online-mode"`
-	Motd            string `toml:"motd"`
-	MaxPlayers      *int   `toml:"max-players"`
-	RenderDistance  *int32 `toml:"render-distance"`
-	DefaultGameMode string `toml:"default-game-mode"`
+	Hostname           string `toml:"hostname"`
+	Port               uint   `toml:"port"`
+	OnlineMode         bool   `toml:"online-mode"`
+	Motd               string `toml:"motd"`
+	MaxPlayers         *int   `toml:"max-players"`
+	RenderDistance     *int32 `toml:"render-distance"`
+	DefaultGameMode    string `toml:"default-game-mode"`
+	AllowBlockBreaking *bool  `toml:"allow-block-breaking"`
 }
 
 type WorldConfig struct {
@@ -128,6 +129,11 @@ func (c *Config) SetDefaults() {
 		c.Server.DefaultGameMode = "creative"
 	}
 
+	if c.Server.AllowBlockBreaking == nil {
+		blockBreaking := true
+		c.Server.AllowBlockBreaking = &blockBreaking
+	}
+
 	if c.Network.CompressionThreshold < 32 {
 		c.Network.CompressionThreshold = 32
 	}
@@ -182,6 +188,14 @@ func (c *Config) GameMode() game.GameMode {
 	mode, _ := game.ParseGameMode(c.Server.DefaultGameMode)
 
 	return mode
+}
+
+func (c *Config) AllowBlockBreaking() bool {
+	if c.Server.AllowBlockBreaking == nil {
+		return true
+	}
+
+	return *c.Server.AllowBlockBreaking
 }
 
 func (c *Config) GetLogLevel() plain.Level {
