@@ -15,3 +15,6 @@ max-players = 8
 
 # minimum packet size before compression
 compression-threshold = 512
+
+# procedural world generator
+world-generator = "spawn-platform"

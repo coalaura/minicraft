@@ -60,24 +60,6 @@ func TestWorldGenerationIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestSpawnPlatformGenerator(t *testing.T) {
-	world := &World{Seed: 1234, Generator: SpawnPlatformGenerator{}}
-
-	tests := map[BlockPosition]Block{
-		{X: -4, Y: 69, Z: -4}: Stone,
-		{X: 4, Y: 69, Z: 4}:   Stone,
-		{X: -5, Y: 69, Z: 0}:  Air,
-		{X: 0, Y: 68, Z: 0}:   Air,
-		{X: 0, Y: 70, Z: 0}:   Air,
-	}
-
-	for position, expected := range tests {
-		if actual := world.BlockAt(position); actual != expected {
-			t.Errorf("block at %+v = %d, want %d", position, actual, expected)
-		}
-	}
-}
-
 func TestWorldOverridesTakePrecedence(t *testing.T) {
 	world := &World{Generator: solidGenerator{block: Stone}}
 

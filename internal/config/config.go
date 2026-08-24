@@ -21,7 +21,8 @@ type Config struct {
 	Motd       string `toml:"motd"`
 	MaxPlayers int    `toml:"max-players"`
 
-	CompressionThreshold int `toml:"compression-threshold"`
+	CompressionThreshold int    `toml:"compression-threshold"`
+	WorldGenerator       string `toml:"world-generator"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -70,6 +71,10 @@ func (c *Config) SetDefaults() {
 
 	if c.CompressionThreshold < 32 {
 		c.CompressionThreshold = 32
+	}
+
+	if c.WorldGenerator == "" {
+		c.WorldGenerator = "spawn-platform"
 	}
 }
 

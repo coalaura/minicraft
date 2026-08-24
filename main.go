@@ -9,6 +9,8 @@ import (
 
 	"github.com/coalaura/minicraft/internal/config"
 	"github.com/coalaura/minicraft/internal/game"
+	"github.com/coalaura/minicraft/internal/generator"
+	_ "github.com/coalaura/minicraft/internal/generator/catalog"
 	"github.com/coalaura/minicraft/internal/protocol"
 	"github.com/coalaura/minicraft/internal/server"
 	"github.com/coalaura/plain"
@@ -21,7 +23,11 @@ func main() {
 	log.MustFail(err)
 
 	log.SetLevel(cfg.GetLogLevel())
-	runtime := server.NewRuntime(game.NewOverworld())
+
+	worldGenerator, err := generator.New(cfg.WorldGenerator)
+	log.MustFail(err)
+
+	runtime := server.NewRuntime(game.NewOverworld(worldGenerator))
 
 	listener, err := net.Listen("tcp", cfg.ListenAddr())
 	log.MustFail(err)

@@ -25,26 +25,3 @@ type ChunkPosition struct {
 type Generator interface {
 	BlockAt(seed int64, position BlockPosition) Block
 }
-
-type SpawnPlatformGenerator struct{}
-
-func (SpawnPlatformGenerator) BlockAt(_ int64, position BlockPosition) Block {
-	const (
-		platformY      = 69
-		platformRadius = 4
-	)
-
-	if position.Y != platformY {
-		return Air
-	}
-
-	if position.X < -platformRadius || position.X > platformRadius {
-		return Air
-	}
-
-	if position.Z < -platformRadius || position.Z > platformRadius {
-		return Air
-	}
-
-	return Stone
-}

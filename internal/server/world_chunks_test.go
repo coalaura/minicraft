@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
+	"github.com/coalaura/minicraft/internal/generator/spawnplatform"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
@@ -15,7 +16,7 @@ func (unsupportedBlockGenerator) BlockAt(_ int64, _ game.BlockPosition) game.Blo
 }
 
 func TestLevelChunksQueryWorldAcrossBoundaries(t *testing.T) {
-	world := game.NewOverworld()
+	world := game.NewOverworld(spawnplatform.New())
 
 	right, err := buildLevelChunk(world, 0, 0)
 	if err != nil {
@@ -43,7 +44,7 @@ func TestLevelChunksQueryWorldAcrossBoundaries(t *testing.T) {
 }
 
 func TestLevelChunksIncludeWorldOverrides(t *testing.T) {
-	world := game.NewOverworld()
+	world := game.NewOverworld(spawnplatform.New())
 
 	world.SetBlock(game.BlockPosition{X: 0, Y: 69, Z: 0}, game.Air)
 	world.SetBlock(game.BlockPosition{X: 5, Y: 69, Z: 0}, game.Stone)

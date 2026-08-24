@@ -73,11 +73,11 @@ func (w *World) ClearBlockOverride(position BlockPosition) {
 	}
 }
 
-func NewOverworld() *World {
+func NewOverworld(generator Generator) *World {
 	return &World{
 		Name:          "minecraft:overworld",
 		DimensionType: "minecraft:overworld",
-		Generator:     SpawnPlatformGenerator{},
+		Generator:     generator,
 
 		Spawn: Position{
 			X: 0.5,

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
+	"github.com/coalaura/minicraft/internal/generator/spawnplatform"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
@@ -224,7 +225,7 @@ func newChunkTestSession(position game.Position) (*Session, *recordingConnection
 
 	session := &Session{
 		Conn:    protocol.NewConnection(connection, nil),
-		Runtime: NewRuntime(game.NewOverworld()),
+		Runtime: NewRuntime(game.NewOverworld(spawnplatform.New())),
 		Player:  &game.Player{Position: position},
 	}
 
