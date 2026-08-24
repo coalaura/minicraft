@@ -184,7 +184,7 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 			return fmt.Errorf("encode set compression: %w", err)
 		}
 
-		err = s.Conn.WritePacket(protocol.Packet{
+		err = s.writeRawPacket(protocol.Packet{
 			ID:   protocol.ClientboundSetCompressionID,
 			Data: wr.Buffer.Bytes(),
 		})
@@ -241,7 +241,7 @@ func (s *Session) sendEncryptionRequest(verifyToken []byte) error {
 		return err
 	}
 
-	return s.Conn.WritePacket(protocol.Packet{
+	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundEncryptionRequestID,
 		Data: wr.Buffer.Bytes(),
 	})
@@ -263,7 +263,7 @@ func (s *Session) sendLoginSuccess() error {
 		return err
 	}
 
-	return s.Conn.WritePacket(protocol.Packet{
+	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundLoginSuccessID,
 		Data: wr.Buffer.Bytes(),
 	})
@@ -285,7 +285,7 @@ func (s *Session) sendLoginDisconnect(reason string) error {
 		return err
 	}
 
-	err = s.Conn.WritePacket(protocol.Packet{
+	err = s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundLoginDisconnectID,
 		Data: wr.Buffer.Bytes(),
 	})

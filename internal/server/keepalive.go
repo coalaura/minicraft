@@ -47,7 +47,7 @@ func (s *Session) sendKeepAlive(id int64) error {
 		return err
 	}
 
-	return s.Conn.WritePacket(protocol.Packet{
+	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundPlayKeepAliveID,
 		Data: wr.Buffer.Bytes(),
 	})

@@ -212,7 +212,7 @@ func (s *Session) writePacket(packetID int32, encoder PacketEncoder) error {
 		return err
 	}
 
-	return s.Conn.WritePacket(protocol.Packet{
+	return s.writeRawPacket(protocol.Packet{
 		ID:   packetID,
 		Data: wr.Buffer.Bytes(),
 	})

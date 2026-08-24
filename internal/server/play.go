@@ -95,14 +95,14 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 			return err
 		}
 
-		s.handleMovePlayerPosition(move)
+		return s.handleMovePlayerPosition(move)
 	case protocol.ServerboundMovePlayerPositionRotationID:
 		move, err := protocol.DecodeMovePlayerPositionRotation(packet.Data)
 		if err != nil {
 			return err
 		}
 
-		s.handleMovePlayerPositionRotation(move)
+		return s.handleMovePlayerPositionRotation(move)
 	case protocol.ServerboundMovePlayerRotationID:
 		move, err := protocol.DecodeMovePlayerRotation(packet.Data)
 		if err != nil {
@@ -198,7 +198,7 @@ func (s *Session) sendPlayLogin() error {
 		return err
 	}
 
-	return s.Conn.WritePacket(protocol.Packet{
+	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundPlayLoginID,
 		Data: wr.Buffer.Bytes(),
 	})
@@ -227,7 +227,7 @@ func (s *Session) sendPlayerPosition() error {
 		return err
 	}
 
-	err = s.Conn.WritePacket(protocol.Packet{
+	err = s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundPlayerPositionID,
 		Data: wr.Buffer.Bytes(),
 	})
@@ -249,29 +249,33 @@ func (s *Session) handleChunkBatchReceived(batch protocol.ChunkBatchReceived) {
 	s.chunksPerTick = batch.ChunksPerTick
 }
 
-func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) {
+func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) error {
 	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
 		player.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
 		player.OnGround = move.OnGround
 	})
 
-	err := s.updatePlayerChunk()
+	err := s.updatePlayerChunks()
 	if err != nil {
-		s.Log.Warnf("[play] failed to update center chunk: %v\n", err)
+		s.Log.Warnf("[play] failed to stream chunks: %v\n", err)
 	}
+
+	return err
 }
 
-func (s *Session) handleMovePlayerPositionRotation(move protocol.MovePlayerPositionRotation) {
+func (s *Session) handleMovePlayerPositionRotation(move protocol.MovePlayerPositionRotation) error {
 	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
 		player.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
 		player.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
 		player.OnGround = move.OnGround
 	})
 
-	err := s.updatePlayerChunk()
+	err := s.updatePlayerChunks()
 	if err != nil {
-		s.Log.Warnf("[play] failed to update center chunk: %v\n", err)
+		s.Log.Warnf("[play] failed to stream chunks: %v\n", err)
 	}
+
+	return err
 }
 
 func (s *Session) handleMovePlayerRotation(move protocol.MovePlayerRotation) {

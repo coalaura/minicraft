@@ -80,7 +80,7 @@ func (s *Session) sendStatusResponse() error {
 		return err
 	}
 
-	return s.Conn.WritePacket(protocol.Packet{
+	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundStatusResponseID,
 		Data: wr.Buffer.Bytes(),
 	})
@@ -98,7 +98,7 @@ func (s *Session) sendStatusPong(payload int64) error {
 		return err
 	}
 
-	return s.Conn.WritePacket(protocol.Packet{
+	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundStatusPongID,
 		Data: wr.Buffer.Bytes(),
 	})

@@ -77,6 +77,7 @@ const (
 	ClientboundChunkBatchEndID                = 0x0B
 	ClientboundChunkBatchBeginID              = 0x0C
 	ClientboundSynchronizeEntityPositionID    = 0x23
+	ClientboundForgetLevelChunkID             = 0x25
 	ClientboundGameEventID                    = 0x26
 	ClientboundPlayKeepAliveID                = 0x2B
 	ClientboundLevelChunkWithLightID          = 0x2C

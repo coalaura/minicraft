@@ -139,7 +139,7 @@ func (s *Session) sendKnownPacks() error {
 		return err
 	}
 
-	return s.Conn.WritePacket(protocol.Packet{
+	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundConfigurationKnownPacksID,
 		Data: wr.Buffer.Bytes(),
 	})
@@ -158,7 +158,7 @@ func (s *Session) sendRegistries() error {
 			return err
 		}
 
-		err = s.Conn.WritePacket(protocol.Packet{
+		err = s.writeRawPacket(protocol.Packet{
 			ID:   protocol.ClientboundConfigurationRegistryDataID,
 			Data: wr.Buffer.Bytes(),
 		})
@@ -183,14 +183,14 @@ func (s *Session) sendRegistryTags() error {
 		return err
 	}
 
-	return s.Conn.WritePacket(protocol.Packet{
+	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundConfigurationUpdateTagsID,
 		Data: wr.Buffer.Bytes(),
 	})
 }
 
 func (s *Session) sendFinishConfiguration() error {
-	return s.Conn.WritePacket(protocol.Packet{
+	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundConfigurationFinishID,
 		Data: []byte{},
 	})
@@ -212,7 +212,7 @@ func (s *Session) sendConfigurationDisconnect(reason string) error {
 		return err
 	}
 
-	return s.Conn.WritePacket(protocol.Packet{
+	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundConfigurationDisconnectID,
 		Data: wr.Buffer.Bytes(),
 	})

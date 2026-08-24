@@ -35,6 +35,16 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 	}
 }
 
+func TestChunkPacketProtocol774(t *testing.T) {
+	if ClientboundForgetLevelChunkID != 0x25 {
+		t.Fatalf("forget level chunk packet id = %#x, want 0x25", ClientboundForgetLevelChunkID)
+	}
+
+	forget := ForgetLevelChunk{X: 0x01020304, Z: -2}
+
+	assertPacketEncoding(t, forget, []byte{0xFF, 0xFF, 0xFF, 0xFE, 0x01, 0x02, 0x03, 0x04})
+}
+
 func TestPlayerInfoUpdateEncode(t *testing.T) {
 	update := PlayerInfoUpdate{
 		Actions: PlayerInfoActionAddPlayer | PlayerInfoActionUpdateGameMode | PlayerInfoActionUpdateListed,

@@ -17,6 +17,12 @@ type Session struct {
 
 	Player   *game.Player
 	playerMx sync.RWMutex
+	writeMx  sync.Mutex
+
+	chunkMx        sync.Mutex
+	centerChunk    LoadedChunk
+	hasChunkCenter bool
+	loadedChunks   map[LoadedChunk]struct{}
 
 	nextTeleportID int32
 	chunksPerTick  float32
@@ -39,6 +45,13 @@ func (s *Session) nextTeleport() int32 {
 	s.nextTeleportID++
 
 	return s.nextTeleportID
+}
+
+func (s *Session) writeRawPacket(packet protocol.Packet) error {
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
+	return s.Conn.WritePacket(packet)
 }
 
 func (s *Session) snapshotPlayer() game.Player {

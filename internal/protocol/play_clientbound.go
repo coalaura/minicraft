@@ -194,6 +194,11 @@ type SetCenterChunk struct {
 	Z int32
 }
 
+type ForgetLevelChunk struct {
+	X int32
+	Z int32
+}
+
 type ChunkBatchEnd struct {
 	BatchSize int32
 }
@@ -402,6 +407,11 @@ func (p PlayerInfoUpdate) Encode(wr *PacketWriter) {
 func (p SetCenterChunk) Encode(wr *PacketWriter) {
 	wr.VarInt(p.X)
 	wr.VarInt(p.Z)
+}
+
+func (p ForgetLevelChunk) Encode(wr *PacketWriter) {
+	wr.Int(p.Z)
+	wr.Int(p.X)
 }
 
 func (p ChunkBatchEnd) Encode(wr *PacketWriter) {
