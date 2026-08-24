@@ -26,8 +26,36 @@ type solidGenerator struct {
 	block Block
 }
 
+type spawningGenerator struct {
+	spawnSeed int64
+}
+
+func (g *spawningGenerator) BlockAt(_ int64, _ BlockPosition) Block {
+	return Air
+}
+
+func (g *spawningGenerator) Spawn(seed int64) Position {
+	g.spawnSeed = seed
+
+	return Position{X: 4.5, Y: 90, Z: -2.5}
+}
+
 func (g solidGenerator) BlockAt(_ int64, _ BlockPosition) Block {
 	return g.block
+}
+
+func TestNewOverworldUsesSeedAndGeneratorSpawn(t *testing.T) {
+	generator := &spawningGenerator{}
+	world := NewOverworld(generator, 42)
+
+	if world.Seed != 42 || generator.spawnSeed != 42 {
+		t.Fatalf("world seed = %d, generator seed = %d, want 42", world.Seed, generator.spawnSeed)
+	}
+
+	expected := Position{X: 4.5, Y: 90, Z: -2.5}
+	if world.Spawn != expected {
+		t.Fatalf("world spawn = %+v, want %+v", world.Spawn, expected)
+	}
 }
 
 func TestWorldGenerationIsDeterministic(t *testing.T) {

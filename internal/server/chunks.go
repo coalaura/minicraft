@@ -9,12 +9,7 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
-const (
-	// Keep one empty chunk around generated chunks so the client can build
-	// meshes for blocks at their borders.
-	ChunkRadius = 2
-	ChunkWidth  = 16
-)
+const ChunkWidth = 16
 
 type LoadedChunk struct {
 	X int32
@@ -185,7 +180,7 @@ func (s *Session) updateVisibleChunks(center LoadedChunk) error {
 		s.hasChunkCenter = true
 	}
 
-	visibleChunks := chunksInView(center)
+	visibleChunks := chunksInView(center, s.renderDistance())
 	visibleSet := make(map[LoadedChunk]struct{}, len(visibleChunks))
 
 	for _, chunk := range visibleChunks {
@@ -238,12 +233,12 @@ func (s *Session) updateVisibleChunks(center LoadedChunk) error {
 	return err
 }
 
-func chunksInView(center LoadedChunk) []LoadedChunk {
-	chunkCount := (ChunkRadius*2 + 1) * (ChunkRadius*2 + 1)
+func chunksInView(center LoadedChunk, radius int32) []LoadedChunk {
+	chunkCount := int((radius*2 + 1) * (radius*2 + 1))
 	chunks := make([]LoadedChunk, 0, chunkCount)
 
-	for chunkZ := center.Z - ChunkRadius; chunkZ <= center.Z+ChunkRadius; chunkZ++ {
-		for chunkX := center.X - ChunkRadius; chunkX <= center.X+ChunkRadius; chunkX++ {
+	for chunkZ := center.Z - radius; chunkZ <= center.Z+radius; chunkZ++ {
+		for chunkX := center.X - radius; chunkX <= center.X+radius; chunkX++ {
 			chunks = append(chunks, LoadedChunk{X: chunkX, Z: chunkZ})
 		}
 	}

@@ -13,7 +13,30 @@ type Runtime struct {
 	lifecycleMu  sync.Mutex
 	mu           sync.RWMutex
 	nextEntityID int32
+	reserved     int
 	sessions     map[*Session]*game.Player
+}
+
+func (r *Runtime) ReservePlayerSlot(maxPlayers int) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.reserved >= maxPlayers {
+		return false
+	}
+
+	r.reserved++
+
+	return true
+}
+
+func (r *Runtime) ReleasePlayerSlot() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.reserved > 0 {
+		r.reserved--
+	}
 }
 
 func NewRuntime(world *game.World) *Runtime {
@@ -46,12 +69,19 @@ func (r *Runtime) JoinSession(session *Session) error {
 
 	existing := r.snapshotSessions()
 
-	players := make([]game.Player, 0, len(existing)+1)
+	player := session.snapshotPlayer()
 
-	players = append(players, session.snapshotPlayer())
+	players := make([]game.Player, 0, len(existing)+1)
+	visible := make([]*Session, 0, len(existing))
+
+	players = append(players, player)
 
 	for _, other := range existing {
-		players = append(players, other.snapshotPlayer())
+		otherPlayer := other.snapshotPlayer()
+		if playersVisible(player, otherPlayer, session.renderDistance()) {
+			players = append(players, otherPlayer)
+			visible = append(visible, other)
+		}
 	}
 
 	err := session.sendPlayerInfo(players)
@@ -64,7 +94,7 @@ func (r *Runtime) JoinSession(session *Session) error {
 		return err
 	}
 
-	for _, other := range existing {
+	for _, other := range visible {
 		err = session.sendPlayerEntity(other.snapshotPlayer())
 		if err != nil {
 			return err
@@ -75,9 +105,11 @@ func (r *Runtime) JoinSession(session *Session) error {
 	r.sessions[session] = session.Player
 	r.mu.Unlock()
 
-	player := session.snapshotPlayer()
-
 	for _, other := range existing {
+		if !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+			continue
+		}
+
 		err = other.sendPlayerInfo([]game.Player{player})
 		if err != nil {
 			other.Log.Warnf("[play] failed to announce player info: %v\n", err)
@@ -114,6 +146,10 @@ func (r *Runtime) LeaveSession(session *Session) {
 	player := session.snapshotPlayer()
 
 	for _, other := range r.snapshotSessions() {
+		if !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+			continue
+		}
+
 		err := other.sendPlayerRemoval(player)
 		if err != nil {
 			other.Log.Warnf("[play] failed to remove player: %v\n", err)
@@ -139,6 +175,10 @@ func (r *Runtime) UpdateSkinParts(session *Session, skinParts byte) {
 	}
 
 	for _, other := range r.snapshotSessions() {
+		if other != session && !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+			continue
+		}
+
 		err := other.sendPlayerMetadata(player)
 		if err != nil {
 			other.Log.Warnf("[play] failed to update player skin parts: %v\n", err)
@@ -189,6 +229,10 @@ func (r *Runtime) BroadcastPlayerAnimation(session *Session, animation byte) {
 			continue
 		}
 
+		if !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+			continue
+		}
+
 		err := other.sendPlayerAnimation(player, animation)
 		if err != nil {
 			other.Log.Warnf("[play] failed to send player animation: %v\n", err)
@@ -215,6 +259,10 @@ func (r *Runtime) updatePlayerMetadata(session *Session, update func(*game.Playe
 
 	for _, other := range r.snapshotSessions() {
 		if other == session {
+			continue
+		}
+
+		if !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
 			continue
 		}
 
@@ -250,11 +298,65 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 			continue
 		}
 
-		err := other.sendPlayerMovement(previous, current)
-		if err != nil {
-			other.Log.Warnf("[play] failed to update player movement: %v\n", err)
+		otherPlayer := other.snapshotPlayer()
+
+		wasVisibleToOther := playersVisible(otherPlayer, previous, other.renderDistance())
+		isVisibleToOther := playersVisible(otherPlayer, current, other.renderDistance())
+
+		switch {
+		case !wasVisibleToOther && isVisibleToOther:
+			err := other.sendPlayerAppearance(current)
+			if err != nil {
+				other.Log.Warnf("[play] failed to show player: %v\n", err)
+			}
+		case wasVisibleToOther && !isVisibleToOther:
+			err := other.sendPlayerRemoval(current)
+			if err != nil {
+				other.Log.Warnf("[play] failed to hide player: %v\n", err)
+			}
+		case isVisibleToOther:
+			err := other.sendPlayerMovement(previous, current)
+			if err != nil {
+				other.Log.Warnf("[play] failed to update player movement: %v\n", err)
+			}
+		}
+
+		wasVisibleToPlayer := playersVisible(previous, otherPlayer, session.renderDistance())
+		isVisibleToPlayer := playersVisible(current, otherPlayer, session.renderDistance())
+
+		switch {
+		case !wasVisibleToPlayer && isVisibleToPlayer:
+			err := session.sendPlayerAppearance(otherPlayer)
+			if err != nil {
+				session.Log.Warnf("[play] failed to show player: %v\n", err)
+			}
+		case wasVisibleToPlayer && !isVisibleToPlayer:
+			err := session.sendPlayerRemoval(otherPlayer)
+			if err != nil {
+				session.Log.Warnf("[play] failed to hide player: %v\n", err)
+			}
 		}
 	}
+}
+
+func playersVisible(observer, target game.Player, renderDistance int32) bool {
+	observerX := int64(chunkCoordinate(observer.Position.X))
+	observerZ := int64(chunkCoordinate(observer.Position.Z))
+
+	targetX := int64(chunkCoordinate(target.Position.X))
+	targetZ := int64(chunkCoordinate(target.Position.Z))
+
+	distance := int64(renderDistance)
+
+	return abs64(observerX-targetX) <= distance && abs64(observerZ-targetZ) <= distance
+}
+
+func abs64(value int64) int64 {
+	if value < 0 {
+		return -value
+	}
+
+	return value
 }
 
 func (r *Runtime) snapshotSessions() []*Session {

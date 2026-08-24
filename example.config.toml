@@ -1,20 +1,43 @@
-# hostname the server is listening on
+# General server behavior and player-facing settings.
+[server]
+# Network address the server listens on.
 hostname = "localhost"
-# port the server is listening on
+
+# Network port the server listens on.
 port = 25565
-# authenticate with mojang/microsoft
+
+# Whether players must authenticate with Mojang/Microsoft services.
 online-mode = false
 
-# log level
-log-level = "debug"
-
-# message of the day (server description)
+# Message displayed for the server in the multiplayer server list.
 motd = "Hello from minicraft!"
-# maximum amount of players
+
+# Maximum number of players allowed online at once.
 max-players = 8
 
-# minimum packet size before compression
+# Chunk radius used for world loading and player visibility, clamped to 2-32.
+render-distance = 12
+
+# Game mode assigned to new players: survival, creative, adventure, or spectator.
+default-game-mode = "creative"
+
+# World generation and spawn settings.
+[world]
+# Procedural world generator: spawn-platform or wave-terrain.
+generator = "spawn-platform"
+
+# Seed passed to the selected world generator.
+seed = 0
+
+# Optional spawn override; omit it to use the generator-provided spawn.
+# spawn = { x = 0.5, y = 70.0, z = 0.5 }
+
+# Packet transport settings.
+[network]
+# Minimum packet size in bytes before compression is applied.
 compression-threshold = 512
 
-# procedural world generator: spawn-platform or wave-terrain
-world-generator = "spawn-platform"
+# Server log output settings.
+[logging]
+# Minimum log level to output: debug, print, warn, or error.
+level = "print"

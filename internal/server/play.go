@@ -9,11 +9,6 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
-const (
-	DefaultViewDistance       = 10
-	DefaultSimulationDistance = 10
-)
-
 func (s *Session) handlePlay(ctx context.Context) error {
 	s.Log.Printf("[play] %s - entering play state\n", s.Conn.RemoteAddr())
 
@@ -176,13 +171,14 @@ func (s *Session) sendPlayLogin() error {
 		Worlds: []string{
 			s.Runtime.World.Name,
 		},
-		MaxPlayers:         int32(s.Config.MaxPlayers),
-		ViewDistance:       DefaultViewDistance,
-		SimulationDistance: DefaultSimulationDistance,
+		MaxPlayers:         int32(s.Config.MaxPlayers()),
+		ViewDistance:       s.renderDistance(),
+		SimulationDistance: s.renderDistance(),
 
 		Spawn: protocol.SpawnInfo{
 			DimensionType:    0,
 			Dimension:        s.Runtime.World.Name,
+			Seed:             s.Runtime.World.Seed,
 			GameMode:         byte(player.GameMode),
 			PreviousGameMode: 0xFF,
 			SeaLevel:         s.Runtime.World.SeaLevel,

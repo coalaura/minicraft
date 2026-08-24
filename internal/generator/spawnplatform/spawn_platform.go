@@ -41,3 +41,7 @@ func (Generator) BlockAt(_ int64, position game.BlockPosition) game.Block {
 
 	return game.Stone
 }
+
+func (Generator) Spawn(_ int64) game.Position {
+	return game.Position{X: 0.5, Y: 70, Z: 0.5}
+}

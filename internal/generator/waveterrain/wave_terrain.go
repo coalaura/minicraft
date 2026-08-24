@@ -25,6 +25,10 @@ func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	return game.Air
 }
 
+func (Generator) Spawn(_ int64) game.Position {
+	return game.Position{X: 0.5, Y: 70, Z: 0.5}
+}
+
 func newRegistered() (game.Generator, error) {
 	return New(), nil
 }

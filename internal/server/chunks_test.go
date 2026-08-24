@@ -3,6 +3,7 @@ package server
 import (
 	"testing"
 
+	"github.com/coalaura/minicraft/internal/config"
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/generator/spawnplatform"
 	"github.com/coalaura/minicraft/internal/protocol"
@@ -22,7 +23,7 @@ func TestInitialChunksUseSessionTracking(t *testing.T) {
 	}
 
 	expectedCenter := LoadedChunk{X: -1, Z: 2}
-	expectedChunks := chunksInView(expectedCenter)
+	expectedChunks := chunksInView(expectedCenter, 2)
 
 	packets := connection.packets(t)
 
@@ -54,6 +55,23 @@ func TestInitialChunksUseSessionTracking(t *testing.T) {
 	if packets = connection.packets(t); len(packets) != 0 {
 		t.Fatalf("unchanged center sent packets: %v", connection.packetIDs(t))
 	}
+}
+
+func TestConfiguredRenderDistanceControlsLoadedChunks(t *testing.T) {
+	session, connection := newChunkTestSession(game.Position{})
+
+	session.Config.Server.RenderDistance = pointerTo(int32(3))
+
+	err := session.updatePlayerChunks()
+	if err != nil {
+		t.Fatalf("load configured view: %v", err)
+	}
+
+	expected := chunksInView(LoadedChunk{}, 3)
+	assertSessionChunks(t, session, LoadedChunk{}, expected)
+
+	packets := connection.packets(t)
+	assertChunkBatchEndPacket(t, packets[len(packets)-1], len(expected))
 }
 
 func TestPlayerChunkTransitionStreamsChangedColumns(t *testing.T) {
@@ -107,7 +125,7 @@ func TestPlayerChunkTransitionStreamsChangedColumns(t *testing.T) {
 
 	assertLoadedChunkPackets(t, packets[batchStart+1:len(packets)-1], expectedLoaded)
 	assertChunkBatchEndPacket(t, packets[len(packets)-1], len(expectedLoaded))
-	assertSessionChunks(t, session, center, chunksInView(center))
+	assertSessionChunks(t, session, center, chunksInView(center, 2))
 
 	connection.reset()
 
@@ -162,10 +180,10 @@ func TestNegativeChunkBoundaryTransition(t *testing.T) {
 
 	center := LoadedChunk{X: -1, Z: 0}
 
-	expectedUnloaded := make([]LoadedChunk, 0, ChunkRadius*2+1)
-	expectedLoaded := make([]LoadedChunk, 0, ChunkRadius*2+1)
+	expectedUnloaded := make([]LoadedChunk, 0, 5)
+	expectedLoaded := make([]LoadedChunk, 0, 5)
 
-	for chunkZ := int32(-ChunkRadius); chunkZ <= ChunkRadius; chunkZ++ {
+	for chunkZ := int32(-2); chunkZ <= 2; chunkZ++ {
 		expectedUnloaded = append(expectedUnloaded, LoadedChunk{X: 2, Z: chunkZ})
 		expectedLoaded = append(expectedLoaded, LoadedChunk{X: -3, Z: chunkZ})
 	}
@@ -184,7 +202,7 @@ func TestNegativeChunkBoundaryTransition(t *testing.T) {
 
 	assertLoadedChunkPackets(t, packets[2+len(expectedUnloaded):len(packets)-1], expectedLoaded)
 	assertChunkBatchEndPacket(t, packets[len(packets)-1], len(expectedLoaded))
-	assertSessionChunks(t, session, center, chunksInView(center))
+	assertSessionChunks(t, session, center, chunksInView(center, 2))
 }
 
 func TestSessionsTrackLoadedChunksIndependently(t *testing.T) {
@@ -216,8 +234,8 @@ func TestSessionsTrackLoadedChunksIndependently(t *testing.T) {
 		t.Fatalf("stationary session received packets: %v", secondConnection.packetIDs(t))
 	}
 
-	assertSessionChunks(t, first, LoadedChunk{X: 1, Z: 0}, chunksInView(LoadedChunk{X: 1, Z: 0}))
-	assertSessionChunks(t, second, LoadedChunk{X: 10, Z: 0}, chunksInView(LoadedChunk{X: 10, Z: 0}))
+	assertSessionChunks(t, first, LoadedChunk{X: 1, Z: 0}, chunksInView(LoadedChunk{X: 1, Z: 0}, 2))
+	assertSessionChunks(t, second, LoadedChunk{X: 10, Z: 0}, chunksInView(LoadedChunk{X: 10, Z: 0}, 2))
 }
 
 func newChunkTestSession(position game.Position) (*Session, *recordingConnection) {
@@ -225,6 +243,7 @@ func newChunkTestSession(position game.Position) (*Session, *recordingConnection
 
 	session := &Session{
 		Conn:    protocol.NewConnection(connection, nil),
+		Config:  &config.Config{Server: config.ServerConfig{RenderDistance: pointerTo(int32(2))}},
 		Runtime: NewRuntime(game.NewOverworld(spawnplatform.New())),
 		Player:  &game.Player{Position: position},
 	}

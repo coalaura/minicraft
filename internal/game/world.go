@@ -21,6 +21,10 @@ type World struct {
 	overrides  map[ChunkPosition]map[LocalBlockPosition]Block
 }
 
+type SpawnGenerator interface {
+	Spawn(seed int64) Position
+}
+
 func (w *World) BlockAt(position BlockPosition) Block {
 	chunk, local := blockIndex(position)
 
@@ -73,17 +77,24 @@ func (w *World) ClearBlockOverride(position BlockPosition) {
 	}
 }
 
-func NewOverworld(generator Generator) *World {
+func NewOverworld(generator Generator, seed ...int64) *World {
+	var worldSeed int64
+	if len(seed) > 0 {
+		worldSeed = seed[0]
+	}
+
+	spawn := Position{X: 0.5, Y: 70, Z: 0.5}
+
+	if spawnGenerator, ok := generator.(SpawnGenerator); ok {
+		spawn = spawnGenerator.Spawn(worldSeed)
+	}
+
 	return &World{
 		Name:          "minecraft:overworld",
 		DimensionType: "minecraft:overworld",
+		Seed:          worldSeed,
 		Generator:     generator,
-
-		Spawn: Position{
-			X: 0.5,
-			Y: 70,
-			Z: 0.5,
-		},
+		Spawn:         spawn,
 
 		SeaLevel: 64,
 	}

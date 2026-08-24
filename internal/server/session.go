@@ -41,6 +41,14 @@ func (s *Session) Run(ctx context.Context) error {
 	return s.handleHandshake(ctx)
 }
 
+func (s *Session) renderDistance() int32 {
+	if s.Config == nil {
+		return config.DefaultRenderDistance
+	}
+
+	return s.Config.RenderDistance()
+}
+
 func (s *Session) nextTeleport() int32 {
 	s.nextTeleportID++
 

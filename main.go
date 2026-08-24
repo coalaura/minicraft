@@ -24,10 +24,16 @@ func main() {
 
 	log.SetLevel(cfg.GetLogLevel())
 
-	worldGenerator, err := generator.New(cfg.WorldGenerator)
+	worldGenerator, err := generator.New(cfg.World.Generator)
 	log.MustFail(err)
 
-	runtime := server.NewRuntime(game.NewOverworld(worldGenerator))
+	world := game.NewOverworld(worldGenerator, cfg.World.Seed)
+
+	if cfg.World.Spawn != nil {
+		world.Spawn = game.Position{X: cfg.World.Spawn.X, Y: cfg.World.Spawn.Y, Z: cfg.World.Spawn.Z}
+	}
+
+	runtime := server.NewRuntime(world)
 
 	listener, err := net.Listen("tcp", cfg.ListenAddr())
 	log.MustFail(err)
@@ -53,7 +59,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("Listening on %s (online-mode=%v)\n", cfg.ListenAddr(), cfg.OnlineMode)
+	log.Printf("Listening on %s (online-mode=%v)\n", cfg.ListenAddr(), cfg.Server.OnlineMode)
 
 	for {
 		conn, err := listener.Accept()

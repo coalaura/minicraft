@@ -54,11 +54,11 @@ func (s *Session) sendStatusResponse() error {
 			"protocol": protocol.ProtocolVersion,
 		},
 		"players": map[string]any{
-			"max":    s.Config.MaxPlayers,
-			"online": 0,
+			"max":    s.Config.MaxPlayers(),
+			"online": s.Runtime.PlayerCount(),
 		},
 		"description": map[string]any{
-			"text": s.Config.Motd,
+			"text": s.Config.Server.Motd,
 		},
 		"enforcesSecureChat": true,
 		"previewsChat":       false,

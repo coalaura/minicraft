@@ -61,6 +61,15 @@ func (s *Session) sendPlayerEntity(player game.Player) error {
 	return s.sendPlayerMetadata(player)
 }
 
+func (s *Session) sendPlayerAppearance(player game.Player) error {
+	err := s.sendPlayerInfo([]game.Player{player})
+	if err != nil {
+		return err
+	}
+
+	return s.sendPlayerEntity(player)
+}
+
 func (s *Session) sendPlayerMovement(previous, current game.Player) error {
 	deltaX, xRelative := protocolPositionDelta(previous.Position.X, current.Position.X)
 	deltaY, yRelative := protocolPositionDelta(previous.Position.Y, current.Position.Y)

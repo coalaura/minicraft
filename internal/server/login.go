@@ -44,7 +44,7 @@ func (s *Session) handleLogin(ctx context.Context) error {
 		return s.sendLoginDisconnect("Invalid username")
 	}
 
-	if s.Config.OnlineMode {
+	if s.Config.Server.OnlineMode {
 		err = s.handleOnlineLogin(ctx, start)
 	} else {
 		err = s.handleOfflineLogin(start)
@@ -53,6 +53,12 @@ func (s *Session) handleLogin(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	if !s.Runtime.ReservePlayerSlot(s.Config.MaxPlayers()) {
+		return s.sendLoginDisconnect("Server is full")
+	}
+
+	defer s.Runtime.ReleasePlayerSlot()
 
 	err = s.sendLoginSuccess()
 	if err != nil {
@@ -160,6 +166,7 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 	}
 
 	player.Position = s.Runtime.World.Spawn
+	player.GameMode = s.Config.GameMode()
 
 	s.Player = player
 
@@ -172,10 +179,10 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 
 	s.Log.Printf("[login] %s - enabled encryption\n", s.Conn.RemoteAddr())
 
-	if s.Config.CompressionThreshold > 0 {
+	if s.Config.Network.CompressionThreshold > 0 {
 		var wr protocol.PacketWriter
 
-		compression := protocol.SetCompression{Threshold: int32(s.Config.CompressionThreshold)}
+		compression := protocol.SetCompression{Threshold: int32(s.Config.Network.CompressionThreshold)}
 
 		compression.Encode(&wr)
 
@@ -193,9 +200,9 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 			return fmt.Errorf("send set compression: %w", err)
 		}
 
-		s.Conn.SetCompression(s.Config.CompressionThreshold)
+		s.Conn.SetCompression(s.Config.Network.CompressionThreshold)
 
-		s.Log.Printf("[login] %s - set compression threshold to %d\n", s.Conn.RemoteAddr(), s.Config.CompressionThreshold)
+		s.Log.Printf("[login] %s - set compression threshold to %d\n", s.Conn.RemoteAddr(), s.Config.Network.CompressionThreshold)
 	}
 
 	return nil
@@ -217,7 +224,7 @@ func (s *Session) handleOfflineLogin(start protocol.LoginStart) error {
 
 		Position: s.Runtime.World.Spawn,
 
-		GameMode: game.GameModeCreative,
+		GameMode: s.Config.GameMode(),
 	}
 
 	s.Player = player
