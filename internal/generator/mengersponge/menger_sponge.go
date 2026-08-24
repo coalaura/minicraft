@@ -104,9 +104,9 @@ func (Generator) GenerationBounds(_ int64, _ game.ChunkPosition) (int32, int32, 
 
 func (Generator) Spawn(_ int64) game.Position {
 	return game.Position{
-		X: 3.5,
-		Y: 65,
-		Z: 2.5,
+		X: 13.5,
+		Y: 80,
+		Z: 0.5,
 	}
 }
 
