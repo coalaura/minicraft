@@ -25,6 +25,55 @@ func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	return game.Air
 }
 
+func (Generator) GenerateSection(seed int64, chunk game.ChunkPosition, sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
+	var heights [game.ChunkWidth * game.ChunkWidth]int32
+
+	chunkMinX := chunk.X * game.ChunkWidth
+	chunkMinZ := chunk.Z * game.ChunkWidth
+
+	minHeight := int32(1<<31 - 1)
+	maxHeight := int32(-1 << 31)
+
+	for localZ := range int32(game.ChunkWidth) {
+		for localX := range int32(game.ChunkWidth) {
+			height := surfaceHeight(seed, chunkMinX+localX, chunkMinZ+localZ)
+			heights[localZ*game.ChunkWidth+localX] = height
+			minHeight = min(minHeight, height)
+			maxHeight = max(maxHeight, height)
+		}
+	}
+
+	sectionMaxY := sectionMinY + game.ChunkWidth - 1
+	if sectionMaxY <= minHeight {
+		return game.Stone, true
+	}
+
+	if sectionMinY > maxHeight {
+		return game.Air, true
+	}
+
+	for localY := range int32(game.ChunkWidth) {
+		worldY := sectionMinY + localY
+
+		for localZ := range int32(game.ChunkWidth) {
+			for localX := range int32(game.ChunkWidth) {
+				index := localY*256 + localZ*16 + localX
+				if worldY <= heights[localZ*game.ChunkWidth+localX] {
+					blocks[index] = game.Stone
+				} else {
+					blocks[index] = game.Air
+				}
+			}
+		}
+	}
+
+	return game.Air, false
+}
+
+func (Generator) GenerationBounds(_ int64, _ game.ChunkPosition) (int32, int32, bool) {
+	return -1 << 31, 69, true
+}
+
 func (Generator) Spawn(_ int64) game.Position {
 	return game.Position{X: 0.5, Y: 70, Z: 0.5}
 }

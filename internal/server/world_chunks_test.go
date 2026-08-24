@@ -5,14 +5,17 @@ import (
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
+	"github.com/coalaura/minicraft/internal/generator/fractalvaults"
+	"github.com/coalaura/minicraft/internal/generator/mengersponge"
 	"github.com/coalaura/minicraft/internal/generator/spawnplatform"
+	"github.com/coalaura/minicraft/internal/generator/waveterrain"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
 type unsupportedBlockGenerator struct{}
 
 func (unsupportedBlockGenerator) BlockAt(_ int64, _ game.BlockPosition) game.Block {
-	return game.Block(100)
+	return game.MaxBlockState + 1
 }
 
 func TestLevelChunksQueryWorldAcrossBoundaries(t *testing.T) {
@@ -56,6 +59,58 @@ func TestLevelChunksIncludeWorldOverrides(t *testing.T) {
 
 	assertChunkBlockState(t, chunk, 0, 69, 0, protocol.AirBlockState)
 	assertChunkBlockState(t, chunk, 5, 69, 0, protocol.StoneBlockState)
+}
+
+func TestBulkGeneratorsMatchBlockAt(t *testing.T) {
+	tests := []struct {
+		name       string
+		generator  game.Generator
+		seed       int64
+		chunks     []game.ChunkPosition
+		sectionMin []int32
+	}{
+		{
+			name:       "spawn platform",
+			generator:  spawnplatform.New(),
+			chunks:     []game.ChunkPosition{{}, {X: -1}, {X: 2, Z: 2}},
+			sectionMin: []int32{48, 64, 80},
+		},
+		{
+			name:       "wave terrain",
+			generator:  waveterrain.New(),
+			seed:       -918273645,
+			chunks:     []game.ChunkPosition{{}, {X: -3, Z: 5}},
+			sectionMin: []int32{-64, 48, 64, 80},
+		},
+		{
+			name:       "Menger sponge",
+			generator:  mengersponge.New(),
+			chunks:     []game.ChunkPosition{{}, {X: -7, Z: 11}},
+			sectionMin: []int32{-80, -70, -64, 0, 304, 310, 320},
+		},
+		{
+			name:       "fractal vaults",
+			generator:  fractalvaults.New(),
+			seed:       123456789,
+			chunks:     []game.ChunkPosition{{}, {X: -4, Z: 9}},
+			sectionMin: []int32{48, 64, 80, 96},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			bulk, ok := test.generator.(game.SectionGenerator)
+			if !ok {
+				t.Fatal("generator does not implement SectionGenerator")
+			}
+
+			for _, chunk := range test.chunks {
+				for _, sectionMinY := range test.sectionMin {
+					assertBulkSectionMatches(t, test.generator, bulk, test.seed, chunk, sectionMinY)
+				}
+			}
+		})
+	}
 }
 
 func TestChunkBatchValidatesGeneratedBlocksBeforeWriting(t *testing.T) {
@@ -102,5 +157,46 @@ func assertChunkBlockState(t *testing.T, chunk protocol.LevelChunkWithLight, loc
 			actual,
 			expected,
 		)
+	}
+}
+
+func assertBulkSectionMatches(t *testing.T, generator game.Generator, bulk game.SectionGenerator, seed int64, chunk game.ChunkPosition, sectionMinY int32) {
+	t.Helper()
+
+	var blocks [game.SectionVolume]game.Block
+
+	uniformBlock, uniform := bulk.GenerateSection(seed, chunk, sectionMinY, &blocks)
+
+	chunkMinX := chunk.X * game.ChunkWidth
+	chunkMinZ := chunk.Z * game.ChunkWidth
+
+	for localY := range int32(game.ChunkWidth) {
+		for localZ := range int32(game.ChunkWidth) {
+			for localX := range int32(game.ChunkWidth) {
+				expected := generator.BlockAt(seed, game.BlockPosition{
+					X: chunkMinX + localX,
+					Y: sectionMinY + localY,
+					Z: chunkMinZ + localZ,
+				})
+
+				actual := uniformBlock
+				if !uniform {
+					actual = blocks[localY*256+localZ*16+localX]
+				}
+
+				if actual != expected {
+					t.Fatalf(
+						"chunk %+v section %d local (%d, %d, %d) = %d, want %d",
+						chunk,
+						sectionMinY,
+						localX,
+						localY,
+						localZ,
+						actual,
+						expected,
+					)
+				}
+			}
+		}
 	}
 }

@@ -27,6 +27,11 @@ type Connection struct {
 	dec cipher.Stream
 
 	compThr int
+
+	writeInner      bytes.Buffer
+	writeCompressed bytes.Buffer
+	writePacket     bytes.Buffer
+	zlibWriter      *zlib.Writer
 }
 
 func NewConnection(conn net.Conn, log Logger) *Connection {
@@ -156,71 +161,75 @@ func (c *Connection) WritePacket(packet Packet) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
 
-	var inner bytes.Buffer
+	c.writeInner.Reset()
 
-	err := WriteVarInt(&inner, packet.ID)
+	err := WriteVarInt(&c.writeInner, packet.ID)
 	if err != nil {
 		return err
 	}
 
-	_, err = inner.Write(packet.Data)
+	_, err = c.writeInner.Write(packet.Data)
 	if err != nil {
 		return err
 	}
 
-	payload := inner.Bytes()
+	payload := c.writeInner.Bytes()
 
 	if c.compThr > 0 {
-		var buf bytes.Buffer
+		c.writeCompressed.Reset()
 
 		if len(payload) >= c.compThr {
 			// write ulen, then compress payload
-			err = WriteVarInt(&buf, int32(len(payload)))
+			err = WriteVarInt(&c.writeCompressed, int32(len(payload)))
 			if err != nil {
 				return err
 			}
 
-			zw := zlib.NewWriter(&buf)
+			if c.zlibWriter == nil {
+				c.zlibWriter = zlib.NewWriter(&c.writeCompressed)
+			} else {
+				c.zlibWriter.Reset(&c.writeCompressed)
+			}
 
-			_, err = zw.Write(payload)
+			_, err = c.zlibWriter.Write(payload)
 			if err != nil {
 				return err
 			}
 
-			err = zw.Close()
+			err = c.zlibWriter.Close()
 			if err != nil {
 				return err
 			}
 		} else {
 			// uncompressed payload: ulen=0 then id+data
-			err = WriteVarInt(&buf, 0)
+			err = WriteVarInt(&c.writeCompressed, 0)
 			if err != nil {
 				return err
 			}
 
-			_, err = buf.Write(payload)
+			_, err = c.writeCompressed.Write(payload)
 			if err != nil {
 				return err
 			}
 		}
 
-		payload = buf.Bytes()
+		payload = c.writeCompressed.Bytes()
 	}
 
-	var pkt bytes.Buffer
+	c.writePacket.Reset()
 
 	// Prefix length
-	err = WriteVarInt(&pkt, int32(len(payload)))
+	err = WriteVarInt(&c.writePacket, int32(len(payload)))
 	if err != nil {
 		return err
 	}
 
-	_, err = pkt.Write(payload)
+	_, err = c.writePacket.Write(payload)
 	if err != nil {
 		return err
 	}
 
-	out := pkt.Bytes()
+	out := c.writePacket.Bytes()
 
 	c.logPacket("SEND", &packet)
 

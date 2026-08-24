@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/coalaura/minicraft/internal/config"
 	"github.com/coalaura/minicraft/internal/game"
@@ -19,10 +20,18 @@ type Session struct {
 	playerMx sync.RWMutex
 	writeMx  sync.Mutex
 
-	chunkMx        sync.Mutex
-	centerChunk    LoadedChunk
-	hasChunkCenter bool
-	loadedChunks   map[LoadedChunk]struct{}
+	chunkMx               sync.Mutex
+	centerChunk           LoadedChunk
+	hasChunkCenter        bool
+	loadedChunks          map[LoadedChunk]struct{}
+	queuedChunks          []LoadedChunk
+	chunkRevision         uint64
+	chunkQueueReady       bool
+	chunkBatchAwaiting    bool
+	chunkBatchSentAt      time.Time
+	chunkFeedbackTimedOut bool
+	chunkStreamNotify     chan struct{}
+	chunkStreamStarted    bool
 
 	nextTeleportID int32
 	chunksPerTick  float32

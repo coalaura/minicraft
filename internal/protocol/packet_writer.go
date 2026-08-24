@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"math"
@@ -42,7 +43,11 @@ func (w *PacketWriter) Int(value int32) {
 		return
 	}
 
-	w.err = WriteInt(&w.Buffer, value)
+	var encoded [4]byte
+
+	binary.BigEndian.PutUint32(encoded[:], uint32(value))
+
+	_, w.err = w.Buffer.Write(encoded[:])
 }
 
 func (w *PacketWriter) Long(value int64) {
@@ -50,7 +55,11 @@ func (w *PacketWriter) Long(value int64) {
 		return
 	}
 
-	w.err = WriteLong(&w.Buffer, value)
+	var encoded [8]byte
+
+	binary.BigEndian.PutUint64(encoded[:], uint64(value))
+
+	_, w.err = w.Buffer.Write(encoded[:])
 }
 
 func (w *PacketWriter) BlockPosition(position game.BlockPosition) {
@@ -66,7 +75,11 @@ func (w *PacketWriter) Short(value int16) {
 		return
 	}
 
-	w.err = WriteShort(&w.Buffer, value)
+	var encoded [2]byte
+
+	binary.BigEndian.PutUint16(encoded[:], uint16(value))
+
+	_, w.err = w.Buffer.Write(encoded[:])
 }
 
 func (w *PacketWriter) Float(value float32) {
@@ -74,7 +87,7 @@ func (w *PacketWriter) Float(value float32) {
 		return
 	}
 
-	w.err = WriteFloat(&w.Buffer, value)
+	w.Int(int32(math.Float32bits(value)))
 }
 
 func (w *PacketWriter) Double(value float64) {
@@ -82,7 +95,7 @@ func (w *PacketWriter) Double(value float64) {
 		return
 	}
 
-	w.err = WriteDouble(&w.Buffer, value)
+	w.Long(int64(math.Float64bits(value)))
 }
 
 func (w *PacketWriter) LowPrecisionVector(x, y, z float64) {

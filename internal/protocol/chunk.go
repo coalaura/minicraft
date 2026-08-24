@@ -1,7 +1,5 @@
 package protocol
 
-import "bytes"
-
 const (
 	OverworldSectionCount      = 24
 	OverworldLightSectionCount = OverworldSectionCount + 2
@@ -28,6 +26,12 @@ type LevelChunkWithLight struct {
 	BlockLight [][]byte
 }
 
+var (
+	fullBrightSkyLight = newFullBrightSkyLight()
+	overworldSkyLight  = newOverworldSkyLight()
+	overworldLightMask = []int64{(int64(1) << OverworldLightSectionCount) - 1}
+)
+
 func (p LevelChunkWithLight) Encode(wr *PacketWriter) {
 	wr.Int(p.Position.X)
 	wr.Int(p.Position.Z)
@@ -44,6 +48,12 @@ func (p LevelChunkWithLight) Encode(wr *PacketWriter) {
 			// Block states: bits per entry 0, single-value palette.
 			sections.Byte(0)
 			sections.VarInt(section.BlockState)
+		} else if section.Direct {
+			sections.Byte(DirectBitsPerEntry)
+
+			for _, value := range section.Data {
+				sections.Long(value)
+			}
 		} else {
 			bitsPerEntry := paletteBitsPerEntry(len(section.Palette))
 
@@ -125,20 +135,32 @@ func NewEmptyOverworldChunk(x, z int32, biomeID int32) LevelChunkWithLight {
 		sections[i] = ChunkSection{Biome: biomeID}
 	}
 
-	skyLight := make([][]byte, OverworldLightSectionCount)
-
-	fullBright := bytes.Repeat([]byte{0xFF}, SkyLightArrayLength)
-
-	for i := range skyLight {
-		skyLight[i] = fullBright
-	}
-
 	return LevelChunkWithLight{
 		Position: ChunkPosition{X: x, Z: z},
 		Sections: sections,
 
-		SkyLightMask: []int64{(int64(1) << OverworldLightSectionCount) - 1},
+		SkyLightMask: overworldLightMask,
 
-		SkyLight: skyLight,
+		SkyLight: overworldSkyLight,
 	}
+}
+
+func newFullBrightSkyLight() []byte {
+	light := make([]byte, SkyLightArrayLength)
+
+	for index := range light {
+		light[index] = 0xff
+	}
+
+	return light
+}
+
+func newOverworldSkyLight() [][]byte {
+	light := make([][]byte, OverworldLightSectionCount)
+
+	for index := range light {
+		light[index] = fullBrightSkyLight
+	}
+
+	return light
 }

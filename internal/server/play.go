@@ -20,6 +20,8 @@ func (s *Session) handlePlay(ctx context.Context) error {
 
 	go s.keepAliveLoop(playCtx)
 
+	s.startChunkStream(playCtx)
+
 	err := s.sendInitialPlayState()
 	if err != nil {
 		return err
@@ -249,7 +251,18 @@ func (s *Session) handleConfirmTeleport(teleport protocol.ConfirmTeleport) {
 }
 
 func (s *Session) handleChunkBatchReceived(batch protocol.ChunkBatchReceived) {
+	s.chunkMx.Lock()
 	s.chunksPerTick = batch.ChunksPerTick
+
+	s.chunkBatchAwaiting = false
+	s.chunkFeedbackTimedOut = false
+
+	s.ensureChunkStreamLocked()
+
+	notify := s.chunkStreamNotify
+	s.chunkMx.Unlock()
+
+	notifyChunkStream(notify)
 }
 
 func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) error {

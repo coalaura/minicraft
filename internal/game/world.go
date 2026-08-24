@@ -1,6 +1,9 @@
 package game
 
-import "sync"
+import (
+	"maps"
+	"sync"
+)
 
 type LocalBlockPosition struct {
 	X int32
@@ -20,6 +23,8 @@ type World struct {
 	overrideMx sync.RWMutex
 	overrides  map[ChunkPosition]map[LocalBlockPosition]Block
 }
+
+type ChunkOverrides map[LocalBlockPosition]Block
 
 type SpawnGenerator interface {
 	Spawn(seed int64) Position
@@ -76,6 +81,24 @@ func (w *World) ClearBlockOverride(position BlockPosition) {
 	defer w.overrideMx.Unlock()
 
 	w.clearBlockOverride(chunk, local)
+}
+
+// SnapshotChunkOverrides returns a point-in-time copy of the sparse overrides
+// for chunk. Chunk generation can then release the world lock before doing work.
+func (w *World) SnapshotChunkOverrides(chunk ChunkPosition) ChunkOverrides {
+	w.overrideMx.RLock()
+	defer w.overrideMx.RUnlock()
+
+	blocks := w.overrides[chunk]
+	if len(blocks) == 0 {
+		return nil
+	}
+
+	snapshot := make(ChunkOverrides, len(blocks))
+
+	maps.Copy(snapshot, blocks)
+
+	return snapshot
 }
 
 func (w *World) generatedBlockAt(position BlockPosition) Block {

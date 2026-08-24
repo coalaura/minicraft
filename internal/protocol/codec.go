@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"math"
 )
 
 const (
@@ -186,7 +187,12 @@ func ReadInt(rd io.Reader) (int32, error) {
 }
 
 func WriteInt(wr ExtendedWriter, value int32) error {
-	return binary.Write(wr, binary.BigEndian, value)
+	var encoded [4]byte
+
+	binary.BigEndian.PutUint32(encoded[:], uint32(value))
+
+	_, err := wr.Write(encoded[:])
+	return err
 }
 
 func ReadLong(rd io.Reader) (int64, error) {
@@ -197,7 +203,12 @@ func ReadLong(rd io.Reader) (int64, error) {
 }
 
 func WriteLong(wr ExtendedWriter, value int64) error {
-	return binary.Write(wr, binary.BigEndian, value)
+	var encoded [8]byte
+
+	binary.BigEndian.PutUint64(encoded[:], uint64(value))
+
+	_, err := wr.Write(encoded[:])
+	return err
 }
 
 func ReadShort(rd io.Reader) (int16, error) {
@@ -208,7 +219,12 @@ func ReadShort(rd io.Reader) (int16, error) {
 }
 
 func WriteShort(wr ExtendedWriter, value int16) error {
-	return binary.Write(wr, binary.BigEndian, value)
+	var encoded [2]byte
+
+	binary.BigEndian.PutUint16(encoded[:], uint16(value))
+
+	_, err := wr.Write(encoded[:])
+	return err
 }
 
 func ReadFloat(rd io.Reader) (float32, error) {
@@ -219,7 +235,7 @@ func ReadFloat(rd io.Reader) (float32, error) {
 }
 
 func WriteFloat(wr ExtendedWriter, value float32) error {
-	return binary.Write(wr, binary.BigEndian, value)
+	return WriteInt(wr, int32(math.Float32bits(value)))
 }
 
 func ReadDouble(rd io.Reader) (float64, error) {
@@ -230,7 +246,7 @@ func ReadDouble(rd io.Reader) (float64, error) {
 }
 
 func WriteDouble(wr ExtendedWriter, value float64) error {
-	return binary.Write(wr, binary.BigEndian, value)
+	return WriteLong(wr, int64(math.Float64bits(value)))
 }
 
 func ReadBool(rd io.ByteReader) (bool, error) {

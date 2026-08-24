@@ -140,6 +140,25 @@ func TestSetBlockDoesNotStoreGeneratedAir(t *testing.T) {
 	}
 }
 
+func TestSnapshotChunkOverridesIsIndependent(t *testing.T) {
+	world := &World{Generator: solidGenerator{block: Stone}}
+
+	position := BlockPosition{X: 2, Y: 40, Z: 3}
+	world.SetBlock(position, Air)
+
+	snapshot := world.SnapshotChunkOverrides(ChunkPosition{})
+
+	local := LocalBlockPosition{X: 2, Y: 40, Z: 3}
+	if snapshot[local] != Air {
+		t.Fatalf("snapshot override = %d, want air", snapshot[local])
+	}
+
+	snapshot[local] = Stone
+	if block := world.BlockAt(position); block != Air {
+		t.Fatalf("snapshot mutation changed world block to %d", block)
+	}
+}
+
 func TestBlockIndexHandlesNegativeBoundaries(t *testing.T) {
 	tests := []blockIndexTest{
 		{

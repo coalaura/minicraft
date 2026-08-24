@@ -1,15 +1,28 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"math"
+	"runtime"
 	"sort"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
-const ChunkWidth = 16
+const (
+	ChunkWidth = 16
+
+	initialChunkBatchSize  = 1
+	fallbackChunkBatchSize = 4
+	maxChunkBatchSize      = 32
+	chunkBatchTargetTicks  = 4
+	chunkBatchAckTimeout   = time.Second
+)
 
 type LoadedChunk struct {
 	X int32
@@ -71,20 +84,22 @@ func (s *Session) sendChunkBatch(chunks []LoadedChunk) (int, error) {
 		return 0, nil
 	}
 
-	packets := make([]protocol.Packet, len(chunks))
+	packets, err := buildChunkPackets(context.Background(), s.Runtime.World, chunks)
+	if err != nil {
+		return 0, err
+	}
 
-	for index, chunk := range chunks {
-		packet, err := chunkPacket(s.Runtime.World, chunk.X, chunk.Z)
-		if err != nil {
-			return 0, err
-		}
+	return s.sendPreparedChunkBatch(packets)
+}
 
-		packets[index] = packet
+func (s *Session) sendPreparedChunkBatch(packets []protocol.Packet) (int, error) {
+	if len(packets) == 0 {
+		return 0, nil
 	}
 
 	var wr protocol.PacketWriter
 
-	batchEnd := protocol.ChunkBatchEnd{BatchSize: int32(len(chunks))}
+	batchEnd := protocol.ChunkBatchEnd{BatchSize: int32(len(packets))}
 
 	batchEnd.Encode(&wr)
 
@@ -117,7 +132,7 @@ func (s *Session) sendChunkBatch(chunks []LoadedChunk) (int, error) {
 		Data: wr.Buffer.Bytes(),
 	})
 
-	return len(chunks), err
+	return len(packets), err
 }
 
 func (s *Session) sendCenterChunk(chunkX, chunkZ int32) error {
@@ -206,16 +221,11 @@ func (s *Session) updatePlayerChunks() error {
 
 func (s *Session) updateVisibleChunks(center LoadedChunk) error {
 	s.chunkMx.Lock()
-	defer s.chunkMx.Unlock()
 
-	if !s.hasChunkCenter || s.centerChunk != center {
-		err := s.sendCenterChunk(center.X, center.Z)
-		if err != nil {
-			return err
-		}
+	if s.hasChunkCenter && s.centerChunk == center {
+		s.chunkMx.Unlock()
 
-		s.centerChunk = center
-		s.hasChunkCenter = true
+		return nil
 	}
 
 	visibleChunks := chunksInView(center, s.renderDistance())
@@ -242,33 +252,56 @@ func (s *Session) updateVisibleChunks(center LoadedChunk) error {
 	})
 
 	for _, chunk := range chunksToUnload {
-		err := s.sendForgetChunk(chunk)
-		if err != nil {
-			return err
-		}
-
 		delete(s.loadedChunks, chunk)
 	}
 
-	chunksToLoad := make([]LoadedChunk, 0, len(visibleChunks))
+	queuedChunks := make([]LoadedChunk, 0, len(visibleChunks))
 
 	for _, chunk := range visibleChunks {
 		if _, loaded := s.loadedChunks[chunk]; !loaded {
-			chunksToLoad = append(chunksToLoad, chunk)
+			queuedChunks = append(queuedChunks, chunk)
 		}
 	}
-
-	sent, err := s.sendChunkBatch(chunksToLoad)
 
 	if s.loadedChunks == nil {
 		s.loadedChunks = make(map[LoadedChunk]struct{}, len(visibleChunks))
 	}
 
-	for _, chunk := range chunksToLoad[:sent] {
-		s.loadedChunks[chunk] = struct{}{}
+	s.centerChunk = center
+	s.hasChunkCenter = true
+	s.queuedChunks = queuedChunks
+	s.chunkRevision++
+	s.chunkQueueReady = false
+
+	s.ensureChunkStreamLocked()
+
+	notify := s.chunkStreamNotify
+	streamStarted := s.chunkStreamStarted
+	s.chunkMx.Unlock()
+
+	err := s.sendCenterChunk(center.X, center.Z)
+	if err != nil {
+		return err
 	}
 
-	return err
+	for _, chunk := range chunksToUnload {
+		err = s.sendForgetChunk(chunk)
+		if err != nil {
+			return err
+		}
+	}
+
+	s.chunkMx.Lock()
+	s.chunkQueueReady = true
+	s.chunkMx.Unlock()
+
+	notifyChunkStream(notify)
+
+	if !streamStarted {
+		return s.sendQueuedChunksSynchronously()
+	}
+
+	return nil
 }
 
 func chunksInView(center LoadedChunk, radius int32) []LoadedChunk {
@@ -281,7 +314,283 @@ func chunksInView(center LoadedChunk, radius int32) []LoadedChunk {
 		}
 	}
 
+	sort.Slice(chunks, func(first, second int) bool {
+		firstX := chunks[first].X - center.X
+		firstZ := chunks[first].Z - center.Z
+
+		secondX := chunks[second].X - center.X
+		secondZ := chunks[second].Z - center.Z
+
+		firstDistance := firstX*firstX + firstZ*firstZ
+		secondDistance := secondX*secondX + secondZ*secondZ
+
+		if firstDistance != secondDistance {
+			return firstDistance < secondDistance
+		}
+
+		if chunks[first].Z != chunks[second].Z {
+			return chunks[first].Z < chunks[second].Z
+		}
+
+		return chunks[first].X < chunks[second].X
+	})
+
 	return chunks
+}
+
+func (s *Session) startChunkStream(ctx context.Context) {
+	s.chunkMx.Lock()
+	s.ensureChunkStreamLocked()
+
+	if s.chunkStreamStarted {
+		s.chunkMx.Unlock()
+
+		return
+	}
+
+	s.chunkStreamStarted = true
+
+	notify := s.chunkStreamNotify
+	s.chunkMx.Unlock()
+
+	go func() {
+		defer func() {
+			s.chunkMx.Lock()
+			s.chunkStreamStarted = false
+			s.chunkBatchAwaiting = false
+			s.chunkMx.Unlock()
+		}()
+
+		err := s.chunkStreamLoop(ctx)
+		if err != nil && ctx.Err() == nil && s.Log != nil {
+			s.Log.Warnf("[play] chunk stream failed: %v\n", err)
+		}
+	}()
+
+	notifyChunkStream(notify)
+}
+
+func (s *Session) sendQueuedChunksSynchronously() error {
+	s.chunkMx.Lock()
+	chunks := append([]LoadedChunk(nil), s.queuedChunks...)
+
+	s.queuedChunks = nil
+
+	revision := s.chunkRevision
+	s.chunkMx.Unlock()
+
+	packets, err := buildChunkPackets(context.Background(), s.Runtime.World, chunks)
+	if err != nil {
+		return err
+	}
+
+	s.chunkMx.Lock()
+	defer s.chunkMx.Unlock()
+
+	if revision != s.chunkRevision {
+		return nil
+	}
+
+	sent, err := s.sendPreparedChunkBatch(packets)
+
+	for _, chunk := range chunks[:sent] {
+		s.loadedChunks[chunk] = struct{}{}
+	}
+
+	return err
+}
+
+func (s *Session) chunkStreamLoop(ctx context.Context) error {
+	for {
+		s.chunkMx.Lock()
+		s.ensureChunkStreamLocked()
+
+		notify := s.chunkStreamNotify
+
+		if s.chunkBatchAwaiting {
+			wait := time.Until(s.chunkBatchSentAt.Add(chunkBatchAckTimeout))
+			s.chunkMx.Unlock()
+
+			if wait > 0 {
+				timer := time.NewTimer(wait)
+
+				select {
+				case <-ctx.Done():
+					stopTimer(timer)
+
+					return nil
+				case <-notify:
+					stopTimer(timer)
+				case <-timer.C:
+				}
+
+				continue
+			}
+
+			s.chunkMx.Lock()
+			if s.chunkBatchAwaiting && time.Since(s.chunkBatchSentAt) >= chunkBatchAckTimeout {
+				s.chunkBatchAwaiting = false
+				s.chunkFeedbackTimedOut = true
+			}
+			s.chunkMx.Unlock()
+
+			continue
+		}
+
+		if !s.chunkQueueReady || len(s.queuedChunks) == 0 {
+			s.chunkMx.Unlock()
+
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-notify:
+			}
+
+			continue
+		}
+
+		batchSize := min(s.chunkBatchSizeLocked(), len(s.queuedChunks))
+		chunks := append([]LoadedChunk(nil), s.queuedChunks[:batchSize]...)
+		s.queuedChunks = s.queuedChunks[batchSize:]
+
+		revision := s.chunkRevision
+		s.chunkMx.Unlock()
+
+		packets, err := buildChunkPackets(ctx, s.Runtime.World, chunks)
+		if err != nil {
+			return err
+		}
+
+		if err = ctx.Err(); err != nil {
+			return nil
+		}
+
+		s.chunkMx.Lock()
+		if revision != s.chunkRevision || !s.chunkQueueReady {
+			s.chunkMx.Unlock()
+
+			continue
+		}
+
+		sent, err := s.sendPreparedChunkBatch(packets)
+		if err != nil {
+			s.chunkMx.Unlock()
+
+			return err
+		}
+
+		for _, chunk := range chunks[:sent] {
+			s.loadedChunks[chunk] = struct{}{}
+		}
+
+		s.chunkBatchAwaiting = true
+		s.chunkBatchSentAt = time.Now()
+		s.chunkMx.Unlock()
+	}
+}
+
+func (s *Session) chunkBatchSizeLocked() int {
+	if s.chunksPerTick > 0 && !float32Invalid(s.chunksPerTick) {
+		batchSize := int(math.Ceil(float64(s.chunksPerTick * chunkBatchTargetTicks)))
+
+		return min(max(batchSize, 1), maxChunkBatchSize)
+	}
+
+	if s.chunkFeedbackTimedOut {
+		return fallbackChunkBatchSize
+	}
+
+	return initialChunkBatchSize
+}
+
+func (s *Session) ensureChunkStreamLocked() {
+	if s.chunkStreamNotify == nil {
+		s.chunkStreamNotify = make(chan struct{}, 1)
+	}
+}
+
+func buildChunkPackets(ctx context.Context, world *game.World, chunks []LoadedChunk) ([]protocol.Packet, error) {
+	packets := make([]protocol.Packet, len(chunks))
+
+	workerCount := min(len(chunks), min(runtime.GOMAXPROCS(0), 8))
+	if workerCount == 0 {
+		return packets, nil
+	}
+
+	buildContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var (
+		nextIndex atomic.Int64
+		workers   sync.WaitGroup
+		firstErr  error
+		errOnce   sync.Once
+	)
+
+	workers.Add(workerCount)
+
+	for range workerCount {
+		go func() {
+			defer workers.Done()
+
+			for {
+				index := int(nextIndex.Add(1) - 1)
+				if index >= len(chunks) {
+					return
+				}
+
+				if buildContext.Err() != nil {
+					return
+				}
+
+				chunk := chunks[index]
+
+				packet, err := chunkPacket(world, chunk.X, chunk.Z)
+				if err != nil {
+					errOnce.Do(func() {
+						firstErr = err
+						cancel()
+					})
+
+					return
+				}
+
+				packets[index] = packet
+			}
+		}()
+	}
+
+	workers.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	return packets, nil
+}
+
+func notifyChunkStream(notify chan struct{}) {
+	select {
+	case notify <- struct{}{}:
+	default:
+	}
+}
+
+func stopTimer(timer *time.Timer) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+}
+
+func float32Invalid(value float32) bool {
+	return math.IsNaN(float64(value)) || math.IsInf(float64(value), 0)
 }
 
 func chunkCoordinate(position float64) int32 {
@@ -311,56 +620,150 @@ func buildLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChu
 
 	chunk := protocol.NewEmptyOverworldChunk(chunkX, chunkZ, 0)
 
-	chunkMinX := chunkX * ChunkWidth
-	chunkMinZ := chunkZ * ChunkWidth
+	chunkPosition := game.ChunkPosition{X: chunkX, Z: chunkZ}
+
+	overrides := world.SnapshotChunkOverrides(chunkPosition)
+
+	generator := world.Generator
+	sectionGenerator, hasSectionGenerator := generator.(game.SectionGenerator)
+
+	generationMinY := int32(protocol.OverworldMinY)
+	generationMaxY := generationMinY + protocol.OverworldSectionCount*ChunkWidth - 1
+
+	hasGeneration := generator != nil
+
+	if boundedGenerator, bounded := generator.(game.BoundedGenerator); bounded {
+		generationMinY, generationMaxY, hasGeneration = boundedGenerator.GenerationBounds(world.Seed, chunkPosition)
+	}
+
+	var (
+		generatedBlocks [game.SectionVolume]game.Block
+		sectionBlocks   protocol.SectionBlocks
+	)
 
 	for sectionIndex := range chunk.Sections {
 		sectionMinY := int32(protocol.OverworldMinY + sectionIndex*ChunkWidth)
-		var (
-			blocks    protocol.SectionBlocks
-			hasBlocks bool
-		)
+		sectionMaxY := sectionMinY + ChunkWidth - 1
 
-		for localY := 0; localY < ChunkWidth; localY++ {
-			for localZ := 0; localZ < ChunkWidth; localZ++ {
-				for localX := 0; localX < ChunkWidth; localX++ {
-					position := game.BlockPosition{
-						X: chunkMinX + int32(localX),
-						Y: sectionMinY + int32(localY),
-						Z: chunkMinZ + int32(localZ),
-					}
+		hasOverrides := sectionHasOverrides(overrides, sectionMinY, sectionMaxY)
 
-					state, err := protocolBlockState(world.BlockAt(position))
-					if err != nil {
-						return protocol.LevelChunkWithLight{}, fmt.Errorf("block at %+v: %w", position, err)
-					}
+		generateSection := hasGeneration && sectionMaxY >= generationMinY && sectionMinY <= generationMaxY
 
-					if state == protocol.AirBlockState {
-						continue
-					}
+		if !generateSection && !hasOverrides {
+			continue
+		}
 
-					blocks.Set(localX, localY, localZ, state)
+		uniformBlock := game.Air
+		uniform := true
 
-					hasBlocks = true
-				}
+		if generateSection {
+			if hasSectionGenerator {
+				uniformBlock, uniform = sectionGenerator.GenerateSection(world.Seed, chunkPosition, sectionMinY, &generatedBlocks)
+			} else {
+				uniformBlock, uniform = generateSectionBlocks(generator, world.Seed, chunkPosition, sectionMinY, &generatedBlocks)
 			}
 		}
 
-		if hasBlocks {
-			chunk.Sections[sectionIndex] = blocks.ToSection(0)
+		if uniform && !hasOverrides {
+			state, err := protocolBlockState(uniformBlock)
+			if err != nil {
+				return protocol.LevelChunkWithLight{}, fmt.Errorf("uniform section at y %d: %w", sectionMinY, err)
+			}
+
+			chunk.Sections[sectionIndex] = protocol.UniformChunkSection(state, 0)
+
+			continue
 		}
+
+		if uniform {
+			for index := range generatedBlocks {
+				generatedBlocks[index] = uniformBlock
+			}
+		}
+
+		for position, block := range overrides {
+			if position.Y < sectionMinY || position.Y > sectionMaxY {
+				continue
+			}
+
+			localY := position.Y - sectionMinY
+			index := localY*256 + position.Z*16 + position.X
+
+			generatedBlocks[index] = block
+		}
+
+		for index, block := range generatedBlocks {
+			state, err := protocolBlockState(block)
+			if err != nil {
+				localY := int32(index / 256)
+				localZ := int32(index%256) / 16
+				localX := int32(index % 16)
+
+				position := game.BlockPosition{
+					X: chunkX*ChunkWidth + localX,
+					Y: sectionMinY + localY,
+					Z: chunkZ*ChunkWidth + localZ,
+				}
+
+				return protocol.LevelChunkWithLight{}, fmt.Errorf("block at %+v: %w", position, err)
+			}
+
+			sectionBlocks.States[index] = state
+		}
+
+		chunk.Sections[sectionIndex] = sectionBlocks.ToSection(0)
 	}
 
 	return chunk, nil
 }
 
 func protocolBlockState(block game.Block) (int32, error) {
-	switch block {
-	case game.Air:
-		return protocol.AirBlockState, nil
-	case game.Stone:
-		return protocol.StoneBlockState, nil
-	default:
+	if !block.Valid() {
 		return 0, fmt.Errorf("unsupported game block %d", block)
 	}
+
+	return int32(block), nil
+}
+
+func generateSectionBlocks(generator game.Generator, seed int64, chunk game.ChunkPosition, sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
+	chunkMinX := chunk.X * ChunkWidth
+	chunkMinZ := chunk.Z * ChunkWidth
+
+	first := game.Air
+
+	uniform := true
+
+	for localY := range int32(ChunkWidth) {
+		for localZ := range int32(ChunkWidth) {
+			for localX := range int32(ChunkWidth) {
+				index := localY*256 + localZ*16 + localX
+
+				block := generator.BlockAt(seed, game.BlockPosition{
+					X: chunkMinX + localX,
+					Y: sectionMinY + localY,
+					Z: chunkMinZ + localZ,
+				})
+
+				blocks[index] = block
+
+				if index == 0 {
+					first = block
+				} else if block != first {
+					uniform = false
+				}
+			}
+		}
+	}
+
+	return first, uniform
+}
+
+func sectionHasOverrides(overrides game.ChunkOverrides, minY, maxY int32) bool {
+	for position := range overrides {
+		if position.Y >= minY && position.Y <= maxY {
+			return true
+		}
+	}
+
+	return false
 }

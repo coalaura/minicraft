@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/coalaura/minicraft/internal/config"
 	"github.com/coalaura/minicraft/internal/game"
@@ -14,6 +16,97 @@ type chunkCoordinateTest struct {
 	expected int32
 }
 
+func TestChunksInViewAreCenterOut(t *testing.T) {
+	center := LoadedChunk{X: -7, Z: 12}
+
+	chunks := chunksInView(center, 3)
+
+	if chunks[0] != center {
+		t.Fatalf("first chunk = %+v, want center %+v", chunks[0], center)
+	}
+
+	seen := make(map[LoadedChunk]struct{}, len(chunks))
+
+	previousDistance := int32(-1)
+
+	for _, chunk := range chunks {
+		if _, duplicate := seen[chunk]; duplicate {
+			t.Fatalf("duplicate chunk %+v", chunk)
+		}
+
+		seen[chunk] = struct{}{}
+
+		deltaX := chunk.X - center.X
+		deltaZ := chunk.Z - center.Z
+
+		distance := deltaX*deltaX + deltaZ*deltaZ
+		if distance < previousDistance {
+			t.Fatalf("distance decreased from %d to %d at %+v", previousDistance, distance, chunk)
+		}
+
+		previousDistance = distance
+	}
+}
+
+func TestIncrementalChunkStreamingUsesFeedback(t *testing.T) {
+	session, connection := newChunkTestSession(game.Position{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	session.startChunkStream(ctx)
+
+	err := session.updatePlayerChunks()
+	if err != nil {
+		t.Fatalf("queue initial chunks: %v", err)
+	}
+
+	waitForPacketCount(t, connection, 4)
+
+	packets := connection.packets(t)
+	assertCenterChunkPacket(t, packets[0], LoadedChunk{})
+	assertChunkBatch(t, packets[1:4], []LoadedChunk{{}})
+
+	session.handleChunkBatchReceived(protocol.ChunkBatchReceived{ChunksPerTick: 2})
+
+	waitForPacketCount(t, connection, 14)
+
+	packets = connection.packets(t)
+	expected := chunksInView(LoadedChunk{}, 2)
+	assertChunkBatch(t, packets[4:14], expected[1:9])
+
+	session.handleChunkBatchReceived(protocol.ChunkBatchReceived{ChunksPerTick: 100})
+
+	waitForPacketCount(t, connection, 32)
+
+	packets = connection.packets(t)
+	assertChunkBatch(t, packets[14:32], expected[9:])
+	assertSessionChunksLocked(t, session, LoadedChunk{}, expected)
+}
+
+func TestChunkStreamLoopStopsWhenCancelled(t *testing.T) {
+	session, _ := newChunkTestSession(game.Position{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+
+	go func() {
+		done <- session.chunkStreamLoop(ctx)
+	}()
+
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("chunk stream cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("chunk stream did not stop after cancellation")
+	}
+}
+
 func TestInitialChunksUseSessionTracking(t *testing.T) {
 	session, connection := newChunkTestSession(game.Position{X: -0.01, Z: 32})
 
@@ -23,6 +116,7 @@ func TestInitialChunksUseSessionTracking(t *testing.T) {
 	}
 
 	expectedCenter := LoadedChunk{X: -1, Z: 2}
+
 	expectedChunks := chunksInView(expectedCenter, 2)
 
 	packets := connection.packets(t)
@@ -104,10 +198,10 @@ func TestPlayerChunkTransitionStreamsChangedColumns(t *testing.T) {
 	}
 
 	expectedLoaded := []LoadedChunk{
-		{X: 3, Z: -3},
-		{X: 3, Z: -2},
 		{X: 3, Z: -1},
+		{X: 3, Z: -2},
 		{X: 3, Z: 0},
+		{X: 3, Z: -3},
 		{X: 3, Z: 1},
 	}
 
@@ -185,6 +279,9 @@ func TestNegativeChunkBoundaryTransition(t *testing.T) {
 
 	for chunkZ := int32(-2); chunkZ <= 2; chunkZ++ {
 		expectedUnloaded = append(expectedUnloaded, LoadedChunk{X: 2, Z: chunkZ})
+	}
+
+	for _, chunkZ := range []int32{0, -1, 1, -2, 2} {
 		expectedLoaded = append(expectedLoaded, LoadedChunk{X: -3, Z: chunkZ})
 	}
 
@@ -339,6 +436,37 @@ func assertChunkBatchEndPacket(t *testing.T, packet protocol.Packet, expectedSiz
 	}
 }
 
+func assertChunkBatch(t *testing.T, packets []protocol.Packet, expected []LoadedChunk) {
+	t.Helper()
+
+	if len(packets) != len(expected)+2 {
+		t.Fatalf("batch packet count = %d, want %d", len(packets), len(expected)+2)
+	}
+
+	if packets[0].ID != protocol.ClientboundChunkBatchBeginID {
+		t.Fatalf("batch first packet = %#x, want begin", packets[0].ID)
+	}
+
+	assertLoadedChunkPackets(t, packets[1:len(packets)-1], expected)
+	assertChunkBatchEndPacket(t, packets[len(packets)-1], len(expected))
+}
+
+func waitForPacketCount(t *testing.T, connection *recordingConnection, expected int) {
+	t.Helper()
+
+	deadline := time.Now().Add(3 * time.Second)
+
+	for time.Now().Before(deadline) {
+		if len(connection.packets(t)) >= expected {
+			return
+		}
+
+		time.Sleep(time.Millisecond)
+	}
+
+	t.Fatalf("packet count = %d, want at least %d", len(connection.packets(t)), expected)
+}
+
 func assertSessionChunks(t *testing.T, session *Session, expectedCenter LoadedChunk, expected []LoadedChunk) {
 	t.Helper()
 
@@ -359,4 +487,13 @@ func assertSessionChunks(t *testing.T, session *Session, expectedCenter LoadedCh
 			t.Errorf("session does not track chunk %+v", chunk)
 		}
 	}
+}
+
+func assertSessionChunksLocked(t *testing.T, session *Session, expectedCenter LoadedChunk, expected []LoadedChunk) {
+	t.Helper()
+
+	session.chunkMx.Lock()
+	defer session.chunkMx.Unlock()
+
+	assertSessionChunks(t, session, expectedCenter, expected)
 }
