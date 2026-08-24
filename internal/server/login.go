@@ -1,0 +1,354 @@
+package server
+
+import (
+	"bytes"
+	"context"
+	"crypto/md5"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha1"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+
+	"github.com/coalaura/minicraft/internal/game"
+	"github.com/coalaura/minicraft/internal/protocol"
+)
+
+func (s *Session) handleLogin(ctx context.Context) error {
+	s.Log.Printf("[login] %s - processing login\n", s.Conn.RemoteAddr())
+
+	packet, err := s.Conn.ReadPacket()
+	if err != nil {
+		return fmt.Errorf("read login start: %w", err)
+	}
+
+	if packet.ID != protocol.ServerboundLoginStartID {
+		return errors.New("invalid first login packet")
+	}
+
+	start, err := protocol.DecodeLoginStart(packet.Data)
+	if err != nil {
+		return s.sendLoginDisconnect("Invalid username")
+	}
+
+	if start.Name == "" {
+		return s.sendLoginDisconnect("Invalid username")
+	}
+
+	if s.Config.OnlineMode {
+		err = s.handleOnlineLogin(ctx, start)
+	} else {
+		err = s.handleOfflineLogin(start)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	err = s.sendLoginSuccess()
+	if err != nil {
+		return fmt.Errorf("send login success: %w", err)
+	}
+
+	s.Log.Printf("[login] %s - sent login success\n", s.Conn.RemoteAddr())
+
+	packet, err = s.Conn.ReadPacket()
+	if err != nil {
+		return fmt.Errorf("read login acknowledged: %w", err)
+	}
+
+	if packet.ID != protocol.ServerboundLoginAcknowledgedID {
+		return errors.New("client did not acknowledge login success")
+	}
+
+	s.Log.Printf("[login] %s - received login acknowledge\n", s.Conn.RemoteAddr())
+
+	return s.handleConfiguration(ctx)
+}
+
+func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginStart) error {
+	verifyToken, err := protocol.RandomBytes(16)
+	if err != nil {
+		return fmt.Errorf("get random bytes: %w", err)
+	}
+
+	err = s.sendEncryptionRequest(verifyToken)
+	if err != nil {
+		return fmt.Errorf("send encryption request: %w", err)
+	}
+
+	s.Log.Printf("[login] %s - sent encryption request\n", s.Conn.RemoteAddr())
+
+	packet, err := s.Conn.ReadPacket()
+	if err != nil {
+		return fmt.Errorf("read encryption response: %w", err)
+	}
+
+	if packet.ID != protocol.ServerboundEncryptionResponseID {
+		return errors.New("invalid encryption response packet")
+	}
+
+	response, err := protocol.DecodeEncryptionResponse(packet.Data)
+	if err != nil {
+		return fmt.Errorf("decode encryption response: %w", err)
+	}
+
+	secret, err := rsa.DecryptPKCS1v15(rand.Reader, s.Config.Key.Private, response.SharedSecret)
+	if err != nil || len(secret) != 16 {
+		return s.sendLoginDisconnect("Bad encryption")
+	}
+
+	token, err := rsa.DecryptPKCS1v15(rand.Reader, s.Config.Key.Private, response.VerifyToken)
+	if err != nil || !bytes.Equal(token, verifyToken) {
+		return s.sendLoginDisconnect("Bad verify token")
+	}
+
+	// sha1 of (serverId "" + secret + pubkey), rendered as minecraft hexdigest
+	hs := sha1.New()
+
+	hs.Write(secret)
+	hs.Write(s.Config.Key.Public)
+
+	sum := hs.Sum(nil)
+
+	neg := (sum[0] & 0x80) != 0
+
+	if neg {
+		for i := range sum {
+			sum[i] = ^sum[i]
+		}
+
+		for i := len(sum) - 1; i >= 0; i-- {
+			sum[i]++
+
+			if sum[i] != 0 {
+				break
+			}
+		}
+	}
+
+	var first int
+
+	for first < len(sum)-1 && sum[first] == 0 {
+		first++
+	}
+
+	var serverHash string
+
+	if neg {
+		serverHash = "-" + hex.EncodeToString(sum[first:])
+	} else {
+		serverHash = hex.EncodeToString(sum[first:])
+	}
+
+	s.Log.Printf("[login] %s - verifying login\n", s.Conn.RemoteAddr())
+
+	player, err := authenticatePlayer(start.Name, serverHash, "")
+	if err != nil {
+		s.Log.Warnf("[login] %s - authentication failed: %v\n", s.Conn.RemoteAddr(), err)
+
+		return s.sendLoginDisconnect("Failed to verify username")
+	}
+
+	player.Position = s.World.Spawn
+
+	s.Player = player
+
+	s.Log.Printf("[login] %s - verified login (uuid=%s)\n", s.Conn.RemoteAddr(), player.UUID)
+
+	err = s.Conn.EnableEncryption(secret)
+	if err != nil {
+		return s.sendLoginDisconnect("Encryption not available on server")
+	}
+
+	s.Log.Printf("[login] %s - enabled encryption\n", s.Conn.RemoteAddr())
+
+	if s.Config.CompressionThreshold > 0 {
+		var wr protocol.PacketWriter
+
+		compression := protocol.SetCompression{Threshold: int32(s.Config.CompressionThreshold)}
+
+		compression.Encode(&wr)
+
+		err = wr.Err()
+		if err != nil {
+			return fmt.Errorf("encode set compression: %w", err)
+		}
+
+		err = s.Conn.WritePacket(protocol.Packet{
+			ID:   protocol.ClientboundSetCompressionID,
+			Data: wr.Buffer.Bytes(),
+		})
+
+		if err != nil {
+			return fmt.Errorf("send set compression: %w", err)
+		}
+
+		s.Conn.SetCompression(s.Config.CompressionThreshold)
+
+		s.Log.Printf("[login] %s - set compression threshold to %d\n", s.Conn.RemoteAddr(), s.Config.CompressionThreshold)
+	}
+
+	return nil
+}
+
+func (s *Session) handleOfflineLogin(start protocol.LoginStart) error {
+	sum := md5.Sum([]byte("OfflinePlayer:" + start.Name))
+
+	sum[6] = (sum[6] & 0x0F) | 0x30
+	sum[8] = (sum[8] & 0x3F) | 0x80
+
+	raw := hex.EncodeToString(sum[:])
+
+	uuid := fmt.Sprintf("%s-%s-%s-%s-%s", raw[0:8], raw[8:12], raw[12:16], raw[16:20], raw[20:])
+
+	player := &game.Player{
+		EntityID: 1,
+		UUID:     uuid,
+		Name:     start.Name,
+
+		Position: s.World.Spawn,
+
+		GameMode: game.GameModeCreative,
+	}
+
+	s.Player = player
+
+	return nil
+}
+
+func (s *Session) sendEncryptionRequest(verifyToken []byte) error {
+	var wr protocol.PacketWriter
+
+	request := protocol.EncryptionRequest{
+		ServerID:    "",
+		PublicKey:   s.Config.Key.Public,
+		VerifyToken: verifyToken,
+	}
+
+	request.Encode(&wr)
+
+	err := wr.Err()
+	if err != nil {
+		return err
+	}
+
+	return s.Conn.WritePacket(protocol.Packet{
+		ID:   protocol.ClientboundEncryptionRequestID,
+		Data: wr.Buffer.Bytes(),
+	})
+}
+
+func (s *Session) sendLoginSuccess() error {
+	var wr protocol.PacketWriter
+
+	success := protocol.LoginSuccess{
+		UUID:       s.Player.UUID,
+		Username:   s.Player.Name,
+		Properties: []protocol.LoginProperty{},
+	}
+
+	success.Encode(&wr)
+
+	err := wr.Err()
+	if err != nil {
+		return err
+	}
+
+	return s.Conn.WritePacket(protocol.Packet{
+		ID:   protocol.ClientboundLoginSuccessID,
+		Data: wr.Buffer.Bytes(),
+	})
+}
+
+func (s *Session) sendLoginDisconnect(reason string) error {
+	js, _ := json.Marshal(map[string]any{
+		"text": reason,
+	})
+
+	var wr protocol.PacketWriter
+
+	wr.String(string(js))
+
+	err := wr.Err()
+	if err != nil {
+		s.Log.Warnf("[login] failed to write login disconnect: %v\n", err)
+
+		return err
+	}
+
+	err = s.Conn.WritePacket(protocol.Packet{
+		ID:   protocol.ClientboundLoginDisconnectID,
+		Data: wr.Buffer.Bytes(),
+	})
+	if err != nil {
+		return fmt.Errorf("send login disconnect: %w", err)
+	}
+
+	return fmt.Errorf("disconnected client: %s", reason)
+}
+
+func authenticatePlayer(username, serverHash, ip string) (*game.Player, error) {
+	url := fmt.Sprintf(
+		"https://sessionserver.mojang.com/session/minecraft/hasJoined?username=%s&serverId=%s",
+		username, serverHash,
+	)
+
+	if ip != "" {
+		url += "&ip=" + ip
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var out map[string]any
+
+	err = json.NewDecoder(resp.Body).Decode(&out)
+	if err != nil {
+		return nil, err
+	}
+
+	id, _ := out["id"].(string)
+	name, _ := out["name"].(string)
+
+	if id == "" {
+		return nil, errors.New("session verification failed")
+	}
+
+	if name == "" {
+		name = username
+	}
+
+	rawUUID, err := hex.DecodeString(id)
+	if err != nil || len(rawUUID) != 16 {
+		return nil, errors.New("malformed uuid")
+	}
+
+	formatted := fmt.Sprintf("%x-%x-%x-%x-%x",
+		rawUUID[0:4], rawUUID[4:6], rawUUID[6:8], rawUUID[8:10], rawUUID[10:16],
+	)
+
+	return &game.Player{
+		EntityID: 1,
+		UUID:     formatted,
+		Name:     name,
+
+		GameMode: game.GameModeCreative,
+	}, nil
+}

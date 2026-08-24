@@ -5,6 +5,9 @@ port = 25565
 # authenticate with mojang/microsoft
 online-mode = true
 
+# log level
+log-level = "debug"
+
 # message of the day (server description)
 motd = "Hello from minicraft!"
 # maximum amount of players

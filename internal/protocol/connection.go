@@ -5,22 +5,39 @@ import (
 	"bytes"
 	"compress/zlib"
 	"crypto/aes"
+	"crypto/cipher"
 	"encoding/hex"
 	"errors"
 	"io"
 	"net"
+	"sync"
 
-	"github.com/coalaura/minicraft/crypto"
+	"github.com/coalaura/minicraft/internal/crypto"
 )
 
-func NewConn(conn net.Conn) *MCConnection {
-	return &MCConnection{
+type Connection struct {
+	conn net.Conn
+	wbuf *bufio.Writer
+
+	log Logger
+
+	wmu sync.Mutex
+
+	enc cipher.Stream
+	dec cipher.Stream
+
+	compThr int
+}
+
+func NewConnection(conn net.Conn, log Logger) *Connection {
+	return &Connection{
 		conn: conn,
 		wbuf: bufio.NewWriter(conn),
+		log:  log,
 	}
 }
 
-func (c *MCConnection) EnableEncryption(secret []byte) error {
+func (c *Connection) EnableEncryption(secret []byte) error {
 	if len(secret) != 16 {
 		return errors.New("secret must be 16 bytes")
 	}
@@ -36,10 +53,15 @@ func (c *MCConnection) EnableEncryption(secret []byte) error {
 	return nil
 }
 
-func (c *MCConnection) ReadByte() (byte, error) {
+func (c *Connection) SetCompression(threshold int) {
+	c.compThr = threshold
+}
+
+func (c *Connection) ReadByte() (byte, error) {
 	var buf [1]byte
 
-	if _, err := io.ReadFull(c.conn, buf[:]); err != nil {
+	_, err := io.ReadFull(c.conn, buf[:])
+	if err != nil {
 		return 0, err
 	}
 
@@ -50,11 +72,7 @@ func (c *MCConnection) ReadByte() (byte, error) {
 	return buf[0], nil
 }
 
-func (c *MCConnection) SetCompression(threshold int) {
-	c.compThr = threshold
-}
-
-func (c *MCConnection) Read(p []byte) (int, error) {
+func (c *Connection) Read(p []byte) (int, error) {
 	for i := range p {
 		b, err := c.ReadByte()
 		if err != nil {
@@ -71,7 +89,7 @@ func (c *MCConnection) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (c *MCConnection) ReadPacket() (*Packet, error) {
+func (c *Connection) ReadPacket() (*Packet, error) {
 	ln, err := ReadVarInt(c)
 	if err != nil {
 		return nil, err
@@ -83,7 +101,8 @@ func (c *MCConnection) ReadPacket() (*Packet, error) {
 
 	payload := make([]byte, ln)
 
-	if _, err := io.ReadFull(c, payload); err != nil {
+	_, err = io.ReadFull(c, payload)
+	if err != nil {
 		return nil, err
 	}
 
@@ -133,7 +152,7 @@ func (c *MCConnection) ReadPacket() (*Packet, error) {
 	return pkt, nil
 }
 
-func (c *MCConnection) WritePacket(packet Packet) error {
+func (c *Connection) WritePacket(packet Packet) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
 
@@ -191,11 +210,13 @@ func (c *MCConnection) WritePacket(packet Packet) error {
 	var pkt bytes.Buffer
 
 	// Prefix length
-	if err := WriteVarInt(&pkt, int32(len(payload))); err != nil {
+	err = WriteVarInt(&pkt, int32(len(payload)))
+	if err != nil {
 		return err
 	}
 
-	if _, err := pkt.Write(payload); err != nil {
+	_, err = pkt.Write(payload)
+	if err != nil {
 		return err
 	}
 
@@ -215,15 +236,24 @@ func (c *MCConnection) WritePacket(packet Packet) error {
 	return c.wbuf.Flush()
 }
 
-func (c *MCConnection) logPacket(direction string, p *Packet) {
-	if log == nil {
+func (c *Connection) RemoteAddr() net.Addr {
+	return c.conn.RemoteAddr()
+}
+
+// TODO: implement correctly later, not now
+func (c *Connection) logPacket(direction string, p *Packet) {
+	if c.log == nil {
 		return
 	}
 
 	// Don't log high-frequency packets
 	if direction == "RECV" {
 		switch p.ID {
-		case SB_ClientTickEnd, SB_MovePlayerPos, SB_MovePlayerPosRot, SB_MovePlayerRot, SB_MoveStatusOnly:
+		case ServerboundClientTickEndID,
+			ServerboundMovePlayerPositionID,
+			ServerboundMovePlayerRotationID,
+			ServerboundMovePlayerPositionRotationID,
+			ServerboundMovePlayerStatusID:
 			return
 		}
 	}
@@ -234,7 +264,7 @@ func (c *MCConnection) logPacket(direction string, p *Packet) {
 		data = data[:64]
 	}
 
-	log.Debugf(
+	c.log.Debugf(
 		"[net] %s %s -> id=%d (0x%x) len=%d data=%s\n",
 		direction,
 		c.conn.RemoteAddr(),

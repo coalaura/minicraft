@@ -1,58 +1,53 @@
 package protocol
 
-type ConfigRegistry struct {
-	id      string
-	entries []string
-}
-
-var ConfigRegistries = []ConfigRegistry{
+var ConfigurationRegistries = []Registry{
 	{
-		id:      "minecraft:dimension_type",
-		entries: []string{"minecraft:overworld"},
+		ID:      "minecraft:dimension_type",
+		Entries: []string{"minecraft:overworld"},
 	},
 	{
-		id:      "minecraft:worldgen/biome",
-		entries: []string{"minecraft:plains"},
+		ID:      "minecraft:worldgen/biome",
+		Entries: []string{"minecraft:plains"},
 	},
 	{
-		id:      "minecraft:cat_variant",
-		entries: []string{"minecraft:tabby"},
+		ID:      "minecraft:cat_variant",
+		Entries: []string{"minecraft:tabby"},
 	},
 	{
-		id:      "minecraft:chicken_variant",
-		entries: []string{"minecraft:temperate"},
+		ID:      "minecraft:chicken_variant",
+		Entries: []string{"minecraft:temperate"},
 	},
 	{
-		id:      "minecraft:cow_variant",
-		entries: []string{"minecraft:temperate"},
+		ID:      "minecraft:cow_variant",
+		Entries: []string{"minecraft:temperate"},
 	},
 	{
-		id:      "minecraft:frog_variant",
-		entries: []string{"minecraft:temperate"},
+		ID:      "minecraft:frog_variant",
+		Entries: []string{"minecraft:temperate"},
 	},
 	{
-		id:      "minecraft:painting_variant",
-		entries: []string{"minecraft:kebab"},
+		ID:      "minecraft:painting_variant",
+		Entries: []string{"minecraft:kebab"},
 	},
 	{
-		id:      "minecraft:pig_variant",
-		entries: []string{"minecraft:temperate"},
+		ID:      "minecraft:pig_variant",
+		Entries: []string{"minecraft:temperate"},
 	},
 	{
-		id:      "minecraft:wolf_sound_variant",
-		entries: []string{"minecraft:classic"},
+		ID:      "minecraft:wolf_sound_variant",
+		Entries: []string{"minecraft:classic"},
 	},
 	{
-		id:      "minecraft:wolf_variant",
-		entries: []string{"minecraft:pale"},
+		ID:      "minecraft:wolf_variant",
+		Entries: []string{"minecraft:pale"},
 	},
 	{
-		id:      "minecraft:zombie_nautilus_variant",
-		entries: []string{"minecraft:temperate"},
+		ID:      "minecraft:zombie_nautilus_variant",
+		Entries: []string{"minecraft:temperate"},
 	},
 	{
-		id: "minecraft:timeline",
-		entries: []string{
+		ID: "minecraft:timeline",
+		Entries: []string{
 			"minecraft:day",               // 0
 			"minecraft:moon",              // 1
 			"minecraft:villager_schedule", // 2
@@ -60,8 +55,8 @@ var ConfigRegistries = []ConfigRegistry{
 		},
 	},
 	{
-		id: "minecraft:damage_type",
-		entries: []string{
+		ID: "minecraft:damage_type",
+		Entries: []string{
 			"minecraft:arrow",
 			"minecraft:bad_respawn_point",
 			"minecraft:cactus",
@@ -112,6 +107,18 @@ var ConfigRegistries = []ConfigRegistry{
 			"minecraft:wind_charge",
 			"minecraft:wither",
 			"minecraft:wither_skull",
+		},
+	},
+}
+
+var ConfigurationTags = []RegistryTags{
+	{
+		RegistryID: "minecraft:timeline",
+		Tags: []RegistryTag{
+			{
+				ID:      "minecraft:in_overworld",
+				Entries: []int32{2, 0, 1, 3},
+			},
 		},
 	},
 }

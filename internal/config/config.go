@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/coalaura/minicraft/crypto"
+	"github.com/coalaura/minicraft/internal/crypto"
 	"github.com/coalaura/plain"
 	"github.com/pelletier/go-toml/v2"
 )

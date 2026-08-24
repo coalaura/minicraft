@@ -7,8 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/coalaura/minicraft/config"
-	"github.com/coalaura/minicraft/protocol"
+	"github.com/coalaura/minicraft/internal/config"
+	"github.com/coalaura/minicraft/internal/protocol"
+	"github.com/coalaura/minicraft/internal/server"
 	"github.com/coalaura/plain"
 )
 
@@ -19,8 +20,6 @@ func main() {
 	log.MustFail(err)
 
 	log.SetLevel(cfg.GetLogLevel())
-
-	protocol.SetLogger(log)
 
 	listener, err := net.Listen("tcp", cfg.ListenAddr())
 	log.MustFail(err)
@@ -60,6 +59,17 @@ func main() {
 			continue
 		}
 
-		go protocol.HandleConnection(ctx, conn, cfg)
+		go handleConnection(ctx, cfg, conn)
+	}
+}
+
+func handleConnection(ctx context.Context, cfg *config.Config, conn net.Conn) {
+	defer conn.Close()
+
+	session := server.NewSession(protocol.NewConnection(conn, log), cfg, log)
+
+	err := session.Run(ctx)
+	if err != nil {
+		log.Warnf("[session] %s - %v\n", conn.RemoteAddr(), err)
 	}
 }

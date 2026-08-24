@@ -15,6 +15,14 @@ func (w *PacketWriter) VarInt(value int32) {
 	w.err = WriteVarInt(&w.Buffer, value)
 }
 
+func (w *PacketWriter) VarLong(value int64) {
+	if w.err != nil {
+		return
+	}
+
+	w.err = WriteVarLong(&w.Buffer, value)
+}
+
 func (w *PacketWriter) Int(value int32) {
 	if w.err != nil {
 		return
@@ -31,12 +39,12 @@ func (w *PacketWriter) Long(value int64) {
 	w.err = WriteLong(&w.Buffer, value)
 }
 
-func (w *PacketWriter) Double(value float64) {
+func (w *PacketWriter) Short(value int16) {
 	if w.err != nil {
 		return
 	}
 
-	w.err = WriteDouble(&w.Buffer, value)
+	w.err = WriteShort(&w.Buffer, value)
 }
 
 func (w *PacketWriter) Float(value float32) {
@@ -45,6 +53,14 @@ func (w *PacketWriter) Float(value float32) {
 	}
 
 	w.err = WriteFloat(&w.Buffer, value)
+}
+
+func (w *PacketWriter) Double(value float64) {
+	if w.err != nil {
+		return
+	}
+
+	w.err = WriteDouble(&w.Buffer, value)
 }
 
 func (w *PacketWriter) Bool(value bool) {
@@ -69,6 +85,19 @@ func (w *PacketWriter) Byte(value byte) {
 	}
 
 	w.err = w.WriteByte(value)
+}
+
+func (w *PacketWriter) Bytes(value []byte) {
+	if w.err != nil {
+		return
+	}
+
+	w.VarInt(int32(len(value)))
+	if w.err != nil {
+		return
+	}
+
+	_, w.err = w.Write(value)
 }
 
 func (w *PacketWriter) Err() error {
