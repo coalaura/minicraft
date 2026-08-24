@@ -17,6 +17,12 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+type SessionProfileResponse struct {
+	ID         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Properties []game.ProfileProperty `json:"properties"`
+}
+
 func (s *Session) handleLogin(ctx context.Context) error {
 	s.Log.Printf("[login] %s - processing login\n", s.Conn.RemoteAddr())
 
@@ -247,7 +253,7 @@ func (s *Session) sendLoginSuccess() error {
 	success := protocol.LoginSuccess{
 		UUID:       s.Player.UUID,
 		Username:   s.Player.Name,
-		Properties: []protocol.LoginProperty{},
+		Properties: s.Player.Properties,
 	}
 
 	success.Encode(&wr)
@@ -316,25 +322,22 @@ func authenticatePlayer(username, serverHash, ip string) (*game.Player, error) {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	var out map[string]any
+	var profile SessionProfileResponse
 
-	err = json.NewDecoder(resp.Body).Decode(&out)
+	err = json.NewDecoder(resp.Body).Decode(&profile)
 	if err != nil {
 		return nil, err
 	}
 
-	id, _ := out["id"].(string)
-	name, _ := out["name"].(string)
-
-	if id == "" {
+	if profile.ID == "" {
 		return nil, errors.New("session verification failed")
 	}
 
-	if name == "" {
-		name = username
+	if profile.Name == "" {
+		profile.Name = username
 	}
 
-	rawUUID, err := hex.DecodeString(id)
+	rawUUID, err := hex.DecodeString(profile.ID)
 	if err != nil || len(rawUUID) != 16 {
 		return nil, errors.New("malformed uuid")
 	}
@@ -344,8 +347,9 @@ func authenticatePlayer(username, serverHash, ip string) (*game.Player, error) {
 	)
 
 	return &game.Player{
-		UUID: formatted,
-		Name: name,
+		UUID:       formatted,
+		Name:       profile.Name,
+		Properties: profile.Properties,
 
 		GameMode: game.GameModeCreative,
 	}, nil

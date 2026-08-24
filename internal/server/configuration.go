@@ -46,6 +46,13 @@ func (s *Session) handleConfiguration(ctx context.Context) error {
 				sentKnownPacks = true
 			}
 		case protocol.ServerboundConfigurationClientInformationID:
+			information, decodeErr := protocol.DecodeClientInformation(packet.Data)
+			if decodeErr != nil {
+				return fmt.Errorf("decode client information: %w", decodeErr)
+			}
+
+			s.setSkinParts(information.SkinParts)
+
 			s.Log.Printf("[configuration] %s - received client information\n", s.Conn.RemoteAddr())
 
 			if !sentKnownPacks {

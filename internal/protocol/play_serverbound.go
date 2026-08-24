@@ -8,6 +8,18 @@ type ChunkBatchReceived struct {
 	ChunksPerTick float32
 }
 
+type ClientInformation struct {
+	Locale         string
+	ViewDistance   int8
+	ChatMode       int32
+	ChatColors     bool
+	SkinParts      byte
+	MainHand       int32
+	TextFiltering  bool
+	ServerListing  bool
+	ParticleStatus int32
+}
+
 type MovePlayerPosition struct {
 	X        float64
 	Y        float64
@@ -62,6 +74,29 @@ func DecodeChunkBatchReceived(data []byte) (ChunkBatchReceived, error) {
 	}
 
 	return ChunkBatchReceived{ChunksPerTick: chunksPerTick}, nil
+}
+
+func DecodeClientInformation(data []byte) (ClientInformation, error) {
+	rd := NewPacketReader(data)
+
+	information := ClientInformation{
+		Locale:         rd.String(16),
+		ViewDistance:   int8(rd.Byte()),
+		ChatMode:       rd.VarInt(),
+		ChatColors:     rd.Bool(),
+		SkinParts:      rd.Byte(),
+		MainHand:       rd.VarInt(),
+		TextFiltering:  rd.Bool(),
+		ServerListing:  rd.Bool(),
+		ParticleStatus: rd.VarInt(),
+	}
+
+	err := rd.Err()
+	if err != nil {
+		return ClientInformation{}, err
+	}
+
+	return information, nil
 }
 
 func DecodeMovePlayerPosition(data []byte) (MovePlayerPosition, error) {

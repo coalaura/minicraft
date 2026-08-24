@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"sync"
 
 	"github.com/coalaura/minicraft/internal/config"
 	"github.com/coalaura/minicraft/internal/game"
@@ -14,7 +15,8 @@ type Session struct {
 	Log     Logger
 	Runtime *Runtime
 
-	Player *game.Player
+	Player   *game.Player
+	playerMx sync.RWMutex
 
 	nextTeleportID int32
 	chunksPerTick  float32
@@ -37,4 +39,28 @@ func (s *Session) nextTeleport() int32 {
 	s.nextTeleportID++
 
 	return s.nextTeleportID
+}
+
+func (s *Session) snapshotPlayer() game.Player {
+	s.playerMx.RLock()
+	defer s.playerMx.RUnlock()
+
+	player := *s.Player
+
+	player.Properties = append([]game.ProfileProperty(nil), s.Player.Properties...)
+
+	return player
+}
+
+func (s *Session) setSkinParts(skinParts byte) (game.Player, bool) {
+	s.playerMx.Lock()
+	defer s.playerMx.Unlock()
+
+	if s.Player.SkinParts == skinParts {
+		return *s.Player, false
+	}
+
+	s.Player.SkinParts = skinParts
+
+	return *s.Player, true
 }

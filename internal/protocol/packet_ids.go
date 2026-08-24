@@ -69,12 +69,17 @@ const (
 	ServerboundMovePlayerStatusID           = 0x20
 	ServerboundPlayerLoadedID               = 0x2B
 
+	ClientboundAddEntityID           = 0x01
 	ClientboundChunkBatchEndID       = 0x0B
 	ClientboundChunkBatchBeginID     = 0x0C
 	ClientboundGameEventID           = 0x26
 	ClientboundPlayKeepAliveID       = 0x2B
 	ClientboundLevelChunkWithLightID = 0x2C
 	ClientboundPlayLoginID           = 0x30
+	ClientboundPlayerInfoRemoveID    = 0x43
+	ClientboundPlayerInfoUpdateID    = 0x44
 	ClientboundPlayerPositionID      = 0x46
+	ClientboundRemoveEntitiesID      = 0x4B
 	ClientboundSetCenterChunkID      = 0x5C
+	ClientboundEntityMetadataID      = 0x61
 )

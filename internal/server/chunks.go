@@ -135,8 +135,10 @@ func (s *Session) sendCenterChunk(chunkX, chunkZ int32) error {
 }
 
 func (s *Session) updatePlayerChunk() error {
-	chunkX := int32(math.Floor(s.Player.Position.X / 16))
-	chunkZ := int32(math.Floor(s.Player.Position.Z / 16))
+	player := s.snapshotPlayer()
+
+	chunkX := int32(math.Floor(player.Position.X / 16))
+	chunkZ := int32(math.Floor(player.Position.Z / 16))
 
 	return s.sendCenterChunk(chunkX, chunkZ)
 }

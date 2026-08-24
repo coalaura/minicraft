@@ -17,8 +17,8 @@ const (
 func (s *Session) handlePlay(ctx context.Context) error {
 	s.Log.Printf("[play] %s - entering play state\n", s.Conn.RemoteAddr())
 
-	s.Runtime.RegisterSession(s)
-	defer s.Runtime.RemoveSession(s)
+	s.Runtime.AssignEntityID(s)
+	defer s.Runtime.LeaveSession(s)
 
 	playCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -30,7 +30,9 @@ func (s *Session) handlePlay(ctx context.Context) error {
 		return err
 	}
 
-	s.Log.Printf("[play] player %s joined the world\n", s.Player.Name)
+	player := s.snapshotPlayer()
+
+	s.Log.Printf("[play] player %s joined the world\n", player.Name)
 
 	for {
 		packet, err := s.Conn.ReadPacket()
@@ -72,8 +74,14 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 	case protocol.ServerboundClientTickEndID:
 		// End of client tick; nothing to do for now.
 	case protocol.ServerboundPlayClientInformationID:
-		s.Log.Printf("[play] received client information\n")
+		information, err := protocol.DecodeClientInformation(packet.Data)
+		if err != nil {
+			return err
+		}
 
+		s.Runtime.UpdateSkinParts(s, information.SkinParts)
+
+		s.Log.Printf("[play] received client information\n")
 	case protocol.ServerboundPlayKeepAliveID:
 		keepAlive, err := protocol.DecodePlayKeepAliveResponse(packet.Data)
 		if err != nil {
@@ -129,14 +137,21 @@ func (s *Session) sendInitialPlayState() error {
 		return err
 	}
 
-	return s.sendPlayerPosition()
+	err = s.sendPlayerPosition()
+	if err != nil {
+		return err
+	}
+
+	return s.Runtime.JoinSession(s)
 }
 
 func (s *Session) sendPlayLogin() error {
 	var wr protocol.PacketWriter
 
+	player := s.snapshotPlayer()
+
 	login := protocol.PlayLogin{
-		EntityID: s.Player.EntityID,
+		EntityID: player.EntityID,
 		Worlds: []string{
 			s.Runtime.World.Name,
 		},
@@ -147,7 +162,7 @@ func (s *Session) sendPlayLogin() error {
 		Spawn: protocol.SpawnInfo{
 			DimensionType:    0,
 			Dimension:        s.Runtime.World.Name,
-			GameMode:         byte(s.Player.GameMode),
+			GameMode:         byte(player.GameMode),
 			PreviousGameMode: 0xFF,
 			SeaLevel:         s.Runtime.World.SeaLevel,
 		},
@@ -171,15 +186,17 @@ func (s *Session) sendPlayLogin() error {
 func (s *Session) sendPlayerPosition() error {
 	var wr protocol.PacketWriter
 
+	player := s.snapshotPlayer()
+
 	position := protocol.PlayerPosition{
 		TeleportID: s.nextTeleport(),
 
-		X: s.Player.Position.X,
-		Y: s.Player.Position.Y,
-		Z: s.Player.Position.Z,
+		X: player.Position.X,
+		Y: player.Position.Y,
+		Z: player.Position.Z,
 
-		Yaw:   s.Player.Rotation.Yaw,
-		Pitch: s.Player.Rotation.Pitch,
+		Yaw:   player.Rotation.Yaw,
+		Pitch: player.Rotation.Pitch,
 	}
 
 	position.Encode(&wr)
@@ -212,8 +229,10 @@ func (s *Session) handleChunkBatchReceived(batch protocol.ChunkBatchReceived) {
 }
 
 func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) {
+	s.playerMx.Lock()
 	s.Player.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
 	s.Player.OnGround = move.OnGround
+	s.playerMx.Unlock()
 
 	err := s.updatePlayerChunk()
 	if err != nil {
@@ -222,9 +241,11 @@ func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) {
 }
 
 func (s *Session) handleMovePlayerPositionRotation(move protocol.MovePlayerPositionRotation) {
+	s.playerMx.Lock()
 	s.Player.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
 	s.Player.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
 	s.Player.OnGround = move.OnGround
+	s.playerMx.Unlock()
 
 	err := s.updatePlayerChunk()
 	if err != nil {
@@ -233,11 +254,17 @@ func (s *Session) handleMovePlayerPositionRotation(move protocol.MovePlayerPosit
 }
 
 func (s *Session) handleMovePlayerRotation(move protocol.MovePlayerRotation) {
+	s.playerMx.Lock()
+	defer s.playerMx.Unlock()
+
 	s.Player.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
 	s.Player.OnGround = move.OnGround
 }
 
 func (s *Session) handleMovePlayerStatus(move protocol.MovePlayerStatus) {
+	s.playerMx.Lock()
+	defer s.playerMx.Unlock()
+
 	s.Player.OnGround = move.OnGround
 }
 

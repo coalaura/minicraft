@@ -1,6 +1,11 @@
 package protocol
 
-import "bytes"
+import (
+	"bytes"
+	"encoding/hex"
+	"errors"
+	"strings"
+)
 
 type PacketWriter struct {
 	bytes.Buffer
@@ -98,6 +103,21 @@ func (w *PacketWriter) Bytes(value []byte) {
 	}
 
 	_, w.err = w.Write(value)
+}
+
+func (w *PacketWriter) UUID(value string) {
+	if w.err != nil {
+		return
+	}
+
+	raw, err := hex.DecodeString(strings.ReplaceAll(value, "-", ""))
+	if err != nil || len(raw) != 16 {
+		w.err = errors.New("malformed uuid")
+
+		return
+	}
+
+	_, w.err = w.Write(raw)
 }
 
 func (w *PacketWriter) Err() error {

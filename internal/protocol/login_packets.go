@@ -2,10 +2,10 @@ package protocol
 
 import (
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
-	"strings"
+
+	"github.com/coalaura/minicraft/internal/game"
 )
 
 type LoginStart struct {
@@ -24,16 +24,10 @@ type EncryptionResponse struct {
 	VerifyToken  []byte
 }
 
-type LoginProperty struct {
-	Name      string
-	Value     string
-	Signature string
-}
-
 type LoginSuccess struct {
 	UUID       string
 	Username   string
-	Properties []LoginProperty
+	Properties []game.ProfileProperty
 }
 
 type SetCompression struct {
@@ -94,36 +88,26 @@ func (p EncryptionRequest) Encode(wr *PacketWriter) {
 }
 
 func (p LoginSuccess) Encode(wr *PacketWriter) {
-	rawUUID, err := hex.DecodeString(strings.ReplaceAll(p.UUID, "-", ""))
-	if err != nil || len(rawUUID) != 16 {
-		wr.err = errors.New("malformed uuid")
-
-		return
-	}
-
-	_, err = wr.Buffer.Write(rawUUID)
-	if err != nil {
-		wr.err = err
-
-		return
-	}
+	wr.UUID(p.UUID)
 	wr.String(p.Username)
-
-	wr.VarInt(int32(len(p.Properties)))
-
-	for _, prop := range p.Properties {
-		wr.String(prop.Name)
-		wr.String(prop.Value)
-
-		if prop.Signature != "" {
-			wr.Byte(0x01)
-			wr.String(prop.Signature)
-		} else {
-			wr.Byte(0x00)
-		}
-	}
+	encodeProfileProperties(wr, p.Properties)
 }
 
 func (p SetCompression) Encode(wr *PacketWriter) {
 	wr.VarInt(p.Threshold)
+}
+
+func encodeProfileProperties(wr *PacketWriter, properties []game.ProfileProperty) {
+	wr.VarInt(int32(len(properties)))
+
+	for _, property := range properties {
+		wr.String(property.Name)
+		wr.String(property.Value)
+
+		wr.Bool(property.Signature != "")
+
+		if property.Signature != "" {
+			wr.String(property.Signature)
+		}
+	}
 }

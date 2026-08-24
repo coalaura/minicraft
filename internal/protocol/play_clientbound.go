@@ -1,5 +1,51 @@
 package protocol
 
+import "github.com/coalaura/minicraft/internal/game"
+
+const (
+	PlayerInfoActionAddPlayer      = 1 << 0
+	PlayerInfoActionUpdateGameMode = 1 << 2
+	PlayerInfoActionUpdateListed   = 1 << 3
+
+	PlayerEntityType = 155
+
+	PlayerSkinPartsMetadataIndex = 16
+	MetadataTypeByte             = 0
+	MetadataTerminator           = 0xFF
+)
+
+type AddEntity struct {
+	EntityID int32
+	UUID     string
+	Type     int32
+
+	X float64
+	Y float64
+	Z float64
+
+	VelocityX int16
+	VelocityY int16
+	VelocityZ int16
+
+	Pitch   byte
+	Yaw     byte
+	HeadYaw byte
+	Data    int32
+}
+
+type EntityMetadataSkinParts struct {
+	EntityID  int32
+	SkinParts byte
+}
+
+type RemoveEntities struct {
+	EntityIDs []int32
+}
+
+type PlayerInfoRemove struct {
+	UUIDs []string
+}
+
 type PlayLogin struct {
 	EntityID           int32
 	Hardcore           bool
@@ -43,6 +89,19 @@ type PlayerPosition struct {
 	Flags uint32
 }
 
+type PlayerInfoUpdate struct {
+	Actions byte
+	Players []PlayerInfo
+}
+
+type PlayerInfo struct {
+	UUID       string
+	Name       string
+	Properties []game.ProfileProperty
+	GameMode   int32
+	Listed     bool
+}
+
 type SetCenterChunk struct {
 	X int32
 	Z int32
@@ -59,6 +118,49 @@ type GameEvent struct {
 
 type PlayKeepAlive struct {
 	ID int64
+}
+
+func (p AddEntity) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+	wr.UUID(p.UUID)
+	wr.VarInt(p.Type)
+
+	wr.Double(p.X)
+	wr.Double(p.Y)
+	wr.Double(p.Z)
+
+	wr.Short(p.VelocityX)
+	wr.Short(p.VelocityY)
+	wr.Short(p.VelocityZ)
+
+	wr.Byte(p.Pitch)
+	wr.Byte(p.Yaw)
+	wr.Byte(p.HeadYaw)
+	wr.VarInt(p.Data)
+}
+
+func (p EntityMetadataSkinParts) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+	wr.Byte(PlayerSkinPartsMetadataIndex)
+	wr.VarInt(MetadataTypeByte)
+	wr.Byte(p.SkinParts)
+	wr.Byte(MetadataTerminator)
+}
+
+func (p RemoveEntities) Encode(wr *PacketWriter) {
+	wr.VarInt(int32(len(p.EntityIDs)))
+
+	for _, entityID := range p.EntityIDs {
+		wr.VarInt(entityID)
+	}
+}
+
+func (p PlayerInfoRemove) Encode(wr *PacketWriter) {
+	wr.VarInt(int32(len(p.UUIDs)))
+
+	for _, uuid := range p.UUIDs {
+		wr.UUID(uuid)
+	}
 }
 
 func (p PlayLogin) Encode(wr *PacketWriter) {
@@ -115,6 +217,32 @@ func (p PlayerPosition) Encode(wr *PacketWriter) {
 	wr.Float(p.Pitch)
 
 	wr.Int(int32(p.Flags))
+}
+
+func (p PlayerInfoUpdate) Encode(wr *PacketWriter) {
+	wr.Byte(p.Actions)
+	wr.VarInt(int32(len(p.Players)))
+
+	for _, player := range p.Players {
+		wr.UUID(player.UUID)
+
+		if p.Actions&PlayerInfoActionAddPlayer != 0 {
+			wr.String(player.Name)
+			encodeProfileProperties(wr, player.Properties)
+		}
+
+		if p.Actions&PlayerInfoActionUpdateGameMode != 0 {
+			wr.VarInt(player.GameMode)
+		}
+
+		if p.Actions&PlayerInfoActionUpdateListed != 0 {
+			if player.Listed {
+				wr.VarInt(1)
+			} else {
+				wr.VarInt(0)
+			}
+		}
+	}
 }
 
 func (p SetCenterChunk) Encode(wr *PacketWriter) {
