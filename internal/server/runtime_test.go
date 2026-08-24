@@ -20,10 +20,6 @@ type recordingConnection struct {
 	buffer bytes.Buffer
 }
 
-func pointerTo[T any](value T) *T {
-	return &value
-}
-
 func (c *recordingConnection) Read(data []byte) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -225,7 +221,7 @@ func TestRuntimePlayerVisibilityLifecycle(t *testing.T) {
 func TestRuntimeVisibilityTransitionsAcrossRenderDistance(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
-	cfg := &config.Config{Server: config.ServerConfig{RenderDistance: pointerTo(int32(1))}}
+	cfg := &config.Config{Server: config.ServerConfig{RenderDistance: new(int32(1))}}
 
 	bobConnection := &recordingConnection{}
 
@@ -373,7 +369,7 @@ func TestStatusResponseReportsActivePlayers(t *testing.T) {
 	statusConnection := &recordingConnection{}
 	status := &Session{
 		Conn:    protocol.NewConnection(statusConnection, nil),
-		Config:  &config.Config{Server: config.ServerConfig{MaxPlayers: pointerTo(8)}},
+		Config:  &config.Config{Server: config.ServerConfig{MaxPlayers: new(8)}},
 		Runtime: runtime,
 	}
 

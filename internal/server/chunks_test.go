@@ -51,10 +51,7 @@ func TestChunksInViewAreCenterOut(t *testing.T) {
 func TestIncrementalChunkStreamingUsesFeedback(t *testing.T) {
 	session, connection := newChunkTestSession(game.Position{})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	session.startChunkStream(ctx)
+	session.startChunkStream(t.Context())
 
 	err := session.updatePlayerChunks()
 	if err != nil {
@@ -154,7 +151,7 @@ func TestInitialChunksUseSessionTracking(t *testing.T) {
 func TestConfiguredRenderDistanceControlsLoadedChunks(t *testing.T) {
 	session, connection := newChunkTestSession(game.Position{})
 
-	session.Config.Server.RenderDistance = pointerTo(int32(3))
+	session.Config.Server.RenderDistance = new(int32(3))
 
 	err := session.updatePlayerChunks()
 	if err != nil {
@@ -340,7 +337,7 @@ func newChunkTestSession(position game.Position) (*Session, *recordingConnection
 
 	session := &Session{
 		Conn:    protocol.NewConnection(connection, nil),
-		Config:  &config.Config{Server: config.ServerConfig{RenderDistance: pointerTo(int32(2))}},
+		Config:  &config.Config{Server: config.ServerConfig{RenderDistance: new(int32(2))}},
 		Runtime: NewRuntime(game.NewOverworld(spawnplatform.New())),
 		Player:  &game.Player{Position: position},
 	}

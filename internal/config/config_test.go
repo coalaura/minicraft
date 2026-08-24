@@ -123,7 +123,7 @@ func TestSpawnCoordinatesMustBeFinite(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			cfg := Config{
-				Server: ServerConfig{MaxPlayers: pointerTo(1), DefaultGameMode: "creative"},
+				Server: ServerConfig{MaxPlayers: new(1), DefaultGameMode: "creative"},
 				World:  WorldConfig{Spawn: &SpawnConfig{X: value}},
 			}
 
@@ -133,8 +133,4 @@ func TestSpawnCoordinatesMustBeFinite(t *testing.T) {
 			}
 		})
 	}
-}
-
-func pointerTo[T any](value T) *T {
-	return &value
 }

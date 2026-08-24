@@ -2,6 +2,7 @@ package game
 
 import (
 	"math"
+	"slices"
 	"testing"
 )
 
@@ -75,8 +76,7 @@ func TestWorldGenerationIsDeterministic(t *testing.T) {
 		expected[position] = first.BlockAt(position)
 	}
 
-	for index := len(positions) - 1; index >= 0; index-- {
-		position := positions[index]
+	for _, position := range slices.Backward(positions) {
 		if actual := second.BlockAt(position); actual != expected[position] {
 			t.Fatalf("block at %+v = %d, want %d", position, actual, expected[position])
 		}

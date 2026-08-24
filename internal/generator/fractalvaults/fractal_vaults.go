@@ -48,7 +48,7 @@ func (Generator) GenerateSection(seed int64, chunk game.ChunkPosition, sectionMi
 		zLevels [game.ChunkWidth]int
 	)
 
-	for local := int32(0); local < game.ChunkWidth; local++ {
+	for local := range int32(game.ChunkWidth) {
 		xLevels[local] = wallLevel(int64(chunkMinX+local), originX)
 		zLevels[local] = wallLevel(int64(chunkMinZ+local), originZ)
 	}

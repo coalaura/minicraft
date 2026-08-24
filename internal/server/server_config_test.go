@@ -54,7 +54,7 @@ func TestFullServerRejectsLogin(t *testing.T) {
 		Conn: protocol.NewConnection(connection, nil),
 		Log:  plain.New(),
 		Config: &config.Config{Server: config.ServerConfig{
-			MaxPlayers:      pointerTo(1),
+			MaxPlayers:      new(1),
 			DefaultGameMode: "creative",
 		}},
 		Runtime: runtime,
@@ -90,8 +90,8 @@ func TestPlayLoginAdvertisesConfiguredWorldAndDistance(t *testing.T) {
 	session := &Session{
 		Conn: protocol.NewConnection(connection, nil),
 		Config: &config.Config{Server: config.ServerConfig{
-			MaxPlayers:     pointerTo(8),
-			RenderDistance: pointerTo(int32(14)),
+			MaxPlayers:     new(8),
+			RenderDistance: new(int32(14)),
 		}},
 		Runtime: NewRuntime(&game.World{
 			Name:     "minecraft:overworld",

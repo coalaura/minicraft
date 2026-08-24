@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -193,27 +192,5 @@ func (s *Session) sendFinishConfiguration() error {
 	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundConfigurationFinishID,
 		Data: []byte{},
-	})
-}
-
-func (s *Session) sendConfigurationDisconnect(reason string) error {
-	js, _ := json.Marshal(map[string]any{
-		"text": reason,
-	})
-
-	var wr protocol.PacketWriter
-
-	wr.String(string(js))
-
-	err := wr.Err()
-	if err != nil {
-		s.Log.Warnf("[configuration] failed to write configuration disconnect: %v\n", err)
-
-		return err
-	}
-
-	return s.writeRawPacket(protocol.Packet{
-		ID:   protocol.ClientboundConfigurationDisconnectID,
-		Data: wr.Buffer.Bytes(),
 	})
 }

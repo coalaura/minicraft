@@ -1,12 +1,12 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -108,14 +108,26 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 		return fmt.Errorf("decode encryption response: %w", err)
 	}
 
-	secret, err := rsa.DecryptPKCS1v15(rand.Reader, s.Config.Key.Private, response.SharedSecret)
-	if err != nil || len(secret) != 16 {
-		return s.sendLoginDisconnect("Bad encryption")
+	secret, err := protocol.RandomBytes(16)
+	if err != nil {
+		return fmt.Errorf("get fallback shared secret: %w", err)
 	}
 
-	token, err := rsa.DecryptPKCS1v15(rand.Reader, s.Config.Key.Private, response.VerifyToken)
-	if err != nil || !bytes.Equal(token, verifyToken) {
-		return s.sendLoginDisconnect("Bad verify token")
+	token, err := protocol.RandomBytes(len(verifyToken))
+	if err != nil {
+		return fmt.Errorf("get fallback verify token: %w", err)
+	}
+
+	//lint:ignore SA1019 Minecraft's login protocol requires RSA PKCS #1 v1.5 encryption.
+	secretErr := rsa.DecryptPKCS1v15SessionKey(rand.Reader, s.Config.Key.Private, response.SharedSecret, secret)
+
+	//lint:ignore SA1019 Minecraft's login protocol requires RSA PKCS #1 v1.5 encryption.
+	tokenErr := rsa.DecryptPKCS1v15SessionKey(rand.Reader, s.Config.Key.Private, response.VerifyToken, token)
+
+	tokenMatches := subtle.ConstantTimeCompare(token, verifyToken)
+
+	if secretErr != nil || tokenErr != nil || tokenMatches != 1 {
+		return s.sendLoginDisconnect("Bad encryption response")
 	}
 
 	// sha1 of (serverId "" + secret + pubkey), rendered as minecraft hexdigest
