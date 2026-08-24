@@ -73,9 +73,7 @@ func (p LevelChunkWithLight) Encode(wr *PacketWriter) {
 			}
 		}
 
-		// Biomes: bits per entry 0, single-value palette.
-		sections.Byte(0)
-		sections.VarInt(section.Biome)
+		encodeSectionBiomes(&sections, section)
 	}
 
 	err := sections.Err()
@@ -142,6 +140,29 @@ func NewEmptyOverworldChunk(x, z int32, biomeID int32) LevelChunkWithLight {
 		SkyLightMask: overworldLightMask,
 
 		SkyLight: overworldSkyLight,
+	}
+}
+
+func encodeSectionBiomes(wr *PacketWriter, section ChunkSection) {
+	if len(section.BiomePalette) == 0 && !section.BiomeDirect {
+		wr.Byte(0)
+		wr.VarInt(section.Biome)
+
+		return
+	}
+
+	wr.Byte(byte(section.BiomeBitsPerEntry))
+
+	if !section.BiomeDirect {
+		wr.VarInt(int32(len(section.BiomePalette)))
+
+		for _, biome := range section.BiomePalette {
+			wr.VarInt(biome)
+		}
+	}
+
+	for _, value := range section.BiomeData {
+		wr.Long(value)
 	}
 }
 

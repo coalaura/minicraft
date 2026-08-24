@@ -650,6 +650,11 @@ func buildLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChu
 	generator := world.Generator
 	sectionGenerator, hasSectionGenerator := generator.(game.SectionGenerator)
 
+	sectionBiomes, hasSectionBiomes, err := buildChunkBiomes(world, chunkPosition)
+	if err != nil {
+		return protocol.LevelChunkWithLight{}, err
+	}
+
 	generationMinY := int32(protocol.OverworldMinY)
 	generationMaxY := generationMinY + protocol.OverworldSectionCount*ChunkWidth - 1
 
@@ -673,6 +678,10 @@ func buildLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChu
 		generateSection := hasGeneration && sectionMaxY >= generationMinY && sectionMinY <= generationMaxY
 
 		if !generateSection && !hasOverrides {
+			if hasSectionBiomes {
+				chunk.Sections[sectionIndex].SetBiomes(&sectionBiomes)
+			}
+
 			continue
 		}
 
@@ -693,7 +702,13 @@ func buildLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChu
 				return protocol.LevelChunkWithLight{}, fmt.Errorf("uniform section at y %d: %w", sectionMinY, err)
 			}
 
-			chunk.Sections[sectionIndex] = protocol.UniformChunkSection(state, 0)
+			section := protocol.UniformChunkSection(state, 0)
+
+			if hasSectionBiomes {
+				section.SetBiomes(&sectionBiomes)
+			}
+
+			chunk.Sections[sectionIndex] = section
 
 			continue
 		}
@@ -734,7 +749,13 @@ func buildLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChu
 			sectionBlocks.States[index] = state
 		}
 
-		chunk.Sections[sectionIndex] = sectionBlocks.ToSection(0)
+		section := sectionBlocks.ToSection(0)
+
+		if hasSectionBiomes {
+			section.SetBiomes(&sectionBiomes)
+		}
+
+		chunk.Sections[sectionIndex] = section
 	}
 
 	return chunk, nil

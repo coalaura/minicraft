@@ -6,8 +6,17 @@ var ConfigurationRegistries = []Registry{
 		Entries: []string{"minecraft:overworld"},
 	},
 	{
-		ID:      "minecraft:worldgen/biome",
-		Entries: []string{"minecraft:plains"},
+		ID: "minecraft:worldgen/biome",
+		Entries: []string{
+			"minecraft:plains",       // 0
+			"minecraft:forest",       // 1
+			"minecraft:desert",       // 2
+			"minecraft:taiga",        // 3
+			"minecraft:snowy_plains", // 4
+			"minecraft:swamp",        // 5
+			"minecraft:ocean",        // 6
+			"minecraft:river",        // 7
+		},
 	},
 	{
 		ID:      "minecraft:cat_variant",
