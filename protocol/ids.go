@@ -50,6 +50,7 @@ const (
 	CB_DisconnectConfig    = 0x02
 	CB_FinishConfiguration = 0x03
 	CB_RegistryData        = 0x07
+	CB_UpdateTags          = 0x0D
 	CB_KnownPacks          = 0x0E
 
 	// Serverbound

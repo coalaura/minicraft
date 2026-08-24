@@ -64,21 +64,21 @@ func HandleConfiguration(ctx context.Context, c *MCConnection, cfg *config.Confi
 			c.Print("configuration", "received known packs response")
 
 			if !sentFinish {
-				err = sendConfigRegistryData(c, "minecraft:dimension_type", []string{"minecraft:overworld"})
+				err = sendConfigRegistries(c)
 				if err != nil {
 					HandleConfigurationError(c, "failed to send registry data", err)
 
 					return
 				}
 
-				err = sendConfigRegistryData(c, "minecraft:worldgen/biome", []string{"minecraft:plains"})
+				err = sendConfigTags(c)
 				if err != nil {
-					HandleConfigurationError(c, "failed to send registry data", err)
+					HandleConfigurationError(c, "failed to send tags", err)
 
 					return
 				}
 
-				c.Print("configuration", "sent registry data")
+				c.Print("configuration", "sent registry data and tags")
 
 				err = c.WritePacket(Packet{ID: CB_FinishConfiguration, Data: []byte{}})
 				if err != nil {
@@ -177,6 +177,67 @@ func sendConfigRegistryData(c *MCConnection, registryID string, entryIDs []strin
 	}
 
 	return c.WritePacket(Packet{ID: CB_RegistryData, Data: b.Bytes()})
+}
+
+func sendConfigRegistries(c *MCConnection) error {
+	for _, registry := range ConfigRegistries {
+		err := sendConfigRegistryData(c, registry.id, registry.entries)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func sendConfigTags(c *MCConnection) error {
+	var b bytes.Buffer
+
+	// One registry has tags: minecraft:timeline.
+	err := WriteVarInt(&b, 1)
+	if err != nil {
+		return err
+	}
+
+	err = WriteString(&b, "minecraft:timeline")
+	if err != nil {
+		return err
+	}
+
+	// One tag: minecraft:in_overworld.
+	err = WriteVarInt(&b, 1)
+	if err != nil {
+		return err
+	}
+
+	err = WriteString(&b, "minecraft:in_overworld")
+	if err != nil {
+		return err
+	}
+
+	timelineIDs := []int32{
+		2, // minecraft:villager_schedule
+		0, // minecraft:day
+		1, // minecraft:moon
+		3, // minecraft:early_game
+	}
+
+	err = WriteVarInt(&b, int32(len(timelineIDs)))
+	if err != nil {
+		return err
+	}
+
+	for _, id := range timelineIDs {
+		err = WriteVarInt(&b, id)
+		if err != nil {
+			return err
+		}
+	}
+
+	return c.WritePacket(Packet{
+		ID:   CB_UpdateTags,
+		Data: b.Bytes(),
+	})
 }
 
 func HandleConfigurationError(c *MCConnection, msg string, err error) {
