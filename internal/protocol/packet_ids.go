@@ -69,17 +69,22 @@ const (
 	ServerboundMovePlayerStatusID           = 0x20
 	ServerboundPlayerLoadedID               = 0x2B
 
-	ClientboundAddEntityID           = 0x01
-	ClientboundChunkBatchEndID       = 0x0B
-	ClientboundChunkBatchBeginID     = 0x0C
-	ClientboundGameEventID           = 0x26
-	ClientboundPlayKeepAliveID       = 0x2B
-	ClientboundLevelChunkWithLightID = 0x2C
-	ClientboundPlayLoginID           = 0x30
-	ClientboundPlayerInfoRemoveID    = 0x43
-	ClientboundPlayerInfoUpdateID    = 0x44
-	ClientboundPlayerPositionID      = 0x46
-	ClientboundRemoveEntitiesID      = 0x4B
-	ClientboundSetCenterChunkID      = 0x5C
-	ClientboundEntityMetadataID      = 0x61
+	ClientboundAddEntityID                    = 0x01
+	ClientboundChunkBatchEndID                = 0x0B
+	ClientboundChunkBatchBeginID              = 0x0C
+	ClientboundSynchronizeEntityPositionID    = 0x23
+	ClientboundGameEventID                    = 0x26
+	ClientboundPlayKeepAliveID                = 0x2B
+	ClientboundLevelChunkWithLightID          = 0x2C
+	ClientboundPlayLoginID                    = 0x30
+	ClientboundUpdateEntityPositionID         = 0x33
+	ClientboundUpdateEntityPositionRotationID = 0x34
+	ClientboundUpdateEntityRotationID         = 0x36
+	ClientboundPlayerInfoRemoveID             = 0x43
+	ClientboundPlayerInfoUpdateID             = 0x44
+	ClientboundPlayerPositionID               = 0x46
+	ClientboundRemoveEntitiesID               = 0x4B
+	ClientboundSetHeadRotationID              = 0x51
+	ClientboundSetCenterChunkID               = 0x5C
+	ClientboundEntityMetadataID               = 0x61
 )

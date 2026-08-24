@@ -3,7 +3,7 @@ hostname = "localhost"
 # port the server is listening on
 port = 25565
 # authenticate with mojang/microsoft
-online-mode = true
+online-mode = false
 
 # log level
 log-level = "debug"

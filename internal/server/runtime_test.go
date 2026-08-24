@@ -62,13 +62,26 @@ func (c *recordingConnection) reset() {
 func (c *recordingConnection) packetIDs(t *testing.T) []int32 {
 	t.Helper()
 
+	packets := c.packets(t)
+	packetIDs := make([]int32, 0, len(packets))
+
+	for _, packet := range packets {
+		packetIDs = append(packetIDs, packet.ID)
+	}
+
+	return packetIDs
+}
+
+func (c *recordingConnection) packets(t *testing.T) []protocol.Packet {
+	t.Helper()
+
 	c.mu.Lock()
 	data := append([]byte(nil), c.buffer.Bytes()...)
 	c.mu.Unlock()
 
 	reader := bytes.NewReader(data)
 
-	var packetIDs []int32
+	var packets []protocol.Packet
 
 	for reader.Len() > 0 {
 		length, err := protocol.ReadVarInt(reader)
@@ -83,15 +96,22 @@ func (c *recordingConnection) packetIDs(t *testing.T) []int32 {
 			t.Fatalf("read packet data: %v", err)
 		}
 
-		packetID, err := protocol.ReadVarInt(bytes.NewReader(packetData))
+		packetReader := bytes.NewReader(packetData)
+
+		packetID, err := protocol.ReadVarInt(packetReader)
 		if err != nil {
 			t.Fatalf("read packet id: %v", err)
 		}
 
-		packetIDs = append(packetIDs, packetID)
+		payload, err := io.ReadAll(packetReader)
+		if err != nil {
+			t.Fatalf("read packet payload: %v", err)
+		}
+
+		packets = append(packets, protocol.Packet{ID: packetID, Data: payload})
 	}
 
-	return packetIDs
+	return packets
 }
 
 func TestRuntimePlayerVisibilityLifecycle(t *testing.T) {

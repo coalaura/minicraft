@@ -229,10 +229,10 @@ func (s *Session) handleChunkBatchReceived(batch protocol.ChunkBatchReceived) {
 }
 
 func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) {
-	s.playerMx.Lock()
-	s.Player.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
-	s.Player.OnGround = move.OnGround
-	s.playerMx.Unlock()
+	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
+		player.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
+		player.OnGround = move.OnGround
+	})
 
 	err := s.updatePlayerChunk()
 	if err != nil {
@@ -241,11 +241,11 @@ func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) {
 }
 
 func (s *Session) handleMovePlayerPositionRotation(move protocol.MovePlayerPositionRotation) {
-	s.playerMx.Lock()
-	s.Player.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
-	s.Player.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
-	s.Player.OnGround = move.OnGround
-	s.playerMx.Unlock()
+	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
+		player.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
+		player.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
+		player.OnGround = move.OnGround
+	})
 
 	err := s.updatePlayerChunk()
 	if err != nil {
@@ -254,18 +254,16 @@ func (s *Session) handleMovePlayerPositionRotation(move protocol.MovePlayerPosit
 }
 
 func (s *Session) handleMovePlayerRotation(move protocol.MovePlayerRotation) {
-	s.playerMx.Lock()
-	defer s.playerMx.Unlock()
-
-	s.Player.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
-	s.Player.OnGround = move.OnGround
+	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
+		player.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
+		player.OnGround = move.OnGround
+	})
 }
 
 func (s *Session) handleMovePlayerStatus(move protocol.MovePlayerStatus) {
-	s.playerMx.Lock()
-	defer s.playerMx.Unlock()
-
-	s.Player.OnGround = move.OnGround
+	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
+		player.OnGround = move.OnGround
+	})
 }
 
 func (s *Session) handlePlayerLoaded() {

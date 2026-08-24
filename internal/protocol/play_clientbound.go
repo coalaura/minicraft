@@ -23,9 +23,9 @@ type AddEntity struct {
 	Y float64
 	Z float64
 
-	VelocityX int16
-	VelocityY int16
-	VelocityZ int16
+	VelocityX float64
+	VelocityY float64
+	VelocityZ float64
 
 	Pitch   byte
 	Yaw     byte
@@ -36,6 +36,60 @@ type AddEntity struct {
 type EntityMetadataSkinParts struct {
 	EntityID  int32
 	SkinParts byte
+}
+
+type SynchronizeEntityPosition struct {
+	EntityID int32
+
+	X float64
+	Y float64
+	Z float64
+
+	VelocityX float64
+	VelocityY float64
+	VelocityZ float64
+
+	Yaw   float32
+	Pitch float32
+
+	OnGround bool
+}
+
+type UpdateEntityPosition struct {
+	EntityID int32
+
+	DeltaX int16
+	DeltaY int16
+	DeltaZ int16
+
+	OnGround bool
+}
+
+type UpdateEntityPositionRotation struct {
+	EntityID int32
+
+	DeltaX int16
+	DeltaY int16
+	DeltaZ int16
+
+	Yaw   byte
+	Pitch byte
+
+	OnGround bool
+}
+
+type UpdateEntityRotation struct {
+	EntityID int32
+
+	Yaw   byte
+	Pitch byte
+
+	OnGround bool
+}
+
+type SetHeadRotation struct {
+	EntityID int32
+	HeadYaw  byte
 }
 
 type RemoveEntities struct {
@@ -129,9 +183,7 @@ func (p AddEntity) Encode(wr *PacketWriter) {
 	wr.Double(p.Y)
 	wr.Double(p.Z)
 
-	wr.Short(p.VelocityX)
-	wr.Short(p.VelocityY)
-	wr.Short(p.VelocityZ)
+	wr.LowPrecisionVector(p.VelocityX, p.VelocityY, p.VelocityZ)
 
 	wr.Byte(p.Pitch)
 	wr.Byte(p.Yaw)
@@ -145,6 +197,58 @@ func (p EntityMetadataSkinParts) Encode(wr *PacketWriter) {
 	wr.VarInt(MetadataTypeByte)
 	wr.Byte(p.SkinParts)
 	wr.Byte(MetadataTerminator)
+}
+
+func (p SynchronizeEntityPosition) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+
+	wr.Double(p.X)
+	wr.Double(p.Y)
+	wr.Double(p.Z)
+
+	wr.Double(p.VelocityX)
+	wr.Double(p.VelocityY)
+	wr.Double(p.VelocityZ)
+
+	wr.Float(p.Yaw)
+	wr.Float(p.Pitch)
+
+	wr.Bool(p.OnGround)
+}
+
+func (p UpdateEntityPosition) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+
+	wr.Short(p.DeltaX)
+	wr.Short(p.DeltaY)
+	wr.Short(p.DeltaZ)
+
+	wr.Bool(p.OnGround)
+}
+
+func (p UpdateEntityPositionRotation) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+
+	wr.Short(p.DeltaX)
+	wr.Short(p.DeltaY)
+	wr.Short(p.DeltaZ)
+
+	wr.Byte(p.Yaw)
+	wr.Byte(p.Pitch)
+
+	wr.Bool(p.OnGround)
+}
+
+func (p UpdateEntityRotation) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+	wr.Byte(p.Yaw)
+	wr.Byte(p.Pitch)
+	wr.Bool(p.OnGround)
+}
+
+func (p SetHeadRotation) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+	wr.Byte(p.HeadYaw)
 }
 
 func (p RemoveEntities) Encode(wr *PacketWriter) {

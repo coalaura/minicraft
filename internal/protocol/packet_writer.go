@@ -4,7 +4,14 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"math"
 	"strings"
+)
+
+const (
+	lowPrecisionVectorMaxQuantized = 32766
+	lowPrecisionVectorMinValue     = 3.051944088384301e-5
+	lowPrecisionVectorMaxValue     = 1.7179869183e10
 )
 
 type PacketWriter struct {
@@ -68,6 +75,43 @@ func (w *PacketWriter) Double(value float64) {
 	w.err = WriteDouble(&w.Buffer, value)
 }
 
+func (w *PacketWriter) LowPrecisionVector(x, y, z float64) {
+	if w.err != nil {
+		return
+	}
+
+	x = sanitizeLowPrecisionVectorValue(x)
+	y = sanitizeLowPrecisionVectorValue(y)
+	z = sanitizeLowPrecisionVectorValue(z)
+
+	maxValue := max(math.Abs(x), math.Abs(y), math.Abs(z))
+	if maxValue < lowPrecisionVectorMinValue {
+		w.Byte(0)
+
+		return
+	}
+
+	scale := uint64(math.Ceil(maxValue))
+	markers := scale
+
+	if scale > 3 {
+		markers = scale%4 | 4
+	}
+
+	packed := markers +
+		packLowPrecisionVectorValue(x/float64(scale))*0x8 +
+		packLowPrecisionVectorValue(y/float64(scale))*0x40000 +
+		packLowPrecisionVectorValue(z/float64(scale))*0x200000000
+
+	w.Byte(byte(packed))
+	w.Byte(byte(packed >> 8))
+	w.Int(int32(packed >> 16))
+
+	if scale > 3 {
+		w.VarInt(int32(uint32(scale / 4)))
+	}
+}
+
 func (w *PacketWriter) Bool(value bool) {
 	if w.err != nil {
 		return
@@ -122,4 +166,16 @@ func (w *PacketWriter) UUID(value string) {
 
 func (w *PacketWriter) Err() error {
 	return w.err
+}
+
+func sanitizeLowPrecisionVectorValue(value float64) float64 {
+	if math.IsNaN(value) {
+		return 0
+	}
+
+	return max(-lowPrecisionVectorMaxValue, min(value, lowPrecisionVectorMaxValue))
+}
+
+func packLowPrecisionVectorValue(value float64) uint64 {
+	return uint64(math.Round((value*0.5 + 0.5) * lowPrecisionVectorMaxQuantized))
 }

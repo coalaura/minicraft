@@ -146,6 +146,38 @@ func (r *Runtime) UpdateSkinParts(session *Session, skinParts byte) {
 	}
 }
 
+func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Player)) {
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+
+	session.playerMx.Lock()
+	previous := *session.Player
+
+	update(session.Player)
+
+	current := *session.Player
+	session.playerMx.Unlock()
+
+	r.mu.RLock()
+	_, active := r.sessions[session]
+	r.mu.RUnlock()
+
+	if !active {
+		return
+	}
+
+	for _, other := range r.snapshotSessions() {
+		if other == session {
+			continue
+		}
+
+		err := other.sendPlayerMovement(previous, current)
+		if err != nil {
+			other.Log.Warnf("[play] failed to update player movement: %v\n", err)
+		}
+	}
+}
+
 func (r *Runtime) snapshotSessions() []*Session {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
