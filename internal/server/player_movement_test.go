@@ -145,7 +145,7 @@ func TestRuntimeBroadcastPlayerMovement(t *testing.T) {
 	aliceConnection.reset()
 	charlieConnection.reset()
 
-	bob.handleMovePlayerRotation(protocol.MovePlayerRotation{Yaw: 90, Pitch: 30, OnGround: true})
+	bob.handleMovePlayerRotation(protocol.MovePlayerRotation{Yaw: 90, Pitch: 30, Flags: protocol.MovementFlagOnGround})
 
 	if packetIDs := bobConnection.packetIDs(t); len(packetIDs) != 0 {
 		t.Fatalf("originating player received movement packets: %v", packetIDs)
@@ -165,6 +165,28 @@ func TestRuntimeBroadcastPlayerMovement(t *testing.T) {
 	}
 }
 
+func TestHorizontalCollisionFlagDoesNotSetOnGround(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Bob")
+
+	session.handleMovePlayerStatus(protocol.MovePlayerStatus{
+		Flags: protocol.MovementFlagHorizontalCollision,
+	})
+
+	if session.snapshotPlayer().OnGround {
+		t.Fatal("horizontal collision flag set player on ground")
+	}
+
+	session.handleMovePlayerStatus(protocol.MovePlayerStatus{
+		Flags: protocol.MovementFlagOnGround | protocol.MovementFlagHorizontalCollision,
+	})
+
+	if !session.snapshotPlayer().OnGround {
+		t.Fatal("on-ground flag did not set player on ground")
+	}
+}
+
 func TestJoiningPlayerSeesLatestAuthoritativePosition(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
@@ -177,7 +199,10 @@ func TestJoiningPlayerSeesLatestAuthoritativePosition(t *testing.T) {
 		t.Fatalf("join Bob: %v", err)
 	}
 
-	bob.handleMovePlayerPosition(protocol.MovePlayerPosition{X: 12.5, Y: 80.25, Z: -4.75, OnGround: true})
+	bob.handleMovePlayerPosition(protocol.MovePlayerPosition{
+		X: 12.5, Y: 80.25, Z: -4.75,
+		Flags: protocol.MovementFlagOnGround,
+	})
 
 	bobConnection.reset()
 

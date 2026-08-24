@@ -11,6 +11,13 @@ const (
 	OffHand  = 1
 )
 
+type MovementFlags byte
+
+const (
+	MovementFlagOnGround MovementFlags = 1 << iota
+	MovementFlagHorizontalCollision
+)
+
 type ConfirmTeleport struct {
 	TeleportID int32
 }
@@ -32,29 +39,29 @@ type ClientInformation struct {
 }
 
 type MovePlayerPosition struct {
-	X        float64
-	Y        float64
-	Z        float64
-	OnGround bool
+	X     float64
+	Y     float64
+	Z     float64
+	Flags MovementFlags
 }
 
 type MovePlayerPositionRotation struct {
-	X        float64
-	Y        float64
-	Z        float64
-	Yaw      float32
-	Pitch    float32
-	OnGround bool
+	X     float64
+	Y     float64
+	Z     float64
+	Yaw   float32
+	Pitch float32
+	Flags MovementFlags
 }
 
 type MovePlayerRotation struct {
-	Yaw      float32
-	Pitch    float32
-	OnGround bool
+	Yaw   float32
+	Pitch float32
+	Flags MovementFlags
 }
 
 type MovePlayerStatus struct {
-	OnGround bool
+	Flags MovementFlags
 }
 
 type PlayerCommand struct {
@@ -73,6 +80,14 @@ type SwingArm struct {
 
 type PlayKeepAliveResponse struct {
 	ID int64
+}
+
+func (f MovementFlags) OnGround() bool {
+	return f&MovementFlagOnGround != 0
+}
+
+func (f MovementFlags) HasHorizontalCollision() bool {
+	return f&MovementFlagHorizontalCollision != 0
 }
 
 func DecodeConfirmTeleport(data []byte) (ConfirmTeleport, error) {
@@ -128,10 +143,10 @@ func DecodeMovePlayerPosition(data []byte) (MovePlayerPosition, error) {
 	rd := NewPacketReader(data)
 
 	move := MovePlayerPosition{
-		X:        rd.Double(),
-		Y:        rd.Double(),
-		Z:        rd.Double(),
-		OnGround: rd.Bool(),
+		X:     rd.Double(),
+		Y:     rd.Double(),
+		Z:     rd.Double(),
+		Flags: MovementFlags(rd.Byte()),
 	}
 
 	err := rd.Err()
@@ -146,12 +161,12 @@ func DecodeMovePlayerPositionRotation(data []byte) (MovePlayerPositionRotation, 
 	rd := NewPacketReader(data)
 
 	move := MovePlayerPositionRotation{
-		X:        rd.Double(),
-		Y:        rd.Double(),
-		Z:        rd.Double(),
-		Yaw:      rd.Float(),
-		Pitch:    rd.Float(),
-		OnGround: rd.Bool(),
+		X:     rd.Double(),
+		Y:     rd.Double(),
+		Z:     rd.Double(),
+		Yaw:   rd.Float(),
+		Pitch: rd.Float(),
+		Flags: MovementFlags(rd.Byte()),
 	}
 
 	err := rd.Err()
@@ -166,9 +181,9 @@ func DecodeMovePlayerRotation(data []byte) (MovePlayerRotation, error) {
 	rd := NewPacketReader(data)
 
 	move := MovePlayerRotation{
-		Yaw:      rd.Float(),
-		Pitch:    rd.Float(),
-		OnGround: rd.Bool(),
+		Yaw:   rd.Float(),
+		Pitch: rd.Float(),
+		Flags: MovementFlags(rd.Byte()),
 	}
 
 	err := rd.Err()
@@ -183,7 +198,7 @@ func DecodeMovePlayerStatus(data []byte) (MovePlayerStatus, error) {
 	rd := NewPacketReader(data)
 
 	move := MovePlayerStatus{
-		OnGround: rd.Bool(),
+		Flags: MovementFlags(rd.Byte()),
 	}
 
 	err := rd.Err()

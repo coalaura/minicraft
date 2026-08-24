@@ -1,0 +1,141 @@
+package game
+
+import (
+	"math"
+	"testing"
+)
+
+type blockIndexTest struct {
+	position BlockPosition
+	chunk    ChunkPosition
+	local    LocalBlockPosition
+}
+
+type coordinateGenerator struct{}
+
+func (coordinateGenerator) BlockAt(seed int64, position BlockPosition) Block {
+	value := seed + int64(position.X)*3 + int64(position.Y)*5 + int64(position.Z)*7
+	if value&1 == 0 {
+		return Stone
+	}
+
+	return Air
+}
+
+type solidGenerator struct {
+	block Block
+}
+
+func (g solidGenerator) BlockAt(_ int64, _ BlockPosition) Block {
+	return g.block
+}
+
+func TestWorldGenerationIsDeterministic(t *testing.T) {
+	positions := []BlockPosition{
+		{X: -17, Y: -64, Z: 31},
+		{X: -16, Y: 69, Z: -1},
+		{X: 0, Y: 70, Z: 0},
+		{X: 16, Y: 255, Z: 16},
+	}
+
+	first := &World{Seed: 42, Generator: coordinateGenerator{}}
+	second := &World{Seed: 42, Generator: coordinateGenerator{}}
+
+	expected := make(map[BlockPosition]Block, len(positions))
+
+	for _, position := range positions {
+		expected[position] = first.BlockAt(position)
+	}
+
+	for index := len(positions) - 1; index >= 0; index-- {
+		position := positions[index]
+		if actual := second.BlockAt(position); actual != expected[position] {
+			t.Fatalf("block at %+v = %d, want %d", position, actual, expected[position])
+		}
+	}
+
+	differentSeed := &World{Seed: 43, Generator: coordinateGenerator{}}
+	if differentSeed.BlockAt(positions[0]) == expected[positions[0]] {
+		t.Fatal("different world seed produced the same test block")
+	}
+}
+
+func TestSpawnPlatformGenerator(t *testing.T) {
+	world := &World{Seed: 1234, Generator: SpawnPlatformGenerator{}}
+
+	tests := map[BlockPosition]Block{
+		{X: -4, Y: 69, Z: -4}: Stone,
+		{X: 4, Y: 69, Z: 4}:   Stone,
+		{X: -5, Y: 69, Z: 0}:  Air,
+		{X: 0, Y: 68, Z: 0}:   Air,
+		{X: 0, Y: 70, Z: 0}:   Air,
+	}
+
+	for position, expected := range tests {
+		if actual := world.BlockAt(position); actual != expected {
+			t.Errorf("block at %+v = %d, want %d", position, actual, expected)
+		}
+	}
+}
+
+func TestWorldOverridesTakePrecedence(t *testing.T) {
+	world := &World{Generator: solidGenerator{block: Stone}}
+
+	position := BlockPosition{X: -17, Y: 12, Z: 16}
+
+	world.SetBlock(position, Air)
+
+	if actual := world.BlockAt(position); actual != Air {
+		t.Fatalf("overridden block = %d, want air", actual)
+	}
+
+	neighbor := BlockPosition{X: -16, Y: 12, Z: 16}
+	if actual := world.BlockAt(neighbor); actual != Stone {
+		t.Fatalf("neighbor block = %d, want generated stone", actual)
+	}
+
+	world.ClearBlockOverride(position)
+
+	if actual := world.BlockAt(position); actual != Stone {
+		t.Fatalf("cleared override block = %d, want generated stone", actual)
+	}
+}
+
+func TestBlockIndexHandlesNegativeBoundaries(t *testing.T) {
+	tests := []blockIndexTest{
+		{
+			position: BlockPosition{X: -1, Z: -1},
+			chunk:    ChunkPosition{X: -1, Z: -1},
+			local:    LocalBlockPosition{X: 15, Z: 15},
+		},
+		{
+			position: BlockPosition{X: -16, Z: -16},
+			chunk:    ChunkPosition{X: -1, Z: -1},
+			local:    LocalBlockPosition{},
+		},
+		{
+			position: BlockPosition{X: -17, Z: -17},
+			chunk:    ChunkPosition{X: -2, Z: -2},
+			local:    LocalBlockPosition{X: 15, Z: 15},
+		},
+		{
+			position: BlockPosition{X: math.MinInt32, Z: math.MinInt32},
+			chunk:    ChunkPosition{X: -134217728, Z: -134217728},
+			local:    LocalBlockPosition{},
+		},
+	}
+
+	for _, test := range tests {
+		chunk, local := blockIndex(test.position)
+		if chunk != test.chunk || local != test.local {
+			t.Errorf(
+				"blockIndex(%+v) = (%+v, %+v), want (%+v, %+v)",
+				test.position,
+				chunk,
+				local,
+				test.chunk,
+				test.local,
+			)
+		}
+	}
+}

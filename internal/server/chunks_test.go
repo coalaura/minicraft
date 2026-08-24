@@ -223,8 +223,9 @@ func newChunkTestSession(position game.Position) (*Session, *recordingConnection
 	connection := &recordingConnection{}
 
 	session := &Session{
-		Conn:   protocol.NewConnection(connection, nil),
-		Player: &game.Player{Position: position},
+		Conn:    protocol.NewConnection(connection, nil),
+		Runtime: NewRuntime(game.NewOverworld()),
+		Player:  &game.Player{Position: position},
 	}
 
 	return session, connection

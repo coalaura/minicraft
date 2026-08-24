@@ -1,18 +1,83 @@
 package game
 
+import "sync"
+
+type LocalBlockPosition struct {
+	X int32
+	Y int32
+	Z int32
+}
+
 type World struct {
 	Name          string
 	DimensionType string
 	Seed          int64
+	Generator     Generator
 
 	Spawn    Position
 	SeaLevel int32
+
+	overrideMx sync.RWMutex
+	overrides  map[ChunkPosition]map[LocalBlockPosition]Block
+}
+
+func (w *World) BlockAt(position BlockPosition) Block {
+	chunk, local := blockIndex(position)
+
+	w.overrideMx.RLock()
+	blocks := w.overrides[chunk]
+	block, overridden := blocks[local]
+	w.overrideMx.RUnlock()
+
+	if overridden {
+		return block
+	}
+
+	if w.Generator == nil {
+		return Air
+	}
+
+	return w.Generator.BlockAt(w.Seed, position)
+}
+
+func (w *World) SetBlock(position BlockPosition, block Block) {
+	chunk, local := blockIndex(position)
+
+	w.overrideMx.Lock()
+	defer w.overrideMx.Unlock()
+
+	if w.overrides == nil {
+		w.overrides = make(map[ChunkPosition]map[LocalBlockPosition]Block)
+	}
+
+	blocks := w.overrides[chunk]
+	if blocks == nil {
+		blocks = make(map[LocalBlockPosition]Block)
+		w.overrides[chunk] = blocks
+	}
+
+	blocks[local] = block
+}
+
+func (w *World) ClearBlockOverride(position BlockPosition) {
+	chunk, local := blockIndex(position)
+
+	w.overrideMx.Lock()
+	defer w.overrideMx.Unlock()
+
+	blocks := w.overrides[chunk]
+	delete(blocks, local)
+
+	if len(blocks) == 0 {
+		delete(w.overrides, chunk)
+	}
 }
 
 func NewOverworld() *World {
 	return &World{
 		Name:          "minecraft:overworld",
 		DimensionType: "minecraft:overworld",
+		Generator:     SpawnPlatformGenerator{},
 
 		Spawn: Position{
 			X: 0.5,
@@ -22,4 +87,24 @@ func NewOverworld() *World {
 
 		SeaLevel: 64,
 	}
+}
+
+func blockIndex(position BlockPosition) (ChunkPosition, LocalBlockPosition) {
+	chunkX := blockChunkCoordinate(position.X)
+	chunkZ := blockChunkCoordinate(position.Z)
+
+	return ChunkPosition{X: chunkX, Z: chunkZ}, LocalBlockPosition{
+		X: position.X - chunkX*ChunkWidth,
+		Y: position.Y,
+		Z: position.Z - chunkZ*ChunkWidth,
+	}
+}
+
+func blockChunkCoordinate(coordinate int32) int32 {
+	chunk := coordinate / ChunkWidth
+	if coordinate%ChunkWidth < 0 {
+		chunk--
+	}
+
+	return chunk
 }

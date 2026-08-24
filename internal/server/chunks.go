@@ -1,9 +1,11 @@
 package server
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
+	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
@@ -48,25 +50,25 @@ func (s *Session) sendGameEvent(event byte, value float32) error {
 	})
 }
 
-func (s *Session) sendChunk(chunkX, chunkZ int32) error {
-	chunk := protocol.NewEmptyOverworldChunk(chunkX, chunkZ, 0)
-
-	// TODO: temporary
-	addSpawnPlatform(&chunk)
+func chunkPacket(world *game.World, chunkX, chunkZ int32) (protocol.Packet, error) {
+	chunk, err := buildLevelChunk(world, chunkX, chunkZ)
+	if err != nil {
+		return protocol.Packet{}, err
+	}
 
 	var wr protocol.PacketWriter
 
 	chunk.Encode(&wr)
 
-	err := wr.Err()
+	err = wr.Err()
 	if err != nil {
-		return err
+		return protocol.Packet{}, err
 	}
 
-	return s.Conn.WritePacket(protocol.Packet{
+	return protocol.Packet{
 		ID:   protocol.ClientboundLevelChunkWithLightID,
 		Data: wr.Buffer.Bytes(),
-	})
+	}, nil
 }
 
 func (s *Session) sendChunkBatch(chunks []LoadedChunk) (int, error) {
@@ -74,23 +76,15 @@ func (s *Session) sendChunkBatch(chunks []LoadedChunk) (int, error) {
 		return 0, nil
 	}
 
-	s.writeMx.Lock()
-	defer s.writeMx.Unlock()
-
-	err := s.Conn.WritePacket(protocol.Packet{
-		ID:   protocol.ClientboundChunkBatchBeginID,
-		Data: []byte{},
-	})
-
-	if err != nil {
-		return 0, err
-	}
+	packets := make([]protocol.Packet, len(chunks))
 
 	for index, chunk := range chunks {
-		err := s.sendChunk(chunk.X, chunk.Z)
+		packet, err := chunkPacket(s.Runtime.World, chunk.X, chunk.Z)
 		if err != nil {
-			return index, err
+			return 0, err
 		}
+
+		packets[index] = packet
 	}
 
 	var wr protocol.PacketWriter
@@ -99,9 +93,28 @@ func (s *Session) sendChunkBatch(chunks []LoadedChunk) (int, error) {
 
 	batchEnd.Encode(&wr)
 
-	err = wr.Err()
+	err := wr.Err()
 	if err != nil {
-		return len(chunks), err
+		return 0, err
+	}
+
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
+	err = s.Conn.WritePacket(protocol.Packet{
+		ID:   protocol.ClientboundChunkBatchBeginID,
+		Data: []byte{},
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	for index, packet := range packets {
+		err := s.Conn.WritePacket(packet)
+		if err != nil {
+			return index, err
+		}
 	}
 
 	err = s.Conn.WritePacket(protocol.Packet{
@@ -242,45 +255,63 @@ func chunkCoordinate(position float64) int32 {
 	return int32(math.Floor(position / ChunkWidth))
 }
 
-// TODO: temporary
-// addSpawnPlatform places a 9x9 stone platform centered on the spawn
-// point, with its top surface right under the player's feet.
-func addSpawnPlatform(chunk *protocol.LevelChunkWithLight) {
-	const (
-		spawnPlatformY      = 69
-		spawnPlatformRadius = 4
-	)
+func buildLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChunkWithLight, error) {
+	if world == nil {
+		return protocol.LevelChunkWithLight{}, fmt.Errorf("world is nil")
+	}
 
-	localY := (spawnPlatformY - protocol.OverworldMinY) % ChunkWidth
-	sectionIndex := (spawnPlatformY - protocol.OverworldMinY) / ChunkWidth
+	chunk := protocol.NewEmptyOverworldChunk(chunkX, chunkZ, 0)
 
-	chunkMinX := int(chunk.Position.X) * ChunkWidth
-	chunkMinZ := int(chunk.Position.Z) * ChunkWidth
+	chunkMinX := chunkX * ChunkWidth
+	chunkMinZ := chunkZ * ChunkWidth
 
-	blocks := &protocol.SectionBlocks{}
-	hasPlatformBlocks := false
+	for sectionIndex := range chunk.Sections {
+		sectionMinY := int32(protocol.OverworldMinY + sectionIndex*ChunkWidth)
+		var (
+			blocks    protocol.SectionBlocks
+			hasBlocks bool
+		)
 
-	for worldX := -spawnPlatformRadius; worldX <= spawnPlatformRadius; worldX++ {
-		localX := worldX - chunkMinX
-		if localX < 0 || localX >= ChunkWidth {
-			continue
-		}
+		for localY := 0; localY < ChunkWidth; localY++ {
+			for localZ := 0; localZ < ChunkWidth; localZ++ {
+				for localX := 0; localX < ChunkWidth; localX++ {
+					position := game.BlockPosition{
+						X: chunkMinX + int32(localX),
+						Y: sectionMinY + int32(localY),
+						Z: chunkMinZ + int32(localZ),
+					}
 
-		for worldZ := -spawnPlatformRadius; worldZ <= spawnPlatformRadius; worldZ++ {
-			localZ := worldZ - chunkMinZ
-			if localZ < 0 || localZ >= ChunkWidth {
-				continue
+					state, err := protocolBlockState(world.BlockAt(position))
+					if err != nil {
+						return protocol.LevelChunkWithLight{}, fmt.Errorf("block at %+v: %w", position, err)
+					}
+
+					if state == protocol.AirBlockState {
+						continue
+					}
+
+					blocks.Set(localX, localY, localZ, state)
+
+					hasBlocks = true
+				}
 			}
+		}
 
-			blocks.Set(localX, localY, localZ, protocol.StoneBlockState)
-
-			hasPlatformBlocks = true
+		if hasBlocks {
+			chunk.Sections[sectionIndex] = blocks.ToSection(0)
 		}
 	}
 
-	if !hasPlatformBlocks {
-		return
-	}
+	return chunk, nil
+}
 
-	chunk.Sections[sectionIndex] = blocks.ToSection(0)
+func protocolBlockState(block game.Block) (int32, error) {
+	switch block {
+	case game.Air:
+		return protocol.AirBlockState, nil
+	case game.Stone:
+		return protocol.StoneBlockState, nil
+	default:
+		return 0, fmt.Errorf("unsupported game block %d", block)
+	}
 }

@@ -64,6 +64,60 @@ func TestDecodeClientInformationRejectsTruncatedPacket(t *testing.T) {
 	}
 }
 
+func TestDecodeMovementFlags(t *testing.T) {
+	flags := MovementFlagHorizontalCollision
+
+	var positionWriter PacketWriter
+
+	positionWriter.Double(1)
+	positionWriter.Double(2)
+	positionWriter.Double(3)
+	positionWriter.Byte(byte(flags))
+
+	position, err := DecodeMovePlayerPosition(positionWriter.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode position: %v", err)
+	}
+
+	assertMovementFlags(t, position.Flags, false, true)
+
+	var positionRotationWriter PacketWriter
+
+	positionRotationWriter.Double(1)
+	positionRotationWriter.Double(2)
+	positionRotationWriter.Double(3)
+	positionRotationWriter.Float(4)
+	positionRotationWriter.Float(5)
+	positionRotationWriter.Byte(byte(MovementFlagOnGround | MovementFlagHorizontalCollision))
+
+	positionRotation, err := DecodeMovePlayerPositionRotation(positionRotationWriter.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode position rotation: %v", err)
+	}
+
+	assertMovementFlags(t, positionRotation.Flags, true, true)
+
+	var rotationWriter PacketWriter
+
+	rotationWriter.Float(4)
+	rotationWriter.Float(5)
+	rotationWriter.Byte(byte(MovementFlagOnGround))
+
+	rotation, err := DecodeMovePlayerRotation(rotationWriter.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode rotation: %v", err)
+	}
+
+	assertMovementFlags(t, rotation.Flags, true, false)
+
+	status, err := DecodeMovePlayerStatus([]byte{byte(MovementFlagHorizontalCollision)})
+	if err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+
+	assertMovementFlags(t, status.Flags, false, true)
+}
+
 func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 	packetIDs := map[string]packetIDTest{
 		"player command": {actual: ServerboundPlayerCommandID, expected: 0x29},
@@ -112,5 +166,21 @@ func TestDecodeSwingArm(t *testing.T) {
 
 	if swing.Hand != OffHand {
 		t.Fatalf("swing hand = %d, want %d", swing.Hand, OffHand)
+	}
+}
+
+func assertMovementFlags(t *testing.T, flags MovementFlags, onGround, horizontalCollision bool) {
+	t.Helper()
+
+	if flags.OnGround() != onGround {
+		t.Fatalf("on ground = %v, want %v", flags.OnGround(), onGround)
+	}
+
+	if flags.HasHorizontalCollision() != horizontalCollision {
+		t.Fatalf(
+			"horizontal collision = %v, want %v",
+			flags.HasHorizontalCollision(),
+			horizontalCollision,
+		)
 	}
 }
