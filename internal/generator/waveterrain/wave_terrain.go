@@ -34,7 +34,7 @@ func surfaceHeight(seed int64, worldX, worldZ int32) int32 {
 	zSeed := seed ^ (seed >> 32)
 	zWave := triangularWave(worldZ, zSeed, 48)
 
-	return 60 + xWave/4 + zWave/6
+	return 69 - xWave/4 - zWave/6
 }
 
 func triangularWave(coordinate int32, offset, period int64) int32 {

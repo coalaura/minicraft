@@ -17,4 +17,4 @@ max-players = 8
 compression-threshold = 512
 
 # procedural world generator: spawn-platform or wave-terrain
-world-generator = "wave-terrain"
+world-generator = "spawn-platform"

@@ -56,19 +56,37 @@ func TestTerrainFillsThroughItsSurface(t *testing.T) {
 	}
 }
 
+func TestDefaultSeedProvidesSafeSpawn(t *testing.T) {
+	if height := surfaceHeight(0, 0, 0); height != 69 {
+		t.Fatalf("default spawn surface height = %d, want 69", height)
+	}
+}
+
 func TestTerrainIsContinuousAcrossChunkBoundaries(t *testing.T) {
-	boundaries := []int32{-17, -16, -1, 0, 15, 16}
+	boundaries := []int32{math.MinInt32, -49, -48, -33, -32, -17, -16, -1, 0, 15, 16, 31, 32, 47, 48, math.MaxInt32 - 1}
+	seeds := []int64{math.MinInt64, -1, 0, 42, math.MaxInt64}
 
-	for _, worldX := range boundaries {
-		left := surfaceHeight(42, worldX, 0)
-		right := surfaceHeight(42, worldX+1, 0)
-		difference := left - right
-		if difference < 0 {
-			difference = -difference
-		}
+	for _, seed := range seeds {
+		for _, coordinate := range boundaries {
+			left := surfaceHeight(seed, coordinate, coordinate)
+			xRight := surfaceHeight(seed, coordinate+1, coordinate)
+			zRight := surfaceHeight(seed, coordinate, coordinate+1)
 
-		if difference > 1 {
-			t.Errorf("surface jumps from %d to %d between x=%d and x=%d", left, right, worldX, worldX+1)
+			assertHeightDifference(t, "x", seed, coordinate, left, xRight)
+			assertHeightDifference(t, "z", seed, coordinate, left, zRight)
 		}
+	}
+}
+
+func assertHeightDifference(t *testing.T, axis string, seed int64, coordinate, first, second int32) {
+	t.Helper()
+
+	difference := first - second
+	if difference < 0 {
+		difference = -difference
+	}
+
+	if difference > 1 {
+		t.Errorf("seed %d surface jumps from %d to %d across %s=%d", seed, first, second, axis, coordinate)
 	}
 }
