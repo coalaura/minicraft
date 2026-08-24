@@ -10,14 +10,6 @@ import (
 )
 
 const (
-	playEntityID        = 1
-	playTeleportID      = 1
-	playSpawnX          = 0.5
-	playSpawnY          = 70.0
-	playSpawnZ          = 0.5
-	playViewDistance    = 10
-	playSeaLevel        = 64
-	playGameMode        = 1 // creative
 	playKeepAlivePeriod = 10 * time.Second
 )
 
@@ -29,7 +21,51 @@ func HandlePlay(ctx context.Context, c *MCConnection, cfg *config.Config, uuid, 
 
 	go keepAliveLoop(playCtx, c)
 
-	err := sendPlayLogin(c)
+	world := World{
+		Name:          "minecraft:overworld",
+		DimensionType: 0,
+
+		Spawn: Vec3{
+			X: 0.5,
+			Y: 70,
+			Z: 0.5,
+		},
+
+		ViewDistance:       10,
+		SimulationDistance: 10,
+		SeaLevel:           64,
+	}
+
+	player := Player{
+		EntityID: 1,
+		UUID:     uuid,
+		Name:     name,
+
+		Position: world.Spawn,
+		Yaw:      0,
+		Pitch:    0,
+		GameMode: 1,
+	}
+
+	login := PlayLogin{
+		EntityID: player.EntityID,
+		Worlds: []string{
+			world.Name,
+		},
+		MaxPlayers:         int32(cfg.MaxPlayers),
+		ViewDistance:       world.ViewDistance,
+		SimulationDistance: world.SimulationDistance,
+
+		Spawn: SpawnInfo{
+			DimensionType:    world.DimensionType,
+			Dimension:        world.Name,
+			GameMode:         player.GameMode,
+			PreviousGameMode: 0xFF,
+			SeaLevel:         world.SeaLevel,
+		},
+	}
+
+	err := sendPlayLogin(c, login)
 	if err != nil {
 		return err
 	}
@@ -39,7 +75,14 @@ func HandlePlay(ctx context.Context, c *MCConnection, cfg *config.Config, uuid, 
 		return err
 	}
 
-	err = sendPlayPosition(c)
+	position := PlayerPosition{
+		TeleportID: 1,
+		Position:   player.Position,
+		Yaw:        player.Yaw,
+		Pitch:      player.Pitch,
+	}
+
+	err = sendPlayerPosition(c, position)
 	if err != nil {
 		return err
 	}
@@ -114,179 +157,37 @@ func keepAliveLoop(ctx context.Context, c *MCConnection) {
 	}
 }
 
-func sendPlayLogin(c *MCConnection) error {
-	var b bytes.Buffer
+func sendPlayLogin(c *MCConnection, login PlayLogin) error {
+	var w PacketWriter
 
-	err := WriteInt(&b, playEntityID)
+	login.Encode(&w)
+
+	err := w.Err()
 	if err != nil {
 		return err
 	}
 
-	err = WriteBool(&b, false)
-	if err != nil { // is hardcore
-		return err
-	}
-
-	err = WriteVarInt(&b, 1)
-	if err != nil { // dimension names count
-		return err
-	}
-
-	err = WriteString(&b, "minecraft:overworld")
-	if err != nil {
-		return err
-	}
-
-	err = WriteVarInt(&b, 1)
-	if err != nil { // max players
-		return err
-	}
-
-	err = WriteVarInt(&b, playViewDistance)
-	if err != nil { // view distance
-		return err
-	}
-
-	err = WriteVarInt(&b, playViewDistance)
-	if err != nil { // simulation distance
-		return err
-	}
-
-	err = WriteBool(&b, false)
-	if err != nil { // reduced debug info
-		return err
-	}
-
-	err = WriteBool(&b, true)
-	if err != nil { // enable respawn screen
-		return err
-	}
-
-	err = WriteBool(&b, false)
-	if err != nil { // do limited crafting
-		return err
-	}
-
-	err = WriteVarInt(&b, 0)
-	if err != nil { // dimension type index
-		return err
-	}
-
-	err = WriteString(&b, "minecraft:overworld")
-	if err != nil { // dimension name
-		return err
-	}
-
-	err = WriteLong(&b, 0)
-	if err != nil { // hashed seed
-		return err
-	}
-
-	err = b.WriteByte(playGameMode)
-	if err != nil { // game mode
-		return err
-	}
-
-	err = b.WriteByte(0xFF)
-	if err != nil { // previous game mode (-1)
-		return err
-	}
-
-	err = WriteBool(&b, false)
-	if err != nil { // is debug
-		return err
-	}
-
-	err = WriteBool(&b, false)
-	if err != nil { // is flat
-		return err
-	}
-
-	err = WriteBool(&b, false)
-	if err != nil { // has death location
-		return err
-	}
-
-	err = WriteVarInt(&b, 0)
-	if err != nil { // portal cooldown
-		return err
-	}
-
-	err = WriteVarInt(&b, playSeaLevel)
-	if err != nil { // sea level
-		return err
-	}
-
-	err = WriteBool(&b, false)
-	if err != nil { // enforces secure chat
-		return err
-	}
-
-	err = c.WritePacket(Packet{ID: CB_PlayLogin, Data: b.Bytes()})
-	if err != nil {
-		return err
-	}
-
-	c.Print("play", "sent login (play)")
-
-	return nil
+	return c.WritePacket(Packet{
+		ID:   CB_PlayLogin,
+		Data: w.Bytes(),
+	})
 }
 
-func sendPlayPosition(c *MCConnection) error {
-	var b bytes.Buffer
+func sendPlayerPosition(c *MCConnection, position PlayerPosition) error {
+	var w PacketWriter
 
-	err := WriteVarInt(&b, playTeleportID)
+	position.Encode(&w)
+
+	err := w.Err()
 	if err != nil {
 		return err
 	}
 
-	err = WriteDouble(&b, playSpawnX)
-	if err != nil {
-		return err
-	}
+	err = c.WritePacket(Packet{
+		ID:   CB_PlayPosition,
+		Data: w.Bytes(),
+	})
 
-	err = WriteDouble(&b, playSpawnY)
-	if err != nil {
-		return err
-	}
-
-	err = WriteDouble(&b, playSpawnZ)
-	if err != nil {
-		return err
-	}
-
-	err = WriteDouble(&b, 0)
-	if err != nil { // velocity x
-		return err
-	}
-
-	err = WriteDouble(&b, 0)
-	if err != nil { // velocity y
-		return err
-	}
-
-	err = WriteDouble(&b, 0)
-	if err != nil { // velocity z
-		return err
-	}
-
-	err = WriteFloat(&b, 0)
-	if err != nil { // yaw
-		return err
-	}
-
-	err = WriteFloat(&b, 0)
-	if err != nil { // pitch
-		return err
-	}
-
-	// Flags: all values are absolute.
-	err = WriteInt(&b, 0)
-	if err != nil {
-		return err
-	}
-
-	err = c.WritePacket(Packet{ID: CB_PlayPosition, Data: b.Bytes()})
 	if err != nil {
 		return err
 	}

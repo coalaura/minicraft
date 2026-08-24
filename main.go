@@ -14,13 +14,13 @@ import (
 
 var log = plain.New(plain.WithDate(plain.RFC3339Local))
 
-func init() {
-	protocol.SetLogger(log)
-}
-
 func main() {
 	cfg, err := config.LoadConfig()
 	log.MustFail(err)
+
+	log.SetLevel(cfg.GetLogLevel())
+
+	protocol.SetLogger(log)
 
 	listener, err := net.Listen("tcp", cfg.ListenAddr())
 	log.MustFail(err)

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/coalaura/minicraft/crypto"
+	"github.com/coalaura/plain"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -14,6 +15,8 @@ type Config struct {
 	Hostname   string `toml:"hostname"`
 	Port       uint   `toml:"port"`
 	OnlineMode bool   `toml:"online-mode"`
+
+	LogLevel string `toml:"log-level"`
 
 	Motd       string `toml:"motd"`
 	MaxPlayers int    `toml:"max-players"`
@@ -57,6 +60,10 @@ func (c *Config) SetDefaults() {
 		c.Port = 25565
 	}
 
+	if c.LogLevel == "" {
+		c.LogLevel = "print"
+	}
+
 	if c.MaxPlayers == 0 {
 		c.MaxPlayers = 2
 	}
@@ -64,6 +71,19 @@ func (c *Config) SetDefaults() {
 	if c.CompressionThreshold < 32 {
 		c.CompressionThreshold = 32
 	}
+}
+
+func (c *Config) GetLogLevel() plain.Level {
+	switch c.LogLevel {
+	case "debug":
+		return plain.LevelDebug
+	case "warn":
+		return plain.LevelWarn
+	case "error":
+		return plain.LevelError
+	}
+
+	return plain.LevelPrint
 }
 
 func (c *Config) ListenAddr() string {

@@ -220,13 +220,21 @@ func (c *MCConnection) logPacket(direction string, p *Packet) {
 		return
 	}
 
+	// Don't log high-frequency packets
+	if direction == "RECV" {
+		switch p.ID {
+		case SB_ClientTickEnd, SB_MovePlayerPos, SB_MovePlayerPosRot, SB_MovePlayerRot, SB_MoveStatusOnly:
+			return
+		}
+	}
+
 	data := p.Data
 
 	if len(data) > 64 {
 		data = data[:64]
 	}
 
-	log.Printf(
+	log.Debugf(
 		"[net] %s %s -> id=%d (0x%x) len=%d data=%s\n",
 		direction,
 		c.conn.RemoteAddr(),
