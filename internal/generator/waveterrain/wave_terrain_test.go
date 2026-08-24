@@ -36,7 +36,7 @@ func TestTerrainIsDeterministicAndSeeded(t *testing.T) {
 		}
 	}
 
-	if surfaceHeight(0, 0, 0) == surfaceHeight(8, 0, 0) {
+	if surfaceHeight(0, 12, 0) == surfaceHeight(8, 12, 0) {
 		t.Fatal("different seeds produced the same test surface height")
 	}
 }
@@ -56,9 +56,13 @@ func TestTerrainFillsThroughItsSurface(t *testing.T) {
 	}
 }
 
-func TestDefaultSeedProvidesSafeSpawn(t *testing.T) {
-	if height := surfaceHeight(0, 0, 0); height != 69 {
-		t.Fatalf("default spawn surface height = %d, want 69", height)
+func TestEverySeedProvidesSafeSpawn(t *testing.T) {
+	seeds := []int64{math.MinInt64, -34359738448, -1, 0, 1, 34359738448, math.MaxInt64}
+
+	for _, seed := range seeds {
+		if height := surfaceHeight(seed, 0, 0); height != 69 {
+			t.Errorf("seed %d spawn surface height = %d, want 69", seed, height)
+		}
 	}
 }
 

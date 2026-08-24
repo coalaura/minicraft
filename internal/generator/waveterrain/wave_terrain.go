@@ -30,11 +30,20 @@ func newRegistered() (game.Generator, error) {
 }
 
 func surfaceHeight(seed int64, worldX, worldZ int32) int32 {
-	xWave := triangularWave(worldX, seed, 32)
+	xDepth := waveDepth(worldX, seed, 32)
 	zSeed := seed ^ (seed >> 32)
-	zWave := triangularWave(worldZ, zSeed, 48)
+	zDepth := waveDepth(worldZ, zSeed, 48)
 
-	return 69 - xWave/4 - zWave/6
+	return 69 - xDepth/4 - zDepth/6
+}
+
+func waveDepth(coordinate int32, offset, period int64) int32 {
+	depth := triangularWave(coordinate, offset, period) - triangularWave(0, offset, period)
+	if depth < 0 {
+		depth = -depth
+	}
+
+	return depth
 }
 
 func triangularWave(coordinate int32, offset, period int64) int32 {
