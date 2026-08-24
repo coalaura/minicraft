@@ -6,17 +6,13 @@ const (
 	OverworldSectionCount      = 24
 	OverworldLightSectionCount = OverworldSectionCount + 2
 	SkyLightArrayLength        = 2048
+
+	OverworldMinY = -64
 )
 
 type ChunkPosition struct {
 	X int32
 	Z int32
-}
-
-type ChunkSection struct {
-	BlockCount int16
-	BlockState int32
-	Biome      int32
 }
 
 type LevelChunkWithLight struct {
@@ -44,9 +40,28 @@ func (p LevelChunkWithLight) Encode(wr *PacketWriter) {
 	for _, section := range p.Sections {
 		sections.Short(section.BlockCount)
 
-		// Block states: bits per entry 0, single-value palette.
-		sections.Byte(0)
-		sections.VarInt(section.BlockState)
+		if len(section.Palette) == 0 {
+			// Block states: bits per entry 0, single-value palette.
+			sections.Byte(0)
+			sections.VarInt(section.BlockState)
+		} else {
+			bitsPerEntry := paletteBitsPerEntry(len(section.Palette))
+
+			// Block states: indirect palette with bit-packed entries.
+			// Since 1.21.5 the data array has no length prefix; its
+			// size is derived from the bits per entry.
+			sections.Byte(byte(bitsPerEntry))
+
+			sections.VarInt(int32(len(section.Palette)))
+
+			for _, state := range section.Palette {
+				sections.VarInt(state)
+			}
+
+			for _, value := range section.Data {
+				sections.Long(value)
+			}
+		}
 
 		// Biomes: bits per entry 0, single-value palette.
 		sections.Byte(0)
