@@ -7,7 +7,9 @@ import (
 )
 
 const (
-	InitialChunkRadius = 1
+	// Keep one empty chunk around generated chunks so the client can build
+	// meshes for blocks at their borders.
+	InitialChunkRadius = 2
 	ChunkWidth         = 16
 )
 
