@@ -67,9 +67,13 @@ const (
 	ServerboundMovePlayerPositionRotationID = 0x1E
 	ServerboundMovePlayerRotationID         = 0x1F
 	ServerboundMovePlayerStatusID           = 0x20
+	ServerboundPlayerCommandID              = 0x29
+	ServerboundPlayerInputID                = 0x2A
 	ServerboundPlayerLoadedID               = 0x2B
+	ServerboundSwingArmID                   = 0x3C
 
 	ClientboundAddEntityID                    = 0x01
+	ClientboundEntityAnimationID              = 0x02
 	ClientboundChunkBatchEndID                = 0x0B
 	ClientboundChunkBatchBeginID              = 0x0C
 	ClientboundSynchronizeEntityPositionID    = 0x23

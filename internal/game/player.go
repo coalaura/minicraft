@@ -19,6 +19,8 @@ type Player struct {
 	Rotation Rotation
 	Velocity Velocity
 
-	GameMode GameMode
-	OnGround bool
+	GameMode  GameMode
+	OnGround  bool
+	Sneaking  bool
+	Sprinting bool
 }

@@ -155,12 +155,38 @@ func (s *Session) sendPlayerMovement(previous, current game.Player) error {
 }
 
 func (s *Session) sendPlayerMetadata(player game.Player) error {
-	metadata := protocol.EntityMetadataSkinParts{
-		EntityID:  player.EntityID,
-		SkinParts: player.SkinParts,
+	flags := byte(0)
+
+	if player.Sneaking {
+		flags |= protocol.EntityFlagSneaking
+	}
+
+	if player.Sprinting {
+		flags |= protocol.EntityFlagSprinting
+	}
+
+	pose := protocol.EntityPoseStanding
+
+	if player.Sneaking {
+		pose = protocol.EntityPoseCrouching
+	}
+
+	metadata := protocol.EntityMetadata{
+		EntityID: player.EntityID,
+		Entries: []protocol.EntityMetadataEntry{
+			{Index: protocol.EntityFlagsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(flags)},
+			{Index: protocol.EntityPoseMetadataIndex, Type: protocol.MetadataTypePose, Value: protocol.MetadataVarInt(pose)},
+			{Index: protocol.PlayerSkinPartsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(player.SkinParts)},
+		},
 	}
 
 	return s.writePacket(protocol.ClientboundEntityMetadataID, metadata)
+}
+
+func (s *Session) sendPlayerAnimation(player game.Player, animation byte) error {
+	packet := protocol.EntityAnimation{EntityID: player.EntityID, Animation: animation}
+
+	return s.writePacket(protocol.ClientboundEntityAnimationID, packet)
 }
 
 func (s *Session) sendPlayerRemoval(player game.Player) error {

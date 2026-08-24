@@ -9,9 +9,23 @@ const (
 
 	PlayerEntityType = 155
 
+	EntityFlagsMetadataIndex     = 0
+	EntityPoseMetadataIndex      = 6
 	PlayerSkinPartsMetadataIndex = 16
-	MetadataTypeByte             = 0
-	MetadataTerminator           = 0xFF
+
+	MetadataTypeByte = 0
+	MetadataTypePose = 20
+
+	MetadataTerminator = 0xFF
+
+	EntityFlagSneaking  = 0x02
+	EntityFlagSprinting = 0x08
+
+	EntityPoseStanding  = 0
+	EntityPoseCrouching = 5
+
+	EntityAnimationSwingMainHand = 0
+	EntityAnimationSwingOffHand  = 3
 )
 
 type AddEntity struct {
@@ -33,9 +47,28 @@ type AddEntity struct {
 	Data    int32
 }
 
-type EntityMetadataSkinParts struct {
+type MetadataValue interface {
+	EncodeMetadata(*PacketWriter)
+}
+
+type MetadataByte byte
+
+type MetadataVarInt int32
+
+type EntityMetadataEntry struct {
+	Index byte
+	Type  int32
+	Value MetadataValue
+}
+
+type EntityMetadata struct {
+	EntityID int32
+	Entries  []EntityMetadataEntry
+}
+
+type EntityAnimation struct {
 	EntityID  int32
-	SkinParts byte
+	Animation byte
 }
 
 type SynchronizeEntityPosition struct {
@@ -191,12 +224,29 @@ func (p AddEntity) Encode(wr *PacketWriter) {
 	wr.VarInt(p.Data)
 }
 
-func (p EntityMetadataSkinParts) Encode(wr *PacketWriter) {
+func (p MetadataByte) EncodeMetadata(wr *PacketWriter) {
+	wr.Byte(byte(p))
+}
+
+func (p MetadataVarInt) EncodeMetadata(wr *PacketWriter) {
+	wr.VarInt(int32(p))
+}
+
+func (p EntityMetadata) Encode(wr *PacketWriter) {
 	wr.VarInt(p.EntityID)
-	wr.Byte(PlayerSkinPartsMetadataIndex)
-	wr.VarInt(MetadataTypeByte)
-	wr.Byte(p.SkinParts)
+
+	for _, entry := range p.Entries {
+		wr.Byte(entry.Index)
+		wr.VarInt(entry.Type)
+		entry.Value.EncodeMetadata(wr)
+	}
+
 	wr.Byte(MetadataTerminator)
+}
+
+func (p EntityAnimation) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+	wr.Byte(p.Animation)
 }
 
 func (p SynchronizeEntityPosition) Encode(wr *PacketWriter) {

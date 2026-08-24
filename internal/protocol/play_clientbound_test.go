@@ -115,10 +115,14 @@ func TestAddEntityEncode(t *testing.T) {
 	}
 }
 
-func TestEntityMetadataSkinPartsEncode(t *testing.T) {
-	metadata := EntityMetadataSkinParts{
-		EntityID:  300,
-		SkinParts: 0x7F,
+func TestEntityMetadataEncode(t *testing.T) {
+	metadata := EntityMetadata{
+		EntityID: 300,
+		Entries: []EntityMetadataEntry{
+			{Index: EntityFlagsMetadataIndex, Type: MetadataTypeByte, Value: MetadataByte(EntityFlagSneaking | EntityFlagSprinting)},
+			{Index: EntityPoseMetadataIndex, Type: MetadataTypePose, Value: MetadataVarInt(EntityPoseCrouching)},
+			{Index: PlayerSkinPartsMetadataIndex, Type: MetadataTypeByte, Value: MetadataByte(0x7F)},
+		},
 	}
 
 	var wr PacketWriter
@@ -130,11 +134,23 @@ func TestEntityMetadataSkinPartsEncode(t *testing.T) {
 		t.Fatalf("encode entity metadata: %v", err)
 	}
 
-	expected := []byte{0xAC, 0x02, 0x10, 0x00, 0x7F, 0xFF}
+	expected := []byte{
+		0xAC, 0x02,
+		0x00, 0x00, 0x0A,
+		0x06, 0x14, 0x05,
+		0x10, 0x00, 0x7F,
+		0xFF,
+	}
 
 	if !bytes.Equal(wr.Buffer.Bytes(), expected) {
 		t.Fatalf("encoded entity metadata = %x, want %x", wr.Buffer.Bytes(), expected)
 	}
+}
+
+func TestEntityAnimationEncode(t *testing.T) {
+	animation := EntityAnimation{EntityID: 300, Animation: EntityAnimationSwingOffHand}
+
+	assertPacketEncoding(t, animation, []byte{0xAC, 0x02, 0x03})
 }
 
 func TestSynchronizeEntityPositionEncode(t *testing.T) {

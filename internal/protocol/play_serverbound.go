@@ -1,5 +1,16 @@
 package protocol
 
+const (
+	PlayerCommandStartSprinting = 1
+	PlayerCommandStopSprinting  = 2
+
+	PlayerInputSneak  = 0x20
+	PlayerInputSprint = 0x40
+
+	MainHand = 0
+	OffHand  = 1
+)
+
 type ConfirmTeleport struct {
 	TeleportID int32
 }
@@ -44,6 +55,20 @@ type MovePlayerRotation struct {
 
 type MovePlayerStatus struct {
 	OnGround bool
+}
+
+type PlayerCommand struct {
+	EntityID int32
+	Action   int32
+	Data     int32
+}
+
+type PlayerInput struct {
+	Flags byte
+}
+
+type SwingArm struct {
+	Hand int32
 }
 
 type PlayKeepAliveResponse struct {
@@ -167,6 +192,49 @@ func DecodeMovePlayerStatus(data []byte) (MovePlayerStatus, error) {
 	}
 
 	return move, nil
+}
+
+func DecodePlayerCommand(data []byte) (PlayerCommand, error) {
+	rd := NewPacketReader(data)
+
+	command := PlayerCommand{
+		EntityID: rd.VarInt(),
+		Action:   rd.VarInt(),
+		Data:     rd.VarInt(),
+	}
+
+	err := rd.Err()
+	if err != nil {
+		return PlayerCommand{}, err
+	}
+
+	return command, nil
+}
+
+func DecodePlayerInput(data []byte) (PlayerInput, error) {
+	rd := NewPacketReader(data)
+
+	input := PlayerInput{Flags: rd.Byte()}
+
+	err := rd.Err()
+	if err != nil {
+		return PlayerInput{}, err
+	}
+
+	return input, nil
+}
+
+func DecodeSwingArm(data []byte) (SwingArm, error) {
+	rd := NewPacketReader(data)
+
+	swing := SwingArm{Hand: rd.VarInt()}
+
+	err := rd.Err()
+	if err != nil {
+		return SwingArm{}, err
+	}
+
+	return swing, nil
 }
 
 func DecodePlayKeepAliveResponse(data []byte) (PlayKeepAliveResponse, error) {

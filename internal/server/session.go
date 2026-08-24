@@ -53,14 +53,22 @@ func (s *Session) snapshotPlayer() game.Player {
 }
 
 func (s *Session) setSkinParts(skinParts byte) (game.Player, bool) {
+	return s.updatePlayerState(func(player *game.Player) bool {
+		if player.SkinParts == skinParts {
+			return false
+		}
+
+		player.SkinParts = skinParts
+
+		return true
+	})
+}
+
+func (s *Session) updatePlayerState(update func(*game.Player) bool) (game.Player, bool) {
 	s.playerMx.Lock()
 	defer s.playerMx.Unlock()
 
-	if s.Player.SkinParts == skinParts {
-		return *s.Player, false
-	}
+	changed := update(s.Player)
 
-	s.Player.SkinParts = skinParts
-
-	return *s.Player, true
+	return *s.Player, changed
 }

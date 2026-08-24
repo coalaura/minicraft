@@ -117,8 +117,29 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		}
 
 		s.handleMovePlayerStatus(move)
+	case protocol.ServerboundPlayerCommandID:
+		command, err := protocol.DecodePlayerCommand(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		s.handlePlayerCommand(command)
+	case protocol.ServerboundPlayerInputID:
+		input, err := protocol.DecodePlayerInput(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		s.handlePlayerInput(input)
 	case protocol.ServerboundPlayerLoadedID:
 		s.handlePlayerLoaded()
+	case protocol.ServerboundSwingArmID:
+		swing, err := protocol.DecodeSwingArm(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		s.handleSwingArm(swing)
 	default:
 		s.Log.Printf("[play] unhandled packet id: 0x%02X\n", packet.ID)
 	}
@@ -264,6 +285,33 @@ func (s *Session) handleMovePlayerStatus(move protocol.MovePlayerStatus) {
 	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
 		player.OnGround = move.OnGround
 	})
+}
+
+func (s *Session) handlePlayerCommand(command protocol.PlayerCommand) {
+	switch command.Action {
+	case protocol.PlayerCommandStartSprinting:
+		s.Runtime.UpdateSprinting(s, true)
+	case protocol.PlayerCommandStopSprinting:
+		s.Runtime.UpdateSprinting(s, false)
+	}
+}
+
+func (s *Session) handlePlayerInput(input protocol.PlayerInput) {
+	s.Runtime.UpdateSneaking(s, input.Flags&protocol.PlayerInputSneak != 0)
+}
+
+func (s *Session) handleSwingArm(swing protocol.SwingArm) {
+	animation := byte(protocol.EntityAnimationSwingMainHand)
+
+	switch swing.Hand {
+	case protocol.MainHand:
+	case protocol.OffHand:
+		animation = protocol.EntityAnimationSwingOffHand
+	default:
+		return
+	}
+
+	s.Runtime.BroadcastPlayerAnimation(s, animation)
 }
 
 func (s *Session) handlePlayerLoaded() {

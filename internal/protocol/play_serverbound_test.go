@@ -63,3 +63,54 @@ func TestDecodeClientInformationRejectsTruncatedPacket(t *testing.T) {
 		t.Fatal("decode truncated client information succeeded")
 	}
 }
+
+func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
+	packetIDs := map[string]packetIDTest{
+		"player command": {actual: ServerboundPlayerCommandID, expected: 0x29},
+		"player input":   {actual: ServerboundPlayerInputID, expected: 0x2A},
+		"player loaded":  {actual: ServerboundPlayerLoadedID, expected: 0x2B},
+		"swing arm":      {actual: ServerboundSwingArmID, expected: 0x3C},
+		"animation":      {actual: ClientboundEntityAnimationID, expected: 0x02},
+	}
+
+	for name, packetID := range packetIDs {
+		t.Run(name, func(t *testing.T) {
+			if packetID.actual != packetID.expected {
+				t.Fatalf("packet id = %#x, want %#x", packetID.actual, packetID.expected)
+			}
+		})
+	}
+}
+
+func TestDecodePlayerCommand(t *testing.T) {
+	command, err := DecodePlayerCommand([]byte{0xAC, 0x02, PlayerCommandStartSprinting, 0x00})
+	if err != nil {
+		t.Fatalf("decode player command: %v", err)
+	}
+
+	if command.EntityID != 300 || command.Action != PlayerCommandStartSprinting || command.Data != 0 {
+		t.Fatalf("player command = %+v", command)
+	}
+}
+
+func TestDecodePlayerInput(t *testing.T) {
+	input, err := DecodePlayerInput([]byte{PlayerInputSneak | PlayerInputSprint})
+	if err != nil {
+		t.Fatalf("decode player input: %v", err)
+	}
+
+	if input.Flags != PlayerInputSneak|PlayerInputSprint {
+		t.Fatalf("player input flags = %#x, want %#x", input.Flags, PlayerInputSneak|PlayerInputSprint)
+	}
+}
+
+func TestDecodeSwingArm(t *testing.T) {
+	swing, err := DecodeSwingArm([]byte{OffHand})
+	if err != nil {
+		t.Fatalf("decode swing arm: %v", err)
+	}
+
+	if swing.Hand != OffHand {
+		t.Fatalf("swing hand = %d, want %d", swing.Hand, OffHand)
+	}
+}

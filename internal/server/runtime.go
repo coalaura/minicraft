@@ -146,6 +146,85 @@ func (r *Runtime) UpdateSkinParts(session *Session, skinParts byte) {
 	}
 }
 
+func (r *Runtime) UpdateSneaking(session *Session, sneaking bool) {
+	r.updatePlayerMetadata(session, func(player *game.Player) bool {
+		if player.Sneaking == sneaking {
+			return false
+		}
+
+		player.Sneaking = sneaking
+
+		return true
+	})
+}
+
+func (r *Runtime) UpdateSprinting(session *Session, sprinting bool) {
+	r.updatePlayerMetadata(session, func(player *game.Player) bool {
+		if player.Sprinting == sprinting {
+			return false
+		}
+
+		player.Sprinting = sprinting
+
+		return true
+	})
+}
+
+func (r *Runtime) BroadcastPlayerAnimation(session *Session, animation byte) {
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+
+	r.mu.RLock()
+	_, active := r.sessions[session]
+	r.mu.RUnlock()
+
+	if !active {
+		return
+	}
+
+	player := session.snapshotPlayer()
+
+	for _, other := range r.snapshotSessions() {
+		if other == session {
+			continue
+		}
+
+		err := other.sendPlayerAnimation(player, animation)
+		if err != nil {
+			other.Log.Warnf("[play] failed to send player animation: %v\n", err)
+		}
+	}
+}
+
+func (r *Runtime) updatePlayerMetadata(session *Session, update func(*game.Player) bool) {
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+
+	player, changed := session.updatePlayerState(update)
+	if !changed {
+		return
+	}
+
+	r.mu.RLock()
+	_, active := r.sessions[session]
+	r.mu.RUnlock()
+
+	if !active {
+		return
+	}
+
+	for _, other := range r.snapshotSessions() {
+		if other == session {
+			continue
+		}
+
+		err := other.sendPlayerMetadata(player)
+		if err != nil {
+			other.Log.Warnf("[play] failed to update player metadata: %v\n", err)
+		}
+	}
+}
+
 func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Player)) {
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
