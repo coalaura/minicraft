@@ -59,6 +59,24 @@ func (r *Runtime) MutateBlock(session *Session, action BlockMutationAction, posi
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
 
+	return r.mutateBlock(session, action, position, replacement)
+}
+
+func (r *Runtime) PlaceBlock(session *Session, clicked, position game.BlockPosition, replacement game.Block) (BlockMutationResult, error) {
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+
+	current := r.World.BlockAt(position)
+
+	if !session.hasLoadedBlock(clicked) || r.World.BlockAt(clicked) == game.Air {
+		return BlockMutationResult{Block: current}, nil
+	}
+
+	return r.mutateBlock(session, BlockMutationPlace, position, replacement)
+}
+
+func (r *Runtime) mutateBlock(session *Session, action BlockMutationAction, position game.BlockPosition, replacement game.Block) (BlockMutationResult, error) {
+
 	r.mu.RLock()
 	_, active := r.sessions[session]
 	r.mu.RUnlock()
@@ -84,6 +102,10 @@ func (r *Runtime) MutateBlock(session *Session, action BlockMutationAction, posi
 	}
 
 	if action == BlockMutationBreak && !r.AllowBlockBreaking {
+		return result, nil
+	}
+
+	if action == BlockMutationPlace && (!r.AllowBlockPlacing || current != game.Air || replacement == game.Air) {
 		return result, nil
 	}
 

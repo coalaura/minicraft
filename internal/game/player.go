@@ -23,4 +23,8 @@ type Player struct {
 	OnGround  bool
 	Sneaking  bool
 	Sprinting bool
+
+	SelectedHotbarSlot int
+	Hotbar             [HotbarSlotCount]ItemStack
+	Offhand            ItemStack
 }

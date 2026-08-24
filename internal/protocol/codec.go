@@ -163,6 +163,10 @@ func ReadBytes(rd *bytes.Reader) ([]byte, error) {
 		return nil, io.ErrUnexpectedEOF
 	}
 
+	if int64(ln) > int64(rd.Len()) {
+		return nil, io.ErrUnexpectedEOF
+	}
+
 	buf := make([]byte, ln)
 
 	_, err = io.ReadFull(rd, buf)

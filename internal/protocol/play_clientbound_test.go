@@ -24,6 +24,7 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 		"update position and rotation": {actual: ClientboundUpdateEntityPositionRotationID, expected: 0x34},
 		"update entity rotation":       {actual: ClientboundUpdateEntityRotationID, expected: 0x36},
 		"set head rotation":            {actual: ClientboundSetHeadRotationID, expected: 0x51},
+		"entity equipment":             {actual: ClientboundEntityEquipmentID, expected: 0x64},
 	}
 
 	for name, packetID := range packetIDs {
@@ -175,6 +176,33 @@ func TestEntityAnimationEncode(t *testing.T) {
 	animation := EntityAnimation{EntityID: 300, Animation: EntityAnimationSwingOffHand}
 
 	assertPacketEncoding(t, animation, []byte{0xAC, 0x02, 0x03})
+}
+
+func TestEntityEquipmentEncode(t *testing.T) {
+	equipment := EntityEquipment{
+		EntityID: 300,
+		Equipment: []EquipmentEntry{
+			{Slot: EquipmentSlotMainHand, Item: game.ItemStack{Item: game.ItemStone, Count: 64}},
+			{Slot: EquipmentSlotOffHand, Item: game.ItemStack{Item: game.ItemDirt, Count: 32}},
+		},
+	}
+
+	assertPacketEncoding(t, equipment, []byte{
+		0xAC, 0x02,
+		0x80, 0x40, 0x01, 0x00, 0x00,
+		0x01, 0x20, 0x1C, 0x00, 0x00,
+	})
+}
+
+func TestEntityEquipmentEncodeEmptyHand(t *testing.T) {
+	equipment := EntityEquipment{
+		EntityID: 1,
+		Equipment: []EquipmentEntry{
+			{Slot: EquipmentSlotMainHand},
+		},
+	}
+
+	assertPacketEncoding(t, equipment, []byte{0x01, 0x00, 0x00})
 }
 
 func TestSynchronizeEntityPositionEncode(t *testing.T) {

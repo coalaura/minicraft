@@ -71,7 +71,10 @@ const (
 	ServerboundPlayerCommandID              = 0x29
 	ServerboundPlayerInputID                = 0x2A
 	ServerboundPlayerLoadedID               = 0x2B
+	ServerboundSetHeldItemID                = 0x34
+	ServerboundSetCreativeModeSlotID        = 0x37
 	ServerboundSwingArmID                   = 0x3C
+	ServerboundUseItemOnID                  = 0x3F
 
 	ClientboundAddEntityID                    = 0x01
 	ClientboundEntityAnimationID              = 0x02
@@ -95,4 +98,5 @@ const (
 	ClientboundSetHeadRotationID              = 0x51
 	ClientboundSetCenterChunkID               = 0x5C
 	ClientboundEntityMetadataID               = 0x61
+	ClientboundEntityEquipmentID              = 0x64
 )

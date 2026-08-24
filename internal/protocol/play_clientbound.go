@@ -26,6 +26,9 @@ const (
 
 	EntityAnimationSwingMainHand = 0
 	EntityAnimationSwingOffHand  = 3
+
+	EquipmentSlotMainHand byte = 0
+	EquipmentSlotOffHand  byte = 1
 )
 
 type AddEntity struct {
@@ -69,6 +72,16 @@ type EntityMetadata struct {
 type EntityAnimation struct {
 	EntityID  int32
 	Animation byte
+}
+
+type EquipmentEntry struct {
+	Slot byte
+	Item game.ItemStack
+}
+
+type EntityEquipment struct {
+	EntityID  int32
+	Equipment []EquipmentEntry
 }
 
 type SynchronizeEntityPosition struct {
@@ -261,6 +274,33 @@ func (p EntityMetadata) Encode(wr *PacketWriter) {
 func (p EntityAnimation) Encode(wr *PacketWriter) {
 	wr.VarInt(p.EntityID)
 	wr.Byte(p.Animation)
+}
+
+func (p EntityEquipment) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+
+	for index, equipment := range p.Equipment {
+		slot := equipment.Slot
+		if index < len(p.Equipment)-1 {
+			slot |= 0x80
+		}
+
+		wr.Byte(slot)
+		encodeItemStack(wr, equipment.Item)
+	}
+}
+
+func encodeItemStack(wr *PacketWriter, stack game.ItemStack) {
+	if stack.Empty() {
+		wr.VarInt(0)
+
+		return
+	}
+
+	wr.VarInt(stack.Count)
+	wr.VarInt(int32(stack.Item))
+	wr.VarInt(0)
+	wr.VarInt(0)
 }
 
 func (p SynchronizeEntityPosition) Encode(wr *PacketWriter) {

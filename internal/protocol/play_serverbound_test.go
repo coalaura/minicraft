@@ -130,7 +130,10 @@ func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 		"player command": {actual: ServerboundPlayerCommandID, expected: 0x29},
 		"player input":   {actual: ServerboundPlayerInputID, expected: 0x2A},
 		"player loaded":  {actual: ServerboundPlayerLoadedID, expected: 0x2B},
+		"held item":      {actual: ServerboundSetHeldItemID, expected: 0x34},
+		"creative slot":  {actual: ServerboundSetCreativeModeSlotID, expected: 0x37},
 		"swing arm":      {actual: ServerboundSwingArmID, expected: 0x3C},
+		"use item on":    {actual: ServerboundUseItemOnID, expected: 0x3F},
 		"animation":      {actual: ClientboundEntityAnimationID, expected: 0x02},
 	}
 
@@ -234,6 +237,110 @@ func TestDecodeSwingArm(t *testing.T) {
 
 	if swing.Hand != OffHand {
 		t.Fatalf("swing hand = %d, want %d", swing.Hand, OffHand)
+	}
+}
+
+func TestDecodeSetHeldItem(t *testing.T) {
+	selection, err := DecodeSetHeldItem([]byte{0x00, 0x08})
+	if err != nil {
+		t.Fatalf("decode held item: %v", err)
+	}
+
+	if selection.Slot != 8 {
+		t.Fatalf("held slot = %d, want 8", selection.Slot)
+	}
+}
+
+func TestDecodeSetHeldItemRejectsTruncatedSlot(t *testing.T) {
+	_, err := DecodeSetHeldItem([]byte{0x08})
+	if err == nil {
+		t.Fatal("decode truncated held item succeeded")
+	}
+}
+
+func TestDecodeSetCreativeModeSlot(t *testing.T) {
+	var writer PacketWriter
+
+	writer.Short(40)
+	writer.VarInt(64)
+	writer.VarInt(1)
+	writer.VarInt(1)
+	writer.VarInt(1)
+	writer.VarInt(2)
+	writer.Bytes([]byte{0xAA, 0xBB})
+	writer.VarInt(3)
+
+	update, err := DecodeSetCreativeModeSlot(writer.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode creative slot: %v", err)
+	}
+
+	if update.Slot != 40 || update.Item.ItemID != 1 || update.Item.ItemCount != 64 {
+		t.Fatalf("creative slot = %+v", update)
+	}
+}
+
+func TestDecodeSetCreativeModeSlotRejectsTruncatedComponents(t *testing.T) {
+	var writer PacketWriter
+
+	writer.Short(36)
+	writer.VarInt(1)
+	writer.VarInt(1)
+	writer.VarInt(1)
+	writer.VarInt(0)
+
+	_, err := DecodeSetCreativeModeSlot(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("decode truncated creative slot succeeded")
+	}
+}
+
+func TestDecodeSetCreativeModeSlotRejectsOversizedComponent(t *testing.T) {
+	var writer PacketWriter
+
+	writer.Short(36)
+	writer.VarInt(1)
+	writer.VarInt(1)
+	writer.VarInt(1)
+	writer.VarInt(0)
+	writer.VarInt(2)
+	writer.VarInt(1 << 30)
+
+	_, err := DecodeSetCreativeModeSlot(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("decode oversized creative slot component succeeded")
+	}
+}
+
+func TestDecodeUseItemOn(t *testing.T) {
+	position := game.BlockPosition{X: -1, Y: 70, Z: 3}
+
+	var writer PacketWriter
+
+	writer.VarInt(OffHand)
+	writer.BlockPosition(position)
+	writer.VarInt(BlockFaceWest)
+	writer.Float(0.25)
+	writer.Float(0.5)
+	writer.Float(0.75)
+	writer.Bool(false)
+	writer.Bool(true)
+	writer.VarInt(300)
+
+	interaction, err := DecodeUseItemOn(writer.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode use item on: %v", err)
+	}
+
+	if interaction.Hand != OffHand || interaction.Position != position || interaction.Face != BlockFaceWest || interaction.CursorX != 0.25 || interaction.CursorY != 0.5 || interaction.CursorZ != 0.75 || interaction.InsideBlock || !interaction.WorldBorderHit || interaction.Sequence != 300 {
+		t.Fatalf("use item on = %+v", interaction)
+	}
+}
+
+func TestDecodeUseItemOnRejectsTruncatedPacket(t *testing.T) {
+	_, err := DecodeUseItemOn([]byte{MainHand, 0, 0, 0})
+	if err == nil {
+		t.Fatal("decode truncated use item on succeeded")
 	}
 }
 

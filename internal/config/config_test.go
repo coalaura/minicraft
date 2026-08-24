@@ -29,6 +29,10 @@ func TestConfigDefaults(t *testing.T) {
 		t.Fatal("block breaking is disabled by default")
 	}
 
+	if !cfg.AllowBlockPlacing() {
+		t.Fatal("block placing is disabled by default")
+	}
+
 	if cfg.World.Spawn != nil {
 		t.Fatalf("spawn = %+v, want omitted", cfg.World.Spawn)
 	}
@@ -39,8 +43,9 @@ func TestConfigDecodesSectionsAndOptionalSpawn(t *testing.T) {
 [server]
 max-players = 12
 render-distance = 18
-default-game-mode = "spectator"
-allow-block-breaking = false
+	default-game-mode = "spectator"
+	allow-block-breaking = false
+	allow-block-placing = false
 
 [world]
 generator = "wave-terrain"
@@ -63,6 +68,10 @@ spawn = { x = 12.5, y = 80.0, z = -7.5 }
 
 	if cfg.AllowBlockBreaking() {
 		t.Fatal("block breaking is enabled, want disabled")
+	}
+
+	if cfg.AllowBlockPlacing() {
+		t.Fatal("block placing is enabled, want disabled")
 	}
 }
 

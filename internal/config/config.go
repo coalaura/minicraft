@@ -27,6 +27,7 @@ type ServerConfig struct {
 	RenderDistance     *int32 `toml:"render-distance"`
 	DefaultGameMode    string `toml:"default-game-mode"`
 	AllowBlockBreaking *bool  `toml:"allow-block-breaking"`
+	AllowBlockPlacing  *bool  `toml:"allow-block-placing"`
 }
 
 type WorldConfig struct {
@@ -134,6 +135,11 @@ func (c *Config) SetDefaults() {
 		c.Server.AllowBlockBreaking = &blockBreaking
 	}
 
+	if c.Server.AllowBlockPlacing == nil {
+		blockPlacing := true
+		c.Server.AllowBlockPlacing = &blockPlacing
+	}
+
 	if c.Network.CompressionThreshold < 32 {
 		c.Network.CompressionThreshold = 32
 	}
@@ -196,6 +202,14 @@ func (c *Config) AllowBlockBreaking() bool {
 	}
 
 	return *c.Server.AllowBlockBreaking
+}
+
+func (c *Config) AllowBlockPlacing() bool {
+	if c.Server.AllowBlockPlacing == nil {
+		return true
+	}
+
+	return *c.Server.AllowBlockPlacing
 }
 
 func (c *Config) GetLogLevel() plain.Level {

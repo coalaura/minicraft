@@ -306,7 +306,7 @@ func TestIgnoredPlayerActionAcknowledgesSequence(t *testing.T) {
 
 	actorConnection.reset()
 
-	err := actor.handlePlayerAction(protocol.PlayerAction{Status: 3, Sequence: 13})
+	err := actor.handlePlayerAction(protocol.PlayerAction{Status: 99, Sequence: 13})
 	if err != nil {
 		t.Fatalf("handle player action: %v", err)
 	}

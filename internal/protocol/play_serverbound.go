@@ -1,6 +1,10 @@
 package protocol
 
-import "github.com/coalaura/minicraft/internal/game"
+import (
+	"fmt"
+
+	"github.com/coalaura/minicraft/internal/game"
+)
 
 const (
 	PlayerCommandStartSprinting = 1
@@ -15,6 +19,17 @@ const (
 	PlayerActionStartDestroyBlock = 0
 	PlayerActionAbortDestroyBlock = 1
 	PlayerActionStopDestroyBlock  = 2
+	PlayerActionDropAllItems      = 3
+	PlayerActionDropItem          = 4
+
+	BlockFaceDown  = 0
+	BlockFaceUp    = 1
+	BlockFaceNorth = 2
+	BlockFaceSouth = 3
+	BlockFaceWest  = 4
+	BlockFaceEast  = 5
+
+	maxUntrustedSlotComponents = 1024
 )
 
 type MovementFlags byte
@@ -87,8 +102,34 @@ type PlayerInput struct {
 	Flags byte
 }
 
+type SetHeldItem struct {
+	Slot int16
+}
+
+type UntrustedSlot struct {
+	ItemCount int32
+	ItemID    int32
+}
+
+type SetCreativeModeSlot struct {
+	Slot int16
+	Item UntrustedSlot
+}
+
 type SwingArm struct {
 	Hand int32
+}
+
+type UseItemOn struct {
+	Hand           int32
+	Position       game.BlockPosition
+	Face           int32
+	CursorX        float32
+	CursorY        float32
+	CursorZ        float32
+	InsideBlock    bool
+	WorldBorderHit bool
+	Sequence       int32
 }
 
 type PlayKeepAliveResponse struct {
@@ -270,6 +311,39 @@ func DecodePlayerInput(data []byte) (PlayerInput, error) {
 	return input, nil
 }
 
+func DecodeSetHeldItem(data []byte) (SetHeldItem, error) {
+	rd := NewPacketReader(data)
+
+	selection := SetHeldItem{Slot: rd.Short()}
+
+	err := rd.Err()
+	if err != nil {
+		return SetHeldItem{}, err
+	}
+
+	return selection, nil
+}
+
+func DecodeSetCreativeModeSlot(data []byte) (SetCreativeModeSlot, error) {
+	rd := NewPacketReader(data)
+
+	creativeSlot := SetCreativeModeSlot{Slot: rd.Short()}
+
+	item, err := decodeUntrustedSlot(rd)
+	if err != nil {
+		return SetCreativeModeSlot{}, err
+	}
+
+	creativeSlot.Item = item
+
+	err = rd.Err()
+	if err != nil {
+		return SetCreativeModeSlot{}, err
+	}
+
+	return creativeSlot, nil
+}
+
 func DecodeSwingArm(data []byte) (SwingArm, error) {
 	rd := NewPacketReader(data)
 
@@ -283,6 +357,29 @@ func DecodeSwingArm(data []byte) (SwingArm, error) {
 	return swing, nil
 }
 
+func DecodeUseItemOn(data []byte) (UseItemOn, error) {
+	rd := NewPacketReader(data)
+
+	interaction := UseItemOn{
+		Hand:           rd.VarInt(),
+		Position:       rd.BlockPosition(),
+		Face:           rd.VarInt(),
+		CursorX:        rd.Float(),
+		CursorY:        rd.Float(),
+		CursorZ:        rd.Float(),
+		InsideBlock:    rd.Bool(),
+		WorldBorderHit: rd.Bool(),
+		Sequence:       rd.VarInt(),
+	}
+
+	err := rd.Err()
+	if err != nil {
+		return UseItemOn{}, err
+	}
+
+	return interaction, nil
+}
+
 func DecodePlayKeepAliveResponse(data []byte) (PlayKeepAliveResponse, error) {
 	rd := NewPacketReader(data)
 
@@ -294,4 +391,47 @@ func DecodePlayKeepAliveResponse(data []byte) (PlayKeepAliveResponse, error) {
 	}
 
 	return response, nil
+}
+
+func decodeUntrustedSlot(rd *PacketReader) (UntrustedSlot, error) {
+	item := UntrustedSlot{ItemCount: rd.VarInt()}
+
+	err := rd.Err()
+	if err != nil || item.ItemCount == 0 {
+		return item, err
+	}
+
+	item.ItemID = rd.VarInt()
+
+	addedComponentCount := rd.VarInt()
+	removedComponentCount := rd.VarInt()
+
+	err = rd.Err()
+	if err != nil {
+		return UntrustedSlot{}, err
+	}
+
+	if addedComponentCount < 0 || addedComponentCount > maxUntrustedSlotComponents {
+		return UntrustedSlot{}, fmt.Errorf("invalid added slot component count %d", addedComponentCount)
+	}
+
+	if removedComponentCount < 0 || removedComponentCount > maxUntrustedSlotComponents {
+		return UntrustedSlot{}, fmt.Errorf("invalid removed slot component count %d", removedComponentCount)
+	}
+
+	for range addedComponentCount {
+		rd.VarInt()
+		rd.Bytes()
+	}
+
+	for range removedComponentCount {
+		rd.VarInt()
+	}
+
+	err = rd.Err()
+	if err != nil {
+		return UntrustedSlot{}, err
+	}
+
+	return item, nil
 }

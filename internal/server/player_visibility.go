@@ -58,7 +58,61 @@ func (s *Session) sendPlayerEntity(player game.Player) error {
 		return err
 	}
 
-	return s.sendPlayerMetadata(player)
+	err = s.sendPlayerMetadata(player)
+	if err != nil {
+		return err
+	}
+
+	slots := visibleEquipmentSlots(player)
+	if len(slots) == 0 {
+		return nil
+	}
+
+	return s.sendPlayerEquipment(player, slots...)
+}
+
+func (s *Session) sendPlayerEquipment(player game.Player, slots ...byte) error {
+	equipment := make([]protocol.EquipmentEntry, 0, len(slots))
+
+	for _, slot := range slots {
+		var stack game.ItemStack
+
+		switch slot {
+		case protocol.EquipmentSlotMainHand:
+			if player.SelectedHotbarSlot >= 0 && player.SelectedHotbarSlot < game.HotbarSlotCount {
+				stack = player.Hotbar[player.SelectedHotbarSlot]
+			}
+		case protocol.EquipmentSlotOffHand:
+			stack = player.Offhand
+		default:
+			continue
+		}
+
+		equipment = append(equipment, protocol.EquipmentEntry{Slot: slot, Item: stack})
+	}
+
+	if len(equipment) == 0 {
+		return nil
+	}
+
+	return s.writePacket(protocol.ClientboundEntityEquipmentID, protocol.EntityEquipment{
+		EntityID:  player.EntityID,
+		Equipment: equipment,
+	})
+}
+
+func visibleEquipmentSlots(player game.Player) []byte {
+	var slots []byte
+
+	if player.SelectedHotbarSlot >= 0 && player.SelectedHotbarSlot < game.HotbarSlotCount && !player.Hotbar[player.SelectedHotbarSlot].Empty() {
+		slots = append(slots, protocol.EquipmentSlotMainHand)
+	}
+
+	if !player.Offhand.Empty() {
+		slots = append(slots, protocol.EquipmentSlotOffHand)
+	}
+
+	return slots
 }
 
 func (s *Session) sendPlayerAppearance(player game.Player) error {

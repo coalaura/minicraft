@@ -137,6 +137,20 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		s.handlePlayerInput(input)
 	case protocol.ServerboundPlayerLoadedID:
 		s.handlePlayerLoaded()
+	case protocol.ServerboundSetHeldItemID:
+		selection, err := protocol.DecodeSetHeldItem(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		s.handleSetHeldItem(selection)
+	case protocol.ServerboundSetCreativeModeSlotID:
+		update, err := protocol.DecodeSetCreativeModeSlot(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		s.handleSetCreativeModeSlot(update)
 	case protocol.ServerboundSwingArmID:
 		swing, err := protocol.DecodeSwingArm(packet.Data)
 		if err != nil {
@@ -144,6 +158,13 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		}
 
 		s.handleSwingArm(swing)
+	case protocol.ServerboundUseItemOnID:
+		interaction, err := protocol.DecodeUseItemOn(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		return s.handleUseItemOn(interaction)
 	default:
 		s.Log.Printf("[play] unhandled packet id: 0x%02X\n", packet.ID)
 	}
@@ -336,6 +357,10 @@ func (s *Session) handlePlayerAction(action protocol.PlayerAction) error {
 			}
 		}
 	case protocol.PlayerActionAbortDestroyBlock:
+	case protocol.PlayerActionDropAllItems:
+		s.handleDropHeldItem(true)
+	case protocol.PlayerActionDropItem:
+		s.handleDropHeldItem(false)
 	default:
 	}
 
