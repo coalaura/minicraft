@@ -16,6 +16,10 @@ const (
 	DefaultRenderDistance = 10
 	MinRenderDistance     = 2
 	MaxRenderDistance     = 32
+
+	DefaultChatFormat       = "<{player}> {message}"
+	DefaultChatJoinMessage  = "{player} joined the game"
+	DefaultChatLeaveMessage = "{player} left the game"
 )
 
 type ServerConfig struct {
@@ -50,6 +54,13 @@ type LoggingConfig struct {
 	Level string `toml:"level"`
 }
 
+type ChatConfig struct {
+	Enabled      *bool   `toml:"enabled"`
+	Format       *string `toml:"format"`
+	JoinMessage  *string `toml:"join-message"`
+	LeaveMessage *string `toml:"leave-message"`
+}
+
 type Config struct {
 	Key *crypto.KeyPair `toml:"-"`
 
@@ -57,6 +68,7 @@ type Config struct {
 	World   WorldConfig   `toml:"world"`
 	Network NetworkConfig `toml:"network"`
 	Logging LoggingConfig `toml:"logging"`
+	Chat    ChatConfig    `toml:"chat"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -140,6 +152,26 @@ func (c *Config) SetDefaults() {
 		c.Server.AllowBlockPlacing = &blockPlacing
 	}
 
+	if c.Chat.Enabled == nil {
+		enabled := true
+		c.Chat.Enabled = &enabled
+	}
+
+	if c.Chat.Format == nil {
+		format := DefaultChatFormat
+		c.Chat.Format = &format
+	}
+
+	if c.Chat.JoinMessage == nil {
+		message := DefaultChatJoinMessage
+		c.Chat.JoinMessage = &message
+	}
+
+	if c.Chat.LeaveMessage == nil {
+		message := DefaultChatLeaveMessage
+		c.Chat.LeaveMessage = &message
+	}
+
 	if c.Network.CompressionThreshold < 32 {
 		c.Network.CompressionThreshold = 32
 	}
@@ -210,6 +242,38 @@ func (c *Config) AllowBlockPlacing() bool {
 	}
 
 	return *c.Server.AllowBlockPlacing
+}
+
+func (c *Config) ChatEnabled() bool {
+	if c.Chat.Enabled == nil {
+		return true
+	}
+
+	return *c.Chat.Enabled
+}
+
+func (c *Config) ChatFormat() string {
+	if c.Chat.Format == nil {
+		return DefaultChatFormat
+	}
+
+	return *c.Chat.Format
+}
+
+func (c *Config) ChatJoinMessage() string {
+	if c.Chat.JoinMessage == nil {
+		return DefaultChatJoinMessage
+	}
+
+	return *c.Chat.JoinMessage
+}
+
+func (c *Config) ChatLeaveMessage() string {
+	if c.Chat.LeaveMessage == nil {
+		return DefaultChatLeaveMessage
+	}
+
+	return *c.Chat.LeaveMessage
 }
 
 func (c *Config) GetLogLevel() plain.Level {

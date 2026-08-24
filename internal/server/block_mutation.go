@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/coalaura/minicraft/internal/game"
+	"github.com/coalaura/minicraft/internal/protocol"
 )
 
 const blockInteractionRange = 6.0
@@ -132,6 +133,21 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	committed := make([]game.BlockChange, 0, len(changes))
 	states := make([]int32, 0, len(changes))
 
+	breakState := int32(0)
+	directBreakChanged := false
+
+	if action == BlockMutationBreak && requiredChanges > 0 {
+		var err error
+
+		directBlock := r.World.BlockAt(changes[0].Position)
+		directBreakChanged = directBlock != changes[0].Replacement
+
+		breakState, err = protocolBlockState(directBlock)
+		if err != nil {
+			return BlockMutationResult{}, fmt.Errorf("encode broken block: %w", err)
+		}
+	}
+
 	for index, change := range changes {
 		if _, duplicate := seen[change.Position]; duplicate {
 			return result, nil
@@ -192,6 +208,19 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 			err := other.sendBlockUpdateIfLoaded(change.Position, states[index])
 			if err != nil {
 				other.Log.Warnf("[play] failed to update block: %v\n", err)
+			}
+		}
+
+		if directBreakChanged && other != session {
+			event := protocol.LevelEvent{
+				Event:    protocol.LevelEventBlockBreak,
+				Position: changes[0].Position,
+				Data:     breakState,
+			}
+
+			err := other.sendLevelEventIfLoaded(event)
+			if err != nil {
+				other.Log.Warnf("[play] failed to send block break effect: %v\n", err)
 			}
 		}
 	}

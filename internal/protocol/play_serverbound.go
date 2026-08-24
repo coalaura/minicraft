@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/coalaura/minicraft/internal/game"
 )
@@ -30,6 +31,9 @@ const (
 	BlockFaceEast  = 5
 
 	maxUntrustedSlotComponents = 1024
+	maxChatMessageCharacters   = 256
+	chatMessageSignatureLength = 256
+	chatAcknowledgementLength  = 3
 )
 
 type MovementFlags byte
@@ -45,6 +49,16 @@ type ConfirmTeleport struct {
 
 type ChunkBatchReceived struct {
 	ChunksPerTick float32
+}
+
+type ChatMessage struct {
+	Message      string
+	Timestamp    int64
+	Salt         int64
+	HasSignature bool
+	Offset       int32
+	Acknowledged [chatAcknowledgementLength]byte
+	Checksum     byte
 }
 
 type ClientInformation struct {
@@ -168,6 +182,50 @@ func DecodeChunkBatchReceived(data []byte) (ChunkBatchReceived, error) {
 	}
 
 	return ChunkBatchReceived{ChunksPerTick: chunksPerTick}, nil
+}
+
+func DecodeChatMessage(data []byte) (ChatMessage, error) {
+	rd := NewPacketReader(data)
+
+	message := ChatMessage{
+		Message:   rd.String(maxChatMessageCharacters),
+		Timestamp: rd.Long(),
+		Salt:      rd.Long(),
+	}
+
+	message.HasSignature = rd.Bool()
+	if message.HasSignature {
+		for range chatMessageSignatureLength {
+			rd.Byte()
+		}
+	}
+
+	message.Offset = rd.VarInt()
+
+	for index := range message.Acknowledged {
+		message.Acknowledged[index] = rd.Byte()
+	}
+
+	message.Checksum = rd.Byte()
+
+	err := rd.Err()
+	if err != nil {
+		return ChatMessage{}, err
+	}
+
+	if rd.Len() != 0 {
+		return ChatMessage{}, fmt.Errorf("chat message has %d trailing bytes", rd.Len())
+	}
+
+	if !validChatMessage(message.Message) {
+		return ChatMessage{}, fmt.Errorf("invalid chat message")
+	}
+
+	if message.Offset < 0 {
+		return ChatMessage{}, fmt.Errorf("invalid chat acknowledgement offset %d", message.Offset)
+	}
+
+	return message, nil
 }
 
 func DecodeClientInformation(data []byte) (ClientInformation, error) {
@@ -434,4 +492,18 @@ func decodeUntrustedSlot(rd *PacketReader) (UntrustedSlot, error) {
 	}
 
 	return item, nil
+}
+
+func validChatMessage(message string) bool {
+	if message == "" || !utf8.ValidString(message) || utf8.RuneCountInString(message) > maxChatMessageCharacters {
+		return false
+	}
+
+	for _, character := range message {
+		if character < ' ' || character == '\u007f' || character == '\u00a7' {
+			return false
+		}
+	}
+
+	return true
 }

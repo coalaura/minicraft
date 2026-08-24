@@ -132,6 +132,21 @@ func TestPlayLoginAdvertisesConfiguredWorldAndDistance(t *testing.T) {
 	seed := reader.Long()
 	gameMode := reader.Byte()
 
+	reader.Byte()
+	reader.Bool()
+	reader.Bool()
+
+	hasDeathLocation := reader.Bool()
+	if hasDeathLocation {
+		reader.String(32767)
+		reader.BlockPosition()
+	}
+
+	reader.VarInt()
+	reader.VarInt()
+
+	enforcesSecureChat := reader.Bool()
+
 	err = reader.Err()
 	if err != nil {
 		t.Fatalf("decode play login: %v", err)
@@ -143,5 +158,13 @@ func TestPlayLoginAdvertisesConfiguredWorldAndDistance(t *testing.T) {
 
 	if seed != -1234 || gameMode != byte(game.GameModeSpectator) {
 		t.Fatalf("login world = seed %d game mode %d", seed, gameMode)
+	}
+
+	if enforcesSecureChat {
+		t.Fatal("play login advertises enforced secure chat")
+	}
+
+	if reader.Len() != 0 {
+		t.Fatalf("play login has %d unread bytes", reader.Len())
 	}
 }

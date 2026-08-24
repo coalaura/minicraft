@@ -1,6 +1,7 @@
 package server
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/coalaura/minicraft/internal/game"
@@ -11,6 +12,10 @@ type Runtime struct {
 	BlockMutationPolicy BlockMutationPolicy
 	AllowBlockBreaking  bool
 	AllowBlockPlacing   bool
+	ChatEnabled         bool
+	ChatFormat          string
+	ChatJoinMessage     string
+	ChatLeaveMessage    string
 
 	// Keep each profile/entity transition ordered as one lifecycle event.
 	lifecycleMu  sync.Mutex
@@ -128,6 +133,10 @@ func (r *Runtime) JoinSession(session *Session) error {
 		}
 	}
 
+	if r.ChatJoinMessage != "" {
+		r.broadcastSystemMessageLocked(formatChatMessage(r.ChatJoinMessage, player.Name, ""))
+	}
+
 	return nil
 }
 
@@ -158,6 +167,45 @@ func (r *Runtime) LeaveSession(session *Session) {
 		err := other.sendPlayerRemoval(player)
 		if err != nil {
 			other.Log.Warnf("[play] failed to remove player: %v\n", err)
+		}
+	}
+
+	if r.ChatLeaveMessage != "" {
+		r.broadcastSystemMessageLocked(formatChatMessage(r.ChatLeaveMessage, player.Name, ""))
+	}
+}
+
+func (r *Runtime) BroadcastPlayerChat(session *Session, message string) {
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+
+	r.mu.RLock()
+	_, active := r.sessions[session]
+	r.mu.RUnlock()
+
+	if !active || !r.ChatEnabled {
+		return
+	}
+
+	player := session.snapshotPlayer()
+
+	formatted := formatChatMessage(r.ChatFormat, player.Name, message)
+
+	r.broadcastSystemMessageLocked(formatted)
+}
+
+func (r *Runtime) BroadcastSystemMessage(message string) {
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+
+	r.broadcastSystemMessageLocked(message)
+}
+
+func (r *Runtime) broadcastSystemMessageLocked(message string) {
+	for _, session := range r.snapshotSessions() {
+		err := session.sendSystemMessage(message)
+		if err != nil {
+			session.Log.Warnf("[play] failed to send system message: %v\n", err)
 		}
 	}
 }
@@ -382,4 +430,10 @@ func (r *Runtime) PlayerCount() int {
 	defer r.mu.RUnlock()
 
 	return len(r.sessions)
+}
+
+func formatChatMessage(format, player, message string) string {
+	formatted := strings.ReplaceAll(format, "{player}", player)
+
+	return strings.ReplaceAll(formatted, "{message}", message)
 }

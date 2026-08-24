@@ -27,6 +27,18 @@ allow-block-breaking = true
 # Globally allows block placing when the player's game mode permits it.
 allow-block-placing = true
 
+# Player chat and lifecycle announcements.
+[chat]
+# Whether normal player chat is accepted and broadcast.
+enabled = true
+
+# Supports {player} and {message} placeholders.
+format = "<{player}> {message}"
+
+# Empty join or leave messages disable that announcement.
+join-message = "{player} joined the game"
+leave-message = "{player} left the game"
+
 # World generation and spawn settings.
 [world]
 # Procedural world generator: spawn-platform, wave-terrain, fractal-vaults or menger-sponge.

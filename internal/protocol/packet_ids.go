@@ -59,6 +59,7 @@ const (
 // Play
 const (
 	ServerboundConfirmTeleportID            = 0x00
+	ServerboundChatMessageID                = 0x08
 	ServerboundChunkBatchReceivedID         = 0x0A
 	ServerboundClientTickEndID              = 0x0C
 	ServerboundPlayClientInformationID      = 0x0D
@@ -87,6 +88,7 @@ const (
 	ClientboundGameEventID                    = 0x26
 	ClientboundPlayKeepAliveID                = 0x2B
 	ClientboundLevelChunkWithLightID          = 0x2C
+	ClientboundLevelEventID                   = 0x2D
 	ClientboundPlayLoginID                    = 0x30
 	ClientboundUpdateEntityPositionID         = 0x33
 	ClientboundUpdateEntityPositionRotationID = 0x34
@@ -99,4 +101,5 @@ const (
 	ClientboundSetCenterChunkID               = 0x5C
 	ClientboundEntityMetadataID               = 0x61
 	ClientboundEntityEquipmentID              = 0x64
+	ClientboundSystemChatID                   = 0x77
 )

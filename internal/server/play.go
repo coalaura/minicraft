@@ -61,6 +61,13 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		}
 
 		s.handleConfirmTeleport(teleport)
+	case protocol.ServerboundChatMessageID:
+		message, err := protocol.DecodeChatMessage(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		s.Runtime.BroadcastPlayerChat(s, message.Message)
 	case protocol.ServerboundChunkBatchReceivedID:
 		batch, err := protocol.DecodeChunkBatchReceived(packet.Data)
 		if err != nil {
@@ -214,7 +221,7 @@ func (s *Session) sendPlayLogin() error {
 			SeaLevel:         s.Runtime.World.SeaLevel,
 		},
 
-		EnforcesSecureChat: true,
+		EnforcesSecureChat: false,
 	}
 
 	login.Encode(&wr)
@@ -226,6 +233,23 @@ func (s *Session) sendPlayLogin() error {
 
 	return s.writeRawPacket(protocol.Packet{
 		ID:   protocol.ClientboundPlayLoginID,
+		Data: wr.Buffer.Bytes(),
+	})
+}
+
+func (s *Session) sendSystemMessage(content string) error {
+	var wr protocol.PacketWriter
+
+	message := protocol.SystemChat{Content: content}
+	message.Encode(&wr)
+
+	err := wr.Err()
+	if err != nil {
+		return err
+	}
+
+	return s.writeRawPacket(protocol.Packet{
+		ID:   protocol.ClientboundSystemChatID,
 		Data: wr.Buffer.Bytes(),
 	})
 }

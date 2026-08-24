@@ -60,6 +60,37 @@ func TestBlockChangedAckEncode(t *testing.T) {
 	assertPacketEncoding(t, BlockChangedAck{Sequence: 300}, []byte{0xAC, 0x02})
 }
 
+func TestChatAndLevelEventPacketsProtocol774(t *testing.T) {
+	if ClientboundSystemChatID != 0x77 || ClientboundLevelEventID != 0x2D || ServerboundChatMessageID != 0x08 {
+		t.Fatalf("chat/event packet ids = serverbound %#x system %#x level %#x", ServerboundChatMessageID, ClientboundSystemChatID, ClientboundLevelEventID)
+	}
+
+	event := LevelEvent{
+		Event:    LevelEventBlockBreak,
+		Position: game.BlockPosition{X: 1, Y: 2, Z: 3},
+		Data:     300,
+	}
+
+	assertPacketEncoding(t, event, []byte{
+		0x00, 0x00, 0x07, 0xD1,
+		0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x30, 0x02,
+		0x00, 0x00, 0x01, 0x2C,
+		0x00,
+	})
+
+	assertPacketEncoding(t, SystemChat{Content: "hello"}, []byte{0x08, 0x00, 0x05, 'h', 'e', 'l', 'l', 'o', 0x00})
+}
+
+func TestSystemChatModifiedUTF8Encode(t *testing.T) {
+	assertPacketEncoding(t, SystemChat{Content: "A\x00😀"}, []byte{
+		0x08, 0x00, 0x09,
+		'A', 0xC0, 0x80,
+		0xED, 0xA0, 0xBD,
+		0xED, 0xB8, 0x80,
+		0x00,
+	})
+}
+
 func TestPlayerInfoUpdateEncode(t *testing.T) {
 	update := PlayerInfoUpdate{
 		Actions: PlayerInfoActionAddPlayer | PlayerInfoActionUpdateGameMode | PlayerInfoActionUpdateListed,

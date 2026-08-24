@@ -33,8 +33,43 @@ func TestConfigDefaults(t *testing.T) {
 		t.Fatal("block placing is disabled by default")
 	}
 
+	if !cfg.ChatEnabled() {
+		t.Fatal("chat is disabled by default")
+	}
+
+	if cfg.ChatFormat() != DefaultChatFormat || cfg.ChatJoinMessage() != DefaultChatJoinMessage || cfg.ChatLeaveMessage() != DefaultChatLeaveMessage {
+		t.Fatalf("chat defaults = format %q join %q leave %q", cfg.ChatFormat(), cfg.ChatJoinMessage(), cfg.ChatLeaveMessage())
+	}
+
 	if cfg.World.Spawn != nil {
 		t.Fatalf("spawn = %+v, want omitted", cfg.World.Spawn)
+	}
+}
+
+func TestConfigDecodesChatAndPreservesEmptyLifecycleMessages(t *testing.T) {
+	input := `
+[chat]
+enabled = false
+format = "{player}: {message}"
+join-message = ""
+leave-message = ""
+`
+
+	cfg, err := decodeConfig(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+
+	if cfg.ChatEnabled() {
+		t.Fatal("chat is enabled, want disabled")
+	}
+
+	if cfg.ChatFormat() != "{player}: {message}" {
+		t.Fatalf("chat format = %q", cfg.ChatFormat())
+	}
+
+	if cfg.ChatJoinMessage() != "" || cfg.ChatLeaveMessage() != "" {
+		t.Fatalf("lifecycle messages = join %q leave %q, want empty", cfg.ChatJoinMessage(), cfg.ChatLeaveMessage())
 	}
 }
 

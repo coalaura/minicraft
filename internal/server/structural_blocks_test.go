@@ -177,6 +177,11 @@ func TestDoorPlacementInteractionBreakingAndSynchronization(t *testing.T) {
 	actorConnection.reset()
 	observerConnection.reset()
 
+	originalUpperState, err := protocolBlockState(world.BlockAt(upper))
+	if err != nil {
+		t.Fatalf("encode upper door state: %v", err)
+	}
+
 	err = actor.handlePlayerAction(protocol.PlayerAction{Status: protocol.PlayerActionStartDestroyBlock, Position: upper, Sequence: 6})
 	if err != nil {
 		t.Fatalf("break door: %v", err)
@@ -186,7 +191,8 @@ func TestDoorPlacementInteractionBreakingAndSynchronization(t *testing.T) {
 		t.Fatalf("door halves after break = %d, %d", world.BlockAt(lower), world.BlockAt(upper))
 	}
 
-	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID})
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID, protocol.ClientboundLevelEventID})
+	assertLevelEvent(t, observerConnection.packets(t)[2], protocol.LevelEventBlockBreak, upper, originalUpperState, false)
 }
 
 func TestDoorPlacementFailsAtomicallyWhenUpperPositionIsOccupied(t *testing.T) {

@@ -75,11 +75,12 @@ func TestCreativeBlockBreakingMutatesAndSynchronizesWorld(t *testing.T) {
 		protocol.ClientboundBlockChangedAckID,
 	})
 
-	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID})
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundLevelEventID})
 	assertPacketIDs(t, unloadedConnection.packetIDs(t), nil)
 
 	assertBlockUpdate(t, actorConnection.packets(t)[0], position, protocol.AirBlockState)
 	assertBlockUpdate(t, observerConnection.packets(t)[0], position, protocol.AirBlockState)
+	assertLevelEvent(t, observerConnection.packets(t)[1], protocol.LevelEventBlockBreak, position, protocol.StoneBlockState, false)
 	assertBlockChangedAck(t, actorConnection.packets(t)[1], 300)
 }
 
@@ -434,5 +435,25 @@ func assertBlockChangedAck(t *testing.T, packet protocol.Packet, sequence int32)
 	err := reader.Err()
 	if err != nil {
 		t.Fatalf("decode block change acknowledgement: %v", err)
+	}
+}
+
+func assertLevelEvent(t *testing.T, packet protocol.Packet, event int32, position game.BlockPosition, data int32, global bool) {
+	t.Helper()
+
+	reader := protocol.NewPacketReader(packet.Data)
+
+	actualEvent := reader.Int()
+	actualPosition := reader.BlockPosition()
+	actualData := reader.Int()
+	actualGlobal := reader.Bool()
+
+	err := reader.Err()
+	if err != nil {
+		t.Fatalf("decode level event: %v", err)
+	}
+
+	if actualEvent != event || actualPosition != position || actualData != data || actualGlobal != global {
+		t.Fatalf("level event = event %d position %+v data %d global %v", actualEvent, actualPosition, actualData, actualGlobal)
 	}
 }

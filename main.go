@@ -37,6 +37,10 @@ func main() {
 
 	runtime.AllowBlockBreaking = cfg.AllowBlockBreaking()
 	runtime.AllowBlockPlacing = cfg.AllowBlockPlacing()
+	runtime.ChatEnabled = cfg.ChatEnabled()
+	runtime.ChatFormat = cfg.ChatFormat()
+	runtime.ChatJoinMessage = cfg.ChatJoinMessage()
+	runtime.ChatLeaveMessage = cfg.ChatLeaveMessage()
 
 	listener, err := net.Listen("tcp", cfg.ListenAddr())
 	log.MustFail(err)

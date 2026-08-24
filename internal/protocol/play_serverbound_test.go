@@ -68,6 +68,50 @@ func TestDecodeClientInformationRejectsTruncatedPacket(t *testing.T) {
 	}
 }
 
+func TestDecodeChatMessageFullyConsumesProtocol774Packet(t *testing.T) {
+	data := testChatMessageData("Hello, world!", true, 300)
+
+	message, err := DecodeChatMessage(data)
+	if err != nil {
+		t.Fatalf("decode chat message: %v", err)
+	}
+
+	if message.Message != "Hello, world!" || message.Timestamp != 1234 || message.Salt != 5678 || !message.HasSignature || message.Offset != 300 {
+		t.Fatalf("chat message = %+v", message)
+	}
+
+	if message.Acknowledged != [3]byte{0xAA, 0xBB, 0xCC} || message.Checksum != 0xDD {
+		t.Fatalf("chat acknowledgement = %x checksum = %x", message.Acknowledged, message.Checksum)
+	}
+}
+
+func TestDecodeChatMessageRejectsMalformedAndInvalidMessages(t *testing.T) {
+	tests := map[string][]byte{
+		"empty":           testChatMessageData("", false, 0),
+		"too long":        testChatMessageData(string(make([]byte, 257)), false, 0),
+		"control":         testChatMessageData("hello\nworld", false, 0),
+		"formatting code": testChatMessageData("hello \u00a7cworld", false, 0),
+		"negative offset": testChatMessageData("hello", false, -1),
+		"trailing data":   append(testChatMessageData("hello", false, 0), 0x00),
+		"truncated":       testChatMessageData("hello", true, 0)[:20],
+	}
+
+	invalidUTF8 := testChatMessageData("hello", false, 0)
+
+	invalidUTF8[1] = 0xFF
+
+	tests["invalid utf-8"] = invalidUTF8
+
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := DecodeChatMessage(data)
+			if err == nil {
+				t.Fatal("invalid chat message decoded without an error")
+			}
+		})
+	}
+}
+
 func TestDecodeMovementFlags(t *testing.T) {
 	flags := MovementFlagHorizontalCollision
 
@@ -358,4 +402,27 @@ func assertMovementFlags(t *testing.T, flags MovementFlags, onGround, horizontal
 			horizontalCollision,
 		)
 	}
+}
+
+func testChatMessageData(message string, signed bool, offset int32) []byte {
+	var writer PacketWriter
+
+	writer.String(message)
+	writer.Long(1234)
+	writer.Long(5678)
+	writer.Bool(signed)
+
+	if signed {
+		for index := range chatMessageSignatureLength {
+			writer.Byte(byte(index))
+		}
+	}
+
+	writer.VarInt(offset)
+	writer.Byte(0xAA)
+	writer.Byte(0xBB)
+	writer.Byte(0xCC)
+	writer.Byte(0xDD)
+
+	return writer.Buffer.Bytes()
 }

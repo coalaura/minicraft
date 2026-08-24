@@ -15,9 +15,10 @@ import (
 )
 
 type recordingConnection struct {
-	mu     sync.Mutex
-	input  bytes.Buffer
-	buffer bytes.Buffer
+	mu       sync.Mutex
+	input    bytes.Buffer
+	buffer   bytes.Buffer
+	writeErr error
 }
 
 func (c *recordingConnection) Read(data []byte) (int, error) {
@@ -49,6 +50,10 @@ func (c *recordingConnection) queuePacket(t *testing.T, packet protocol.Packet) 
 func (c *recordingConnection) Write(data []byte) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	if c.writeErr != nil {
+		return 0, c.writeErr
+	}
 
 	return c.buffer.Write(data)
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/coalaura/minicraft/internal/game"
 )
@@ -151,6 +152,28 @@ func (w *PacketWriter) String(value string) {
 	w.err = WriteString(&w.Buffer, value)
 }
 
+func (w *PacketWriter) AnonymousNBTString(value string) {
+	if w.err != nil {
+		return
+	}
+
+	encoded := modifiedUTF8(value)
+	if len(encoded) > math.MaxUint16 {
+		w.err = errors.New("nbt string too long")
+
+		return
+	}
+
+	w.Byte(8)
+	w.Short(int16(len(encoded)))
+
+	if w.err != nil {
+		return
+	}
+
+	_, w.err = w.Write(encoded)
+}
+
 func (w *PacketWriter) Byte(value byte) {
 	if w.err != nil {
 		return
@@ -165,6 +188,7 @@ func (w *PacketWriter) Bytes(value []byte) {
 	}
 
 	w.VarInt(int32(len(value)))
+
 	if w.err != nil {
 		return
 	}
@@ -201,4 +225,23 @@ func sanitizeLowPrecisionVectorValue(value float64) float64 {
 
 func packLowPrecisionVectorValue(value float64) uint64 {
 	return uint64(math.Round((value*0.5 + 0.5) * lowPrecisionVectorMaxQuantized))
+}
+
+func modifiedUTF8(value string) []byte {
+	codeUnits := utf16.Encode([]rune(value))
+
+	encoded := make([]byte, 0, len(value))
+
+	for _, codeUnit := range codeUnits {
+		switch {
+		case codeUnit >= 0x0001 && codeUnit <= 0x007F:
+			encoded = append(encoded, byte(codeUnit))
+		case codeUnit <= 0x07FF:
+			encoded = append(encoded, 0xC0|byte(codeUnit>>6), 0x80|byte(codeUnit&0x3F))
+		default:
+			encoded = append(encoded, 0xE0|byte(codeUnit>>12), 0x80|byte(codeUnit>>6&0x3F), 0x80|byte(codeUnit&0x3F))
+		}
+	}
+
+	return encoded
 }

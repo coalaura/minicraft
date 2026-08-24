@@ -29,6 +29,8 @@ const (
 
 	EquipmentSlotMainHand byte = 0
 	EquipmentSlotOffHand  byte = 1
+
+	LevelEventBlockBreak = 2001
 )
 
 type AddEntity struct {
@@ -232,6 +234,18 @@ type BlockChangedAck struct {
 type BlockUpdate struct {
 	Position game.BlockPosition
 	State    int32
+}
+
+type LevelEvent struct {
+	Event    int32
+	Position game.BlockPosition
+	Data     int32
+	Global   bool
+}
+
+type SystemChat struct {
+	Content   string
+	ActionBar bool
 }
 
 func (p AddEntity) Encode(wr *PacketWriter) {
@@ -483,4 +497,16 @@ func (p BlockChangedAck) Encode(wr *PacketWriter) {
 func (p BlockUpdate) Encode(wr *PacketWriter) {
 	wr.BlockPosition(p.Position)
 	wr.VarInt(p.State)
+}
+
+func (p LevelEvent) Encode(wr *PacketWriter) {
+	wr.Int(p.Event)
+	wr.BlockPosition(p.Position)
+	wr.Int(p.Data)
+	wr.Bool(p.Global)
+}
+
+func (p SystemChat) Encode(wr *PacketWriter) {
+	wr.AnonymousNBTString(p.Content)
+	wr.Bool(p.ActionBar)
 }
