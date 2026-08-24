@@ -9,9 +9,30 @@ type Block uint16
 
 type BlockID uint16
 
+type BlockBehavior uint8
+
+const (
+	BlockBehaviorNone BlockBehavior = iota
+	BlockBehaviorSolid
+	BlockBehaviorHorizontalFacing
+	BlockBehaviorSlab
+	BlockBehaviorStairs
+	BlockBehaviorDoor
+	BlockBehaviorTrapdoor
+	BlockBehaviorFenceGate
+	BlockBehaviorFence
+	BlockBehaviorPane
+	BlockBehaviorWall
+)
+
 type BlockProperty struct {
 	Name   string
 	Values []string
+}
+
+type BlockPropertyValue struct {
+	Name  string
+	Value string
 }
 
 type BlockDefinition struct {
@@ -20,6 +41,7 @@ type BlockDefinition struct {
 	DefaultState Block
 	MinState     Block
 	MaxState     Block
+	Behavior     BlockBehavior
 	Properties   []BlockProperty
 }
 
@@ -63,12 +85,83 @@ func (block Block) Definition() (BlockDefinition, bool) {
 	return blockDefinitions[stateBlockIDs[block]], true
 }
 
+func (block Block) Behavior() BlockBehavior {
+	if !block.Valid() {
+		return BlockBehaviorNone
+	}
+
+	return blockDefinitions[stateBlockIDs[block]].Behavior
+}
+
+func (block Block) Property(name string) (string, bool) {
+	definition, ok := block.Definition()
+	if !ok {
+		return "", false
+	}
+
+	propertyIndex, ok := definition.PropertyIndex(name)
+	if !ok {
+		return "", false
+	}
+
+	indices := definition.propertyIndices(block)
+	return definition.Properties[propertyIndex].Values[indices[propertyIndex]], true
+}
+
+func (block Block) WithProperties(values ...BlockPropertyValue) (Block, bool) {
+	definition, ok := block.Definition()
+	if !ok {
+		return 0, false
+	}
+
+	indices := definition.propertyIndices(block)
+
+	changed := make([]bool, len(definition.Properties))
+
+	for _, value := range values {
+		propertyIndex, found := definition.PropertyIndex(value.Name)
+		if !found || changed[propertyIndex] {
+			return 0, false
+		}
+
+		valueIndex := definition.Properties[propertyIndex].ValueIndex(value.Value)
+		if valueIndex < 0 {
+			return 0, false
+		}
+
+		indices[propertyIndex] = valueIndex
+		changed[propertyIndex] = true
+	}
+
+	return definition.StateForProperties(indices...)
+}
+
 func BlockByID(id BlockID) (BlockDefinition, bool) {
 	if id > MaxBlockID {
 		return BlockDefinition{}, false
 	}
 
 	return blockDefinitions[id], true
+}
+
+func (property BlockProperty) ValueIndex(value string) int {
+	for index, candidate := range property.Values {
+		if candidate == value {
+			return index
+		}
+	}
+
+	return -1
+}
+
+func (definition BlockDefinition) PropertyIndex(name string) (int, bool) {
+	for index, property := range definition.Properties {
+		if property.Name == name {
+			return index, true
+		}
+	}
+
+	return 0, false
 }
 
 func (definition BlockDefinition) State(offset uint16) (Block, bool) {
@@ -99,6 +192,24 @@ func (definition BlockDefinition) StateForProperties(indices ...int) (Block, boo
 	}
 
 	return definition.State(uint16(offset))
+}
+
+func (definition BlockDefinition) StateForPropertyValues(values ...BlockPropertyValue) (Block, bool) {
+	return definition.DefaultState.WithProperties(values...)
+}
+
+func (definition BlockDefinition) propertyIndices(block Block) []int {
+	indices := make([]int, len(definition.Properties))
+
+	offset := int(block - definition.MinState)
+
+	for index := len(definition.Properties) - 1; index >= 0; index-- {
+		valueCount := len(definition.Properties[index].Values)
+		indices[index] = offset % valueCount
+		offset /= valueCount
+	}
+
+	return indices
 }
 
 //go:generate go run ../../cmd/generate-blocks -input ../../ref/1.21.11/blocks.json -output blocks_generated.go

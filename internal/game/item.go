@@ -6,6 +6,15 @@ const (
 	ItemPlacementUnsupported ItemPlacementRule = iota
 	ItemPlacementDefault
 	ItemPlacementAxis
+	ItemPlacementHorizontalFacing
+	ItemPlacementSlab
+	ItemPlacementStairs
+	ItemPlacementDoor
+	ItemPlacementTrapdoor
+	ItemPlacementFenceGate
+	ItemPlacementFence
+	ItemPlacementPane
+	ItemPlacementWall
 )
 
 type Item uint16

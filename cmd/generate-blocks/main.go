@@ -25,6 +25,7 @@ type BlockDefinition struct {
 	MinState     uint16          `json:"minStateId"`
 	MaxState     uint16          `json:"maxStateId"`
 	Properties   []BlockProperty `json:"states"`
+	BoundingBox  string          `json:"boundingBox"`
 }
 
 func main() {
@@ -109,12 +110,13 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	for _, block := range blocks {
 		fmt.Fprintf(
 			&output,
-			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d",
+			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s",
 			goName(block.Name),
 			block.Name,
 			goName(block.Name),
 			block.MinState,
 			block.MaxState,
+			blockBehavior(block),
 		)
 
 		if len(block.Properties) != 0 {
@@ -164,6 +166,44 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	}
 
 	return formatted, nil
+}
+
+func blockBehavior(block BlockDefinition) string {
+	switch {
+	case block.Name == "iron_door" || block.Name == "iron_trapdoor":
+		return "BlockBehaviorNone"
+	case strings.HasSuffix(block.Name, "_slab"):
+		return "BlockBehaviorSlab"
+	case strings.HasSuffix(block.Name, "_stairs"):
+		return "BlockBehaviorStairs"
+	case strings.HasSuffix(block.Name, "_trapdoor"):
+		return "BlockBehaviorTrapdoor"
+	case strings.HasSuffix(block.Name, "_door"):
+		return "BlockBehaviorDoor"
+	case strings.HasSuffix(block.Name, "_fence_gate"):
+		return "BlockBehaviorFenceGate"
+	case strings.HasSuffix(block.Name, "_fence"):
+		return "BlockBehaviorFence"
+	case block.Name == "iron_bars" || strings.HasSuffix(block.Name, "_glass_pane") || block.Name == "glass_pane":
+		return "BlockBehaviorPane"
+	case strings.HasSuffix(block.Name, "_wall"):
+		return "BlockBehaviorWall"
+	case horizontalFacingProperties(block.Properties):
+		return "BlockBehaviorHorizontalFacing"
+	case block.BoundingBox == "block":
+		return "BlockBehaviorSolid"
+	default:
+		return "BlockBehaviorNone"
+	}
+}
+
+func horizontalFacingProperties(properties []BlockProperty) bool {
+	if len(properties) != 1 || properties[0].Name != "facing" {
+		return false
+	}
+
+	values := properties[0].Values
+	return len(values) == 4 && values[0] == "north" && values[1] == "south" && values[2] == "west" && values[3] == "east"
 }
 
 func goName(name string) string {

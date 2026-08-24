@@ -263,7 +263,7 @@ func TestUnsupportedComplexPlacementIsRejected(t *testing.T) {
 
 	actor, connection := newPlacementTestSession(runtime, clicked)
 
-	actor.Player.Hotbar[0] = game.ItemStack{Item: game.ItemOakDoor, Count: 1}
+	actor.Player.Hotbar[0] = game.ItemStack{Item: game.ItemIronDoor, Count: 1}
 
 	joinTestSession(t, runtime, actor)
 

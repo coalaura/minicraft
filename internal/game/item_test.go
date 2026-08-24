@@ -44,17 +44,33 @@ func TestItemPlacementBlockMapping(t *testing.T) {
 	if rule := ItemOakLog.PlacementRule(); rule != ItemPlacementAxis {
 		t.Fatalf("oak log placement rule = %d, want axis", rule)
 	}
+
+	for item, rule := range map[Item]ItemPlacementRule{
+		ItemOakSlab:         ItemPlacementSlab,
+		ItemOakStairs:       ItemPlacementStairs,
+		ItemOakDoor:         ItemPlacementDoor,
+		ItemOakTrapdoor:     ItemPlacementTrapdoor,
+		ItemOakFenceGate:    ItemPlacementFenceGate,
+		ItemOakFence:        ItemPlacementFence,
+		ItemGlassPane:       ItemPlacementPane,
+		ItemIronBars:        ItemPlacementPane,
+		ItemCobblestoneWall: ItemPlacementWall,
+	} {
+		if actual := item.PlacementRule(); actual != rule {
+			t.Errorf("item %d placement rule = %d, want %d", item, actual, rule)
+		}
+	}
 }
 
-func TestComplexItemsAreNotMappedToPlacementStates(t *testing.T) {
+func TestUnsupportedItemsAreNotMappedToPlacementStates(t *testing.T) {
 	items := []Item{
-		ItemOakDoor,
 		ItemWhiteBed,
-		ItemOakSlab,
 		ItemTorch,
 		ItemChest,
 		ItemRedstone,
 		ItemWaterBucket,
+		ItemIronDoor,
+		ItemIronTrapdoor,
 	}
 
 	for _, item := range items {

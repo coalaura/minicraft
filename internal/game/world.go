@@ -26,6 +26,11 @@ type World struct {
 
 type ChunkOverrides map[LocalBlockPosition]Block
 
+type BlockChange struct {
+	Position    BlockPosition
+	Replacement Block
+}
+
 type SpawnGenerator interface {
 	Spawn(seed int64) Position
 }
@@ -50,28 +55,17 @@ func (w *World) BlockAt(position BlockPosition) Block {
 }
 
 func (w *World) SetBlock(position BlockPosition, block Block) {
-	chunk, local := blockIndex(position)
+	w.SetBlocks([]BlockChange{{Position: position, Replacement: block}})
+}
 
+// SetBlocks applies a prevalidated group while holding the sparse override lock.
+func (w *World) SetBlocks(changes []BlockChange) {
 	w.overrideMx.Lock()
 	defer w.overrideMx.Unlock()
 
-	if block == w.generatedBlockAt(position) {
-		w.clearBlockOverride(chunk, local)
-
-		return
+	for _, change := range changes {
+		w.setBlock(change.Position, change.Replacement)
 	}
-
-	if w.overrides == nil {
-		w.overrides = make(map[ChunkPosition]map[LocalBlockPosition]Block)
-	}
-
-	blocks := w.overrides[chunk]
-	if blocks == nil {
-		blocks = make(map[LocalBlockPosition]Block)
-		w.overrides[chunk] = blocks
-	}
-
-	blocks[local] = block
 }
 
 func (w *World) ClearBlockOverride(position BlockPosition) {
@@ -107,6 +101,28 @@ func (w *World) generatedBlockAt(position BlockPosition) Block {
 	}
 
 	return w.Generator.BlockAt(w.Seed, position)
+}
+
+func (w *World) setBlock(position BlockPosition, block Block) {
+	chunk, local := blockIndex(position)
+
+	if block == w.generatedBlockAt(position) {
+		w.clearBlockOverride(chunk, local)
+
+		return
+	}
+
+	if w.overrides == nil {
+		w.overrides = make(map[ChunkPosition]map[LocalBlockPosition]Block)
+	}
+
+	blocks := w.overrides[chunk]
+	if blocks == nil {
+		blocks = make(map[LocalBlockPosition]Block)
+		w.overrides[chunk] = blocks
+	}
+
+	blocks[local] = block
 }
 
 func (w *World) clearBlockOverride(chunk ChunkPosition, local LocalBlockPosition) {

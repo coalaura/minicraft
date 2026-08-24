@@ -13,6 +13,14 @@ func (denyBlockMutationPolicy) AllowBlockMutation(BlockMutation) bool {
 	return false
 }
 
+type denyPositionBlockMutationPolicy struct {
+	position game.BlockPosition
+}
+
+func (policy denyPositionBlockMutationPolicy) AllowBlockMutation(mutation BlockMutation) bool {
+	return mutation.Position != policy.position
+}
+
 type blockMutationTestGenerator struct {
 	block game.Block
 }
@@ -73,6 +81,63 @@ func TestCreativeBlockBreakingMutatesAndSynchronizesWorld(t *testing.T) {
 	assertBlockUpdate(t, actorConnection.packets(t)[0], position, protocol.AirBlockState)
 	assertBlockUpdate(t, observerConnection.packets(t)[0], position, protocol.AirBlockState)
 	assertBlockChangedAck(t, actorConnection.packets(t)[1], 300)
+}
+
+func TestMultiBlockMutationIsAtomicAndSynchronizesEveryChange(t *testing.T) {
+	world := &game.World{}
+
+	runtime := NewRuntime(world)
+
+	actor, actorConnection := newBlockMutationTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Actor", game.GameModeCreative)
+	observer, observerConnection := newBlockMutationTestSession(runtime, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Observer", game.GameModeCreative)
+
+	first := game.BlockPosition{Y: 70}
+	second := game.BlockPosition{X: 1, Y: 70}
+
+	actor.Player.Position = blockMutationTestPlayerPosition(first)
+
+	markPlacementChunksLoaded(actor, first, second)
+	markPlacementChunksLoaded(observer, first, second)
+
+	joinTestSession(t, runtime, actor)
+	joinTestSession(t, runtime, observer)
+
+	actorConnection.reset()
+	observerConnection.reset()
+
+	changes := []game.BlockChange{{Position: first, Replacement: game.Stone}, {Position: second, Replacement: game.Dirt}}
+
+	result, err := runtime.MutateBlocks(actor, BlockMutationPlace, changes)
+	if err != nil {
+		t.Fatalf("mutate blocks: %v", err)
+	}
+
+	if !result.Allowed || !result.Changed || world.BlockAt(first) != game.Stone || world.BlockAt(second) != game.Dirt {
+		t.Fatalf("mutation result = %+v, blocks = %d, %d", result, world.BlockAt(first), world.BlockAt(second))
+	}
+
+	assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID})
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID})
+
+	third := game.BlockPosition{X: 2, Y: 70}
+	fourth := game.BlockPosition{X: 3, Y: 70}
+
+	runtime.BlockMutationPolicy = denyPositionBlockMutationPolicy{position: fourth}
+
+	actorConnection.reset()
+	observerConnection.reset()
+
+	result, err = runtime.MutateBlocks(actor, BlockMutationPlace, []game.BlockChange{{Position: third, Replacement: game.Stone}, {Position: fourth, Replacement: game.Stone}})
+	if err != nil {
+		t.Fatalf("denied mutate blocks: %v", err)
+	}
+
+	if result.Allowed || result.Changed || world.BlockAt(third) != game.Air || world.BlockAt(fourth) != game.Air {
+		t.Fatalf("denied mutation was not atomic: result=%+v blocks=%d,%d", result, world.BlockAt(third), world.BlockAt(fourth))
+	}
+
+	assertPacketIDs(t, actorConnection.packetIDs(t), nil)
+	assertPacketIDs(t, observerConnection.packetIDs(t), nil)
 }
 
 func TestDeniedBlockBreakingCorrectsActorWithoutBroadcast(t *testing.T) {

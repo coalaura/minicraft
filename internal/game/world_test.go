@@ -140,6 +140,31 @@ func TestSetBlockDoesNotStoreGeneratedAir(t *testing.T) {
 	}
 }
 
+func TestSetBlocksAppliesSparseBatch(t *testing.T) {
+	world := &World{Generator: solidGenerator{block: Stone}}
+
+	first := BlockPosition{X: 1, Y: 2, Z: 3}
+	second := BlockPosition{X: 17, Y: 4, Z: 5}
+
+	world.SetBlocks([]BlockChange{
+		{Position: first, Replacement: Air},
+		{Position: second, Replacement: Dirt},
+	})
+
+	if world.BlockAt(first) != Air || world.BlockAt(second) != Dirt {
+		t.Fatalf("batch blocks = %d, %d; want air, dirt", world.BlockAt(first), world.BlockAt(second))
+	}
+
+	world.SetBlocks([]BlockChange{
+		{Position: first, Replacement: Stone},
+		{Position: second, Replacement: Stone},
+	})
+
+	if len(world.overrides) != 0 {
+		t.Fatalf("generator-equivalent batch left overrides: %#v", world.overrides)
+	}
+}
+
 func TestSnapshotChunkOverridesIsIndependent(t *testing.T) {
 	world := &World{Generator: solidGenerator{block: Stone}}
 

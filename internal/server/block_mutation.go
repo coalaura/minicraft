@@ -13,6 +13,7 @@ type BlockMutationAction uint8
 const (
 	BlockMutationBreak BlockMutationAction = iota
 	BlockMutationPlace
+	BlockMutationInteract
 )
 
 type BlockMutation struct {
@@ -25,6 +26,7 @@ type BlockMutation struct {
 
 type BlockMutationResult struct {
 	Block   game.Block
+	Changes []game.BlockChange
 	Allowed bool
 	Changed bool
 }
@@ -51,15 +53,35 @@ func blockWithinInteractionRange(player game.Player, position game.BlockPosition
 	distanceZ := blockZ - player.Position.Z
 
 	distanceSquared := distanceX*distanceX + distanceY*distanceY + distanceZ*distanceZ
-
 	return distanceSquared <= blockInteractionRange*blockInteractionRange
 }
 
 func (r *Runtime) MutateBlock(session *Session, action BlockMutationAction, position game.BlockPosition, replacement game.Block) (BlockMutationResult, error) {
+	return r.MutateBlocks(session, action, []game.BlockChange{{Position: position, Replacement: replacement}})
+}
+
+// MutateBlocks validates and applies a coordinated group atomically.
+func (r *Runtime) MutateBlocks(session *Session, action BlockMutationAction, changes []game.BlockChange) (BlockMutationResult, error) {
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
 
-	return r.mutateBlock(session, action, position, replacement)
+	if action == BlockMutationPlace {
+		for _, change := range changes {
+			if r.World.BlockAt(change.Position) != game.Air || change.Replacement == game.Air {
+				return BlockMutationResult{Block: r.World.BlockAt(change.Position)}, nil
+			}
+		}
+	}
+
+	if action == BlockMutationBreak && len(changes) == 1 && changes[0].Replacement == game.Air {
+		changes = r.breakChanges(changes[0].Position)
+	}
+
+	requiredChanges := len(changes)
+
+	changes = r.withStructuralNeighborChanges(changes)
+
+	return r.mutateBlocksLocked(session, action, changes, requiredChanges, true)
 }
 
 func (r *Runtime) PlaceBlock(session *Session, clicked, position game.BlockPosition, replacement game.Block) (BlockMutationResult, error) {
@@ -67,37 +89,27 @@ func (r *Runtime) PlaceBlock(session *Session, clicked, position game.BlockPosit
 	defer r.lifecycleMu.Unlock()
 
 	current := r.World.BlockAt(position)
-
-	if !session.hasLoadedBlock(clicked) || r.World.BlockAt(clicked) == game.Air {
+	if !session.hasLoadedBlock(clicked) || r.World.BlockAt(clicked) == game.Air || current != game.Air {
 		return BlockMutationResult{Block: current}, nil
 	}
 
-	return r.mutateBlock(session, BlockMutationPlace, position, replacement)
+	changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: position, Replacement: replacement}})
+
+	return r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true)
 }
 
-func (r *Runtime) mutateBlock(session *Session, action BlockMutationAction, position game.BlockPosition, replacement game.Block) (BlockMutationResult, error) {
-
+func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationAction, changes []game.BlockChange, requiredChanges int, allowOccupied bool) (BlockMutationResult, error) {
 	r.mu.RLock()
 	_, active := r.sessions[session]
 	r.mu.RUnlock()
 
-	current := r.World.BlockAt(position)
+	result := BlockMutationResult{}
 
-	result := BlockMutationResult{Block: current}
-
-	if !active || !session.hasLoadedBlock(position) {
-		return result, nil
+	if len(changes) != 0 {
+		result.Block = r.World.BlockAt(changes[0].Position)
 	}
 
-	mutation := BlockMutation{
-		Player:      session.snapshotPlayer(),
-		Action:      action,
-		Position:    position,
-		Current:     current,
-		Replacement: replacement,
-	}
-
-	if !blockWithinInteractionRange(mutation.Player, position) {
+	if !active || len(changes) == 0 {
 		return result, nil
 	}
 
@@ -105,39 +117,82 @@ func (r *Runtime) mutateBlock(session *Session, action BlockMutationAction, posi
 		return result, nil
 	}
 
-	if action == BlockMutationPlace && (!r.AllowBlockPlacing || current != game.Air || replacement == game.Air) {
+	if (action == BlockMutationPlace || action == BlockMutationInteract) && !r.AllowBlockPlacing {
 		return result, nil
 	}
+
+	player := session.snapshotPlayer()
 
 	policy := r.BlockMutationPolicy
 	if policy == nil {
 		policy = CreativeBlockMutationPolicy{}
 	}
 
-	if !policy.AllowBlockMutation(mutation) {
-		return result, nil
+	seen := make(map[game.BlockPosition]struct{}, len(changes))
+	committed := make([]game.BlockChange, 0, len(changes))
+	states := make([]int32, 0, len(changes))
+
+	for index, change := range changes {
+		if _, duplicate := seen[change.Position]; duplicate {
+			return result, nil
+		}
+
+		seen[change.Position] = struct{}{}
+
+		current := r.World.BlockAt(change.Position)
+		if !change.Replacement.Valid() {
+			return result, nil
+		}
+
+		if index < requiredChanges {
+			if !session.hasLoadedBlock(change.Position) || !blockWithinInteractionRange(player, change.Position) {
+				return result, nil
+			}
+
+			if action == BlockMutationPlace && !allowOccupied && current != game.Air {
+				return result, nil
+			}
+
+			if action == BlockMutationPlace && change.Replacement == game.Air {
+				return result, nil
+			}
+
+			mutation := BlockMutation{Player: player, Action: action, Position: change.Position, Current: current, Replacement: change.Replacement}
+			if !policy.AllowBlockMutation(mutation) {
+				return result, nil
+			}
+		}
+
+		if current == change.Replacement {
+			continue
+		}
+
+		state, err := protocolBlockState(change.Replacement)
+		if err != nil {
+			return BlockMutationResult{}, fmt.Errorf("encode replacement block: %w", err)
+		}
+
+		committed = append(committed, change)
+		states = append(states, state)
 	}
 
 	result.Allowed = true
-
-	if current == replacement {
+	if len(committed) == 0 {
 		return result, nil
 	}
 
-	state, err := protocolBlockState(replacement)
-	if err != nil {
-		return BlockMutationResult{}, fmt.Errorf("encode replacement block: %w", err)
-	}
+	r.World.SetBlocks(committed)
 
-	r.World.SetBlock(position, replacement)
-
-	result.Block = replacement
+	result.Block = committed[0].Replacement
+	result.Changes = committed
 	result.Changed = true
 
 	for _, other := range r.snapshotSessions() {
-		err = other.sendBlockUpdateIfLoaded(position, state)
-		if err != nil {
-			other.Log.Warnf("[play] failed to update block: %v\n", err)
+		for index, change := range committed {
+			err := other.sendBlockUpdateIfLoaded(change.Position, states[index])
+			if err != nil {
+				other.Log.Warnf("[play] failed to update block: %v\n", err)
+			}
 		}
 	}
 

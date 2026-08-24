@@ -178,8 +178,33 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 }
 
 func blockPlacementRule(block BlockDefinition) string {
+	switch {
+	case block.Name == "iron_door" || block.Name == "iron_trapdoor":
+		return ""
+	case strings.HasSuffix(block.Name, "_slab"):
+		return "ItemPlacementSlab"
+	case strings.HasSuffix(block.Name, "_stairs"):
+		return "ItemPlacementStairs"
+	case strings.HasSuffix(block.Name, "_trapdoor"):
+		return "ItemPlacementTrapdoor"
+	case strings.HasSuffix(block.Name, "_door"):
+		return "ItemPlacementDoor"
+	case strings.HasSuffix(block.Name, "_fence_gate"):
+		return "ItemPlacementFenceGate"
+	case strings.HasSuffix(block.Name, "_fence"):
+		return "ItemPlacementFence"
+	case block.Name == "iron_bars" || strings.HasSuffix(block.Name, "_glass_pane") || block.Name == "glass_pane":
+		return "ItemPlacementPane"
+	case strings.HasSuffix(block.Name, "_wall"):
+		return "ItemPlacementWall"
+	}
+
 	if len(block.Properties) == 0 {
 		return "ItemPlacementDefault"
+	}
+
+	if horizontalFacingProperties(block.Properties) {
+		return "ItemPlacementHorizontalFacing"
 	}
 
 	if len(block.Properties) != 1 {
@@ -196,6 +221,15 @@ func blockPlacementRule(block BlockDefinition) string {
 	}
 
 	return "ItemPlacementAxis"
+}
+
+func horizontalFacingProperties(properties []BlockProperty) bool {
+	if len(properties) != 1 || properties[0].Name != "facing" {
+		return false
+	}
+
+	values := properties[0].Values
+	return len(values) == 4 && values[0] == "north" && values[1] == "south" && values[2] == "west" && values[3] == "east"
 }
 
 func goName(name string) string {
