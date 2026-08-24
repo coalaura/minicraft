@@ -12,6 +12,11 @@ import (
 func (s *Session) handleConfiguration(ctx context.Context) error {
 	s.Log.Printf("[configuration] %s - processing configuration\n", s.Conn.RemoteAddr())
 
+	err := s.sendConfigurationBrand()
+	if err != nil {
+		return fmt.Errorf("send brand: %w", err)
+	}
+
 	var (
 		sentKnownPacks bool
 		sentFinish     bool
@@ -99,6 +104,23 @@ func (s *Session) handleConfiguration(ctx context.Context) error {
 			return nil
 		}
 	}
+}
+
+func (s *Session) sendConfigurationBrand() error {
+	var wr protocol.PacketWriter
+
+	wr.String("minecraft:brand")
+	wr.String("minicraft")
+
+	err := wr.Err()
+	if err != nil {
+		return err
+	}
+
+	return s.writeRawPacket(protocol.Packet{
+		ID:   protocol.ClientboundConfigurationPluginMessageID,
+		Data: wr.Buffer.Bytes(),
+	})
 }
 
 func (s *Session) handleConfigurationCustomPayload(packet *protocol.Packet) error {
