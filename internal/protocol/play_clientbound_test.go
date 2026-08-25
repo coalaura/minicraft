@@ -19,6 +19,8 @@ type packetIDTest struct {
 
 func TestMovementPacketIDsProtocol774(t *testing.T) {
 	packetIDs := map[string]packetIDTest{
+		"container set content":        {actual: ClientboundContainerSetContentID, expected: 0x12},
+		"container set slot":           {actual: ClientboundContainerSetSlotID, expected: 0x14},
 		"synchronize entity position":  {actual: ClientboundSynchronizeEntityPositionID, expected: 0x23},
 		"update entity position":       {actual: ClientboundUpdateEntityPositionID, expected: 0x33},
 		"update position and rotation": {actual: ClientboundUpdateEntityPositionRotationID, expected: 0x34},
@@ -34,6 +36,40 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestContainerInventoryPacketsEncode(t *testing.T) {
+	stack := game.ItemStack{
+		Item:  game.ItemStone,
+		Count: 2,
+		Components: []game.ItemComponent{{
+			Type: 7,
+			Data: []byte{0xAC, 0x02},
+		}},
+		RemovedComponents: []int32{8},
+	}
+
+	assertPacketEncoding(t, ContainerSetContent{
+		WindowID:    0,
+		StateID:     300,
+		Items:       []game.ItemStack{{}, stack},
+		CarriedItem: game.ItemStack{Item: game.ItemDirt, Count: 1},
+	}, []byte{
+		0x00, 0xAC, 0x02, 0x02,
+		0x00,
+		0x02, byte(game.ItemStone), 0x01, 0x01, 0x07, 0xAC, 0x02, 0x08,
+		0x01, byte(game.ItemDirt), 0x00, 0x00,
+	})
+
+	assertPacketEncoding(t, ContainerSetSlot{
+		WindowID: 0,
+		StateID:  1,
+		Slot:     45,
+		Item:     stack,
+	}, []byte{
+		0x00, 0x01, 0x00, 0x2D,
+		0x02, byte(game.ItemStone), 0x01, 0x01, 0x07, 0xAC, 0x02, 0x08,
+	})
 }
 
 func TestChunkPacketProtocol774(t *testing.T) {

@@ -99,11 +99,19 @@ func (s *Session) sendPlayerEquipment(player game.Player, slots ...byte) error {
 
 		switch slot {
 		case protocol.EquipmentSlotMainHand:
-			if player.SelectedHotbarSlot >= 0 && player.SelectedHotbarSlot < game.HotbarSlotCount {
-				stack = player.Hotbar[player.SelectedHotbarSlot]
+			if held := player.Inventory.Held(player.SelectedHotbarSlot); held != nil {
+				stack = held.Clone()
 			}
 		case protocol.EquipmentSlotOffHand:
-			stack = player.Offhand
+			stack = player.Inventory.Offhand.Clone()
+		case protocol.EquipmentSlotFeet:
+			stack = player.Inventory.Armor[3].Clone()
+		case protocol.EquipmentSlotLegs:
+			stack = player.Inventory.Armor[2].Clone()
+		case protocol.EquipmentSlotChest:
+			stack = player.Inventory.Armor[1].Clone()
+		case protocol.EquipmentSlotHead:
+			stack = player.Inventory.Armor[0].Clone()
 		default:
 			continue
 		}
@@ -124,12 +132,19 @@ func (s *Session) sendPlayerEquipment(player game.Player, slots ...byte) error {
 func visibleEquipmentSlots(player game.Player) []byte {
 	var slots []byte
 
-	if player.SelectedHotbarSlot >= 0 && player.SelectedHotbarSlot < game.HotbarSlotCount && !player.Hotbar[player.SelectedHotbarSlot].Empty() {
+	held := player.Inventory.Held(player.SelectedHotbarSlot)
+	if held != nil && !held.Empty() {
 		slots = append(slots, protocol.EquipmentSlotMainHand)
 	}
 
-	if !player.Offhand.Empty() {
+	if !player.Inventory.Offhand.Empty() {
 		slots = append(slots, protocol.EquipmentSlotOffHand)
+	}
+
+	for index := len(player.Inventory.Armor) - 1; index >= 0; index-- {
+		if !player.Inventory.Armor[index].Empty() {
+			slots = append(slots, protocol.EquipmentSlotFeet+byte(len(player.Inventory.Armor)-1-index))
+		}
 	}
 
 	return slots

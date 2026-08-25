@@ -240,17 +240,18 @@ func TestDecodeMovementFlags(t *testing.T) {
 
 func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 	packetIDs := map[string]packetIDTest{
-		"block action":   {actual: ServerboundPlayerActionID, expected: 0x28},
-		"block ack":      {actual: ClientboundBlockChangedAckID, expected: 0x04},
-		"block update":   {actual: ClientboundBlockUpdateID, expected: 0x08},
-		"player command": {actual: ServerboundPlayerCommandID, expected: 0x29},
-		"player input":   {actual: ServerboundPlayerInputID, expected: 0x2A},
-		"player loaded":  {actual: ServerboundPlayerLoadedID, expected: 0x2B},
-		"held item":      {actual: ServerboundSetHeldItemID, expected: 0x34},
-		"creative slot":  {actual: ServerboundSetCreativeModeSlotID, expected: 0x37},
-		"swing arm":      {actual: ServerboundSwingArmID, expected: 0x3C},
-		"use item on":    {actual: ServerboundUseItemOnID, expected: 0x3F},
-		"animation":      {actual: ClientboundEntityAnimationID, expected: 0x02},
+		"container click": {actual: ServerboundContainerClickID, expected: 0x11},
+		"block action":    {actual: ServerboundPlayerActionID, expected: 0x28},
+		"block ack":       {actual: ClientboundBlockChangedAckID, expected: 0x04},
+		"block update":    {actual: ClientboundBlockUpdateID, expected: 0x08},
+		"player command":  {actual: ServerboundPlayerCommandID, expected: 0x29},
+		"player input":    {actual: ServerboundPlayerInputID, expected: 0x2A},
+		"player loaded":   {actual: ServerboundPlayerLoadedID, expected: 0x2B},
+		"held item":       {actual: ServerboundSetHeldItemID, expected: 0x34},
+		"creative slot":   {actual: ServerboundSetCreativeModeSlotID, expected: 0x37},
+		"swing arm":       {actual: ServerboundSwingArmID, expected: 0x3C},
+		"use item on":     {actual: ServerboundUseItemOnID, expected: 0x3F},
+		"animation":       {actual: ClientboundEntityAnimationID, expected: 0x02},
 	}
 
 	for name, packetID := range packetIDs {
@@ -394,6 +395,89 @@ func TestDecodeSetCreativeModeSlot(t *testing.T) {
 	if update.Slot != 40 || update.Item.ItemID != 1 || update.Item.ItemCount != 64 {
 		t.Fatalf("creative slot = %+v", update)
 	}
+
+	if len(update.Item.Components) != 1 || update.Item.Components[0].Type != 2 || string(update.Item.Components[0].Data) != "\xaa\xbb" || len(update.Item.RemovedComponents) != 1 || update.Item.RemovedComponents[0] != 3 {
+		t.Fatalf("creative slot components = %+v, removed = %v", update.Item.Components, update.Item.RemovedComponents)
+	}
+}
+
+func TestDecodeContainerClick(t *testing.T) {
+	var writer PacketWriter
+
+	writer.VarInt(0)
+	writer.VarInt(300)
+	writer.Short(36)
+	writer.Byte(1)
+	writer.VarInt(2)
+	writer.VarInt(2)
+
+	writer.Short(36)
+	writer.Bool(true)
+	writer.VarInt(5)
+	writer.VarInt(32)
+	writer.VarInt(1)
+	writer.VarInt(7)
+	writer.Int(-12)
+	writer.VarInt(1)
+	writer.VarInt(8)
+
+	writer.Short(45)
+	writer.Bool(false)
+
+	writer.Bool(true)
+	writer.VarInt(6)
+	writer.VarInt(4)
+	writer.VarInt(0)
+	writer.VarInt(0)
+
+	click, err := DecodeContainerClick(writer.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode container click: %v", err)
+	}
+
+	if click.WindowID != 0 || click.StateID != 300 || click.Slot != 36 || click.MouseButton != 1 || click.Mode != 2 || len(click.ChangedSlots) != 2 {
+		t.Fatalf("container click = %+v", click)
+	}
+
+	first := click.ChangedSlots[0]
+	if first.Location != 36 || !first.Item.Present || first.Item.ItemID != 5 || first.Item.ItemCount != 32 || len(first.Item.Components) != 1 || first.Item.Components[0] != (HashedSlotComponent{Type: 7, Hash: -12}) || len(first.Item.RemovedComponents) != 1 || first.Item.RemovedComponents[0] != 8 {
+		t.Fatalf("first changed slot = %+v", first)
+	}
+
+	if click.ChangedSlots[1].Item.Present || !click.CursorItem.Present || click.CursorItem.ItemID != 6 || click.CursorItem.ItemCount != 4 {
+		t.Fatalf("remaining click stacks = %+v, %+v", click.ChangedSlots[1], click.CursorItem)
+	}
+}
+
+func TestDecodeContainerClickRejectsMalformedPredictions(t *testing.T) {
+	var writer PacketWriter
+
+	writer.VarInt(0)
+	writer.VarInt(0)
+	writer.Short(0)
+	writer.Byte(0)
+	writer.VarInt(0)
+	writer.VarInt(maxContainerChangedSlots + 1)
+
+	_, err := DecodeContainerClick(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("container click with too many changed slots decoded")
+	}
+
+	writer.Reset()
+	writer.VarInt(0)
+	writer.VarInt(0)
+	writer.Short(0)
+	writer.Byte(0)
+	writer.VarInt(0)
+	writer.VarInt(0)
+	writer.Bool(false)
+	writer.Byte(0)
+
+	_, err = DecodeContainerClick(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("container click with trailing data decoded")
+	}
 }
 
 func TestDecodeSetCreativeModeSlotRejectsTruncatedComponents(t *testing.T) {
@@ -425,6 +509,13 @@ func TestDecodeSetCreativeModeSlotRejectsOversizedComponent(t *testing.T) {
 	_, err := DecodeSetCreativeModeSlot(writer.Buffer.Bytes())
 	if err == nil {
 		t.Fatal("decode oversized creative slot component succeeded")
+	}
+}
+
+func TestDecodeSetCreativeModeSlotRejectsTrailingData(t *testing.T) {
+	_, err := DecodeSetCreativeModeSlot([]byte{0, 36, 0, 0})
+	if err == nil {
+		t.Fatal("creative slot with trailing data decoded")
 	}
 }
 

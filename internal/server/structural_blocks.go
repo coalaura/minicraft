@@ -105,7 +105,7 @@ func (r *Runtime) breakChanges(position game.BlockPosition) []game.BlockChange {
 
 	changes := []game.BlockChange{{Position: position, Replacement: game.Air}}
 
-	if block.Behavior() != game.BlockBehaviorDoor {
+	if !isTwoBlockDoor(block) {
 		return changes
 	}
 
@@ -117,11 +117,15 @@ func (r *Runtime) breakChanges(position game.BlockPosition) []game.BlockChange {
 		other.Y++
 	}
 
-	if otherBlock := r.World.BlockAt(other); otherBlock.Behavior() == game.BlockBehaviorDoor && sameBlockType(block, otherBlock) && blockProperty(block, "half") != blockProperty(otherBlock, "half") {
+	if otherBlock := r.World.BlockAt(other); isTwoBlockDoor(otherBlock) && sameBlockType(block, otherBlock) && blockProperty(block, "half") != blockProperty(otherBlock, "half") {
 		changes = append(changes, game.BlockChange{Position: other, Replacement: game.Air})
 	}
 
 	return changes
+}
+
+func isTwoBlockDoor(block game.Block) bool {
+	return block.Behavior() == game.BlockBehaviorDoor || sameBlockType(block, game.IronDoor)
 }
 
 func (r *Runtime) withStructuralNeighborChanges(primary []game.BlockChange) []game.BlockChange {

@@ -19,11 +19,12 @@ type Session struct {
 	Log     Logger
 	Runtime *Runtime
 
-	Player    *game.Player
-	playerMx  sync.RWMutex
-	writeMx   sync.Mutex
-	chatMx    sync.Mutex
-	chatState *sessionChatState
+	Player        *game.Player
+	playerMx      sync.RWMutex
+	writeMx       sync.Mutex
+	chatMx        sync.Mutex
+	chatState     *sessionChatState
+	inventoryDrag inventoryDragState
 
 	chunkMx               sync.Mutex
 	centerChunk           LoadedChunk
@@ -93,6 +94,7 @@ func (s *Session) snapshotPlayer() game.Player {
 	player := *s.Player
 
 	player.Properties = append([]game.ProfileProperty(nil), s.Player.Properties...)
+	player.Inventory = s.Player.Inventory.Clone()
 
 	return player
 }

@@ -196,6 +196,14 @@ func (w *PacketWriter) Bytes(value []byte) {
 	_, w.err = w.Write(value)
 }
 
+func (w *PacketWriter) Raw(value []byte) {
+	if w.err != nil {
+		return
+	}
+
+	_, w.err = w.Write(value)
+}
+
 func (w *PacketWriter) UUID(value string) {
 	if w.err != nil {
 		return

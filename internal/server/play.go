@@ -131,6 +131,13 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		s.Runtime.UpdateSkinParts(s, information.SkinParts)
 
 		s.Log.Printf("[play] received client information\n")
+	case protocol.ServerboundContainerClickID:
+		click, err := protocol.DecodeContainerClick(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		return s.handleContainerClick(click)
 	case protocol.ServerboundPlayKeepAliveID:
 		keepAlive, err := protocol.DecodePlayKeepAliveResponse(packet.Data)
 		if err != nil {
@@ -241,6 +248,11 @@ func (s *Session) sendInitialPlayState() error {
 	}
 
 	err = s.sendPlayerPosition()
+	if err != nil {
+		return err
+	}
+
+	err = s.sendPlayerInventory()
 	if err != nil {
 		return err
 	}
@@ -427,6 +439,8 @@ func (s *Session) handlePlayerAction(action protocol.PlayerAction) error {
 		s.handleDropHeldItem(true)
 	case protocol.PlayerActionDropItem:
 		s.handleDropHeldItem(false)
+	case protocol.PlayerActionSwapWithOffhand:
+		s.handleSwapWithOffhand()
 	default:
 	}
 

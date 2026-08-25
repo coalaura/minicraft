@@ -157,8 +157,8 @@ func TestOffhandPlacementUsesOffhandItem(t *testing.T) {
 
 	actor, connection := newPlacementTestSession(runtime, clicked)
 
-	actor.Player.Hotbar[0] = game.ItemStack{Item: game.ItemOakDoor, Count: 1}
-	actor.Player.Offhand = game.ItemStack{Item: game.ItemDirt, Count: 64}
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemOakDoor, Count: 1}
+	actor.Player.Inventory.Offhand = game.ItemStack{Item: game.ItemDirt, Count: 64}
 
 	joinTestSession(t, runtime, actor)
 
@@ -184,7 +184,7 @@ func TestMainHandPlacementUsesSelectedHotbarItem(t *testing.T) {
 
 	actor, _ := newPlacementTestSession(runtime, clicked)
 
-	actor.Player.Hotbar[1] = game.ItemStack{Item: game.ItemDirt, Count: 64}
+	actor.Player.Inventory.Hotbar[1] = game.ItemStack{Item: game.ItemDirt, Count: 64}
 
 	joinTestSession(t, runtime, actor)
 
@@ -235,7 +235,7 @@ func TestAxisBlockPlacementUsesClickedFace(t *testing.T) {
 
 			actor, _ := newPlacementTestSession(runtime, clicked)
 
-			actor.Player.Hotbar[0] = game.ItemStack{Item: game.ItemOakLog, Count: 64}
+			actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemOakLog, Count: 64}
 
 			markPlacementChunksLoaded(actor, clicked, target)
 
@@ -263,7 +263,7 @@ func TestUnsupportedComplexPlacementIsRejected(t *testing.T) {
 
 	actor, connection := newPlacementTestSession(runtime, clicked)
 
-	actor.Player.Hotbar[0] = game.ItemStack{Item: game.ItemIronDoor, Count: 1}
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemIronDoor, Count: 1}
 
 	joinTestSession(t, runtime, actor)
 
@@ -372,7 +372,7 @@ func newPlacementTestSession(runtime *Runtime, clicked game.BlockPosition) (*Ses
 
 	session.Player.Position = blockMutationTestPlayerPosition(clicked)
 
-	session.Player.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 64}
+	session.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 64}
 
 	markPlacementChunksLoaded(session, clicked)
 

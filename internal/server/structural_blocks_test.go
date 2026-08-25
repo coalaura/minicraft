@@ -20,7 +20,7 @@ func TestSlabPlacementAndMerging(t *testing.T) {
 
 			actor, _ := newPlacementTestSession(runtime, clicked)
 
-			actor.Player.Hotbar[0] = game.ItemStack{Item: game.ItemOakSlab, Count: 64}
+			actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemOakSlab, Count: 64}
 
 			joinTestSession(t, runtime, actor)
 
@@ -49,7 +49,7 @@ func TestSlabPlacementAndMerging(t *testing.T) {
 
 	actor, _ := newPlacementTestSession(runtime, clicked)
 
-	actor.Player.Hotbar[0] = game.ItemStack{Item: game.ItemOakSlab, Count: 64}
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemOakSlab, Count: 64}
 
 	joinTestSession(t, runtime, actor)
 
@@ -76,7 +76,7 @@ func TestStairPlacementAndNeighborShape(t *testing.T) {
 
 	actor, _ := newPlacementTestSession(runtime, clicked)
 
-	actor.Player.Hotbar[0] = game.ItemStack{Item: game.ItemOakStairs, Count: 64}
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemOakStairs, Count: 64}
 	actor.Player.Rotation.Yaw = 90
 
 	joinTestSession(t, runtime, actor)
@@ -139,7 +139,7 @@ func TestDoorPlacementInteractionBreakingAndSynchronization(t *testing.T) {
 	actor, actorConnection := newPlacementTestSession(runtime, clicked)
 	observer, observerConnection := newPlacementTestSession(runtime, clicked)
 
-	actor.Player.Hotbar[0] = game.ItemStack{Item: game.ItemOakDoor, Count: 1}
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemOakDoor, Count: 1}
 
 	markPlacementChunksLoaded(actor, clicked, lower, upper)
 	markPlacementChunksLoaded(observer, clicked, lower, upper)
@@ -208,7 +208,7 @@ func TestDoorPlacementFailsAtomicallyWhenUpperPositionIsOccupied(t *testing.T) {
 
 	actor, _ := newPlacementTestSession(runtime, clicked)
 
-	actor.Player.Hotbar[0] = game.ItemStack{Item: game.ItemOakDoor, Count: 1}
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemOakDoor, Count: 1}
 
 	joinTestSession(t, runtime, actor)
 
@@ -219,6 +219,56 @@ func TestDoorPlacementFailsAtomicallyWhenUpperPositionIsOccupied(t *testing.T) {
 
 	if world.BlockAt(lower) != game.Air || world.BlockAt(upper) != game.Stone {
 		t.Fatalf("blocked door changed world: lower=%d upper=%d", world.BlockAt(lower), world.BlockAt(upper))
+	}
+}
+
+func TestIronDoorBreaksAsTwoBlockStructureWithoutBecomingInteractable(t *testing.T) {
+	lowerPosition := game.BlockPosition{Y: 70}
+	upperPosition := game.BlockPosition{Y: 71}
+
+	lower, valid := game.IronDoor.WithProperties(game.BlockPropertyValue{Name: "half", Value: "lower"})
+	if !valid {
+		t.Fatal("resolve lower iron door state")
+	}
+
+	upper, valid := game.IronDoor.WithProperties(game.BlockPropertyValue{Name: "half", Value: "upper"})
+	if !valid {
+		t.Fatal("resolve upper iron door state")
+	}
+
+	for name, brokenPosition := range map[string]game.BlockPosition{"lower": lowerPosition, "upper": upperPosition} {
+		t.Run(name, func(t *testing.T) {
+			world := &game.World{}
+
+			world.SetBlock(lowerPosition, lower)
+			world.SetBlock(upperPosition, upper)
+
+			runtime := NewRuntime(world)
+
+			actor, _ := newPlacementTestSession(runtime, lowerPosition)
+
+			markPlacementChunksLoaded(actor, lowerPosition, upperPosition)
+
+			joinTestSession(t, runtime, actor)
+
+			handled, _, _, err := runtime.InteractBlock(actor, lowerPosition)
+			if err != nil {
+				t.Fatalf("interact with iron door: %v", err)
+			}
+
+			if handled || world.BlockAt(lowerPosition) != lower || world.BlockAt(upperPosition) != upper {
+				t.Fatal("iron door became manually interactable")
+			}
+
+			result, err := runtime.MutateBlock(actor, BlockMutationBreak, brokenPosition, game.Air)
+			if err != nil {
+				t.Fatalf("break iron door: %v", err)
+			}
+
+			if !result.Allowed || !result.Changed || world.BlockAt(lowerPosition) != game.Air || world.BlockAt(upperPosition) != game.Air {
+				t.Fatalf("iron door halves after break = %d, %d; result = %+v", world.BlockAt(lowerPosition), world.BlockAt(upperPosition), result)
+			}
+		})
 	}
 }
 
@@ -234,7 +284,7 @@ func TestTrapdoorAndFenceGateInteraction(t *testing.T) {
 
 			actor, _ := newPlacementTestSession(runtime, clicked)
 
-			actor.Player.Hotbar[0] = game.ItemStack{Item: item, Count: 1}
+			actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: item, Count: 1}
 
 			joinTestSession(t, runtime, actor)
 

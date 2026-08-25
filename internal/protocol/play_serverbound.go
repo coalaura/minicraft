@@ -22,6 +22,7 @@ const (
 	PlayerActionStopDestroyBlock  = 2
 	PlayerActionDropAllItems      = 3
 	PlayerActionDropItem          = 4
+	PlayerActionSwapWithOffhand   = 6
 
 	BlockFaceDown  = 0
 	BlockFaceUp    = 1
@@ -31,6 +32,8 @@ const (
 	BlockFaceEast  = 5
 
 	maxUntrustedSlotComponents = 1024
+	maxUntrustedComponentBytes = 1 << 20
+	maxContainerChangedSlots   = 128
 	maxChatMessageCharacters   = 256
 	chatMessageSignatureLength = 256
 	chatAcknowledgementLength  = 3
@@ -133,9 +136,44 @@ type SetHeldItem struct {
 	Slot int16
 }
 
+type UntrustedSlotComponent struct {
+	Type int32
+	Data []byte
+}
+
 type UntrustedSlot struct {
-	ItemCount int32
-	ItemID    int32
+	ItemCount         int32
+	ItemID            int32
+	Components        []UntrustedSlotComponent
+	RemovedComponents []int32
+}
+
+type HashedSlotComponent struct {
+	Type int32
+	Hash int32
+}
+
+type HashedSlot struct {
+	Present           bool
+	ItemID            int32
+	ItemCount         int32
+	Components        []HashedSlotComponent
+	RemovedComponents []int32
+}
+
+type ChangedSlot struct {
+	Location int16
+	Item     HashedSlot
+}
+
+type ContainerClick struct {
+	WindowID     int32
+	StateID      int32
+	Slot         int16
+	MouseButton  int8
+	Mode         int32
+	ChangedSlots []ChangedSlot
+	CursorItem   HashedSlot
 }
 
 type SetCreativeModeSlot struct {
@@ -438,6 +476,54 @@ func DecodeSetHeldItem(data []byte) (SetHeldItem, error) {
 	return selection, nil
 }
 
+func DecodeContainerClick(data []byte) (ContainerClick, error) {
+	rd := NewPacketReader(data)
+
+	click := ContainerClick{
+		WindowID:    rd.VarInt(),
+		StateID:     rd.VarInt(),
+		Slot:        rd.Short(),
+		MouseButton: int8(rd.Byte()),
+		Mode:        rd.VarInt(),
+	}
+
+	changedCount := rd.VarInt()
+	if changedCount < 0 || changedCount > maxContainerChangedSlots {
+		return ContainerClick{}, fmt.Errorf("invalid changed slot count %d", changedCount)
+	}
+
+	click.ChangedSlots = make([]ChangedSlot, changedCount)
+
+	for index := range click.ChangedSlots {
+		click.ChangedSlots[index].Location = rd.Short()
+
+		item, err := decodeOptionalHashedSlot(rd)
+		if err != nil {
+			return ContainerClick{}, err
+		}
+
+		click.ChangedSlots[index].Item = item
+	}
+
+	cursor, err := decodeOptionalHashedSlot(rd)
+	if err != nil {
+		return ContainerClick{}, err
+	}
+
+	click.CursorItem = cursor
+
+	err = rd.Err()
+	if err != nil {
+		return ContainerClick{}, err
+	}
+
+	if rd.Len() != 0 {
+		return ContainerClick{}, fmt.Errorf("container click has %d trailing bytes", rd.Len())
+	}
+
+	return click, nil
+}
+
 func DecodeSetCreativeModeSlot(data []byte) (SetCreativeModeSlot, error) {
 	rd := NewPacketReader(data)
 
@@ -453,6 +539,10 @@ func DecodeSetCreativeModeSlot(data []byte) (SetCreativeModeSlot, error) {
 	err = rd.Err()
 	if err != nil {
 		return SetCreativeModeSlot{}, err
+	}
+
+	if rd.Len() != 0 {
+		return SetCreativeModeSlot{}, fmt.Errorf("creative mode slot has %d trailing bytes", rd.Len())
 	}
 
 	return creativeSlot, nil
@@ -533,18 +623,65 @@ func decodeUntrustedSlot(rd *PacketReader) (UntrustedSlot, error) {
 		return UntrustedSlot{}, fmt.Errorf("invalid removed slot component count %d", removedComponentCount)
 	}
 
-	for range addedComponentCount {
-		rd.VarInt()
-		rd.Bytes()
+	item.Components = make([]UntrustedSlotComponent, addedComponentCount)
+
+	for index := range item.Components {
+		item.Components[index] = UntrustedSlotComponent{
+			Type: rd.VarInt(),
+			Data: rd.BytesMax(maxUntrustedComponentBytes),
+		}
 	}
 
-	for range removedComponentCount {
-		rd.VarInt()
+	item.RemovedComponents = make([]int32, removedComponentCount)
+
+	for index := range item.RemovedComponents {
+		item.RemovedComponents[index] = rd.VarInt()
 	}
 
 	err = rd.Err()
 	if err != nil {
 		return UntrustedSlot{}, err
+	}
+
+	return item, nil
+}
+
+func decodeOptionalHashedSlot(rd *PacketReader) (HashedSlot, error) {
+	if !rd.Bool() {
+		return HashedSlot{}, rd.Err()
+	}
+
+	item := HashedSlot{
+		Present:   true,
+		ItemID:    rd.VarInt(),
+		ItemCount: rd.VarInt(),
+	}
+
+	componentCount := rd.VarInt()
+	if componentCount < 0 || componentCount > maxUntrustedSlotComponents {
+		return HashedSlot{}, fmt.Errorf("invalid hashed slot component count %d", componentCount)
+	}
+
+	item.Components = make([]HashedSlotComponent, componentCount)
+
+	for index := range item.Components {
+		item.Components[index] = HashedSlotComponent{Type: rd.VarInt(), Hash: rd.Int()}
+	}
+
+	removedCount := rd.VarInt()
+	if removedCount < 0 || removedCount > maxUntrustedSlotComponents {
+		return HashedSlot{}, fmt.Errorf("invalid hashed slot removed component count %d", removedCount)
+	}
+
+	item.RemovedComponents = make([]int32, removedCount)
+
+	for index := range item.RemovedComponents {
+		item.RemovedComponents[index] = rd.VarInt()
+	}
+
+	err := rd.Err()
+	if err != nil {
+		return HashedSlot{}, err
 	}
 
 	return item, nil

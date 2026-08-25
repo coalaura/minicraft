@@ -25,6 +25,5 @@ type Player struct {
 	Sprinting bool
 
 	SelectedHotbarSlot int
-	Hotbar             [HotbarSlotCount]ItemStack
-	Offhand            ItemStack
+	Inventory          PlayerInventory
 }

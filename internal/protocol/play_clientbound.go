@@ -30,6 +30,10 @@ const (
 
 	EquipmentSlotMainHand byte = 0
 	EquipmentSlotOffHand  byte = 1
+	EquipmentSlotFeet     byte = 2
+	EquipmentSlotLegs     byte = 3
+	EquipmentSlotChest    byte = 4
+	EquipmentSlotHead     byte = 5
 
 	LevelEventBlockBreak = 2001
 )
@@ -85,6 +89,20 @@ type EquipmentEntry struct {
 type EntityEquipment struct {
 	EntityID  int32
 	Equipment []EquipmentEntry
+}
+
+type ContainerSetContent struct {
+	WindowID    int32
+	StateID     int32
+	Items       []game.ItemStack
+	CarriedItem game.ItemStack
+}
+
+type ContainerSetSlot struct {
+	WindowID int32
+	StateID  int32
+	Slot     int16
+	Item     game.ItemStack
 }
 
 type SynchronizeEntityPosition struct {
@@ -366,6 +384,25 @@ func (p EntityEquipment) Encode(wr *PacketWriter) {
 	}
 }
 
+func (p ContainerSetContent) Encode(wr *PacketWriter) {
+	wr.VarInt(p.WindowID)
+	wr.VarInt(p.StateID)
+	wr.VarInt(int32(len(p.Items)))
+
+	for _, item := range p.Items {
+		encodeItemStack(wr, item)
+	}
+
+	encodeItemStack(wr, p.CarriedItem)
+}
+
+func (p ContainerSetSlot) Encode(wr *PacketWriter) {
+	wr.VarInt(p.WindowID)
+	wr.VarInt(p.StateID)
+	wr.Short(p.Slot)
+	encodeItemStack(wr, p.Item)
+}
+
 func encodeItemStack(wr *PacketWriter, stack game.ItemStack) {
 	if stack.Empty() {
 		wr.VarInt(0)
@@ -375,8 +412,17 @@ func encodeItemStack(wr *PacketWriter, stack game.ItemStack) {
 
 	wr.VarInt(stack.Count)
 	wr.VarInt(int32(stack.Item))
-	wr.VarInt(0)
-	wr.VarInt(0)
+	wr.VarInt(int32(len(stack.Components)))
+	wr.VarInt(int32(len(stack.RemovedComponents)))
+
+	for _, component := range stack.Components {
+		wr.VarInt(component.Type)
+		wr.Raw(component.Data)
+	}
+
+	for _, componentType := range stack.RemovedComponents {
+		wr.VarInt(componentType)
+	}
 }
 
 func (p SynchronizeEntityPosition) Encode(wr *PacketWriter) {

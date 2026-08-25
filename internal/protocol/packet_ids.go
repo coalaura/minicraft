@@ -65,6 +65,7 @@ const (
 	ServerboundChunkBatchReceivedID         = 0x0A
 	ServerboundClientTickEndID              = 0x0C
 	ServerboundPlayClientInformationID      = 0x0D
+	ServerboundContainerClickID             = 0x11
 	ServerboundPlayKeepAliveID              = 0x1B
 	ServerboundMovePlayerPositionID         = 0x1D
 	ServerboundMovePlayerPositionRotationID = 0x1E
@@ -85,6 +86,8 @@ const (
 	ClientboundBlockUpdateID                  = 0x08
 	ClientboundChunkBatchEndID                = 0x0B
 	ClientboundChunkBatchBeginID              = 0x0C
+	ClientboundContainerSetContentID          = 0x12
+	ClientboundContainerSetSlotID             = 0x14
 	ClientboundPlayDisconnectID               = 0x20
 	ClientboundSynchronizeEntityPositionID    = 0x23
 	ClientboundForgetLevelChunkID             = 0x25
