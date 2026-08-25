@@ -123,10 +123,11 @@ func TestOrdinaryLayerConnectorsContainRealStaircases(t *testing.T) {
 				plan := connectorPlanForZone(current)
 				wantFacing := stairFacing(plan)
 
-				for step := 0; step < 8; step++ {
+				for step := range 8 {
 					stepX := plan.startX + plan.stepX*int64(step)
 					stepZ := plan.startZ + plan.stepZ*int64(step)
-					for lane := int64(0); lane < 2; lane++ {
+
+					for lane := range int64(2) {
 						localX, localZ := stepX, stepZ+lane
 						if plan.stepZ != 0 {
 							localX, localZ = stepX+lane, stepZ
@@ -306,8 +307,8 @@ func TestPalettePersistsAcrossRegion(t *testing.T) {
 				baseZoneZ := regionZ * paletteRegionSize
 				want := zoneAt(seed, baseZoneX*zoneSize, baseZoneZ*zoneSize).palette
 
-				for offsetZ := int64(0); offsetZ < paletteRegionSize; offsetZ++ {
-					for offsetX := int64(0); offsetX < paletteRegionSize; offsetX++ {
+				for offsetZ := range int64(paletteRegionSize) {
+					for offsetX := range int64(paletteRegionSize) {
 						current := zoneAt(seed, (baseZoneX+offsetX)*zoneSize, (baseZoneZ+offsetZ)*zoneSize)
 						if current.palette != want {
 							t.Fatalf(
@@ -452,8 +453,8 @@ func TestLibraryContainsShelvesAndActualDoors(t *testing.T) {
 			shelves := 0
 			doors := 0
 
-			for localZ := int64(0); localZ < zoneSize; localZ++ {
-				for localX := int64(0); localX < zoneSize; localX++ {
+			for localZ := range int64(zoneSize) {
+				for localX := range int64(zoneSize) {
 					worldX := zoneX*zoneSize - zoneSize/2 + localX
 					worldZ := zoneZ*zoneSize - zoneSize/2 + localZ
 
@@ -523,18 +524,21 @@ func TestExpandedRareFeaturesHaveSignatureGeometry(t *testing.T) {
 		originX := coords[0]*zoneSize - zoneSize/2
 		originZ := coords[1]*zoneSize - zoneSize/2
 
-		for localZ := int64(0); localZ < zoneSize; localZ++ {
-			for localX := int64(0); localX < zoneSize; localX++ {
+		for localZ := range int64(zoneSize) {
+			for localX := range int64(zoneSize) {
 				for y := floorY; y <= floorY+2; y++ {
 					block := generated.BlockAt(seed, game.BlockPosition{
 						X: int32(originX + localX),
 						Y: y,
 						Z: int32(originZ + localZ),
 					})
+
 					counts[block]++
+
 					if block.Behavior() == game.BlockBehaviorStairs {
 						stairs++
 					}
+
 					if block.Behavior() == game.BlockBehaviorDoor {
 						doors++
 					}
@@ -753,7 +757,7 @@ func TestCubiclePartitionsStopBelowCeiling(t *testing.T) {
 }
 
 func TestInternalDoorWidthsAreNeverOneBlock(t *testing.T) {
-	for hash := uint64(0); hash < 4096; hash++ {
+	for hash := range uint64(4096) {
 		if width := doorWidthForHash(hash, 2, 3); width < 2 {
 			t.Fatalf("maze doorway width = %d, want at least 2", width)
 		}
@@ -803,42 +807,6 @@ func TestGenerateSectionMatchesBlockAt(t *testing.T) {
 				}
 			}
 		}
-	}
-}
-
-func assertGeneratedSectionMatchesBlockAt(t *testing.T, generated Generator, seed int64, chunk game.ChunkPosition, sectionMinY int32) {
-	t.Helper()
-
-	var blocks [game.SectionVolume]game.Block
-	_, uniform := generated.GenerateSection(seed, chunk, sectionMinY, &blocks)
-
-	allSame := true
-	first := blocks[0]
-
-	for localY := range int32(game.ChunkWidth) {
-		for localZ := range int32(game.ChunkWidth) {
-			for localX := range int32(game.ChunkWidth) {
-				index := localY*256 + localZ*16 + localX
-				position := game.BlockPosition{
-					X: chunk.X*game.ChunkWidth + localX,
-					Y: sectionMinY + localY,
-					Z: chunk.Z*game.ChunkWidth + localZ,
-				}
-
-				want := generated.BlockAt(seed, position)
-				if blocks[index] != want {
-					t.Fatalf("seed %d chunk %+v section %d block %+v = %d, want %d", seed, chunk, sectionMinY, position, blocks[index], want)
-				}
-
-				if blocks[index] != first {
-					allSame = false
-				}
-			}
-		}
-	}
-
-	if uniform != allSame {
-		t.Fatalf("seed %d chunk %+v section %d uniform=%v, actual=%v", seed, chunk, sectionMinY, uniform, allSame)
 	}
 }
 

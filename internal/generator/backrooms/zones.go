@@ -137,29 +137,6 @@ func featureForHash(hash uint64) zoneFeature {
 	}
 }
 
-func verticalFeatureForHash(hash uint64, feature zoneFeature) verticalFeature {
-	if feature == featureLibrary && (hash>>24)%5 == 0 {
-		return verticalUpperAnnex
-	}
-
-	if feature != featureNone {
-		return verticalNone
-	}
-
-	bucket := hash % 2000
-
-	switch {
-	case bucket < 22:
-		return verticalUpperAnnex
-	case bucket < 44:
-		return verticalLowerAnnex
-	case bucket < 52:
-		return verticalStack
-	default:
-		return verticalNone
-	}
-}
-
 func blocksForPalette(selected palette) paletteBlocks {
 	switch selected {
 	case paletteFaded:

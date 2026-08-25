@@ -186,17 +186,6 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 	return result, affected, err
 }
 
-func placementBlock(item game.Item, face int32) (game.Block, bool) {
-	interaction := protocol.UseItemOn{Face: face, CursorX: 0.5, CursorY: 0.5, CursorZ: 0.5}
-
-	base, placeable := item.PlacementBlock()
-	if !placeable {
-		return 0, false
-	}
-
-	return placementState(base, item.PlacementRule(), interaction, 0)
-}
-
 func placementState(base game.Block, rule game.ItemPlacementRule, interaction protocol.UseItemOn, yaw float32) (game.Block, bool) {
 	facing := horizontalFacing(yaw)
 

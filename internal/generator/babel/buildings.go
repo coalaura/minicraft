@@ -73,10 +73,7 @@ func towerCrownBlock(crownY int32, localX, localZ int64, lot lotDescription) gam
 		return game.Air
 	}
 
-	halfWidth := int64(5 - crownY/4)
-	if halfWidth < 2 {
-		halfWidth = 2
-	}
+	halfWidth := max(int64(5-crownY/4), 2)
 
 	if centerDistance(localX) > halfWidth || centerDistance(localZ) > halfWidth {
 		if crownY == crownHeight && centerDistance(localX) == 0 && centerDistance(localZ) == 0 {

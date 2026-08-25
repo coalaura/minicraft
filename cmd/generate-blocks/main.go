@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/format"
 	"os"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -274,9 +275,7 @@ func propertyInt(block BlockDefinition, state uint16, name string) int {
 func propertyValue(block BlockDefinition, state uint16, name string) string {
 	offset := int(state - block.MinState)
 
-	for index := len(block.Properties) - 1; index >= 0; index-- {
-		property := block.Properties[index]
-
+	for _, property := range slices.Backward(block.Properties) {
 		values := property.Values
 
 		if property.Type == "bool" {

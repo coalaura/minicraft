@@ -266,7 +266,7 @@ func generateLightingBlocks(world *game.World, targetX, targetZ int32, buffer *l
 				generationMinY, generationMaxY, hasGeneration = boundedGenerator.GenerationBounds(world.Seed, chunkPosition)
 			}
 
-			for sectionIndex := 0; sectionIndex < protocol.OverworldSectionCount; sectionIndex++ {
+			for sectionIndex := range protocol.OverworldSectionCount {
 				sectionMinY := int32(protocol.OverworldMinY + sectionIndex*game.ChunkWidth)
 				sectionMaxY := sectionMinY + game.ChunkWidth - 1
 
@@ -367,8 +367,8 @@ func calculateLight(buffer *lightingBuffer, characteristics lightingCharacterist
 		return
 	}
 
-	for regionZ := 0; regionZ < lightingWidth; regionZ++ {
-		for regionX := 0; regionX < lightingWidth; regionX++ {
+	for regionZ := range lightingWidth {
+		for regionX := range lightingWidth {
 			level := uint8(15)
 
 			for worldY := lightingHeight - 1; worldY >= 0; worldY-- {
