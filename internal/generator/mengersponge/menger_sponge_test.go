@@ -13,6 +13,14 @@ type generatedChunkSnapshot struct {
 	sections [7][game.SectionVolume]game.Block
 }
 
+type mengerPatternTestCase struct {
+	name  string
+	x     int32
+	y     int32
+	z     int32
+	block game.Block
+}
+
 func TestGeneratorIsRegistered(t *testing.T) {
 	registered, err := generator.New(Name)
 	if err != nil {
@@ -55,13 +63,7 @@ func TestGeneratorSpawnIsOpenAndSupported(t *testing.T) {
 func TestGeneratorBuildsMengerPattern(t *testing.T) {
 	generated := Generator{}
 
-	tests := []struct {
-		name  string
-		x     int32
-		y     int32
-		z     int32
-		block game.Block
-	}{
+	tests := []mengerPatternTestCase{
 		{
 			name:  "origin",
 			x:     0,

@@ -14,6 +14,15 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+type statusResponsePlayers struct {
+	Online int `json:"online"`
+	Max    int `json:"max"`
+}
+
+type statusResponse struct {
+	Players statusResponsePlayers `json:"players"`
+}
+
 type recordingConnection struct {
 	mu       sync.Mutex
 	input    bytes.Buffer
@@ -392,12 +401,7 @@ func TestStatusResponseReportsActivePlayers(t *testing.T) {
 		t.Fatalf("decode status packet: %v", err)
 	}
 
-	var response struct {
-		Players struct {
-			Online int `json:"online"`
-			Max    int `json:"max"`
-		} `json:"players"`
-	}
+	var response statusResponse
 
 	err = json.Unmarshal([]byte(responseJSON), &response)
 	if err != nil {

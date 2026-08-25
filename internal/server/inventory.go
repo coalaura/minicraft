@@ -31,6 +31,12 @@ type inventoryDragState struct {
 	slots  []int
 }
 
+type equipmentSlotChange struct {
+	before *game.ItemStack
+	after  *game.ItemStack
+	slot   byte
+}
+
 func (s *Session) handleSetHeldItem(selection protocol.SetHeldItem) {
 	if selection.Slot < 0 || selection.Slot >= game.HotbarSlotCount {
 		return
@@ -855,11 +861,7 @@ func changedEquipmentSlots(before, after game.PlayerInventory, selected int) []b
 		changed = append(changed, protocol.EquipmentSlotMainHand)
 	}
 
-	equipment := [...]struct {
-		before *game.ItemStack
-		after  *game.ItemStack
-		slot   byte
-	}{
+	equipment := [...]equipmentSlotChange{
 		{before.Slot(45), after.Slot(45), protocol.EquipmentSlotOffHand},
 		{before.Slot(8), after.Slot(8), protocol.EquipmentSlotFeet},
 		{before.Slot(7), after.Slot(7), protocol.EquipmentSlotLegs},

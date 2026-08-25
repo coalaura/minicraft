@@ -2,14 +2,16 @@ package protocol
 
 import "testing"
 
+type sectionBlocksPaletteModeTest struct {
+	name         string
+	paletteSize  int
+	direct       bool
+	uniform      bool
+	bitsPerEntry int32
+}
+
 func TestSectionBlocksPaletteModes(t *testing.T) {
-	tests := []struct {
-		name         string
-		paletteSize  int
-		direct       bool
-		uniform      bool
-		bitsPerEntry int32
-	}{
+	tests := []sectionBlocksPaletteModeTest{
 		{name: "uniform", paletteSize: 1, uniform: true},
 		{name: "small", paletteSize: 8, bitsPerEntry: 4},
 		{name: "sixteen", paletteSize: 16, bitsPerEntry: 4},

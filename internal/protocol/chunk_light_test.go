@@ -2,6 +2,11 @@ package protocol
 
 import "testing"
 
+type lightMaskExpectation struct {
+	name     string
+	expected int64
+}
+
 func TestUpdateLightEncodingUsesVarIntCoordinatesAndLightPayload(t *testing.T) {
 	update := UpdateLight{
 		Position:            ChunkPosition{X: -17, Z: 300},
@@ -31,10 +36,7 @@ func TestUpdateLightEncodingUsesVarIntCoordinatesAndLightPayload(t *testing.T) {
 		t.Fatalf("chunk coordinates = %d, %d", x, z)
 	}
 
-	masks := []struct {
-		name     string
-		expected int64
-	}{
+	masks := []lightMaskExpectation{
 		{name: "sky", expected: 2},
 		{name: "block", expected: 4},
 		{name: "empty sky", expected: 1},

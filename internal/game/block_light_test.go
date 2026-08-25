@@ -2,6 +2,12 @@ package game
 
 import "testing"
 
+type litStateEmissionTestCase struct {
+	name     string
+	block    Block
+	expected uint8
+}
+
 func TestStateSpecificLightProperties(t *testing.T) {
 	levelThree, ok := Light.WithProperties(BlockPropertyValue{Name: "level", Value: "3"})
 	if !ok {
@@ -25,11 +31,7 @@ func TestStateSpecificLightProperties(t *testing.T) {
 }
 
 func TestLitStateEmission(t *testing.T) {
-	tests := []struct {
-		name     string
-		block    Block
-		expected uint8
-	}{
+	tests := []litStateEmissionTestCase{
 		{name: "furnace", block: Furnace, expected: 13},
 		{name: "redstone ore", block: RedstoneOre, expected: 9},
 		{name: "redstone lamp", block: RedstoneLamp, expected: 15},

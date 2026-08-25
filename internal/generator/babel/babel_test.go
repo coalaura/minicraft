@@ -16,6 +16,11 @@ type generatedSectionSnapshot struct {
 	blocks  [game.SectionVolume]game.Block
 }
 
+type generatedChunkTestCase struct {
+	seed  int64
+	chunk game.ChunkPosition
+}
+
 var benchmarkSectionBlocks [game.SectionVolume]game.Block
 
 func TestGeneratorRegisters(t *testing.T) {
@@ -183,10 +188,7 @@ func TestGenerateSectionMatchesBlockAt(t *testing.T) {
 }
 
 func TestGeneratedChunkMatchesSectionAndBlockAt(t *testing.T) {
-	tests := []struct {
-		seed  int64
-		chunk game.ChunkPosition
-	}{
+	tests := []generatedChunkTestCase{
 		{seed: 0, chunk: game.ChunkPosition{X: 0, Z: 0}},
 		{seed: -24680, chunk: game.ChunkPosition{X: -19, Z: 23}},
 		{seed: 987654321, chunk: game.ChunkPosition{X: 31, Z: -37}},

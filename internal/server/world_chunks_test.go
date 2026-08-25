@@ -26,6 +26,14 @@ type countingGeneratedChunk struct {
 	generator *countingChunkGenerator
 }
 
+type bulkGeneratorTestCase struct {
+	name       string
+	generator  game.Generator
+	seed       int64
+	chunks     []game.ChunkPosition
+	sectionMin []int32
+}
+
 func (unsupportedBlockGenerator) BlockAt(_ int64, _ game.BlockPosition) game.Block {
 	return game.MaxBlockState + 1
 }
@@ -193,13 +201,7 @@ func TestNormalLightingPreparesEachContextChunkOnce(t *testing.T) {
 }
 
 func TestBulkGeneratorsMatchBlockAt(t *testing.T) {
-	tests := []struct {
-		name       string
-		generator  game.Generator
-		seed       int64
-		chunks     []game.ChunkPosition
-		sectionMin []int32
-	}{
+	tests := []bulkGeneratorTestCase{
 		{
 			name:       "spawn platform",
 			generator:  spawnplatform.New(),

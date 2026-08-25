@@ -17,6 +17,16 @@ import (
 
 type emissiveBenchmarkGenerator struct{}
 
+type chunkBenchmarkCase struct {
+	name      string
+	generator game.Generator
+}
+
+type lightingModeBenchmarkCase struct {
+	name string
+	mode game.LightingMode
+}
+
 func (emissiveBenchmarkGenerator) BlockAt(_ int64, position game.BlockPosition) game.Block {
 	if position.Y == 64 && (position.X+position.Z)&1 == 0 {
 		return game.Glowstone
@@ -50,10 +60,7 @@ func (emissiveBenchmarkGenerator) GenerationBounds(_ int64, _ game.ChunkPosition
 }
 
 func BenchmarkBuildLevelChunk(b *testing.B) {
-	benchmarks := []struct {
-		name      string
-		generator game.Generator
-	}{
+	benchmarks := []chunkBenchmarkCase{
 		{name: "spawn_platform", generator: spawnplatform.New()},
 		{name: "natural", generator: natural.New()},
 		{name: "wave_terrain", generator: waveterrain.New()},
@@ -95,10 +102,7 @@ func BenchmarkChunkPacketMengerSponge(b *testing.B) {
 }
 
 func BenchmarkLightingModes(b *testing.B) {
-	benchmarks := []struct {
-		name      string
-		generator game.Generator
-	}{
+	benchmarks := []chunkBenchmarkCase{
 		{name: "open", generator: nil},
 		{name: "ordinary_terrain", generator: natural.New()},
 		{name: "wave_terrain", generator: waveterrain.New()},
@@ -111,10 +115,7 @@ func BenchmarkLightingModes(b *testing.B) {
 	}
 
 	for _, benchmark := range benchmarks {
-		for _, mode := range []struct {
-			name string
-			mode game.LightingMode
-		}{
+		for _, mode := range []lightingModeBenchmarkCase{
 			{name: "normal", mode: game.LightingNormal},
 			{name: "fullbright", mode: game.LightingFullbright},
 		} {
@@ -137,10 +138,7 @@ func BenchmarkLightingModes(b *testing.B) {
 }
 
 func BenchmarkNormalChunkPacket(b *testing.B) {
-	benchmarks := []struct {
-		name      string
-		generator game.Generator
-	}{
+	benchmarks := []chunkBenchmarkCase{
 		{name: "ordinary_terrain", generator: natural.New()},
 		{name: "menger_sponge", generator: mengersponge.New()},
 		{name: "backrooms", generator: backrooms.New()},

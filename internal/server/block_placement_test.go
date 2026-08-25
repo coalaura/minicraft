@@ -11,6 +11,16 @@ type placementTestGenerator struct {
 	clicked game.BlockPosition
 }
 
+type placementFaceTestCase struct {
+	face   int32
+	target game.BlockPosition
+}
+
+type axisBlockPlacementTestCase struct {
+	face int32
+	axis int
+}
+
 func (g placementTestGenerator) BlockAt(_ int64, position game.BlockPosition) game.Block {
 	if position == g.clicked {
 		return game.Stone
@@ -20,10 +30,7 @@ func (g placementTestGenerator) BlockAt(_ int64, position game.BlockPosition) ga
 }
 
 func TestCreativeBlockPlacementOnEachFace(t *testing.T) {
-	tests := map[string]struct {
-		face   int32
-		target game.BlockPosition
-	}{
+	tests := map[string]placementFaceTestCase{
 		"down":  {face: protocol.BlockFaceDown, target: game.BlockPosition{Y: 69}},
 		"up":    {face: protocol.BlockFaceUp, target: game.BlockPosition{Y: 71}},
 		"north": {face: protocol.BlockFaceNorth, target: game.BlockPosition{Y: 70, Z: -1}},
@@ -201,10 +208,7 @@ func TestMainHandPlacementUsesSelectedHotbarItem(t *testing.T) {
 }
 
 func TestAxisBlockPlacementUsesClickedFace(t *testing.T) {
-	tests := map[string]struct {
-		face int32
-		axis int
-	}{
+	tests := map[string]axisBlockPlacementTestCase{
 		"x": {face: protocol.BlockFaceEast, axis: 0},
 		"y": {face: protocol.BlockFaceUp, axis: 1},
 		"z": {face: protocol.BlockFaceSouth, axis: 2},

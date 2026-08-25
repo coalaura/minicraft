@@ -47,6 +47,11 @@ type chatTestResponseRoundTripper struct {
 	body string
 }
 
+type tamperedPlayerChatTestCase struct {
+	name   string
+	mutate func(*protocol.ChatMessage)
+}
+
 func (t *chatTestRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
 	t.calls++
 
@@ -328,10 +333,7 @@ func TestSignedPlayerChatRejectsTamperingTransactionally(t *testing.T) {
 
 	valid := fixture.signedMessage(t, 0, "hello", 31, 0, [3]byte{}, 1, nil)
 
-	tests := []struct {
-		name   string
-		mutate func(*protocol.ChatMessage)
-	}{
+	tests := []tamperedPlayerChatTestCase{
 		{name: "message", mutate: func(message *protocol.ChatMessage) { message.Message = "tampered" }},
 		{name: "timestamp", mutate: func(message *protocol.ChatMessage) { message.Timestamp-- }},
 		{name: "salt", mutate: func(message *protocol.ChatMessage) { message.Salt++ }},

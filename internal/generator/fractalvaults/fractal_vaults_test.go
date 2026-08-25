@@ -6,6 +6,14 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
+type hierarchicalWallTestCase struct {
+	name string
+	x    int32
+	y    int32
+	z    int32
+	want game.Block
+}
+
 func TestGeneratorSpawnIsOpenAndSupported(t *testing.T) {
 	generated := Generator{}
 	for _, seed := range []int64{0, 1, -1, 123456789} {
@@ -23,13 +31,7 @@ func TestGeneratorSpawnIsOpenAndSupported(t *testing.T) {
 func TestGeneratorBuildsHierarchicalWalls(t *testing.T) {
 	generated := Generator{}
 	seed := int64(0)
-	tests := []struct {
-		name string
-		x    int32
-		y    int32
-		z    int32
-		want game.Block
-	}{
+	tests := []hierarchicalWallTestCase{
 		{name: "interior", x: 4, y: 64, z: 4, want: game.Air},
 		{name: "small wall", x: 9, y: 69, z: 7, want: game.Stone},
 		{name: "small wall ends", x: 9, y: 70, z: 7, want: game.Air},

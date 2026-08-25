@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+type sectionBlocksToSectionBenchmarkCase struct {
+	name   string
+	states func(int) int32
+}
+
 type benchmarkConnection struct{}
 
 func (benchmarkConnection) Read(_ []byte) (int, error) {
@@ -52,10 +57,7 @@ func (benchmarkAddress) String() string {
 }
 
 func BenchmarkSectionBlocksToSection(b *testing.B) {
-	benchmarks := []struct {
-		name   string
-		states func(int) int32
-	}{
+	benchmarks := []sectionBlocksToSectionBenchmarkCase{
 		{name: "empty", states: func(int) int32 { return AirBlockState }},
 		{name: "uniform", states: func(int) int32 { return StoneBlockState }},
 		{name: "small_palette", states: func(index int) int32 { return int32(index % 8) }},

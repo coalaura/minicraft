@@ -8,6 +8,15 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+type structuralConnectionTestCase struct {
+	name         string
+	first        game.Block
+	second       game.Block
+	property     string
+	connected    string
+	disconnected string
+}
+
 func TestSlabPlacementAndMerging(t *testing.T) {
 	for name, cursorY := range map[string]float32{"bottom": 0.25, "top": 0.75} {
 		t.Run(name, func(t *testing.T) {
@@ -325,14 +334,7 @@ func TestStructuralConnectionsAndNeighborUpdates(t *testing.T) {
 
 	joinTestSession(t, runtime, actor)
 
-	tests := []struct {
-		name         string
-		first        game.Block
-		second       game.Block
-		property     string
-		connected    string
-		disconnected string
-	}{
+	tests := []structuralConnectionTestCase{
 		{name: "fence", first: game.OakFence, second: game.SpruceFence, property: "east", connected: "true", disconnected: "false"},
 		{name: "pane_and_bars", first: game.GlassPane, second: game.IronBars, property: "east", connected: "true", disconnected: "false"},
 		{name: "wall", first: game.CobblestoneWall, second: game.BrickWall, property: "east", connected: "low", disconnected: "none"},

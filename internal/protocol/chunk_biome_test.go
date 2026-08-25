@@ -2,13 +2,15 @@ package protocol
 
 import "testing"
 
+type sectionBiomesPaletteModeTest struct {
+	name        string
+	paletteSize int
+	direct      bool
+	bits        int32
+}
+
 func TestSectionBiomesPaletteModes(t *testing.T) {
-	tests := []struct {
-		name        string
-		paletteSize int
-		direct      bool
-		bits        int32
-	}{
+	tests := []sectionBiomesPaletteModeTest{
 		{name: "uniform", paletteSize: 1},
 		{name: "two", paletteSize: 2, bits: 1},
 		{name: "three", paletteSize: 3, bits: 2},

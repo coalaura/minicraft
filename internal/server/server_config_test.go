@@ -11,6 +11,17 @@ import (
 	"github.com/coalaura/plain"
 )
 
+type secureChatAdvertisementTestCase struct {
+	name            string
+	onlineMode      bool
+	installVerifier bool
+	wantSecureChat  bool
+}
+
+type statusSecureChatResponse struct {
+	EnforcesSecureChat bool `json:"enforcesSecureChat"`
+}
+
 func TestOfflinePlayerUsesDefaultGameMode(t *testing.T) {
 	session := &Session{
 		Config:  &config.Config{Server: config.ServerConfig{DefaultGameMode: "adventure"}},
@@ -171,12 +182,7 @@ func TestPlayLoginAdvertisesConfiguredWorldAndDistance(t *testing.T) {
 }
 
 func TestSecureChatAdvertisementMatchesModeAndVerifierReadiness(t *testing.T) {
-	tests := []struct {
-		name            string
-		onlineMode      bool
-		installVerifier bool
-		wantSecureChat  bool
-	}{
+	tests := []secureChatAdvertisementTestCase{
 		{name: "offline", onlineMode: false, installVerifier: false, wantSecureChat: false},
 		{name: "online ready", onlineMode: true, installVerifier: true, wantSecureChat: true},
 		{name: "online uninitialized", onlineMode: true, installVerifier: false, wantSecureChat: false},
@@ -241,9 +247,7 @@ func decodeStatusSecureChat(t *testing.T, data []byte) bool {
 		t.Fatalf("decode status packet: %v", err)
 	}
 
-	var response struct {
-		EnforcesSecureChat bool `json:"enforcesSecureChat"`
-	}
+	var response statusSecureChatResponse
 
 	err = json.Unmarshal([]byte(responseJSON), &response)
 	if err != nil {

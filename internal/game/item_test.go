@@ -2,6 +2,11 @@ package game
 
 import "testing"
 
+type itemPlacementBlockMappingTestCase struct {
+	item  Item
+	block Block
+}
+
 func TestGeneratedItemCatalogueCoversVanillaItems(t *testing.T) {
 	if MaxItemID != 1504 {
 		t.Fatalf("max item ID = %d, want 1504", MaxItemID)
@@ -24,10 +29,7 @@ func TestGeneratedItemCatalogueCoversVanillaItems(t *testing.T) {
 }
 
 func TestItemPlacementBlockMapping(t *testing.T) {
-	for name, test := range map[string]struct {
-		item  Item
-		block Block
-	}{
+	for name, test := range map[string]itemPlacementBlockMappingTestCase{
 		"stone": {item: ItemStone, block: Stone},
 		"dirt":  {item: ItemDirt, block: Dirt},
 		"glass": {item: ItemGlass, block: Glass},

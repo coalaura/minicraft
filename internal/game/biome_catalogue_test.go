@@ -2,12 +2,14 @@ package game
 
 import "testing"
 
+type biomeCatalogueTestCase struct {
+	biome Biome
+	id    int
+	name  string
+}
+
 func TestBiomeCatalogue(t *testing.T) {
-	tests := []struct {
-		biome Biome
-		id    int
-		name  string
-	}{
+	tests := []biomeCatalogueTestCase{
 		{BiomeBadlands, 0, "badlands"},
 		{BiomePlains, 40, "plains"},
 		{BiomeWoodedBadlands, 64, "wooded_badlands"},
