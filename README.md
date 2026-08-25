@@ -83,6 +83,22 @@ Minicraft is not intended to be a drop-in replacement for a full vanilla server.
 
 There are still gameplay systems and protocol features that are intentionally incomplete or outside that scope.
 
+## Todo
+
+- Full player inventory support
+- Inventory and container interactions
+- Basic command system
+- Broader block placement and interaction support
+- Block entities
+- Chests and other inventory blocks
+- Crafting
+- Generic entity system
+- Dropped items and item pickup
+- Basic survival mechanics
+- Adventure map features
+- Transient chunk/entity lifecycle
+
+
 ## License
 
 Minicraft is available under the [Mozilla Public License 2.0](LICENSE).
