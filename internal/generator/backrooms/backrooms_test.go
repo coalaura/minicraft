@@ -2,6 +2,7 @@ package backrooms
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
@@ -406,7 +407,7 @@ func TestAmbientDoorsIncludeFalseAndUsefulDoors(t *testing.T) {
 			backWorldZ := zoneZ*zoneSize - zoneSize/2 + backZ
 
 			door := generated.BlockAt(seed, game.BlockPosition{X: int32(worldX), Y: floorY + 1, Z: int32(worldZ)})
-			if door.Behavior() != game.BlockBehaviorDoor {
+			if !isDoorBlock(door) {
 				t.Fatalf("ambient door block = %d, want door behavior", door)
 			}
 
@@ -463,7 +464,8 @@ func TestLibraryContainsShelvesAndActualDoors(t *testing.T) {
 						if block == game.Bookshelf || block == game.ChiseledBookshelf {
 							shelves++
 						}
-						if block.Behavior() == game.BlockBehaviorDoor {
+
+						if isDoorBlock(block) {
 							doors++
 						}
 					}
@@ -539,7 +541,7 @@ func TestExpandedRareFeaturesHaveSignatureGeometry(t *testing.T) {
 						stairs++
 					}
 
-					if block.Behavior() == game.BlockBehaviorDoor {
+					if isDoorBlock(block) {
 						doors++
 					}
 				}
@@ -617,7 +619,7 @@ func TestDoorGalleryContainsDoorToWall(t *testing.T) {
 			backWorldZ := zoneZ*zoneSize - zoneSize/2 + backLocalZ
 
 			door := generated.BlockAt(seed, game.BlockPosition{X: int32(doorWorldX), Y: floorY + 1, Z: int32(doorWorldZ)})
-			if door.Behavior() != game.BlockBehaviorDoor {
+			if !isDoorBlock(door) {
 				t.Fatalf("door gallery block = %d, want a door", door)
 			}
 
@@ -644,7 +646,7 @@ func TestActualDoorUsesMatchingHalves(t *testing.T) {
 		t.Fatal("upper door block was not generated")
 	}
 
-	if lower.Behavior() != game.BlockBehaviorDoor || upper.Behavior() != game.BlockBehaviorDoor {
+	if !isDoorBlock(lower) || !isDoorBlock(upper) {
 		t.Fatal("generated door halves are not door states")
 	}
 
@@ -654,6 +656,11 @@ func TestActualDoorUsesMatchingHalves(t *testing.T) {
 	if half, found := upper.Property("half"); !found || half != "upper" {
 		t.Fatalf("upper door half = %q, %v; want upper, true", half, found)
 	}
+}
+
+func isDoorBlock(block game.Block) bool {
+	definition, ok := block.Definition()
+	return ok && strings.HasSuffix(definition.Name, "_door")
 }
 
 func TestZoneBoundariesAlwaysHavePassages(t *testing.T) {
