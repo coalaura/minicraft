@@ -1,8 +1,10 @@
 # minicraft
 
-Minicraft is a small Minecraft Java Edition server built in Go. It speaks the protocol directly, without a vanilla server behind it and provides a focused place to experiment with networking, procedural generation and the details that make a Minecraft world feel alive.
+Minicraft is a small, fast Minecraft Java Edition server built in Go. It speaks the Minecraft protocol directly, without a vanilla server or JVM behind it and provides a focused foundation for experimenting with networking and procedural world generation.
 
-It currently targets **Minecraft Java Edition 1.21.11** (protocol 774). The project is still intentionally small and incomplete, but it is playable with an unmodified client.
+Despite its small size, it implements enough of the protocol and game behavior to explore generated worlds with an unmodified client, including multiplayer, secure chat, chunk streaming, lighting, block interaction and basic inventory handling.
+
+It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 
 ![The backrooms generator](.github/backrooms.png)
 
@@ -10,13 +12,18 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774). The proj
 
 - Online and offline authentication
 - Secure player chat and multiplayer presence
-- Player properties like skins
+- Player properties, including skins
 - Chunk streaming with configurable render distance
-- Player movement, block breaking, block placement and block modification
-- Lighting, world time and a day/night cycle
-- Seeded procedural world generators
+- Player movement and synchronization
+- Block breaking, placement and modification
+- Stateful block placement for common structures such as slabs, stairs, doors, trapdoors, fences and walls
 - Basic hotbar inventory support
+- Biomes, lighting, world time and a day/night cycle
+- Deterministic, seeded procedural world generation
+- In-memory world modifications without world save files
 - TOML configuration
+
+Minicraft is intentionally lightweight. It runs as a single Go binary and avoids the JVM, vanilla server internals and persistent world storage of a regular Minecraft server, making it especially quick to start and inexpensive to run.
 
 <p align="center">
   <img src=".github/blocks.png" alt="Block placement in a generated world" width="49%">
@@ -34,9 +41,11 @@ cp example.config.toml config.toml
 go run .
 ```
 
-Then connect to `localhost:25565`. Edit `config.toml` to change the address, game mode, render distance, chat behavior, world settings and other server options.
+Then connect to `localhost:25565`.
 
-To create a standalone binary instead:
+Edit `config.toml` to change the address, game mode, render distance, chat behavior, world settings and other server options.
+
+To build a standalone binary instead:
 
 ```sh
 go build -o minicraft .
@@ -58,7 +67,9 @@ spawn-platform
 wave-terrain
 ```
 
-Each generator is deterministic for a given seed. `spawn-platform` is the simplest place to start; the others explore more unusual worlds.
+Generators are deterministic for a given seed and produce their worlds procedurally as chunks are requested. `spawn-platform` is the simplest example to start from, while the others demonstrate more complex and unusual generation techniques.
+
+No persistent world storage is required: generated terrain can always be reconstructed from its generator and seed, while player modifications live only in memory.
 
 ## Development
 
@@ -68,7 +79,9 @@ Run the test suite with:
 go test ./...
 ```
 
-Minicraft is a learning project rather than a complete replacement for a production Minecraft server. Expect missing gameplay systems and ongoing protocol work.
+Minicraft is not intended to be a drop-in replacement for a full vanilla server. Its focus is on the Minecraft protocol, multiplayer fundamentals and providing a small, efficient foundation for procedural worlds.
+
+There are still gameplay systems and protocol features that are intentionally incomplete or outside that scope.
 
 ## License
 
