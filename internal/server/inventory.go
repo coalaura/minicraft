@@ -112,9 +112,15 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 		return
 	}
 
-	err := s.sendPlayerInventorySnapshot(player.Inventory)
+	err := s.writePacket(protocol.ClientboundContainerSetSlotID, protocol.ContainerSetSlot{
+		WindowID: playerInventoryWindowID,
+		StateID:  player.Inventory.StateID,
+		Slot:     update.Slot,
+		Item:     stack,
+	})
+
 	if err != nil {
-		s.Log.Warnf("[play] failed to synchronize creative inventory: %v\n", err)
+		s.Log.Warnf("[play] failed to synchronize creative inventory slot: %v\n", err)
 	}
 
 	if len(equipment) > 0 {
@@ -139,7 +145,7 @@ func (s *Session) handlePickItemFromBlock(pick protocol.PickItemFromBlock) {
 		return
 	}
 
-	pickedStack := game.ItemStack{Item: item, Count: definition.StackSize}
+	pickedStack := game.ItemStack{Item: item, Count: 1}
 
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
@@ -170,16 +176,31 @@ func (s *Session) handlePickItemFromBlock(pick protocol.PickItemFromBlock) {
 			return true
 		}
 
-		held := player.Inventory.Held(player.SelectedHotbarSlot)
+		selectedSlot := player.SelectedHotbarSlot
+		targetSlot := selectedSlot
+
+		for offset := range game.HotbarSlotCount {
+			slot := (selectedSlot + offset) % game.HotbarSlotCount
+			if player.Inventory.Hotbar[slot].Empty() {
+				targetSlot = slot
+
+				break
+			}
+		}
+
+		held := player.Inventory.Held(targetSlot)
 		if held == nil {
 			return false
 		}
 
 		*held = pickedStack
 
+		player.SelectedHotbarSlot = targetSlot
+
 		player.Inventory.StateID = nextInventoryStateID(player.Inventory.StateID)
 
 		inventoryChanged = true
+		selectionChanged = targetSlot != selectedSlot
 
 		return true
 	})
