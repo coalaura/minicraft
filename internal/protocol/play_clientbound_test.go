@@ -43,8 +43,8 @@ func TestContainerInventoryPacketsEncode(t *testing.T) {
 		Item:  game.ItemStone,
 		Count: 2,
 		Components: []game.ItemComponent{{
-			Type: 7,
-			Data: []byte{0xAC, 0x02},
+			Type: 1,
+			Data: []byte{0x10},
 		}},
 		RemovedComponents: []int32{8},
 	}
@@ -57,7 +57,7 @@ func TestContainerInventoryPacketsEncode(t *testing.T) {
 	}, []byte{
 		0x00, 0xAC, 0x02, 0x02,
 		0x00,
-		0x02, byte(game.ItemStone), 0x01, 0x01, 0x07, 0xAC, 0x02, 0x08,
+		0x02, byte(game.ItemStone), 0x01, 0x01, 0x01, 0x10, 0x08,
 		0x01, byte(game.ItemDirt), 0x00, 0x00,
 	})
 
@@ -68,7 +68,7 @@ func TestContainerInventoryPacketsEncode(t *testing.T) {
 		Item:     stack,
 	}, []byte{
 		0x00, 0x01, 0x00, 0x2D,
-		0x02, byte(game.ItemStone), 0x01, 0x01, 0x07, 0xAC, 0x02, 0x08,
+		0x02, byte(game.ItemStone), 0x01, 0x01, 0x01, 0x10, 0x08,
 	})
 }
 

@@ -381,10 +381,8 @@ func TestDecodeSetCreativeModeSlot(t *testing.T) {
 	writer.Short(40)
 	writer.VarInt(64)
 	writer.VarInt(1)
+	writer.VarInt(0)
 	writer.VarInt(1)
-	writer.VarInt(1)
-	writer.VarInt(2)
-	writer.Bytes([]byte{0xAA, 0xBB})
 	writer.VarInt(3)
 
 	update, err := DecodeSetCreativeModeSlot(writer.Buffer.Bytes())
@@ -396,8 +394,8 @@ func TestDecodeSetCreativeModeSlot(t *testing.T) {
 		t.Fatalf("creative slot = %+v", update)
 	}
 
-	if len(update.Item.Components) != 1 || update.Item.Components[0].Type != 2 || string(update.Item.Components[0].Data) != "\xaa\xbb" || len(update.Item.RemovedComponents) != 1 || update.Item.RemovedComponents[0] != 3 {
-		t.Fatalf("creative slot components = %+v, removed = %v", update.Item.Components, update.Item.RemovedComponents)
+	if len(update.Item.RemovedComponents) != 1 || update.Item.RemovedComponents[0] != 3 {
+		t.Fatalf("creative slot removed components = %v", update.Item.RemovedComponents)
 	}
 }
 
@@ -480,7 +478,7 @@ func TestDecodeContainerClickRejectsMalformedPredictions(t *testing.T) {
 	}
 }
 
-func TestDecodeSetCreativeModeSlotRejectsTruncatedComponents(t *testing.T) {
+func TestDecodeSetCreativeModeSlotRejectsAddedComponents(t *testing.T) {
 	var writer PacketWriter
 
 	writer.Short(36)
@@ -488,27 +486,12 @@ func TestDecodeSetCreativeModeSlotRejectsTruncatedComponents(t *testing.T) {
 	writer.VarInt(1)
 	writer.VarInt(1)
 	writer.VarInt(0)
+	writer.VarInt(1)
+	writer.VarInt(16)
 
 	_, err := DecodeSetCreativeModeSlot(writer.Buffer.Bytes())
-	if err == nil {
-		t.Fatal("decode truncated creative slot succeeded")
-	}
-}
-
-func TestDecodeSetCreativeModeSlotRejectsOversizedComponent(t *testing.T) {
-	var writer PacketWriter
-
-	writer.Short(36)
-	writer.VarInt(1)
-	writer.VarInt(1)
-	writer.VarInt(1)
-	writer.VarInt(0)
-	writer.VarInt(2)
-	writer.VarInt(1 << 30)
-
-	_, err := DecodeSetCreativeModeSlot(writer.Buffer.Bytes())
-	if err == nil {
-		t.Fatal("decode oversized creative slot component succeeded")
+	if err == nil || err.Error() != "added slot component patches are unsupported" {
+		t.Fatalf("decode creative slot with added max_stack_size component error = %v", err)
 	}
 }
 

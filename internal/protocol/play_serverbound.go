@@ -32,7 +32,6 @@ const (
 	BlockFaceEast  = 5
 
 	maxUntrustedSlotComponents = 1024
-	maxUntrustedComponentBytes = 1 << 20
 	maxContainerChangedSlots   = 128
 	maxChatMessageCharacters   = 256
 	chatMessageSignatureLength = 256
@@ -136,15 +135,9 @@ type SetHeldItem struct {
 	Slot int16
 }
 
-type UntrustedSlotComponent struct {
-	Type int32
-	Data []byte
-}
-
 type UntrustedSlot struct {
 	ItemCount         int32
 	ItemID            int32
-	Components        []UntrustedSlotComponent
 	RemovedComponents []int32
 }
 
@@ -623,13 +616,8 @@ func decodeUntrustedSlot(rd *PacketReader) (UntrustedSlot, error) {
 		return UntrustedSlot{}, fmt.Errorf("invalid removed slot component count %d", removedComponentCount)
 	}
 
-	item.Components = make([]UntrustedSlotComponent, addedComponentCount)
-
-	for index := range item.Components {
-		item.Components[index] = UntrustedSlotComponent{
-			Type: rd.VarInt(),
-			Data: rd.BytesMax(maxUntrustedComponentBytes),
-		}
+	if addedComponentCount != 0 {
+		return UntrustedSlot{}, fmt.Errorf("added slot component patches are unsupported")
 	}
 
 	item.RemovedComponents = make([]int32, removedComponentCount)

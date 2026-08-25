@@ -2,7 +2,7 @@
 
 Minicraft is a small, fast Minecraft Java Edition server built in Go. It speaks the Minecraft protocol directly, without a vanilla server or JVM behind it and provides a focused foundation for experimenting with networking and procedural world generation.
 
-Despite its small size, it implements enough of the protocol and game behavior to explore generated worlds with an unmodified client, including multiplayer, secure chat, chunk streaming, lighting, block interaction and basic inventory handling.
+Despite its small size, it implements enough of the protocol and game behavior to explore generated worlds with an unmodified client, including multiplayer, secure chat, chunk streaming, lighting, block interaction and full player inventory handling.
 
 It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 
@@ -17,10 +17,11 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Player movement and synchronization
 - Block breaking, placement and modification
 - Stateful block placement for common structures such as slabs, stairs, doors, trapdoors, fences and walls
-- Basic hotbar inventory support
+- Full player inventory and creative inventory interactions
 - Biomes, lighting, world time and a day/night cycle
 - Deterministic, seeded procedural world generation
 - In-memory world modifications without world save files
+- Transient chunk and player entity lifecycle
 - TOML configuration
 
 Minicraft is intentionally lightweight. It runs as a single Go binary and avoids the JVM, vanilla server internals and persistent world storage of a regular Minecraft server, making it especially quick to start and inexpensive to run.
@@ -85,8 +86,7 @@ There are still gameplay systems and protocol features that are intentionally in
 
 ## Todo
 
-- Full player inventory support
-- Inventory and container interactions
+- Container inventories and interactions
 - Basic command system
 - Broader block placement and interaction support
 - Block entities
@@ -96,7 +96,6 @@ There are still gameplay systems and protocol features that are intentionally in
 - Dropped items and item pickup
 - Basic survival mechanics
 - Adventure map features
-- Transient chunk/entity lifecycle
 
 
 ## License

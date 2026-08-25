@@ -747,10 +747,10 @@ func (s *Session) heldItem(hand int32) (game.ItemStack, bool) {
 
 func creativeItemStack(item protocol.UntrustedSlot) (game.ItemStack, bool) {
 	if item.ItemCount == 0 {
-		return game.ItemStack{}, len(item.Components) == 0 && len(item.RemovedComponents) == 0
+		return game.ItemStack{}, len(item.RemovedComponents) == 0
 	}
 
-	if item.ItemCount < 0 || item.ItemID < 0 || item.ItemID > int32(game.MaxItemID) || len(item.Components) != 0 {
+	if item.ItemCount < 0 || item.ItemID < 0 || item.ItemID > int32(game.MaxItemID) {
 		return game.ItemStack{}, false
 	}
 
