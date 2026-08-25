@@ -236,20 +236,20 @@ func flowerFor(hash uint64) game.Block {
 	}
 }
 
-func applyTrees(seed int64, chunkPosition game.ChunkPosition, sectionMinY int32, blocks *[game.SectionVolume]game.Block) {
+func treesForChunk(seed int64, chunkPosition game.ChunkPosition) []tree {
 	chunkMinX := chunkPosition.X * game.ChunkWidth
 	chunkMinZ := chunkPosition.Z * game.ChunkWidth
 
 	chunkMaxX := chunkMinX + game.ChunkWidth - 1
 	chunkMaxZ := chunkMinZ + game.ChunkWidth - 1
 
-	sectionMaxY := sectionMinY + game.ChunkWidth - 1
-
 	minCellX := floorDiv(chunkMinX-maxTreeRadius, treeCellSize)
 	maxCellX := floorDiv(chunkMaxX+maxTreeRadius, treeCellSize)
 
 	minCellZ := floorDiv(chunkMinZ-maxTreeRadius, treeCellSize)
 	maxCellZ := floorDiv(chunkMaxZ+maxTreeRadius, treeCellSize)
+
+	trees := make([]tree, 0, 16)
 
 	for cellZ := minCellZ; cellZ <= maxCellZ; cellZ++ {
 		for cellX := minCellX; cellX <= maxCellX; cellX++ {
@@ -258,37 +258,54 @@ func applyTrees(seed int64, chunkPosition game.ChunkPosition, sectionMinY int32,
 				continue
 			}
 
-			minTreeY := candidate.baseY + 1
-			maxTreeY := candidate.baseY + candidate.height + 1
+			trees = append(trees, candidate)
+		}
+	}
 
-			if maxTreeY < sectionMinY || minTreeY > sectionMaxY {
-				continue
-			}
+	return trees
+}
 
-			for y := max(sectionMinY, candidate.baseY+1); y <= min(sectionMaxY, candidate.baseY+candidate.height+1); y++ {
-				for z := max(chunkMinZ, candidate.z-maxTreeRadius); z <= min(chunkMaxZ, candidate.z+maxTreeRadius); z++ {
-					for x := max(chunkMinX, candidate.x-maxTreeRadius); x <= min(chunkMaxX, candidate.x+maxTreeRadius); x++ {
-						position := game.BlockPosition{X: x, Y: y, Z: z}
+func applyPreparedTrees(chunkPosition game.ChunkPosition, sectionMinY int32, trees []tree, blocks *[game.SectionVolume]game.Block) {
+	chunkMinX := chunkPosition.X * game.ChunkWidth
+	chunkMinZ := chunkPosition.Z * game.ChunkWidth
 
-						block, trunk, matches := treeBlockAt(candidate, position)
-						if !matches {
-							continue
-						}
+	chunkMaxX := chunkMinX + game.ChunkWidth - 1
+	chunkMaxZ := chunkMinZ + game.ChunkWidth - 1
 
-						index := (y-sectionMinY)*256 + (z-chunkMinZ)*16 + (x - chunkMinX)
-						existing := blocks[index]
+	sectionMaxY := sectionMinY + game.ChunkWidth - 1
 
-						if trunk {
-							if existing == game.Air || existing == game.OakLeaves || existing == game.SpruceLeaves || existing == game.OakLog || existing == game.SpruceLog {
-								blocks[index] = block
-							}
+	for _, candidate := range trees {
 
-							continue
-						}
+		minTreeY := candidate.baseY + 1
+		maxTreeY := candidate.baseY + candidate.height + 1
 
-						if existing == game.Air || existing == game.OakLeaves || existing == game.SpruceLeaves {
+		if maxTreeY < sectionMinY || minTreeY > sectionMaxY {
+			continue
+		}
+
+		for y := max(sectionMinY, candidate.baseY+1); y <= min(sectionMaxY, candidate.baseY+candidate.height+1); y++ {
+			for z := max(chunkMinZ, candidate.z-maxTreeRadius); z <= min(chunkMaxZ, candidate.z+maxTreeRadius); z++ {
+				for x := max(chunkMinX, candidate.x-maxTreeRadius); x <= min(chunkMaxX, candidate.x+maxTreeRadius); x++ {
+					position := game.BlockPosition{X: x, Y: y, Z: z}
+
+					block, trunk, matches := treeBlockAt(candidate, position)
+					if !matches {
+						continue
+					}
+
+					index := (y-sectionMinY)*256 + (z-chunkMinZ)*16 + (x - chunkMinX)
+					existing := blocks[index]
+
+					if trunk {
+						if existing == game.Air || existing == game.OakLeaves || existing == game.SpruceLeaves || existing == game.OakLog || existing == game.SpruceLog {
 							blocks[index] = block
 						}
+
+						continue
+					}
+
+					if existing == game.Air || existing == game.OakLeaves || existing == game.SpruceLeaves {
+						blocks[index] = block
 					}
 				}
 			}

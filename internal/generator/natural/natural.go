@@ -42,6 +42,15 @@ const (
 
 type Generator struct{}
 
+type generatedChunk struct {
+	seed      int64
+	position  game.ChunkPosition
+	columns   [game.ChunkWidth * game.ChunkWidth]column
+	minHeight int32
+	maxHeight int32
+	trees     []tree
+}
+
 type column struct {
 	height        int32
 	biome         game.Biome
@@ -96,11 +105,42 @@ func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	return game.Air
 }
 
-func (Generator) BiomeAt(seed int64, x, z int32) game.Biome {
+func (Generator) BiomeAt(seed int64, x, _ int32, z int32) game.Biome {
 	return columnAt(seed, x, z).biome
 }
 
+func (Generator) GenerateChunk(seed int64, chunkPosition game.ChunkPosition) game.GeneratedChunk {
+	chunkMinX := chunkPosition.X * game.ChunkWidth
+	chunkMinZ := chunkPosition.Z * game.ChunkWidth
+
+	generated := &generatedChunk{
+		seed:      seed,
+		position:  chunkPosition,
+		minHeight: math.MaxInt32,
+		maxHeight: math.MinInt32,
+	}
+
+	for localZ := range int32(game.ChunkWidth) {
+		for localX := range int32(game.ChunkWidth) {
+			terrain := columnAt(seed, chunkMinX+localX, chunkMinZ+localZ)
+
+			generated.columns[localZ*game.ChunkWidth+localX] = terrain
+			generated.minHeight = min(generated.minHeight, terrain.height)
+			generated.maxHeight = max(generated.maxHeight, terrain.height)
+		}
+	}
+
+	generated.trees = treesForChunk(seed, chunkPosition)
+
+	return generated
+}
+
 func (Generator) GenerateSection(seed int64, chunkPosition game.ChunkPosition, sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
+	generated := Generator{}.GenerateChunk(seed, chunkPosition)
+	return generated.GenerateSection(sectionMinY, blocks)
+}
+
+func (generated *generatedChunk) GenerateSection(sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
 	sectionMaxY := sectionMinY + game.ChunkWidth - 1
 	if sectionMaxY < minimumY || sectionMinY > maximumY {
 		return game.Air, true
@@ -110,30 +150,14 @@ func (Generator) GenerateSection(seed int64, chunkPosition game.ChunkPosition, s
 		return game.Stone, true
 	}
 
-	chunkMinX := chunkPosition.X * game.ChunkWidth
-	chunkMinZ := chunkPosition.Z * game.ChunkWidth
+	chunkMinX := generated.position.X * game.ChunkWidth
+	chunkMinZ := generated.position.Z * game.ChunkWidth
 
-	var columns [game.ChunkWidth * game.ChunkWidth]column
-
-	minHeight := int32(math.MaxInt32)
-	maxHeight := int32(math.MinInt32)
-
-	for localZ := range int32(game.ChunkWidth) {
-		for localX := range int32(game.ChunkWidth) {
-			terrain := columnAt(seed, chunkMinX+localX, chunkMinZ+localZ)
-
-			columns[localZ*game.ChunkWidth+localX] = terrain
-
-			minHeight = min(minHeight, terrain.height)
-			maxHeight = max(maxHeight, terrain.height)
-		}
-	}
-
-	if sectionMinY > max(maxHeight, seaLevel)+maxTreeHeight+2 {
+	if sectionMinY > max(generated.maxHeight, seaLevel)+maxTreeHeight+2 {
 		return game.Air, true
 	}
 
-	if sectionMaxY < minHeight-7 && sectionMinY > minimumY+4 {
+	if sectionMaxY < generated.minHeight-7 && sectionMinY > minimumY+4 {
 		return game.Stone, true
 	}
 
@@ -149,13 +173,13 @@ func (Generator) GenerateSection(seed int64, chunkPosition game.ChunkPosition, s
 					Z: chunkMinZ + localZ,
 				}
 
-				blocks[index] = terrainBlockAt(seed, position, columns[localZ*game.ChunkWidth+localX])
+				blocks[index] = terrainBlockAt(generated.seed, position, generated.columns[localZ*game.ChunkWidth+localX])
 			}
 		}
 	}
 
-	applyTrees(seed, chunkPosition, sectionMinY, blocks)
-	applyColumnFeatures(seed, chunkPosition, sectionMinY, &columns, blocks)
+	applyPreparedTrees(generated.position, sectionMinY, generated.trees, blocks)
+	applyColumnFeatures(generated.seed, generated.position, sectionMinY, &generated.columns, blocks)
 
 	first := blocks[0]
 
@@ -166,6 +190,21 @@ func (Generator) GenerateSection(seed int64, chunkPosition game.ChunkPosition, s
 	}
 
 	return first, true
+}
+
+func (generated *generatedChunk) BiomeAt(x, _ int32, z int32) game.Biome {
+	localX := x - generated.position.X*game.ChunkWidth
+	localZ := z - generated.position.Z*game.ChunkWidth
+
+	if localX < 0 || localX >= game.ChunkWidth || localZ < 0 || localZ >= game.ChunkWidth {
+		return columnAt(generated.seed, x, z).biome
+	}
+
+	return generated.columns[localZ*game.ChunkWidth+localX].biome
+}
+
+func (Generator) WorldMetadata(_ int64) game.WorldMetadata {
+	return game.WorldMetadata{SeaLevel: seaLevel}
 }
 
 func (Generator) GenerationBounds(_ int64, _ game.ChunkPosition) (int32, int32, bool) {
