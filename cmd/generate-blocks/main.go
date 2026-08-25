@@ -26,6 +26,8 @@ type BlockDefinition struct {
 	MaxState     uint16          `json:"maxStateId"`
 	Properties   []BlockProperty `json:"states"`
 	BoundingBox  string          `json:"boundingBox"`
+	EmitLight    uint8           `json:"emitLight"`
+	FilterLight  uint8           `json:"filterLight"`
 }
 
 func main() {
@@ -110,13 +112,15 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	for _, block := range blocks {
 		fmt.Fprintf(
 			&output,
-			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s",
+			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Emission: %d, LightFilter: %d",
 			goName(block.Name),
 			block.Name,
 			goName(block.Name),
 			block.MinState,
 			block.MaxState,
 			blockBehavior(block),
+			block.EmitLight,
+			block.FilterLight,
 		)
 
 		if len(block.Properties) != 0 {
@@ -146,6 +150,22 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	fmt.Fprintln(&output, "}")
 	fmt.Fprintln(&output)
 
+	fmt.Fprintln(&output, "var stateLightProperties = [...]uint8{")
+
+	for _, block := range blocks {
+		for state := block.MinState; state <= block.MaxState; state++ {
+			emission := stateEmission(block, state)
+			fmt.Fprintf(&output, "%d,", emission|block.FilterLight<<4)
+
+			if state == block.MaxState {
+				break
+			}
+		}
+	}
+
+	fmt.Fprintln(&output, "}")
+	fmt.Fprintln(&output)
+
 	fmt.Fprintln(&output, "var stateBlockIDs = [...]BlockID{")
 
 	for _, block := range blocks {
@@ -166,6 +186,112 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	}
 
 	return formatted, nil
+}
+
+func stateEmission(block BlockDefinition, state uint16) uint8 {
+	if block.Name == "light" {
+		return uint8(propertyInt(block, state, "level"))
+	}
+
+	if block.Name == "sea_pickle" {
+		if propertyValue(block, state, "waterlogged") != "true" {
+			return 0
+		}
+
+		return uint8(propertyInt(block, state, "pickles")*3 + 3)
+	}
+
+	if block.Name == "respawn_anchor" {
+		charges := propertyInt(block, state, "charges")
+		if charges == 0 {
+			return 0
+		}
+
+		return uint8(charges*4 - 1)
+	}
+
+	if block.Name == "cave_vines" || block.Name == "cave_vines_plant" {
+		if propertyValue(block, state, "berries") != "true" {
+			return 0
+		}
+	}
+
+	if block.Name == "sculk_sensor" || block.Name == "calibrated_sculk_sensor" {
+		if propertyValue(block, state, "sculk_sensor_phase") != "active" {
+			return 0
+		}
+	}
+
+	if propertyValue(block, state, "lit") == "false" {
+		return 0
+	}
+
+	switch block.Name {
+	case "furnace", "smoker", "blast_furnace":
+		return 13
+	case "redstone_ore", "deepslate_redstone_ore":
+		return 9
+	case "redstone_lamp":
+		return 15
+	}
+
+	if block.Name == "candle" || strings.HasSuffix(block.Name, "_candle") {
+		return uint8(propertyInt(block, state, "candles") * 3)
+	}
+
+	if strings.HasSuffix(block.Name, "candle_cake") {
+		return 3
+	}
+
+	copperBulb := strings.TrimPrefix(block.Name, "waxed_")
+
+	switch copperBulb {
+	case "copper_bulb":
+		return 15
+	case "exposed_copper_bulb":
+		return 12
+	case "weathered_copper_bulb":
+		return 8
+	case "oxidized_copper_bulb":
+		return 4
+	}
+
+	return block.EmitLight
+}
+
+func propertyInt(block BlockDefinition, state uint16, name string) int {
+	value := propertyValue(block, state, name)
+	if value == "" {
+		return 0
+	}
+
+	var result int
+	_, _ = fmt.Sscanf(value, "%d", &result)
+
+	return result
+}
+
+func propertyValue(block BlockDefinition, state uint16, name string) string {
+	offset := int(state - block.MinState)
+
+	for index := len(block.Properties) - 1; index >= 0; index-- {
+		property := block.Properties[index]
+
+		values := property.Values
+
+		if property.Type == "bool" {
+			values = []string{"true", "false"}
+		}
+
+		valueIndex := offset % len(values)
+		offset /= len(values)
+
+		if property.Name == name {
+			return values[valueIndex]
+		}
+	}
+
+	return ""
 }
 
 func blockBehavior(block BlockDefinition) string {

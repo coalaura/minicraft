@@ -59,6 +59,24 @@ func TestNewOverworldUsesSeedAndGeneratorSpawn(t *testing.T) {
 	}
 }
 
+func TestWorldTimeAdvancesAndFreezesDayTime(t *testing.T) {
+	world := NewOverworld(nil)
+
+	world.SetTime(18000, false)
+
+	state := world.AdvanceTime()
+	if state.Age != 1 || state.DayTime != 18000 || state.DayCycle {
+		t.Fatalf("fixed time after tick = %+v", state)
+	}
+
+	world.SetTime(6000, true)
+
+	state = world.AdvanceTime()
+	if state.Age != 1 || state.DayTime != 6001 || !state.DayCycle {
+		t.Fatalf("cycling time after tick = %+v", state)
+	}
+}
+
 func TestWorldGenerationIsDeterministic(t *testing.T) {
 	positions := []BlockPosition{
 		{X: -17, Y: -64, Z: 31},

@@ -42,6 +42,8 @@ type BlockDefinition struct {
 	MinState     Block
 	MaxState     Block
 	Behavior     BlockBehavior
+	Emission     uint8
+	LightFilter  uint8
 	Properties   []BlockProperty
 }
 
@@ -91,6 +93,24 @@ func (block Block) Behavior() BlockBehavior {
 	}
 
 	return blockDefinitions[stateBlockIDs[block]].Behavior
+}
+
+func (block Block) LightProperties() (emission, filter uint8) {
+	if !block.Valid() {
+		return 0, 15
+	}
+
+	properties := stateLightProperties[block]
+
+	return properties & 0x0f, properties >> 4
+}
+
+func (block Block) SameLightProperties(other Block) bool {
+	if !block.Valid() || !other.Valid() {
+		return block == other
+	}
+
+	return stateLightProperties[block] == stateLightProperties[other]
 }
 
 func (block Block) Property(name string) (string, bool) {

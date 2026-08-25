@@ -227,6 +227,12 @@ type PlayKeepAlive struct {
 	ID int64
 }
 
+type UpdateTime struct {
+	Age         int64
+	Time        int64
+	TickDayTime bool
+}
+
 type BlockChangedAck struct {
 	Sequence int32
 }
@@ -488,6 +494,12 @@ func (p GameEvent) Encode(wr *PacketWriter) {
 
 func (p PlayKeepAlive) Encode(wr *PacketWriter) {
 	wr.Long(p.ID)
+}
+
+func (p UpdateTime) Encode(wr *PacketWriter) {
+	wr.Long(p.Age)
+	wr.Long(p.Time)
+	wr.Bool(p.TickDayTime)
 }
 
 func (p BlockChangedAck) Encode(wr *PacketWriter) {

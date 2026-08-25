@@ -200,6 +200,30 @@ func (s *Session) sendBlockUpdateIfLoaded(position game.BlockPosition, state int
 	return s.sendBlockUpdate(position, state)
 }
 
+func (s *Session) sendLightUpdateIfLoaded(update protocol.UpdateLight) error {
+	s.chunkMx.Lock()
+	defer s.chunkMx.Unlock()
+
+	chunk := LoadedChunk{X: update.Position.X, Z: update.Position.Z}
+	if _, loaded := s.loadedChunks[chunk]; !loaded {
+		return nil
+	}
+
+	var wr protocol.PacketWriter
+
+	update.Encode(&wr)
+
+	err := wr.Err()
+	if err != nil {
+		return err
+	}
+
+	return s.writeRawPacket(protocol.Packet{
+		ID:   protocol.ClientboundUpdateLightID,
+		Data: wr.Buffer.Bytes(),
+	})
+}
+
 func (s *Session) sendLevelEventIfLoaded(event protocol.LevelEvent) error {
 	s.chunkMx.Lock()
 	defer s.chunkMx.Unlock()
@@ -640,6 +664,15 @@ func buildLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChu
 	if world == nil {
 		return protocol.LevelChunkWithLight{}, fmt.Errorf("world is nil")
 	}
+
+	if world.Lighting == game.LightingNormal {
+		return buildNormalLevelChunk(world, chunkX, chunkZ)
+	}
+
+	return buildFullbrightLevelChunk(world, chunkX, chunkZ)
+}
+
+func buildFullbrightLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChunkWithLight, error) {
 
 	chunk := protocol.NewEmptyOverworldChunk(chunkX, chunkZ, 0)
 

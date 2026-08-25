@@ -29,6 +29,9 @@ func main() {
 
 	world := game.NewOverworld(worldGenerator, cfg.World.Seed)
 
+	world.SetLightingMode(game.ParseLightingMode(cfg.World.Lighting))
+	world.SetTime(cfg.WorldTime(), cfg.DayCycle())
+
 	if cfg.World.Spawn != nil {
 		world.Spawn = game.Position{X: cfg.World.Spawn.X, Y: cfg.World.Spawn.Y, Z: cfg.World.Spawn.Z}
 	}
@@ -54,6 +57,8 @@ func main() {
 	)
 
 	defer cancel()
+
+	go runtime.RunWorldClock(ctx)
 
 	go func() {
 		<-ctx.Done()

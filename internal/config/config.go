@@ -38,6 +38,9 @@ type WorldConfig struct {
 	Generator string       `toml:"generator"`
 	Seed      int64        `toml:"seed"`
 	Spawn     *SpawnConfig `toml:"spawn"`
+	Lighting  string       `toml:"lighting"`
+	DayCycle  *bool        `toml:"day-cycle"`
+	Time      *int64       `toml:"time"`
 }
 
 type SpawnConfig struct {
@@ -179,6 +182,20 @@ func (c *Config) SetDefaults() {
 	if c.World.Generator == "" {
 		c.World.Generator = "spawn-platform"
 	}
+
+	if c.World.Lighting == "" {
+		c.World.Lighting = "normal"
+	}
+
+	if c.World.DayCycle == nil {
+		dayCycle := true
+		c.World.DayCycle = &dayCycle
+	}
+
+	if c.World.Time == nil {
+		worldTime := int64(6000)
+		c.World.Time = &worldTime
+	}
 }
 
 func (c *Config) Validate() error {
@@ -198,12 +215,32 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("world spawn coordinates must be finite")
 	}
 
+	if c.World.Lighting != "" && c.World.Lighting != "normal" && c.World.Lighting != "fullbright" {
+		return fmt.Errorf("unknown world lighting mode %q", c.World.Lighting)
+	}
+
 	_, err := game.ParseGameMode(c.Server.DefaultGameMode)
 	if err != nil {
 		return fmt.Errorf("default-game-mode: %w", err)
 	}
 
 	return nil
+}
+
+func (c *Config) DayCycle() bool {
+	if c.World.DayCycle == nil {
+		return true
+	}
+
+	return *c.World.DayCycle
+}
+
+func (c *Config) WorldTime() int64 {
+	if c.World.Time == nil {
+		return 6000
+	}
+
+	return *c.World.Time
 }
 
 func (c *Config) MaxPlayers() int {

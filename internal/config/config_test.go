@@ -44,6 +44,10 @@ func TestConfigDefaults(t *testing.T) {
 	if cfg.World.Spawn != nil {
 		t.Fatalf("spawn = %+v, want omitted", cfg.World.Spawn)
 	}
+
+	if cfg.World.Lighting != "normal" || !cfg.DayCycle() || cfg.WorldTime() != 6000 {
+		t.Fatalf("world lighting/time defaults = %q, %v, %d", cfg.World.Lighting, cfg.DayCycle(), cfg.WorldTime())
+	}
 }
 
 func TestConfigDecodesChatAndPreservesEmptyLifecycleMessages(t *testing.T) {
@@ -116,6 +120,24 @@ func TestConfigRejectsInvalidGameMode(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "builder") {
 		t.Fatalf("validation error = %v, want invalid game mode", err)
+	}
+}
+
+func TestConfigWorldLightingAndTime(t *testing.T) {
+	input := "[world]\nlighting = 'fullbright'\nday-cycle = false\ntime = 18000"
+
+	cfg, err := decodeConfig(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+
+	if cfg.World.Lighting != "fullbright" || cfg.DayCycle() || cfg.WorldTime() != 18000 {
+		t.Fatalf("world lighting/time = %q, %v, %d", cfg.World.Lighting, cfg.DayCycle(), cfg.WorldTime())
+	}
+
+	_, err = decodeConfig(strings.NewReader("[world]\nlighting = 'torch-only'"))
+	if err == nil || !strings.Contains(err.Error(), "torch-only") {
+		t.Fatalf("invalid lighting error = %v", err)
 	}
 }
 

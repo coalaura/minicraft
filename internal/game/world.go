@@ -3,7 +3,21 @@ package game
 import (
 	"maps"
 	"sync"
+	"sync/atomic"
 )
+
+type LightingMode uint8
+
+const (
+	LightingFullbright LightingMode = iota
+	LightingNormal
+)
+
+type TimeState struct {
+	Age      int64
+	DayTime  int64
+	DayCycle bool
+}
 
 type LocalBlockPosition struct {
 	X int32
@@ -19,6 +33,11 @@ type World struct {
 
 	Spawn    Position
 	SeaLevel int32
+	Lighting LightingMode
+
+	age      atomic.Int64
+	dayTime  atomic.Int64
+	dayCycle atomic.Bool
 
 	overrideMx sync.RWMutex
 	overrides  map[ChunkPosition]map[LocalBlockPosition]Block
@@ -75,6 +94,34 @@ func (w *World) ClearBlockOverride(position BlockPosition) {
 	defer w.overrideMx.Unlock()
 
 	w.clearBlockOverride(chunk, local)
+}
+
+func (w *World) SetLightingMode(mode LightingMode) {
+	w.Lighting = mode
+}
+
+func (w *World) SetTime(dayTime int64, dayCycle bool) {
+	w.age.Store(0)
+	w.dayTime.Store(dayTime)
+	w.dayCycle.Store(dayCycle)
+}
+
+func (w *World) Time() TimeState {
+	return TimeState{
+		Age:      w.age.Load(),
+		DayTime:  w.dayTime.Load(),
+		DayCycle: w.dayCycle.Load(),
+	}
+}
+
+func (w *World) AdvanceTime() TimeState {
+	w.age.Add(1)
+
+	if w.dayCycle.Load() {
+		w.dayTime.Add(1)
+	}
+
+	return w.Time()
 }
 
 // SnapshotChunkOverrides returns a point-in-time copy of the sparse overrides
@@ -146,7 +193,7 @@ func NewOverworld(generator Generator, seed ...int64) *World {
 		spawn = spawnGenerator.Spawn(worldSeed)
 	}
 
-	return &World{
+	world := &World{
 		Name:          "minecraft:overworld",
 		DimensionType: "minecraft:overworld",
 		Seed:          worldSeed,
@@ -154,7 +201,20 @@ func NewOverworld(generator Generator, seed ...int64) *World {
 		Spawn:         spawn,
 
 		SeaLevel: 64,
+		Lighting: LightingFullbright,
 	}
+
+	world.SetTime(6000, true)
+
+	return world
+}
+
+func ParseLightingMode(mode string) LightingMode {
+	if mode == "fullbright" {
+		return LightingFullbright
+	}
+
+	return LightingNormal
 }
 
 func blockIndex(position BlockPosition) (ChunkPosition, LocalBlockPosition) {

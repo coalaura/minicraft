@@ -26,10 +26,26 @@ type LevelChunkWithLight struct {
 	BlockLight [][]byte
 }
 
+type UpdateLight struct {
+	Position ChunkPosition
+
+	SkyLightMask        []int64
+	BlockLightMask      []int64
+	EmptySkyLightMask   []int64
+	EmptyBlockLightMask []int64
+
+	SkyLight   [][]byte
+	BlockLight [][]byte
+}
+
 var (
-	fullBrightSkyLight = newFullBrightSkyLight()
-	overworldSkyLight  = newOverworldSkyLight()
-	overworldLightMask = []int64{(int64(1) << OverworldLightSectionCount) - 1}
+	fullBrightSkyLight    = newFullBrightSkyLight()
+	overworldSkyLight     = newOverworldSkyLight(OverworldLightSectionCount)
+	openOverworldSkyLight = newOverworldSkyLight(OverworldLightSectionCount - 1)
+	overworldLightMask    = []int64{(int64(1) << OverworldLightSectionCount) - 1}
+	openSkyLightMask      = []int64{overworldLightMask[0] &^ 1}
+	bottomLightMask       = []int64{1}
+	emptyLightMask        = []int64{overworldLightMask[0]}
 )
 
 func (p LevelChunkWithLight) Encode(wr *PacketWriter) {
@@ -89,39 +105,50 @@ func (p LevelChunkWithLight) Encode(wr *PacketWriter) {
 	// Block entities: none.
 	wr.VarInt(0)
 
-	wr.VarInt(int32(len(p.SkyLightMask)))
+	encodeLightData(wr, p.SkyLightMask, p.BlockLightMask, p.EmptySkyLightMask, p.EmptyBlockLightMask, p.SkyLight, p.BlockLight)
+}
 
-	for _, mask := range p.SkyLightMask {
+func (p UpdateLight) Encode(wr *PacketWriter) {
+	wr.VarInt(p.Position.X)
+	wr.VarInt(p.Position.Z)
+
+	encodeLightData(wr, p.SkyLightMask, p.BlockLightMask, p.EmptySkyLightMask, p.EmptyBlockLightMask, p.SkyLight, p.BlockLight)
+}
+
+func encodeLightData(wr *PacketWriter, skyMask, blockMask, emptySkyMask, emptyBlockMask []int64, skyLight, blockLight [][]byte) {
+	wr.VarInt(int32(len(skyMask)))
+
+	for _, mask := range skyMask {
 		wr.Long(mask)
 	}
 
-	wr.VarInt(int32(len(p.BlockLightMask)))
+	wr.VarInt(int32(len(blockMask)))
 
-	for _, mask := range p.BlockLightMask {
+	for _, mask := range blockMask {
 		wr.Long(mask)
 	}
 
-	wr.VarInt(int32(len(p.EmptySkyLightMask)))
+	wr.VarInt(int32(len(emptySkyMask)))
 
-	for _, mask := range p.EmptySkyLightMask {
+	for _, mask := range emptySkyMask {
 		wr.Long(mask)
 	}
 
-	wr.VarInt(int32(len(p.EmptyBlockLightMask)))
+	wr.VarInt(int32(len(emptyBlockMask)))
 
-	for _, mask := range p.EmptyBlockLightMask {
+	for _, mask := range emptyBlockMask {
 		wr.Long(mask)
 	}
 
-	wr.VarInt(int32(len(p.SkyLight)))
+	wr.VarInt(int32(len(skyLight)))
 
-	for _, array := range p.SkyLight {
+	for _, array := range skyLight {
 		wr.Bytes(array)
 	}
 
-	wr.VarInt(int32(len(p.BlockLight)))
+	wr.VarInt(int32(len(blockLight)))
 
-	for _, array := range p.BlockLight {
+	for _, array := range blockLight {
 		wr.Bytes(array)
 	}
 }
@@ -140,6 +167,17 @@ func NewEmptyOverworldChunk(x, z int32, biomeID int32) LevelChunkWithLight {
 		SkyLightMask: overworldLightMask,
 
 		SkyLight: overworldSkyLight,
+	}
+}
+
+func NewOpenOverworldLight(x, z int32) UpdateLight {
+	return UpdateLight{
+		Position:            ChunkPosition{X: x, Z: z},
+		SkyLightMask:        openSkyLightMask,
+		BlockLightMask:      []int64{0},
+		EmptySkyLightMask:   bottomLightMask,
+		EmptyBlockLightMask: emptyLightMask,
+		SkyLight:            openOverworldSkyLight,
 	}
 }
 
@@ -176,8 +214,8 @@ func newFullBrightSkyLight() []byte {
 	return light
 }
 
-func newOverworldSkyLight() [][]byte {
-	light := make([][]byte, OverworldLightSectionCount)
+func newOverworldSkyLight(sectionCount int) [][]byte {
+	light := make([][]byte, sectionCount)
 
 	for index := range light {
 		light[index] = fullBrightSkyLight

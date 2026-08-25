@@ -136,6 +136,8 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	breakState := int32(0)
 	directBreakChanged := false
 
+	lightingChanges := make([]game.BlockChange, 0, len(changes))
+
 	if action == BlockMutationBreak && requiredChanges > 0 {
 		var err error
 
@@ -183,6 +185,10 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 			continue
 		}
 
+		if !current.SameLightProperties(change.Replacement) {
+			lightingChanges = append(lightingChanges, change)
+		}
+
 		state, err := protocolBlockState(change.Replacement)
 		if err != nil {
 			return BlockMutationResult{}, fmt.Errorf("encode replacement block: %w", err)
@@ -203,11 +209,29 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	result.Changes = committed
 	result.Changed = true
 
+	var lightUpdates []protocol.UpdateLight
+
+	if len(lightingChanges) != 0 && r.World.Lighting == game.LightingNormal {
+		var err error
+
+		lightUpdates, err = buildChangedLightUpdates(r.World, lightingChanges)
+		if err != nil {
+			return result, fmt.Errorf("recalculate lighting: %w", err)
+		}
+	}
+
 	for _, other := range r.snapshotSessions() {
 		for index, change := range committed {
 			err := other.sendBlockUpdateIfLoaded(change.Position, states[index])
 			if err != nil {
 				other.Log.Warnf("[play] failed to update block: %v\n", err)
+			}
+		}
+
+		for _, update := range lightUpdates {
+			err := other.sendLightUpdateIfLoaded(update)
+			if err != nil {
+				other.Log.Warnf("[play] failed to update light: %v\n", err)
 			}
 		}
 

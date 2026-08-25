@@ -89,6 +89,7 @@ const (
 	ClientboundPlayKeepAliveID                = 0x2B
 	ClientboundLevelChunkWithLightID          = 0x2C
 	ClientboundLevelEventID                   = 0x2D
+	ClientboundUpdateLightID                  = 0x2F
 	ClientboundPlayLoginID                    = 0x30
 	ClientboundUpdateEntityPositionID         = 0x33
 	ClientboundUpdateEntityPositionRotationID = 0x34
@@ -101,5 +102,6 @@ const (
 	ClientboundSetCenterChunkID               = 0x5C
 	ClientboundEntityMetadataID               = 0x61
 	ClientboundEntityEquipmentID              = 0x64
+	ClientboundUpdateTimeID                   = 0x6F
 	ClientboundSystemChatID                   = 0x77
 )

@@ -47,6 +47,15 @@ generator = "spawn-platform"
 # Seed passed to the selected world generator.
 seed = 0
 
+# Lighting mode: normal computes skylight and block light; fullbright skips lighting work.
+lighting = "normal"
+
+# Advance the shared Minecraft day clock. When false, time remains fixed.
+day-cycle = true
+
+# Initial or fixed Minecraft day time (0 dawn, 6000 noon, 12000 dusk, 18000 midnight).
+time = 6000
+
 # Optional spawn override; omit it to use the generator-provided spawn.
 # spawn = { x = 0.5, y = 70.0, z = 0.5 }
 

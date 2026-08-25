@@ -185,6 +185,11 @@ func (s *Session) sendInitialPlayState() error {
 		return err
 	}
 
+	err = s.sendTimeUpdate(s.Runtime.World.Time())
+	if err != nil {
+		return err
+	}
+
 	err = s.sendInitialChunks()
 	if err != nil {
 		return err
