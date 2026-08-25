@@ -10,10 +10,12 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774). The proj
 
 - Online and offline authentication
 - Secure player chat and multiplayer presence
+- Player properties like skins
 - Chunk streaming with configurable render distance
-- Player movement, block breaking and block placement
+- Player movement, block breaking, block placement and block modification
 - Lighting, world time and a day/night cycle
 - Seeded procedural world generators
+- Basic hotbar inventory support
 - TOML configuration
 
 <p align="center">
