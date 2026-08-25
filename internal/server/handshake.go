@@ -59,8 +59,12 @@ func (s *Session) handleHandshake(ctx context.Context) error {
 
 	switch handshake.NextState {
 	case protocol.StateStatus:
+		s.setProtocolState(protocol.StateStatus)
+
 		return s.handleStatus(ctx)
 	case protocol.StateLogin:
+		s.setProtocolState(protocol.StateLogin)
+
 		return s.handleLogin(ctx)
 	default:
 		return fmt.Errorf("invalid next state %d", handshake.NextState)

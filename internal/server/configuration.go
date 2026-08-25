@@ -100,6 +100,8 @@ func (s *Session) handleConfiguration(ctx context.Context) error {
 
 			s.Log.Printf("[configuration] %s - client acknowledged finish config, switching to play\n", s.Conn.RemoteAddr())
 
+			s.setProtocolState(protocol.StatePlay)
+
 			return s.handlePlay(ctx)
 		case protocol.ServerboundConfigurationKeepAliveID:
 			_, err = protocol.DecodePlayKeepAliveResponse(packet.Data)

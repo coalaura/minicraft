@@ -50,6 +50,9 @@ func NewConnection(conn net.Conn, log Logger) *Connection {
 }
 
 func (c *Connection) EnableEncryption(secret []byte) error {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+
 	if len(secret) != 16 {
 		return errors.New("secret must be 16 bytes")
 	}
@@ -66,6 +69,9 @@ func (c *Connection) EnableEncryption(secret []byte) error {
 }
 
 func (c *Connection) SetCompression(threshold int) {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+
 	c.compThr = threshold
 }
 
@@ -304,8 +310,16 @@ func (c *Connection) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
 }
 
+func (c *Connection) Close() error {
+	return c.conn.Close()
+}
+
 func (c *Connection) SetReadDeadline(deadline time.Time) error {
 	return c.conn.SetReadDeadline(deadline)
+}
+
+func (c *Connection) SetWriteDeadline(deadline time.Time) error {
+	return c.conn.SetWriteDeadline(deadline)
 }
 
 // TODO: implement correctly later, not now

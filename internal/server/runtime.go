@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,8 @@ type Runtime struct {
 	nextEntityID              int32
 	reserved                  int
 	sessions                  map[*Session]*game.Player
+	connectedSessions         map[*Session]struct{}
+	shuttingDown              bool
 }
 
 func (r *Runtime) ReservePlayerSlot(maxPlayers int) bool {
@@ -73,7 +76,71 @@ func NewRuntime(world *game.World) *Runtime {
 		activeChunks:              make(map[LoadedChunk]*activeChunkReference),
 		sessionActiveChunks:       make(map[*Session]map[LoadedChunk]struct{}),
 		sessions:                  make(map[*Session]*game.Player),
+		connectedSessions:         make(map[*Session]struct{}),
 	}
+}
+
+func (r *Runtime) registerConnectedSession(session *Session) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.shuttingDown {
+		return false
+	}
+
+	r.connectedSessions[session] = struct{}{}
+
+	return true
+}
+
+func (r *Runtime) unregisterConnectedSession(session *Session) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.connectedSessions, session)
+}
+
+func (r *Runtime) DisconnectAll(reason string) error {
+	r.mu.Lock()
+	if r.shuttingDown {
+		r.mu.Unlock()
+
+		return nil
+	}
+
+	r.shuttingDown = true
+
+	sessions := make([]*Session, 0, len(r.connectedSessions))
+
+	for session := range r.connectedSessions {
+		sessions = append(sessions, session)
+	}
+
+	r.mu.Unlock()
+
+	disconnectErrors := make(chan error, len(sessions))
+
+	var disconnects sync.WaitGroup
+
+	for _, session := range sessions {
+		disconnects.Go(func() {
+			err := session.disconnectForShutdown(reason)
+			if err != nil {
+				disconnectErrors <- err
+			}
+		})
+	}
+
+	disconnects.Wait()
+	close(disconnectErrors)
+
+	errorsBySession := make([]error, 0, len(disconnectErrors))
+
+	for err := range disconnectErrors {
+		errorsBySession = append(errorsBySession, err)
+	}
+
+	return errors.Join(errorsBySession...)
 }
 
 func (r *Runtime) now() time.Time {

@@ -65,8 +65,7 @@ func main() {
 
 	go func() {
 		<-ctx.Done()
-
-		log.Println("shutting down")
+		cancel()
 
 		err := listener.Close()
 		if err != nil && !errors.Is(err, net.ErrClosed) {
@@ -80,7 +79,7 @@ func main() {
 		conn, err := listener.Accept()
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
-				return
+				break
 			}
 
 			log.Warnf("failed to accept: %v", err)
@@ -89,6 +88,13 @@ func main() {
 		}
 
 		go handleConnection(ctx, cfg, runtime, conn)
+	}
+
+	log.Warnln("shutting down")
+
+	err = runtime.DisconnectAll("Server shutting down")
+	if err != nil {
+		log.Warnf("failed to disconnect all clients: %v", err)
 	}
 }
 

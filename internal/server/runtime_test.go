@@ -28,6 +28,7 @@ type recordingConnection struct {
 	input    bytes.Buffer
 	buffer   bytes.Buffer
 	writeErr error
+	closed   bool
 }
 
 func (c *recordingConnection) Read(data []byte) (int, error) {
@@ -68,6 +69,11 @@ func (c *recordingConnection) Write(data []byte) (int, error) {
 }
 
 func (c *recordingConnection) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.closed = true
+
 	return nil
 }
 
@@ -96,6 +102,13 @@ func (c *recordingConnection) reset() {
 	defer c.mu.Unlock()
 
 	c.buffer.Reset()
+}
+
+func (c *recordingConnection) isClosed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.closed
 }
 
 func (c *recordingConnection) packetIDs(t *testing.T) []int32 {

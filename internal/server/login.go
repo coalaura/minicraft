@@ -83,6 +83,8 @@ func (s *Session) handleLogin(ctx context.Context) error {
 
 	s.Log.Printf("[login] %s - received login acknowledge\n", s.Conn.RemoteAddr())
 
+	s.setProtocolState(protocol.StateConfiguration)
+
 	return s.handleConfiguration(ctx)
 }
 
@@ -189,7 +191,7 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 
 	s.Log.Printf("[login] %s - verified login (uuid=%s)\n", s.Conn.RemoteAddr(), player.UUID)
 
-	err = s.Conn.EnableEncryption(secret)
+	err = s.enableEncryption(secret)
 	if err != nil {
 		return s.sendLoginDisconnect("Encryption not available on server")
 	}
@@ -197,27 +199,11 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 	s.Log.Printf("[login] %s - enabled encryption\n", s.Conn.RemoteAddr())
 
 	if s.Config.Network.CompressionThreshold > 0 {
-		var wr protocol.PacketWriter
-
-		compression := protocol.SetCompression{Threshold: int32(s.Config.Network.CompressionThreshold)}
-
-		compression.Encode(&wr)
-
-		err = wr.Err()
-		if err != nil {
-			return fmt.Errorf("encode set compression: %w", err)
-		}
-
-		err = s.writeRawPacket(protocol.Packet{
-			ID:   protocol.ClientboundSetCompressionID,
-			Data: wr.Buffer.Bytes(),
-		})
+		err = s.sendSetCompression(s.Config.Network.CompressionThreshold)
 
 		if err != nil {
 			return fmt.Errorf("send set compression: %w", err)
 		}
-
-		s.Conn.SetCompression(s.Config.Network.CompressionThreshold)
 
 		s.Log.Printf("[login] %s - set compression threshold to %d\n", s.Conn.RemoteAddr(), s.Config.Network.CompressionThreshold)
 	}
