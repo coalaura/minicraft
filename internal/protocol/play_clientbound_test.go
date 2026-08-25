@@ -109,6 +109,23 @@ func TestPlayerChatEncode(t *testing.T) {
 	})
 }
 
+func TestPlayerChatTypeIsPresentInConfigurationRegistry(t *testing.T) {
+	for _, registry := range ConfigurationRegistries {
+		if registry.ID != "minecraft:chat_type" {
+			continue
+		}
+
+		entryID, ok := registry.EntryID("minecraft:chat")
+		if !ok || entryID != 0 {
+			t.Fatalf("minecraft:chat entry = %d, %t; want 0, true", entryID, ok)
+		}
+
+		return
+	}
+
+	t.Fatal("minecraft:chat_type registry is missing")
+}
+
 func TestPlayerChatEncodesLiteralPreviousSignature(t *testing.T) {
 	chat := PlayerChat{
 		SenderUUID: "00010203-0405-0607-0809-0a0b0c0d0e0f",

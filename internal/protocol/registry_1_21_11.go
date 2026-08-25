@@ -6,6 +6,10 @@ var ConfigurationRegistries = []Registry{
 		Entries: []string{"minecraft:overworld"},
 	},
 	{
+		ID:      "minecraft:chat_type",
+		Entries: []string{"minecraft:chat"},
+	},
+	{
 		ID:      "minecraft:worldgen/biome",
 		Entries: biomeRegistryEntries,
 	},
