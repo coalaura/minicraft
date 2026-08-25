@@ -4,10 +4,12 @@ import (
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
+	"github.com/coalaura/minicraft/internal/generator/babel"
 	"github.com/coalaura/minicraft/internal/generator/backrooms"
 	"github.com/coalaura/minicraft/internal/generator/fractalvaults"
 	"github.com/coalaura/minicraft/internal/generator/mengersponge"
 	"github.com/coalaura/minicraft/internal/generator/natural"
+	"github.com/coalaura/minicraft/internal/generator/quasicrystal"
 	"github.com/coalaura/minicraft/internal/generator/spawnplatform"
 	"github.com/coalaura/minicraft/internal/generator/waveterrain"
 	"github.com/coalaura/minicraft/internal/protocol"
@@ -56,6 +58,9 @@ func BenchmarkBuildLevelChunk(b *testing.B) {
 		{name: "natural", generator: natural.New()},
 		{name: "wave_terrain", generator: waveterrain.New()},
 		{name: "menger_sponge", generator: mengersponge.New()},
+		{name: "quasicrystal", generator: quasicrystal.New()},
+		{name: "babel", generator: babel.New()},
+		{name: "backrooms", generator: backrooms.New()},
 		{name: "fractal_vaults", generator: fractalvaults.New()},
 	}
 
@@ -96,8 +101,12 @@ func BenchmarkLightingModes(b *testing.B) {
 	}{
 		{name: "open", generator: nil},
 		{name: "ordinary_terrain", generator: natural.New()},
+		{name: "wave_terrain", generator: waveterrain.New()},
 		{name: "menger_sponge", generator: mengersponge.New()},
+		{name: "quasicrystal", generator: quasicrystal.New()},
+		{name: "babel", generator: babel.New()},
 		{name: "backrooms", generator: backrooms.New()},
+		{name: "fractal_vaults", generator: fractalvaults.New()},
 		{name: "many_emitters", generator: emissiveBenchmarkGenerator{}},
 	}
 

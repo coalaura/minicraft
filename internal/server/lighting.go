@@ -79,7 +79,7 @@ func buildNormalLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.Le
 
 	calculateLight(buffer, characteristics)
 
-	chunk := protocol.NewEmptyOverworldChunk(chunkX, chunkZ, 0)
+	chunk := protocol.NewEmptyOverworldChunk(chunkX, chunkZ, defaultBiomeID)
 
 	chunk.SkyLightMask = nil
 	chunk.SkyLight = nil
@@ -99,7 +99,7 @@ func buildNormalLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.Le
 			}
 		}
 
-		section := sectionBlocks.ToSection(0)
+		section := sectionBlocks.ToSection(defaultBiomeID)
 
 		if biomes.present {
 			section.SetBiomes(&biomes.sections[sectionIndex])

@@ -14,6 +14,19 @@ const (
 
 type Generator struct{}
 
+type generatedChunk struct {
+	xMasks [game.ChunkWidth]uint32
+	zMasks [game.ChunkWidth]uint32
+}
+
+var (
+	_ game.Generator        = Generator{}
+	_ game.SectionGenerator = Generator{}
+	_ game.ChunkGenerator   = Generator{}
+	_ game.BoundedGenerator = Generator{}
+	_ game.GeneratedChunk   = (*generatedChunk)(nil)
+)
+
 func init() {
 	generator.MustRegister(Name, newRegistered)
 }
@@ -39,24 +52,40 @@ func (Generator) BlockAt(_ int64, position game.BlockPosition) game.Block {
 }
 
 func (Generator) GenerateSection(_ int64, chunk game.ChunkPosition, sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
-	if sectionMinY > maxBuildY || sectionMinY+game.ChunkWidth-1 < minBuildY {
-		return game.Air, true
-	}
+	generated := generateChunk(chunk)
+	return generated.GenerateSection(sectionMinY, blocks)
+}
 
-	var (
-		xMasks   [game.ChunkWidth]uint32
-		yMasks   [game.ChunkWidth]uint32
-		yInRange [game.ChunkWidth]bool
-		zMasks   [game.ChunkWidth]uint32
-	)
+func (Generator) GenerateChunk(_ int64, chunk game.ChunkPosition) game.GeneratedChunk {
+	generated := generateChunk(chunk)
+	return &generated
+}
+
+func generateChunk(chunk game.ChunkPosition) generatedChunk {
+	generated := generatedChunk{}
 
 	chunkMinX := chunk.X * game.ChunkWidth
 	chunkMinZ := chunk.Z * game.ChunkWidth
 
 	for local := range int32(game.ChunkWidth) {
-		xMasks[local] = ternaryCenterMask(absoluteCoordinate(chunkMinX + local))
-		zMasks[local] = ternaryCenterMask(absoluteCoordinate(chunkMinZ + local))
+		generated.xMasks[local] = ternaryCenterMask(absoluteCoordinate(chunkMinX + local))
+		generated.zMasks[local] = ternaryCenterMask(absoluteCoordinate(chunkMinZ + local))
+	}
 
+	return generated
+}
+
+func (generated *generatedChunk) GenerateSection(sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
+	if sectionMinY > maxBuildY || sectionMinY+game.ChunkWidth-1 < minBuildY {
+		return game.Air, true
+	}
+
+	var (
+		yMasks   [game.ChunkWidth]uint32
+		yInRange [game.ChunkWidth]bool
+	)
+
+	for local := range int32(game.ChunkWidth) {
 		worldY := sectionMinY + local
 		if worldY >= minBuildY && worldY <= maxBuildY {
 			yInRange[local] = true
@@ -74,9 +103,9 @@ func (Generator) GenerateSection(_ int64, chunk game.ChunkPosition, sectionMinY 
 
 				if yInRange[localY] {
 					block = game.Stone
-					xMask := xMasks[localX]
+					xMask := generated.xMasks[localX]
 					yMask := yMasks[localY]
-					zMask := zMasks[localZ]
+					zMask := generated.zMasks[localZ]
 
 					if xMask&yMask != 0 || xMask&zMask != 0 || yMask&zMask != 0 {
 						block = game.Air

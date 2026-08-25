@@ -1,11 +1,17 @@
 package mengersponge
 
 import (
+	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/generator"
 )
+
+type generatedChunkSnapshot struct {
+	sections [7][game.SectionVolume]game.Block
+}
 
 func TestGeneratorIsRegistered(t *testing.T) {
 	registered, err := generator.New(Name)
@@ -186,4 +192,120 @@ func TestGeneratorStopsAtBuildHeight(t *testing.T) {
 			t.Errorf("block outside build height at %+v = %d, want air", position, block)
 		}
 	}
+}
+
+func TestPreparedChunkAndSectionGeneratorMatchBlockAt(t *testing.T) {
+	generated := Generator{}
+
+	chunks := []game.ChunkPosition{
+		{X: 0, Z: 0},
+		{X: -7, Z: 11},
+		{X: 29, Z: -18},
+		{X: 134217727, Z: -134217728},
+	}
+
+	sections := []int32{-80, -72, -64, 64, 304, 312, 320}
+
+	for _, chunk := range chunks {
+		prepared := generated.GenerateChunk(42, chunk)
+
+		for _, sectionMinY := range sections {
+			var preparedBlocks [game.SectionVolume]game.Block
+
+			preparedBlock, preparedUniform := prepared.GenerateSection(sectionMinY, &preparedBlocks)
+
+			var sectionBlocks [game.SectionVolume]game.Block
+
+			sectionBlock, sectionUniform := generated.GenerateSection(42, chunk, sectionMinY, &sectionBlocks)
+
+			if preparedBlock != sectionBlock || preparedUniform != sectionUniform || preparedBlocks != sectionBlocks {
+				t.Fatalf("chunk %+v section %d prepared result differs from SectionGenerator", chunk, sectionMinY)
+			}
+
+			for localY := range int32(game.ChunkWidth) {
+				for localZ := range int32(game.ChunkWidth) {
+					for localX := range int32(game.ChunkWidth) {
+						position := game.BlockPosition{
+							X: chunk.X*game.ChunkWidth + localX,
+							Y: sectionMinY + localY,
+							Z: chunk.Z*game.ChunkWidth + localZ,
+						}
+
+						index := localY*256 + localZ*16 + localX
+						block := preparedBlocks[index]
+
+						if preparedUniform {
+							block = preparedBlock
+						}
+
+						if want := generated.BlockAt(42, position); block != want {
+							t.Fatalf("chunk %+v section %d position %+v = %d, want %d", chunk, sectionMinY, position, block, want)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestPreparedChunkGenerationIsDeterministicAndConcurrent(t *testing.T) {
+	generated := Generator{}
+
+	chunk := game.ChunkPosition{X: -7, Z: 11}
+
+	sections := [...]int32{-80, -72, -64, 64, 304, 312, 320}
+
+	want := snapshotGeneratedChunk(generated.GenerateChunk(42, chunk), sections)
+
+	for range 10 {
+		got := snapshotGeneratedChunk(generated.GenerateChunk(42, chunk), sections)
+		if !reflect.DeepEqual(got, want) {
+			t.Fatal("repeated chunk preparation produced different sections")
+		}
+	}
+
+	prepared := generated.GenerateChunk(42, chunk)
+
+	results := make(chan generatedChunkSnapshot, 16)
+
+	var group sync.WaitGroup
+
+	for index := range cap(results) {
+		group.Add(1)
+
+		go func(index int) {
+			defer group.Done()
+
+			if index%2 == 0 {
+				results <- snapshotGeneratedChunk(prepared, sections)
+				return
+			}
+
+			results <- snapshotGeneratedChunk(generated.GenerateChunk(42, chunk), sections)
+		}(index)
+	}
+
+	group.Wait()
+	close(results)
+
+	for got := range results {
+		if !reflect.DeepEqual(got, want) {
+			t.Fatal("concurrent chunk generation produced different sections")
+		}
+	}
+}
+
+func snapshotGeneratedChunk(generated game.GeneratedChunk, sections [7]int32) generatedChunkSnapshot {
+	var snapshot generatedChunkSnapshot
+
+	for index, sectionMinY := range sections {
+		block, uniform := generated.GenerateSection(sectionMinY, &snapshot.sections[index])
+		if uniform {
+			for blockIndex := range snapshot.sections[index] {
+				snapshot.sections[index][blockIndex] = block
+			}
+		}
+	}
+
+	return snapshot
 }

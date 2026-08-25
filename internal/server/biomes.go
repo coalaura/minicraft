@@ -7,6 +7,8 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+const defaultBiomeID = int32(game.BiomePlains)
+
 type chunkBiomes struct {
 	sections [protocol.OverworldSectionCount]protocol.SectionBiomes
 	present  bool
@@ -30,7 +32,7 @@ func buildSectionBiomes(prepared preparedChunkGeneration, sectionMinY int32) (pr
 				biome, ok := prepared.BiomeAt(worldX, worldY, worldZ)
 				if !ok {
 					for index := range biomes.States {
-						biomes.States[index] = int32(game.BiomePlains)
+						biomes.States[index] = defaultBiomeID
 					}
 
 					return biomes, true, nil

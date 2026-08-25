@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
+	"github.com/coalaura/minicraft/internal/generator/spawnplatform"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
@@ -111,7 +112,21 @@ func TestBuildLevelChunkSamplesBiomesInThreeDimensions(t *testing.T) {
 }
 
 func TestBuildLevelChunkDefaultsToPlainsBiomes(t *testing.T) {
-	world := game.NewOverworld(nil)
+	assertDefaultPlainsBiomes(t, game.NewOverworld(nil))
+
+	fullbrightWorld := game.NewOverworld(spawnplatform.New())
+
+	assertDefaultPlainsBiomes(t, fullbrightWorld)
+
+	normalWorld := game.NewOverworld(spawnplatform.New())
+
+	normalWorld.SetLightingMode(game.LightingNormal)
+
+	assertDefaultPlainsBiomes(t, normalWorld)
+}
+
+func assertDefaultPlainsBiomes(t *testing.T, world *game.World) {
+	t.Helper()
 
 	chunk, err := buildLevelChunk(world, 0, 0)
 	if err != nil {

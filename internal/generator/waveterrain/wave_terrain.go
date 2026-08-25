@@ -9,6 +9,21 @@ const Name = "wave-terrain"
 
 type Generator struct{}
 
+type generatedChunk struct {
+	heights   [game.ChunkWidth * game.ChunkWidth]int32
+	minHeight int32
+	maxHeight int32
+}
+
+var (
+	_ game.Generator        = Generator{}
+	_ game.SectionGenerator = Generator{}
+	_ game.ChunkGenerator   = Generator{}
+	_ game.BoundedGenerator = Generator{}
+	_ game.SpawnGenerator   = Generator{}
+	_ game.GeneratedChunk   = (*generatedChunk)(nil)
+)
+
 func init() {
 	generator.MustRegister(Name, newRegistered)
 }
@@ -26,29 +41,45 @@ func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 }
 
 func (Generator) GenerateSection(seed int64, chunk game.ChunkPosition, sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
-	var heights [game.ChunkWidth * game.ChunkWidth]int32
+	generated := generateChunk(seed, chunk)
+	return generated.GenerateSection(sectionMinY, blocks)
+}
+
+func (Generator) GenerateChunk(seed int64, chunk game.ChunkPosition) game.GeneratedChunk {
+	generated := generateChunk(seed, chunk)
+	return &generated
+}
+
+func generateChunk(seed int64, chunk game.ChunkPosition) generatedChunk {
+	generated := generatedChunk{
+		minHeight: int32(1<<31 - 1),
+		maxHeight: int32(-1 << 31),
+	}
 
 	chunkMinX := chunk.X * game.ChunkWidth
 	chunkMinZ := chunk.Z * game.ChunkWidth
 
-	minHeight := int32(1<<31 - 1)
-	maxHeight := int32(-1 << 31)
-
 	for localZ := range int32(game.ChunkWidth) {
 		for localX := range int32(game.ChunkWidth) {
 			height := surfaceHeight(seed, chunkMinX+localX, chunkMinZ+localZ)
-			heights[localZ*game.ChunkWidth+localX] = height
-			minHeight = min(minHeight, height)
-			maxHeight = max(maxHeight, height)
+
+			generated.heights[localZ*game.ChunkWidth+localX] = height
+
+			generated.minHeight = min(generated.minHeight, height)
+			generated.maxHeight = max(generated.maxHeight, height)
 		}
 	}
 
+	return generated
+}
+
+func (generated *generatedChunk) GenerateSection(sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
 	sectionMaxY := sectionMinY + game.ChunkWidth - 1
-	if sectionMaxY <= minHeight {
+	if sectionMaxY <= generated.minHeight {
 		return game.Stone, true
 	}
 
-	if sectionMinY > maxHeight {
+	if sectionMinY > generated.maxHeight {
 		return game.Air, true
 	}
 
@@ -58,7 +89,7 @@ func (Generator) GenerateSection(seed int64, chunk game.ChunkPosition, sectionMi
 		for localZ := range int32(game.ChunkWidth) {
 			for localX := range int32(game.ChunkWidth) {
 				index := localY*256 + localZ*16 + localX
-				if worldY <= heights[localZ*game.ChunkWidth+localX] {
+				if worldY <= generated.heights[localZ*game.ChunkWidth+localX] {
 					blocks[index] = game.Stone
 				} else {
 					blocks[index] = game.Air

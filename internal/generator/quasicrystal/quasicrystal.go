@@ -57,6 +57,12 @@ type columnDescription struct {
 
 type Generator struct{}
 
+type generatedChunk struct {
+	seed    int64
+	chunk   game.ChunkPosition
+	columns [game.ChunkWidth * game.ChunkWidth]columnDescription
+}
+
 var directions = [...]direction{
 	{x: 1.0, z: 0.0},
 	{x: 0.30901699437494745, z: 0.9510565162951535},
@@ -68,8 +74,10 @@ var directions = [...]direction{
 var (
 	_ game.Generator        = Generator{}
 	_ game.SectionGenerator = Generator{}
+	_ game.ChunkGenerator   = Generator{}
 	_ game.BoundedGenerator = Generator{}
 	_ game.SpawnGenerator   = Generator{}
+	_ game.GeneratedChunk   = (*generatedChunk)(nil)
 )
 
 func init() {
@@ -96,19 +104,40 @@ func (Generator) GenerateSection(seed int64, chunk game.ChunkPosition, sectionMi
 		return game.Air, true
 	}
 
+	generated := generateChunk(seed, chunk)
+	return generated.GenerateSection(sectionMinY, blocks)
+}
+
+func (Generator) GenerateChunk(seed int64, chunk game.ChunkPosition) game.GeneratedChunk {
+	generated := generateChunk(seed, chunk)
+	return &generated
+}
+
+func generateChunk(seed int64, chunk game.ChunkPosition) generatedChunk {
+	generated := generatedChunk{seed: seed, chunk: chunk}
 	chunkMinX := chunk.X * game.ChunkWidth
 	chunkMinZ := chunk.Z * game.ChunkWidth
-
-	var columns [game.ChunkWidth * game.ChunkWidth]columnDescription
 
 	for localZ := range int32(game.ChunkWidth) {
 		worldZ := chunkMinZ + localZ
 
 		for localX := range int32(game.ChunkWidth) {
 			worldX := chunkMinX + localX
-			columns[localZ*game.ChunkWidth+localX] = describeColumn(seed, worldX, worldZ)
+			generated.columns[localZ*game.ChunkWidth+localX] = describeColumn(seed, worldX, worldZ)
 		}
 	}
+
+	return generated
+}
+
+func (generated *generatedChunk) GenerateSection(sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
+	sectionMaxY := sectionMinY + game.ChunkWidth - 1
+	if sectionMaxY < foundationMinY || sectionMinY > maxBuildY {
+		return game.Air, true
+	}
+
+	chunkMinX := generated.chunk.X * game.ChunkWidth
+	chunkMinZ := generated.chunk.Z * game.ChunkWidth
 
 	first := game.Air
 	uniform := true
@@ -121,8 +150,8 @@ func (Generator) GenerateSection(seed int64, chunk game.ChunkPosition, sectionMi
 
 			for localX := range int32(game.ChunkWidth) {
 				worldX := chunkMinX + localX
-				description := columns[localZ*game.ChunkWidth+localX]
-				block := blockForColumn(seed, worldX, worldY, worldZ, description)
+				description := generated.columns[localZ*game.ChunkWidth+localX]
+				block := blockForColumn(generated.seed, worldX, worldY, worldZ, description)
 				index := localY*256 + localZ*16 + localX
 				blocks[index] = block
 

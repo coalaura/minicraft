@@ -2,11 +2,27 @@ package quasicrystal
 
 import (
 	"math"
+	"sync"
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/generator"
 )
+
+type sectionTestCase struct {
+	seed        int64
+	chunk       game.ChunkPosition
+	sectionMinY int32
+}
+
+var sectionTestCases = []sectionTestCase{
+	{seed: -1, chunk: game.ChunkPosition{X: -3, Z: 2}, sectionMinY: 32},
+	{seed: -1, chunk: game.ChunkPosition{X: -3, Z: 2}, sectionMinY: 48},
+	{seed: 0, chunk: game.ChunkPosition{X: 0, Z: 0}, sectionMinY: 64},
+	{seed: 987654321, chunk: game.ChunkPosition{X: 7, Z: -5}, sectionMinY: 80},
+	{seed: math.MaxInt64, chunk: game.ChunkPosition{X: -11, Z: -9}, sectionMinY: 112},
+	{seed: math.MaxInt64, chunk: game.ChunkPosition{X: -11, Z: -9}, sectionMinY: 128},
+}
 
 func TestGeneratorIsRegistered(t *testing.T) {
 	registered, err := generator.New(Name)
@@ -75,51 +91,81 @@ func TestGeneratorIsDeterministicAndSeeded(t *testing.T) {
 
 func TestSectionGenerationMatchesBlockAt(t *testing.T) {
 	generated := Generator{}
-	seed := int64(987654321)
-	chunks := []game.ChunkPosition{
-		{X: -3, Z: 2},
-		{X: 0, Z: 0},
-		{X: 7, Z: -5},
-	}
-	sectionHeights := []int32{48, 64, 80, 96, 112}
 
-	for _, chunk := range chunks {
-		for _, sectionMinY := range sectionHeights {
-			var blocks [game.SectionVolume]game.Block
+	for _, testCase := range sectionTestCases {
+		var legacyBlocks [game.SectionVolume]game.Block
+		legacyBlock, legacyUniform := generated.GenerateSection(testCase.seed, testCase.chunk, testCase.sectionMinY, &legacyBlocks)
 
-			block, uniform := generated.GenerateSection(seed, chunk, sectionMinY, &blocks)
-			if uniform {
-				for index, generatedBlock := range blocks {
-					if generatedBlock != 0 && generatedBlock != block {
-						t.Fatalf("uniform section contains unexpected block %d at index %d", generatedBlock, index)
-					}
-				}
-			}
+		prepared := generated.GenerateChunk(testCase.seed, testCase.chunk)
+		var preparedBlocks [game.SectionVolume]game.Block
+		preparedBlock, preparedUniform := prepared.GenerateSection(testCase.sectionMinY, &preparedBlocks)
 
-			for localY := range int32(game.ChunkWidth) {
-				for localZ := range int32(game.ChunkWidth) {
-					for localX := range int32(game.ChunkWidth) {
-						worldX := chunk.X*game.ChunkWidth + localX
-						worldY := sectionMinY + localY
-						worldZ := chunk.Z*game.ChunkWidth + localZ
-						index := localY*256 + localZ*16 + localX
-						want := generated.BlockAt(seed, game.BlockPosition{X: worldX, Y: worldY, Z: worldZ})
-
-						if uniform {
-							if block != want {
-								t.Fatalf("uniform block at (%d, %d, %d) = %d, want %d", worldX, worldY, worldZ, block, want)
-							}
-
-							continue
-						}
-
-						if blocks[index] != want {
-							t.Fatalf("section block at (%d, %d, %d) = %d, want %d", worldX, worldY, worldZ, blocks[index], want)
-						}
-					}
-				}
-			}
+		if legacyBlock != preparedBlock || legacyUniform != preparedUniform || legacyBlocks != preparedBlocks {
+			t.Fatalf("prepared section differs for seed %d chunk %+v section %d", testCase.seed, testCase.chunk, testCase.sectionMinY)
 		}
+
+		assertSectionMatchesBlockAt(t, generated, testCase, preparedBlock, preparedUniform, &preparedBlocks)
+	}
+}
+
+func TestPreparedSectionsAreDeterministicWhenConcurrent(t *testing.T) {
+	generated := Generator{}
+	testCase := sectionTestCases[1]
+	prepared := generated.GenerateChunk(testCase.seed, testCase.chunk)
+
+	var expectedBlocks [game.SectionVolume]game.Block
+	expectedBlock, expectedUniform := prepared.GenerateSection(testCase.sectionMinY, &expectedBlocks)
+
+	var group sync.WaitGroup
+	errors := make(chan string, 16)
+
+	for range 16 {
+		group.Add(1)
+
+		go func() {
+			defer group.Done()
+
+			for range 8 {
+				var blocks [game.SectionVolume]game.Block
+				block, uniform := prepared.GenerateSection(testCase.sectionMinY, &blocks)
+				if block != expectedBlock || uniform != expectedUniform || blocks != expectedBlocks {
+					errors <- "prepared section changed"
+					return
+				}
+			}
+		}()
+	}
+
+	group.Wait()
+	close(errors)
+
+	for err := range errors {
+		t.Fatal(err)
+	}
+}
+
+func BenchmarkPreparedChunkSections(b *testing.B) {
+	generated := Generator{}
+	prepared := generated.GenerateChunk(987654321, game.ChunkPosition{X: -3, Z: 2})
+	var blocks [game.SectionVolume]game.Block
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for iteration := 0; iteration < b.N; iteration++ {
+		prepared.GenerateSection(64+int32(iteration%3)*game.ChunkWidth, &blocks)
+	}
+}
+
+func BenchmarkSectionGeneratorCalls(b *testing.B) {
+	generated := Generator{}
+	var blocks [game.SectionVolume]game.Block
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for iteration := 0; iteration < b.N; iteration++ {
+		generated.GenerateSection(987654321, game.ChunkPosition{X: -3, Z: 2}, 64+int32(iteration%3)*game.ChunkWidth, &blocks)
 	}
 }
 
@@ -140,5 +186,33 @@ func TestGenerationBoundsContainAllStructures(t *testing.T) {
 
 	if surfaceY+maxStructureHeight > maxY {
 		t.Fatalf("maximum structure Y %d exceeds generation bound %d", surfaceY+maxStructureHeight, maxY)
+	}
+}
+
+func assertSectionMatchesBlockAt(t *testing.T, generated Generator, testCase sectionTestCase, block game.Block, uniform bool, blocks *[game.SectionVolume]game.Block) {
+	t.Helper()
+
+	for localY := range int32(game.ChunkWidth) {
+		for localZ := range int32(game.ChunkWidth) {
+			for localX := range int32(game.ChunkWidth) {
+				worldX := testCase.chunk.X*game.ChunkWidth + localX
+				worldY := testCase.sectionMinY + localY
+				worldZ := testCase.chunk.Z*game.ChunkWidth + localZ
+				index := localY*256 + localZ*16 + localX
+				want := generated.BlockAt(testCase.seed, game.BlockPosition{X: worldX, Y: worldY, Z: worldZ})
+
+				if uniform {
+					if block != want {
+						t.Fatalf("uniform block at (%d, %d, %d) = %d, want %d", worldX, worldY, worldZ, block, want)
+					}
+
+					continue
+				}
+
+				if blocks[index] != want {
+					t.Fatalf("section block at (%d, %d, %d) = %d, want %d", worldX, worldY, worldZ, blocks[index], want)
+				}
+			}
+		}
 	}
 }

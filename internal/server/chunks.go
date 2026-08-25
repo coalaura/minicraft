@@ -673,7 +673,7 @@ func buildLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChu
 }
 
 func buildFullbrightLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChunkWithLight, error) {
-	chunk := protocol.NewEmptyOverworldChunk(chunkX, chunkZ, 0)
+	chunk := protocol.NewEmptyOverworldChunk(chunkX, chunkZ, defaultBiomeID)
 
 	chunkPosition := game.ChunkPosition{X: chunkX, Z: chunkZ}
 
@@ -731,7 +731,7 @@ func buildFullbrightLevelChunk(world *game.World, chunkX, chunkZ int32) (protoco
 				return protocol.LevelChunkWithLight{}, fmt.Errorf("uniform section at y %d: %w", sectionMinY, err)
 			}
 
-			section := protocol.UniformChunkSection(state, 0)
+			section := protocol.UniformChunkSection(state, defaultBiomeID)
 
 			if hasSectionBiomes {
 				section.SetBiomes(&sectionBiomes)
@@ -778,7 +778,7 @@ func buildFullbrightLevelChunk(world *game.World, chunkX, chunkZ int32) (protoco
 			sectionBlocks.States[index] = state
 		}
 
-		section := sectionBlocks.ToSection(0)
+		section := sectionBlocks.ToSection(defaultBiomeID)
 
 		if hasSectionBiomes {
 			section.SetBiomes(&sectionBiomes)
