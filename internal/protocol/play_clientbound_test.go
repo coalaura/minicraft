@@ -61,7 +61,7 @@ func TestBlockChangedAckEncode(t *testing.T) {
 }
 
 func TestChatAndLevelEventPacketsProtocol774(t *testing.T) {
-	if ClientboundSystemChatID != 0x77 || ClientboundLevelEventID != 0x2D || ServerboundChatMessageID != 0x08 {
+	if ClientboundSystemChatID != 0x77 || ClientboundLevelEventID != 0x2D || ServerboundChatMessageID != 0x08 || ServerboundChatAckID != 0x05 || ServerboundChatSessionUpdateID != 0x09 || ClientboundPlayerChatID != 0x3F || ClientboundPlayDisconnectID != 0x20 {
 		t.Fatalf("chat/event packet ids = serverbound %#x system %#x level %#x", ServerboundChatMessageID, ClientboundSystemChatID, ClientboundLevelEventID)
 	}
 
@@ -79,6 +79,107 @@ func TestChatAndLevelEventPacketsProtocol774(t *testing.T) {
 	})
 
 	assertPacketEncoding(t, SystemChat{Content: "hello"}, []byte{0x08, 0x00, 0x05, 'h', 'e', 'l', 'l', 'o', 0x00})
+}
+
+func TestPlayerChatEncode(t *testing.T) {
+	chat := PlayerChat{
+		GlobalIndex:        1,
+		SenderUUID:         "00010203-0405-0607-0809-0a0b0c0d0e0f",
+		SenderIndex:        2,
+		PlainMessage:       "hello",
+		Timestamp:          3,
+		Salt:               4,
+		PreviousSignatures: []PreviousChatSignature{{ID: 7}},
+		FilterType:         2,
+		FilterMask:         []int64{5},
+		Type:               ChatTypesHolder{ID: 1},
+		NetworkName:        "Laura",
+	}
+
+	assertPacketEncoding(t, chat, []byte{
+		0x01,
+		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+		0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+		0x02, 0x00, 0x05, 'h', 'e', 'l', 'l', 'o',
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04,
+		0x01, 0x07, 0x00, 0x02, 0x01,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,
+		0x01, 0x08, 0x00, 0x05, 'L', 'a', 'u', 'r', 'a', 0x00,
+	})
+}
+
+func TestPlayerChatEncodesLiteralPreviousSignature(t *testing.T) {
+	chat := PlayerChat{
+		SenderUUID: "00010203-0405-0607-0809-0a0b0c0d0e0f",
+		PreviousSignatures: []PreviousChatSignature{{
+			Signature: [chatMessageSignatureLength]byte{0xAA},
+		}},
+		Type: ChatTypesHolder{ID: 1},
+	}
+
+	chat.PreviousSignatures[0].Signature[255] = 0xDD
+
+	var writer PacketWriter
+
+	chat.Encode(&writer)
+
+	err := writer.Err()
+	if err != nil {
+		t.Fatalf("encode player chat: %v", err)
+	}
+
+	reader := NewPacketReader(writer.Buffer.Bytes())
+
+	reader.VarInt()
+	reader.UUID()
+	reader.VarInt()
+	reader.Bool()
+	reader.String(256)
+	reader.Long()
+	reader.Long()
+
+	if reader.VarInt() != 1 || reader.VarInt() != 0 || reader.Byte() != 0xAA {
+		t.Fatal("literal previous signature prefix was not encoded")
+	}
+
+	for range chatMessageSignatureLength - 2 {
+		reader.Byte()
+	}
+
+	if reader.Byte() != 0xDD {
+		t.Fatal("literal previous signature suffix was not encoded")
+	}
+}
+
+func TestPlayerInfoInitializeChatEncode(t *testing.T) {
+	update := PlayerInfoUpdate{
+		Actions: PlayerInfoActionInitializeChat,
+		Players: []PlayerInfo{{
+			UUID: "00010203-0405-0607-0809-0a0b0c0d0e0f",
+			ChatSession: &ChatSession{
+				UUID:                 "10111213-1415-1617-1819-1a1b1c1d1e1f",
+				ExpiresAt:            1,
+				PublicKey:            []byte{2},
+				CertificateSignature: []byte{3},
+			},
+		}},
+	}
+
+	assertPacketEncoding(t, update, []byte{
+		0x02, 0x01,
+		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+		0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+		0x01,
+		0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+		0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+		0x01, 0x02, 0x01, 0x03,
+	})
+}
+
+func TestPlayDisconnectEncode(t *testing.T) {
+	assertPacketEncoding(t, PlayDisconnect{Reason: "bye"}, []byte{0x08, 0x00, 0x03, 'b', 'y', 'e'})
 }
 
 func TestSystemChatModifiedUTF8Encode(t *testing.T) {

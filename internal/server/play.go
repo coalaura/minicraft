@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/coalaura/minicraft/internal/game"
@@ -64,10 +65,54 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 	case protocol.ServerboundChatMessageID:
 		message, err := protocol.DecodeChatMessage(packet.Data)
 		if err != nil {
+			if s.secureChatEnforced() {
+				return s.disconnectChatViolation(fmt.Sprintf("malformed chat message: %v", err))
+			}
+
 			return err
 		}
 
-		s.Runtime.BroadcastPlayerChat(s, message.Message)
+		if !s.Runtime.ChatEnabled {
+			return nil
+		}
+
+		if !s.secureChatEnforced() {
+			s.Runtime.BroadcastPlayerChat(s, message.Message)
+
+			return nil
+		}
+
+		verified, err := s.verifyPlayerChat(message)
+		if err != nil {
+			return s.disconnectChatViolation(fmt.Sprintf("chat validation failed: %v", err))
+		}
+
+		s.Runtime.BroadcastVerifiedPlayerChat(s, verified)
+	case protocol.ServerboundChatAckID:
+		acknowledgement, err := protocol.DecodeChatAck(packet.Data)
+		if err != nil {
+			if s.secureChatEnforced() {
+				return s.disconnectChatViolation(fmt.Sprintf("malformed chat acknowledgement: %v", err))
+			}
+
+			return err
+		}
+
+		err = s.handleChatAck(acknowledgement)
+		if err != nil {
+			return s.disconnectChatViolation(fmt.Sprintf("invalid chat acknowledgement: %v", err))
+		}
+	case protocol.ServerboundChatSessionUpdateID:
+		update, err := protocol.DecodeChatSessionUpdate(packet.Data)
+		if err != nil {
+			if s.secureChatEnforced() {
+				return s.disconnectChatViolation(fmt.Sprintf("malformed chat session: %v", err))
+			}
+
+			return err
+		}
+
+		return s.handleChatSessionUpdate(update)
 	case protocol.ServerboundChunkBatchReceivedID:
 		batch, err := protocol.DecodeChunkBatchReceived(packet.Data)
 		if err != nil {
@@ -226,7 +271,7 @@ func (s *Session) sendPlayLogin() error {
 			SeaLevel:         s.Runtime.World.SeaLevel,
 		},
 
-		EnforcesSecureChat: false,
+		EnforcesSecureChat: s.secureChatEnforced(),
 	}
 
 	login.Encode(&wr)

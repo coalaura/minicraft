@@ -13,21 +13,41 @@ type PacketEncoder interface {
 	Encode(*protocol.PacketWriter)
 }
 
-func (s *Session) sendPlayerInfo(players []game.Player) error {
+type playerInfoSnapshot struct {
+	player      game.Player
+	chatSession *protocol.ChatSession
+}
+
+func (s *Session) playerInfoSnapshot() playerInfoSnapshot {
+	return playerInfoSnapshot{
+		player:      s.snapshotPlayer(),
+		chatSession: s.chatSessionSnapshot(),
+	}
+}
+
+func (s *Session) sendPlayerInfo(players []playerInfoSnapshot) error {
 	entries := make([]protocol.PlayerInfo, 0, len(players))
 
-	for _, player := range players {
+	for _, snapshot := range players {
+		player := snapshot.player
+
 		entries = append(entries, protocol.PlayerInfo{
-			UUID:       player.UUID,
-			Name:       player.Name,
-			Properties: player.Properties,
-			GameMode:   int32(player.GameMode),
-			Listed:     true,
+			UUID:        player.UUID,
+			Name:        player.Name,
+			Properties:  player.Properties,
+			GameMode:    int32(player.GameMode),
+			Listed:      true,
+			ChatSession: snapshot.chatSession,
 		})
 	}
 
+	actions := byte(protocol.PlayerInfoActionAddPlayer | protocol.PlayerInfoActionUpdateGameMode | protocol.PlayerInfoActionUpdateListed)
+	if s.secureChatEnforced() {
+		actions |= protocol.PlayerInfoActionInitializeChat
+	}
+
 	update := protocol.PlayerInfoUpdate{
-		Actions: protocol.PlayerInfoActionAddPlayer | protocol.PlayerInfoActionUpdateGameMode | protocol.PlayerInfoActionUpdateListed,
+		Actions: actions,
 		Players: entries,
 	}
 
@@ -113,15 +133,6 @@ func visibleEquipmentSlots(player game.Player) []byte {
 	}
 
 	return slots
-}
-
-func (s *Session) sendPlayerAppearance(player game.Player) error {
-	err := s.sendPlayerInfo([]game.Player{player})
-	if err != nil {
-		return err
-	}
-
-	return s.sendPlayerEntity(player)
 }
 
 func (s *Session) sendPlayerMovement(previous, current game.Player) error {
@@ -255,11 +266,10 @@ func (s *Session) sendPlayerAnimation(player game.Player, animation byte) error 
 func (s *Session) sendPlayerRemoval(player game.Player) error {
 	entities := protocol.RemoveEntities{EntityIDs: []int32{player.EntityID}}
 
-	err := s.writePacket(protocol.ClientboundRemoveEntitiesID, entities)
-	if err != nil {
-		return err
-	}
+	return s.writePacket(protocol.ClientboundRemoveEntitiesID, entities)
+}
 
+func (s *Session) sendPlayerInfoRemoval(player game.Player) error {
 	info := protocol.PlayerInfoRemove{UUIDs: []string{player.UUID}}
 
 	return s.writePacket(protocol.ClientboundPlayerInfoRemoveID, info)

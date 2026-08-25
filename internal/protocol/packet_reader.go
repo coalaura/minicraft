@@ -2,6 +2,9 @@ package protocol
 
 import (
 	"bytes"
+	"encoding/hex"
+	"fmt"
+	"io"
 
 	"github.com/coalaura/minicraft/internal/game"
 )
@@ -192,6 +195,53 @@ func (r *PacketReader) Bytes() []byte {
 	}
 
 	return value
+}
+
+func (r *PacketReader) BytesMax(max int) []byte {
+	if r.err != nil {
+		return nil
+	}
+
+	length := r.VarInt()
+	if r.err != nil {
+		return nil
+	}
+
+	if length < 0 || length > int32(max) {
+		r.err = fmt.Errorf("byte array length %d exceeds maximum %d", length, max)
+
+		return nil
+	}
+
+	value := make([]byte, length)
+
+	_, err := io.ReadFull(r.Reader, value)
+	if err != nil {
+		r.err = err
+
+		return nil
+	}
+
+	return value
+}
+
+func (r *PacketReader) UUID() string {
+	if r.err != nil {
+		return ""
+	}
+
+	var value [16]byte
+
+	_, err := io.ReadFull(r.Reader, value[:])
+	if err != nil {
+		r.err = err
+
+		return ""
+	}
+
+	raw := hex.EncodeToString(value[:])
+
+	return fmt.Sprintf("%s-%s-%s-%s-%s", raw[0:8], raw[8:12], raw[12:16], raw[16:20], raw[20:])
 }
 
 func (r *PacketReader) Err() error {

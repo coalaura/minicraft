@@ -83,6 +83,78 @@ func TestDecodeChatMessageFullyConsumesProtocol774Packet(t *testing.T) {
 	if message.Acknowledged != [3]byte{0xAA, 0xBB, 0xCC} || message.Checksum != 0xDD {
 		t.Fatalf("chat acknowledgement = %x checksum = %x", message.Acknowledged, message.Checksum)
 	}
+
+	if message.Signature[0] != 0 || message.Signature[255] != 255 {
+		t.Fatalf("chat signature = %x...%x", message.Signature[0], message.Signature[255])
+	}
+}
+
+func TestDecodeChatAck(t *testing.T) {
+	acknowledgement, err := DecodeChatAck([]byte{0xAC, 0x02})
+	if err != nil {
+		t.Fatalf("decode chat acknowledgement: %v", err)
+	}
+
+	if acknowledgement.MessageCount != 300 {
+		t.Fatalf("chat acknowledgement = %+v", acknowledgement)
+	}
+
+	for _, data := range [][]byte{{0xFF, 0xFF, 0xFF, 0xFF, 0x0F}, {0x00, 0x00}} {
+		_, err := DecodeChatAck(data)
+		if err == nil {
+			t.Fatalf("invalid chat acknowledgement %x decoded", data)
+		}
+	}
+}
+
+func TestDecodeChatSessionUpdate(t *testing.T) {
+	var writer PacketWriter
+
+	writer.UUID("00010203-0405-0607-0809-0a0b0c0d0e0f")
+	writer.Long(1234)
+	writer.Bytes([]byte{1, 2})
+	writer.Bytes([]byte{3, 4, 5})
+
+	update, err := DecodeChatSessionUpdate(writer.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode chat session update: %v", err)
+	}
+
+	if update.SessionUUID != "00010203-0405-0607-0809-0a0b0c0d0e0f" || update.ExpiresAt != 1234 || string(update.PublicKey) != "\x01\x02" || string(update.CertificateSignature) != "\x03\x04\x05" {
+		t.Fatalf("chat session update = %+v", update)
+	}
+
+	writer.Reset()
+	writer.UUID("00010203-0405-0607-0809-0a0b0c0d0e0f")
+	writer.Long(0)
+	writer.VarInt(maxChatSessionBytes + 1)
+
+	_, err = DecodeChatSessionUpdate(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("oversized chat public key decoded")
+	}
+
+	writer.Reset()
+	writer.UUID("00010203-0405-0607-0809-0a0b0c0d0e0f")
+	writer.Long(0)
+	writer.VarInt(-1)
+
+	_, err = DecodeChatSessionUpdate(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("negative chat public key length decoded")
+	}
+
+	writer.Reset()
+	writer.UUID("00010203-0405-0607-0809-0a0b0c0d0e0f")
+	writer.Long(0)
+	writer.Bytes(nil)
+	writer.Bytes(nil)
+	writer.Byte(0)
+
+	_, err = DecodeChatSessionUpdate(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("chat session update with trailing data decoded")
+	}
 }
 
 func TestDecodeChatMessageRejectsMalformedAndInvalidMessages(t *testing.T) {

@@ -16,9 +16,11 @@ type Session struct {
 	Log     Logger
 	Runtime *Runtime
 
-	Player   *game.Player
-	playerMx sync.RWMutex
-	writeMx  sync.Mutex
+	Player    *game.Player
+	playerMx  sync.RWMutex
+	writeMx   sync.Mutex
+	chatMx    sync.Mutex
+	chatState *sessionChatState
 
 	chunkMx               sync.Mutex
 	centerChunk           LoadedChunk

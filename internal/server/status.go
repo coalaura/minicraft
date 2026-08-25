@@ -60,7 +60,7 @@ func (s *Session) sendStatusResponse() error {
 		"description": map[string]any{
 			"text": s.Config.Server.Motd,
 		},
-		"enforcesSecureChat": true,
+		"enforcesSecureChat": s.secureChatEnforced(),
 		"previewsChat":       false,
 	}
 

@@ -265,6 +265,7 @@ func TestRuntimeVisibilityTransitionsAcrossRenderDistance(t *testing.T) {
 	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{
 		protocol.ClientboundPlayerInfoUpdateID,
 		protocol.ClientboundEntityMetadataID,
+		protocol.ClientboundPlayerInfoUpdateID,
 	})
 
 	assertPacketIDs(t, aliceConnection.packetIDs(t), []int32{
@@ -280,7 +281,6 @@ func TestRuntimeVisibilityTransitionsAcrossRenderDistance(t *testing.T) {
 	})
 
 	appearance := []int32{
-		protocol.ClientboundPlayerInfoUpdateID,
 		protocol.ClientboundAddEntityID,
 		protocol.ClientboundEntityMetadataID,
 	}
@@ -297,7 +297,6 @@ func TestRuntimeVisibilityTransitionsAcrossRenderDistance(t *testing.T) {
 
 	removal := []int32{
 		protocol.ClientboundRemoveEntitiesID,
-		protocol.ClientboundPlayerInfoRemoveID,
 	}
 
 	assertPacketIDs(t, bobConnection.packetIDs(t), removal)

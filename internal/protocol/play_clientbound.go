@@ -4,6 +4,7 @@ import "github.com/coalaura/minicraft/internal/game"
 
 const (
 	PlayerInfoActionAddPlayer      = 1 << 0
+	PlayerInfoActionInitializeChat = 1 << 1
 	PlayerInfoActionUpdateGameMode = 1 << 2
 	PlayerInfoActionUpdateListed   = 1 << 3
 
@@ -197,11 +198,66 @@ type PlayerInfoUpdate struct {
 }
 
 type PlayerInfo struct {
-	UUID       string
-	Name       string
-	Properties []game.ProfileProperty
-	GameMode   int32
-	Listed     bool
+	UUID        string
+	Name        string
+	Properties  []game.ProfileProperty
+	GameMode    int32
+	Listed      bool
+	ChatSession *ChatSession
+}
+
+type ChatSession struct {
+	UUID                 string
+	ExpiresAt            int64
+	PublicKey            []byte
+	CertificateSignature []byte
+}
+
+type PreviousChatSignature struct {
+	ID        int32
+	Signature [chatMessageSignatureLength]byte
+}
+
+type ChatType struct {
+	TranslationKey string
+	Parameters     []int32
+	Style          string
+}
+
+type ChatTypes struct {
+	Chat      ChatType
+	Narration ChatType
+}
+
+type ChatTypesHolder struct {
+	ID   int32
+	Data ChatTypes
+}
+
+type PlayerChat struct {
+	GlobalIndex int32
+	SenderUUID  string
+	SenderIndex int32
+
+	HasSignature bool
+	Signature    [chatMessageSignatureLength]byte
+	PlainMessage string
+	Timestamp    int64
+	Salt         int64
+
+	PreviousSignatures []PreviousChatSignature
+	HasUnsignedContent bool
+	UnsignedContent    string
+	FilterType         int32
+	FilterMask         []int64
+	Type               ChatTypesHolder
+	NetworkName        string
+	HasNetworkTarget   bool
+	NetworkTarget      string
+}
+
+type PlayDisconnect struct {
+	Reason string
 }
 
 type SetCenterChunk struct {
@@ -459,6 +515,13 @@ func (p PlayerInfoUpdate) Encode(wr *PacketWriter) {
 			encodeProfileProperties(wr, player.Properties)
 		}
 
+		if p.Actions&PlayerInfoActionInitializeChat != 0 {
+			wr.Bool(player.ChatSession != nil)
+			if player.ChatSession != nil {
+				player.ChatSession.Encode(wr)
+			}
+		}
+
 		if p.Actions&PlayerInfoActionUpdateGameMode != 0 {
 			wr.VarInt(player.GameMode)
 		}
@@ -471,6 +534,96 @@ func (p PlayerInfoUpdate) Encode(wr *PacketWriter) {
 			}
 		}
 	}
+}
+
+func (p ChatSession) Encode(wr *PacketWriter) {
+	wr.UUID(p.UUID)
+	wr.Long(p.ExpiresAt)
+	wr.Bytes(p.PublicKey)
+	wr.Bytes(p.CertificateSignature)
+}
+
+func (p PlayerChat) Encode(wr *PacketWriter) {
+	wr.VarInt(p.GlobalIndex)
+	wr.UUID(p.SenderUUID)
+	wr.VarInt(p.SenderIndex)
+	wr.Bool(p.HasSignature)
+
+	if p.HasSignature {
+		for _, value := range p.Signature {
+			wr.Byte(value)
+		}
+	}
+
+	wr.String(p.PlainMessage)
+	wr.Long(p.Timestamp)
+	wr.Long(p.Salt)
+	wr.VarInt(int32(len(p.PreviousSignatures)))
+
+	for _, signature := range p.PreviousSignatures {
+		wr.VarInt(signature.ID)
+
+		if signature.ID == 0 {
+			for _, value := range signature.Signature {
+				wr.Byte(value)
+			}
+		}
+	}
+
+	wr.Bool(p.HasUnsignedContent)
+
+	if p.HasUnsignedContent {
+		wr.AnonymousNBTString(p.UnsignedContent)
+	}
+
+	wr.VarInt(p.FilterType)
+
+	if p.FilterType == 2 {
+		wr.VarInt(int32(len(p.FilterMask)))
+
+		for _, mask := range p.FilterMask {
+			wr.Long(mask)
+		}
+	}
+
+	p.Type.Encode(wr)
+
+	wr.AnonymousNBTString(p.NetworkName)
+	wr.Bool(p.HasNetworkTarget)
+
+	if p.HasNetworkTarget {
+		wr.AnonymousNBTString(p.NetworkTarget)
+	}
+}
+
+func (p ChatTypesHolder) Encode(wr *PacketWriter) {
+	wr.VarInt(p.ID)
+
+	if p.ID != 0 {
+		return
+	}
+
+	p.Data.Encode(wr)
+}
+
+func (p ChatTypes) Encode(wr *PacketWriter) {
+	p.Chat.Encode(wr)
+	p.Narration.Encode(wr)
+}
+
+func (p ChatType) Encode(wr *PacketWriter) {
+	wr.String(p.TranslationKey)
+	wr.VarInt(int32(len(p.Parameters)))
+
+	for _, parameter := range p.Parameters {
+		wr.VarInt(parameter)
+	}
+
+	wr.AnonymousNBTString(p.Style)
+}
+
+func (p PlayDisconnect) Encode(wr *PacketWriter) {
+	wr.AnonymousNBTString(p.Reason)
 }
 
 func (p SetCenterChunk) Encode(wr *PacketWriter) {

@@ -45,6 +45,9 @@ func main() {
 	runtime.ChatJoinMessage = cfg.ChatJoinMessage()
 	runtime.ChatLeaveMessage = cfg.ChatLeaveMessage()
 
+	err = runtime.InitializeSecureChat(context.Background(), cfg.Server.OnlineMode, nil)
+	log.MustFail(err)
+
 	listener, err := net.Listen("tcp", cfg.ListenAddr())
 	log.MustFail(err)
 

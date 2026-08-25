@@ -34,6 +34,7 @@ const (
 	maxChatMessageCharacters   = 256
 	chatMessageSignatureLength = 256
 	chatAcknowledgementLength  = 3
+	maxChatSessionBytes        = 4096
 )
 
 type MovementFlags byte
@@ -56,9 +57,21 @@ type ChatMessage struct {
 	Timestamp    int64
 	Salt         int64
 	HasSignature bool
+	Signature    [chatMessageSignatureLength]byte
 	Offset       int32
 	Acknowledged [chatAcknowledgementLength]byte
 	Checksum     byte
+}
+
+type ChatAck struct {
+	MessageCount int32
+}
+
+type ChatSessionUpdate struct {
+	SessionUUID          string
+	ExpiresAt            int64
+	PublicKey            []byte
+	CertificateSignature []byte
 }
 
 type ClientInformation struct {
@@ -195,8 +208,8 @@ func DecodeChatMessage(data []byte) (ChatMessage, error) {
 
 	message.HasSignature = rd.Bool()
 	if message.HasSignature {
-		for range chatMessageSignatureLength {
-			rd.Byte()
+		for index := range message.Signature {
+			message.Signature[index] = rd.Byte()
 		}
 	}
 
@@ -226,6 +239,49 @@ func DecodeChatMessage(data []byte) (ChatMessage, error) {
 	}
 
 	return message, nil
+}
+
+func DecodeChatAck(data []byte) (ChatAck, error) {
+	rd := NewPacketReader(data)
+
+	acknowledgement := ChatAck{MessageCount: rd.VarInt()}
+
+	err := rd.Err()
+	if err != nil {
+		return ChatAck{}, err
+	}
+
+	if acknowledgement.MessageCount < 0 {
+		return ChatAck{}, fmt.Errorf("invalid chat acknowledgement count %d", acknowledgement.MessageCount)
+	}
+
+	if rd.Len() != 0 {
+		return ChatAck{}, fmt.Errorf("chat acknowledgement has %d trailing bytes", rd.Len())
+	}
+
+	return acknowledgement, nil
+}
+
+func DecodeChatSessionUpdate(data []byte) (ChatSessionUpdate, error) {
+	rd := NewPacketReader(data)
+
+	update := ChatSessionUpdate{
+		SessionUUID:          rd.UUID(),
+		ExpiresAt:            rd.Long(),
+		PublicKey:            rd.BytesMax(maxChatSessionBytes),
+		CertificateSignature: rd.BytesMax(maxChatSessionBytes),
+	}
+
+	err := rd.Err()
+	if err != nil {
+		return ChatSessionUpdate{}, err
+	}
+
+	if rd.Len() != 0 {
+		return ChatSessionUpdate{}, fmt.Errorf("chat session update has %d trailing bytes", rd.Len())
+	}
+
+	return update, nil
 }
 
 func DecodeClientInformation(data []byte) (ClientInformation, error) {

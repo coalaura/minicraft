@@ -3,8 +3,11 @@ package server
 import (
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/coalaura/minicraft/internal/config"
 	"github.com/coalaura/minicraft/internal/game"
+	"github.com/coalaura/minicraft/internal/protocol"
 )
 
 type Runtime struct {
@@ -19,6 +22,11 @@ type Runtime struct {
 
 	// Keep each profile/entity transition ordered as one lifecycle event.
 	lifecycleMu               sync.Mutex
+	chatMu                    sync.Mutex
+	certificateVerifier       ChatCertificateVerifier
+	nextChatIndex             int32
+	clockMu                   sync.RWMutex
+	nowFunc                   func() time.Time
 	worldMutationMu           sync.Mutex
 	blockMutationDeliveryTail chan struct{}
 	mu                        sync.RWMutex
@@ -63,6 +71,24 @@ func NewRuntime(world *game.World) *Runtime {
 	}
 }
 
+func (r *Runtime) now() time.Time {
+	r.clockMu.RLock()
+	defer r.clockMu.RUnlock()
+
+	if r.nowFunc != nil {
+		return r.nowFunc()
+	}
+
+	return time.Now()
+}
+
+func (r *Runtime) SetChatClock(now func() time.Time) {
+	r.clockMu.Lock()
+	defer r.clockMu.Unlock()
+
+	r.nowFunc = now
+}
+
 func (r *Runtime) AssignEntityID(session *Session) int32 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -88,15 +114,17 @@ func (r *Runtime) JoinSession(session *Session) error {
 
 	player := session.snapshotPlayer()
 
-	players := make([]game.Player, 0, len(existing)+1)
+	players := make([]playerInfoSnapshot, 0, len(existing)+1)
 	visible := make([]*Session, 0, len(existing))
 
-	players = append(players, player)
+	players = append(players, session.playerInfoSnapshot())
 
 	for _, other := range existing {
 		otherPlayer := other.snapshotPlayer()
+
+		players = append(players, other.playerInfoSnapshot())
+
 		if playersVisible(player, otherPlayer, session.renderDistance()) {
-			players = append(players, otherPlayer)
 			visible = append(visible, other)
 		}
 	}
@@ -123,14 +151,12 @@ func (r *Runtime) JoinSession(session *Session) error {
 	r.mu.Unlock()
 
 	for _, other := range existing {
-		if !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
-			continue
-		}
-
-		err = other.sendPlayerInfo([]game.Player{player})
+		err = other.sendPlayerInfo([]playerInfoSnapshot{session.playerInfoSnapshot()})
 		if err != nil {
 			other.Log.Warnf("[play] failed to announce player info: %v\n", err)
+		}
 
+		if !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
 			continue
 		}
 
@@ -167,13 +193,16 @@ func (r *Runtime) LeaveSession(session *Session) {
 	player := session.snapshotPlayer()
 
 	for _, other := range r.snapshotSessions() {
-		if !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
-			continue
+		if playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+			err := other.sendPlayerRemoval(player)
+			if err != nil {
+				other.Log.Warnf("[play] failed to remove player entity: %v\n", err)
+			}
 		}
 
-		err := other.sendPlayerRemoval(player)
+		err := other.sendPlayerInfoRemoval(player)
 		if err != nil {
-			other.Log.Warnf("[play] failed to remove player: %v\n", err)
+			other.Log.Warnf("[play] failed to remove player info: %v\n", err)
 		}
 	}
 
@@ -183,8 +212,8 @@ func (r *Runtime) LeaveSession(session *Session) {
 }
 
 func (r *Runtime) BroadcastPlayerChat(session *Session, message string) {
-	r.lifecycleMu.Lock()
-	defer r.lifecycleMu.Unlock()
+	r.chatMu.Lock()
+	defer r.chatMu.Unlock()
 
 	r.mu.RLock()
 	_, active := r.sessions[session]
@@ -196,9 +225,78 @@ func (r *Runtime) BroadcastPlayerChat(session *Session, message string) {
 
 	player := session.snapshotPlayer()
 
+	logAcceptedChat(session, player.Name, message)
+
 	formatted := formatChatMessage(r.ChatFormat, player.Name, message)
 
 	r.broadcastSystemMessageLocked(formatted)
+}
+
+func (r *Runtime) BroadcastVerifiedPlayerChat(session *Session, verified verifiedPlayerChat) {
+	r.chatMu.Lock()
+	defer r.chatMu.Unlock()
+
+	r.mu.RLock()
+	_, active := r.sessions[session]
+	r.mu.RUnlock()
+
+	if !active || !r.ChatEnabled {
+		return
+	}
+
+	player := session.snapshotPlayer()
+
+	logAcceptedChat(session, player.Name, verified.message.Message)
+
+	if r.ChatFormat != config.DefaultChatFormat {
+		formatted := formatChatMessage(r.ChatFormat, player.Name, verified.message.Message)
+
+		r.broadcastSystemMessageLocked(formatted)
+
+		return
+	}
+
+	globalIndex := r.nextChatIndex
+	r.nextChatIndex++
+
+	for _, recipient := range r.snapshotSessions() {
+		err := recipient.sendVerifiedPlayerChat(globalIndex, player.UUID, player.Name, verified)
+		if err != nil {
+			recipient.Log.Warnf("[play] failed to send signed player chat: %v\n", err)
+		}
+	}
+}
+
+func (r *Runtime) BroadcastChatSession(session *Session) {
+	r.chatMu.Lock()
+	defer r.chatMu.Unlock()
+
+	r.mu.RLock()
+	_, active := r.sessions[session]
+	r.mu.RUnlock()
+
+	if !active {
+		return
+	}
+
+	player := session.snapshotPlayer()
+
+	entry := protocol.PlayerInfo{
+		UUID:        player.UUID,
+		ChatSession: session.chatSessionSnapshot(),
+	}
+
+	update := protocol.PlayerInfoUpdate{
+		Actions: protocol.PlayerInfoActionInitializeChat,
+		Players: []protocol.PlayerInfo{entry},
+	}
+
+	for _, recipient := range r.snapshotSessions() {
+		err := recipient.writePacket(protocol.ClientboundPlayerInfoUpdateID, update)
+		if err != nil {
+			recipient.Log.Warnf("[play] failed to update player chat session: %v\n", err)
+		}
+	}
 }
 
 func (r *Runtime) BroadcastSystemMessage(message string) {
@@ -365,7 +463,7 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 
 		switch {
 		case !wasVisibleToOther && isVisibleToOther:
-			err := other.sendPlayerAppearance(current)
+			err := other.sendPlayerEntity(current)
 			if err != nil {
 				other.Log.Warnf("[play] failed to show player: %v\n", err)
 			}
@@ -386,7 +484,7 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 
 		switch {
 		case !wasVisibleToPlayer && isVisibleToPlayer:
-			err := session.sendPlayerAppearance(otherPlayer)
+			err := session.sendPlayerEntity(otherPlayer)
 			if err != nil {
 				session.Log.Warnf("[play] failed to show player: %v\n", err)
 			}
@@ -443,4 +541,10 @@ func formatChatMessage(format, player, message string) string {
 	formatted := strings.ReplaceAll(format, "{player}", player)
 
 	return strings.ReplaceAll(formatted, "{message}", message)
+}
+
+func logAcceptedChat(session *Session, player, message string) {
+	if session.Log != nil {
+		session.Log.Printf("[chat] <%s> %s\n", player, message)
+	}
 }

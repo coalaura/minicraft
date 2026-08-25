@@ -27,6 +27,10 @@ func TestPlayerChatBroadcastsGlobally(t *testing.T) {
 	sender, senderConnection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Laura")
 	recipient, recipientConnection := newMovementTestSession(runtime, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Bob")
 
+	logger := &chatTestLogger{}
+
+	sender.Log = logger
+
 	recipient.Player.Position.X = float64((config.DefaultRenderDistance + 2) * ChunkWidth)
 
 	joinTestSession(t, runtime, sender)
@@ -42,6 +46,10 @@ func TestPlayerChatBroadcastsGlobally(t *testing.T) {
 
 	assertSystemMessages(t, senderConnection, "[Laura] hello")
 	assertSystemMessages(t, recipientConnection, "[Laura] hello")
+
+	if prints := logger.chatPrints(); len(prints) != 1 || prints[0] != "[chat] <Laura> hello\n" {
+		t.Fatalf("chat prints = %q", prints)
+	}
 }
 
 func TestDisabledPlayerChatIsIgnored(t *testing.T) {

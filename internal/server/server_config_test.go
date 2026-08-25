@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -167,4 +168,135 @@ func TestPlayLoginAdvertisesConfiguredWorldAndDistance(t *testing.T) {
 	if reader.Len() != 0 {
 		t.Fatalf("play login has %d unread bytes", reader.Len())
 	}
+}
+
+func TestSecureChatAdvertisementMatchesModeAndVerifierReadiness(t *testing.T) {
+	tests := []struct {
+		name            string
+		onlineMode      bool
+		installVerifier bool
+		wantSecureChat  bool
+	}{
+		{name: "offline", onlineMode: false, installVerifier: false, wantSecureChat: false},
+		{name: "online ready", onlineMode: true, installVerifier: true, wantSecureChat: true},
+		{name: "online uninitialized", onlineMode: true, installVerifier: false, wantSecureChat: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := NewRuntime(&game.World{Name: "minecraft:overworld"})
+
+			if test.installVerifier {
+				runtime.SetChatCertificateVerifier(&MinecraftCertificateVerifier{})
+			}
+
+			cfg := &config.Config{Server: config.ServerConfig{OnlineMode: test.onlineMode}}
+
+			statusConnection := &recordingConnection{}
+
+			status := &Session{
+				Conn:    protocol.NewConnection(statusConnection, nil),
+				Config:  cfg,
+				Runtime: runtime,
+			}
+
+			err := status.sendStatusResponse()
+			if err != nil {
+				t.Fatalf("send status response: %v", err)
+			}
+
+			statusSecureChat := decodeStatusSecureChat(t, statusConnection.packets(t)[0].Data)
+
+			loginConnection := &recordingConnection{}
+
+			login := &Session{
+				Conn:    protocol.NewConnection(loginConnection, nil),
+				Config:  cfg,
+				Runtime: runtime,
+				Player:  &game.Player{},
+			}
+
+			err = login.sendPlayLogin()
+			if err != nil {
+				t.Fatalf("send play login: %v", err)
+			}
+
+			loginSecureChat := decodePlayLoginSecureChat(t, loginConnection.packets(t)[0].Data)
+			if statusSecureChat != test.wantSecureChat || loginSecureChat != test.wantSecureChat {
+				t.Fatalf("secure chat status=%t login=%t, want %t", statusSecureChat, loginSecureChat, test.wantSecureChat)
+			}
+		})
+	}
+}
+
+func decodeStatusSecureChat(t *testing.T, data []byte) bool {
+	t.Helper()
+
+	reader := protocol.NewPacketReader(data)
+
+	responseJSON := reader.String(32767)
+
+	err := reader.Err()
+	if err != nil {
+		t.Fatalf("decode status packet: %v", err)
+	}
+
+	var response struct {
+		EnforcesSecureChat bool `json:"enforcesSecureChat"`
+	}
+
+	err = json.Unmarshal([]byte(responseJSON), &response)
+	if err != nil {
+		t.Fatalf("decode status JSON: %v", err)
+	}
+
+	return response.EnforcesSecureChat
+}
+
+func decodePlayLoginSecureChat(t *testing.T, data []byte) bool {
+	t.Helper()
+
+	reader := protocol.NewPacketReader(data)
+
+	reader.Int()
+	reader.Bool()
+
+	for range reader.VarInt() {
+		reader.String(32767)
+	}
+
+	reader.VarInt()
+	reader.VarInt()
+	reader.VarInt()
+	reader.Bool()
+	reader.Bool()
+	reader.Bool()
+	reader.VarInt()
+	reader.String(32767)
+	reader.Long()
+	reader.Byte()
+	reader.Byte()
+	reader.Bool()
+	reader.Bool()
+
+	if reader.Bool() {
+		reader.String(32767)
+		reader.BlockPosition()
+	}
+
+	reader.VarInt()
+	reader.VarInt()
+
+	secureChat := reader.Bool()
+
+	err := reader.Err()
+	if err != nil {
+		t.Fatalf("decode play login: %v", err)
+	}
+
+	if reader.Len() != 0 {
+		t.Fatalf("play login has %d unread bytes", reader.Len())
+	}
+
+	return secureChat
 }
