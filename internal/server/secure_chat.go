@@ -7,10 +7,10 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -125,12 +125,12 @@ func LoadMinecraftCertificateVerifier(ctx context.Context, client *http.Client) 
 	trustedKeys := make([]*rsa.PublicKey, 0, len(payload.PlayerCertificateKeys))
 
 	for _, entry := range payload.PlayerCertificateKeys {
-		block, _ := pem.Decode([]byte(entry.PublicKey))
-		if block == nil {
-			return nil, errors.New("decode Minecraft player-certificate PEM key")
+		keyDER, decodeErr := base64.StdEncoding.DecodeString(entry.PublicKey)
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode Minecraft player-certificate key: %w", decodeErr)
 		}
 
-		parsed, parseErr := x509.ParsePKIXPublicKey(block.Bytes)
+		parsed, parseErr := x509.ParsePKIXPublicKey(keyDER)
 		if parseErr != nil {
 			return nil, fmt.Errorf("parse Minecraft player-certificate key: %w", parseErr)
 		}

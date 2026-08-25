@@ -7,9 +7,12 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -40,10 +43,23 @@ type chatTestRoundTripper struct {
 	calls int
 }
 
+type chatTestResponseRoundTripper struct {
+	body string
+}
+
 func (t *chatTestRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
 	t.calls++
 
 	return nil, fmt.Errorf("unexpected request")
+}
+
+func (t *chatTestResponseRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Body:       io.NopCloser(strings.NewReader(t.body)),
+		Header:     make(http.Header),
+	}, nil
 }
 
 func (l *chatTestLogger) Debugf(string, ...any) {}
@@ -149,6 +165,28 @@ func TestSecureChatInitializationSkipsNetworkOfflineAndFailsOnline(t *testing.T)
 
 	if transport.calls != 1 || runtime.SecureChatReady() {
 		t.Fatalf("online failure calls=%d ready=%t", transport.calls, runtime.SecureChatReady())
+	}
+}
+
+func TestLoadMinecraftCertificateVerifierDecodesBase64DER(t *testing.T) {
+	trustedKey := generateRSAKey(t)
+
+	publicKeyDER, err := x509.MarshalPKIXPublicKey(&trustedKey.PublicKey)
+	if err != nil {
+		t.Fatalf("marshal trusted key: %v", err)
+	}
+
+	body := fmt.Sprintf(`{"playerCertificateKeys":[{"publicKey":%q}]}`, base64.StdEncoding.EncodeToString(publicKeyDER))
+
+	client := &http.Client{Transport: &chatTestResponseRoundTripper{body: body}}
+
+	verifier, err := LoadMinecraftCertificateVerifier(t.Context(), client)
+	if err != nil {
+		t.Fatalf("load base64 DER certificate key: %v", err)
+	}
+
+	if len(verifier.trustedKeys) != 1 || verifier.trustedKeys[0].N.Cmp(trustedKey.N) != 0 {
+		t.Fatal("loaded verifier does not contain the response key")
 	}
 }
 
