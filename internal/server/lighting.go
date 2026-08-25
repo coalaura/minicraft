@@ -70,7 +70,9 @@ func buildNormalLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.Le
 	buffer := acquireLightingBuffer()
 	defer releaseLightingBuffer(buffer)
 
-	characteristics, err := generateLightingBlocks(world, chunkX, chunkZ, buffer)
+	var biomes chunkBiomes
+
+	characteristics, err := generateLightingBlocks(world, chunkX, chunkZ, buffer, &biomes)
 	if err != nil {
 		return protocol.LevelChunkWithLight{}, err
 	}
@@ -81,13 +83,6 @@ func buildNormalLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.Le
 
 	chunk.SkyLightMask = nil
 	chunk.SkyLight = nil
-
-	chunkPosition := game.ChunkPosition{X: chunkX, Z: chunkZ}
-
-	sectionBiomes, hasSectionBiomes, err := buildChunkBiomes(world, chunkPosition)
-	if err != nil {
-		return protocol.LevelChunkWithLight{}, err
-	}
 
 	var sectionBlocks protocol.SectionBlocks
 
@@ -106,8 +101,8 @@ func buildNormalLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.Le
 
 		section := sectionBlocks.ToSection(0)
 
-		if hasSectionBiomes {
-			section.SetBiomes(&sectionBiomes)
+		if biomes.present {
+			section.SetBiomes(&biomes.sections[sectionIndex])
 		}
 
 		chunk.Sections[sectionIndex] = section
@@ -133,7 +128,7 @@ func buildChunkLight(world *game.World, chunkX, chunkZ int32) (protocol.UpdateLi
 	buffer := acquireLightingBuffer()
 	defer releaseLightingBuffer(buffer)
 
-	characteristics, err := generateLightingBlocks(world, chunkX, chunkZ, buffer)
+	characteristics, err := generateLightingBlocks(world, chunkX, chunkZ, buffer, nil)
 	if err != nil {
 		return protocol.UpdateLight{}, err
 	}
@@ -241,10 +236,8 @@ func releaseLightingBuffer(buffer *lightingBuffer) {
 	lightingBuffers.Put(buffer)
 }
 
-func generateLightingBlocks(world *game.World, targetX, targetZ int32, buffer *lightingBuffer) (lightingCharacteristics, error) {
+func generateLightingBlocks(world *game.World, targetX, targetZ int32, buffer *lightingBuffer, biomes *chunkBiomes) (lightingCharacteristics, error) {
 	generator := world.Generator
-
-	sectionGenerator, hasSectionGenerator := generator.(game.SectionGenerator)
 
 	var (
 		characteristics lightingCharacteristics
@@ -254,6 +247,8 @@ func generateLightingBlocks(world *game.World, targetX, targetZ int32, buffer *l
 	for chunkZ := targetZ - 1; chunkZ <= targetZ+1; chunkZ++ {
 		for chunkX := targetX - 1; chunkX <= targetX+1; chunkX++ {
 			chunkPosition := game.ChunkPosition{X: chunkX, Z: chunkZ}
+
+			prepared := prepareChunkGeneration(world, chunkPosition)
 
 			overrides := world.SnapshotChunkOverrides(chunkPosition)
 
@@ -270,6 +265,16 @@ func generateLightingBlocks(world *game.World, targetX, targetZ int32, buffer *l
 				sectionMinY := int32(protocol.OverworldMinY + sectionIndex*game.ChunkWidth)
 				sectionMaxY := sectionMinY + game.ChunkWidth - 1
 
+				if biomes != nil && chunkX == targetX && chunkZ == targetZ {
+					sectionBiomes, present, err := buildSectionBiomes(prepared, sectionMinY)
+					if err != nil {
+						return lightingCharacteristics{}, err
+					}
+
+					biomes.sections[sectionIndex] = sectionBiomes
+					biomes.present = present
+				}
+
 				if !hasGeneration || sectionMaxY < generationMinY || sectionMinY > generationMaxY {
 					continue
 				}
@@ -279,11 +284,7 @@ func generateLightingBlocks(world *game.World, targetX, targetZ int32, buffer *l
 					uniform      bool
 				)
 
-				if hasSectionGenerator {
-					uniformBlock, uniform = sectionGenerator.GenerateSection(world.Seed, chunkPosition, sectionMinY, &generated)
-				} else {
-					uniformBlock, uniform = generateSectionBlocks(generator, world.Seed, chunkPosition, sectionMinY, &generated)
-				}
+				uniformBlock, uniform = prepared.GenerateSection(sectionMinY, &generated)
 
 				for localY := range game.ChunkWidth {
 					for localZ := range game.ChunkWidth {

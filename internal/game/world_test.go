@@ -31,6 +31,10 @@ type spawningGenerator struct {
 	spawnSeed int64
 }
 
+type metadataGenerator struct {
+	metadataSeed int64
+}
+
 func (g *spawningGenerator) BlockAt(_ int64, _ BlockPosition) Block {
 	return Air
 }
@@ -45,6 +49,16 @@ func (g solidGenerator) BlockAt(_ int64, _ BlockPosition) Block {
 	return g.block
 }
 
+func (g *metadataGenerator) BlockAt(_ int64, _ BlockPosition) Block {
+	return Air
+}
+
+func (g *metadataGenerator) WorldMetadata(seed int64) WorldMetadata {
+	g.metadataSeed = seed
+
+	return WorldMetadata{SeaLevel: 27}
+}
+
 func TestNewOverworldUsesSeedAndGeneratorSpawn(t *testing.T) {
 	generator := &spawningGenerator{}
 	world := NewOverworld(generator, 42)
@@ -56,6 +70,24 @@ func TestNewOverworldUsesSeedAndGeneratorSpawn(t *testing.T) {
 	expected := Position{X: 4.5, Y: 90, Z: -2.5}
 	if world.Spawn != expected {
 		t.Fatalf("world spawn = %+v, want %+v", world.Spawn, expected)
+	}
+}
+
+func TestNewOverworldUsesGeneratorMetadataAndDefaultSeaLevel(t *testing.T) {
+	if seaLevel := NewOverworld(nil).SeaLevel; seaLevel != 63 {
+		t.Fatalf("default sea level = %d, want 63", seaLevel)
+	}
+
+	generator := &metadataGenerator{}
+
+	world := NewOverworld(generator, 42)
+
+	if world.SeaLevel != 27 {
+		t.Fatalf("generator sea level = %d, want 27", world.SeaLevel)
+	}
+
+	if generator.metadataSeed != 42 {
+		t.Fatalf("metadata seed = %d, want 42", generator.metadataSeed)
 	}
 }
 

@@ -69,6 +69,21 @@ type SectionGenerator interface {
 	GenerateSection(seed int64, chunk ChunkPosition, sectionMinY int32, blocks *[SectionVolume]Block) (block Block, uniform bool)
 }
 
+// ChunkGenerator is an optional fast path for generators that can prepare
+// reusable data for every section and biome sample in a chunk. The returned
+// generation is ephemeral and must not be used as authoritative world state.
+type ChunkGenerator interface {
+	GenerateChunk(seed int64, chunk ChunkPosition) GeneratedChunk
+}
+
+type GeneratedChunk interface {
+	GenerateSection(sectionMinY int32, blocks *[SectionVolume]Block) (block Block, uniform bool)
+}
+
+type GeneratedChunkBiomeGenerator interface {
+	BiomeAt(x, y, z int32) Biome
+}
+
 // BoundedGenerator optionally reports the inclusive vertical range that can
 // contain non-air blocks in a chunk. A false return means the chunk is empty.
 type BoundedGenerator interface {

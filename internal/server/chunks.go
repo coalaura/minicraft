@@ -673,20 +673,15 @@ func buildLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChu
 }
 
 func buildFullbrightLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChunkWithLight, error) {
-
 	chunk := protocol.NewEmptyOverworldChunk(chunkX, chunkZ, 0)
 
 	chunkPosition := game.ChunkPosition{X: chunkX, Z: chunkZ}
 
+	prepared := prepareChunkGeneration(world, chunkPosition)
+
 	overrides := world.SnapshotChunkOverrides(chunkPosition)
 
 	generator := world.Generator
-	sectionGenerator, hasSectionGenerator := generator.(game.SectionGenerator)
-
-	sectionBiomes, hasSectionBiomes, err := buildChunkBiomes(world, chunkPosition)
-	if err != nil {
-		return protocol.LevelChunkWithLight{}, err
-	}
 
 	generationMinY := int32(protocol.OverworldMinY)
 	generationMaxY := generationMinY + protocol.OverworldSectionCount*ChunkWidth - 1
@@ -706,6 +701,11 @@ func buildFullbrightLevelChunk(world *game.World, chunkX, chunkZ int32) (protoco
 		sectionMinY := int32(protocol.OverworldMinY + sectionIndex*ChunkWidth)
 		sectionMaxY := sectionMinY + ChunkWidth - 1
 
+		sectionBiomes, hasSectionBiomes, err := buildSectionBiomes(prepared, sectionMinY)
+		if err != nil {
+			return protocol.LevelChunkWithLight{}, err
+		}
+
 		hasOverrides := sectionHasOverrides(overrides, sectionMinY, sectionMaxY)
 
 		generateSection := hasGeneration && sectionMaxY >= generationMinY && sectionMinY <= generationMaxY
@@ -722,11 +722,7 @@ func buildFullbrightLevelChunk(world *game.World, chunkX, chunkZ int32) (protoco
 		uniform := true
 
 		if generateSection {
-			if hasSectionGenerator {
-				uniformBlock, uniform = sectionGenerator.GenerateSection(world.Seed, chunkPosition, sectionMinY, &generatedBlocks)
-			} else {
-				uniformBlock, uniform = generateSectionBlocks(generator, world.Seed, chunkPosition, sectionMinY, &generatedBlocks)
-			}
+			uniformBlock, uniform = prepared.GenerateSection(sectionMinY, &generatedBlocks)
 		}
 
 		if uniform && !hasOverrides {

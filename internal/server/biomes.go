@@ -7,28 +7,39 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
-func buildChunkBiomes(world *game.World, chunk game.ChunkPosition) (protocol.SectionBiomes, bool, error) {
-	generator, ok := world.Generator.(game.BiomeGenerator)
-	if !ok {
-		return protocol.SectionBiomes{}, false, nil
-	}
+type chunkBiomes struct {
+	sections [protocol.OverworldSectionCount]protocol.SectionBiomes
+	present  bool
+}
+
+func buildSectionBiomes(prepared preparedChunkGeneration, sectionMinY int32) (protocol.SectionBiomes, bool, error) {
+	chunk := prepared.position
 
 	chunkMinX := chunk.X * game.ChunkWidth
 	chunkMinZ := chunk.Z * game.ChunkWidth
 
 	var biomes protocol.SectionBiomes
 
-	for localZ := range 4 {
-		for localX := range 4 {
-			worldX := chunkMinX + int32(localX*4+2)
-			worldZ := chunkMinZ + int32(localZ*4+2)
+	for localY := range 4 {
+		for localZ := range 4 {
+			for localX := range 4 {
+				worldX := chunkMinX + int32(localX*4+2)
+				worldY := sectionMinY + int32(localY*4+2)
+				worldZ := chunkMinZ + int32(localZ*4+2)
 
-			biome := generator.BiomeAt(world.Seed, worldX, worldZ)
-			if !biome.Valid() {
-				return protocol.SectionBiomes{}, false, fmt.Errorf("unsupported biome %d at x=%d z=%d", biome, worldX, worldZ)
-			}
+				biome, ok := prepared.BiomeAt(worldX, worldY, worldZ)
+				if !ok {
+					for index := range biomes.States {
+						biomes.States[index] = int32(game.BiomePlains)
+					}
 
-			for localY := range 4 {
+					return biomes, true, nil
+				}
+
+				if !biome.Valid() {
+					return protocol.SectionBiomes{}, false, fmt.Errorf("unsupported biome %d at x=%d y=%d z=%d", biome, worldX, worldY, worldZ)
+				}
+
 				biomes.Set(localX, localY, localZ, int32(biome))
 			}
 		}

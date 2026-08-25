@@ -18,11 +18,13 @@ type Runtime struct {
 	ChatLeaveMessage    string
 
 	// Keep each profile/entity transition ordered as one lifecycle event.
-	lifecycleMu  sync.Mutex
-	mu           sync.RWMutex
-	nextEntityID int32
-	reserved     int
-	sessions     map[*Session]*game.Player
+	lifecycleMu               sync.Mutex
+	worldMutationMu           sync.Mutex
+	blockMutationDeliveryTail chan struct{}
+	mu                        sync.RWMutex
+	nextEntityID              int32
+	reserved                  int
+	sessions                  map[*Session]*game.Player
 }
 
 func (r *Runtime) ReservePlayerSlot(maxPlayers int) bool {
@@ -48,11 +50,16 @@ func (r *Runtime) ReleasePlayerSlot() {
 }
 
 func NewRuntime(world *game.World) *Runtime {
+	initialDelivery := make(chan struct{})
+
+	close(initialDelivery)
+
 	return &Runtime{
-		World:              world,
-		AllowBlockBreaking: true,
-		AllowBlockPlacing:  true,
-		sessions:           make(map[*Session]*game.Player),
+		World:                     world,
+		AllowBlockBreaking:        true,
+		AllowBlockPlacing:         true,
+		blockMutationDeliveryTail: initialDelivery,
+		sessions:                  make(map[*Session]*game.Player),
 	}
 }
 

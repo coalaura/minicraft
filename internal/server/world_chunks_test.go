@@ -2,6 +2,7 @@ package server
 
 import (
 	"reflect"
+	"sync/atomic"
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
@@ -14,8 +15,63 @@ import (
 
 type unsupportedBlockGenerator struct{}
 
+type countingChunkGenerator struct {
+	chunkCalls   atomic.Int32
+	blockCalls   atomic.Int32
+	sectionCalls atomic.Int32
+	biomeCalls   atomic.Int32
+}
+
+type countingGeneratedChunk struct {
+	generator *countingChunkGenerator
+}
+
 func (unsupportedBlockGenerator) BlockAt(_ int64, _ game.BlockPosition) game.Block {
 	return game.MaxBlockState + 1
+}
+
+func (generator *countingChunkGenerator) BlockAt(_ int64, position game.BlockPosition) game.Block {
+	generator.blockCalls.Add(1)
+
+	if position.Y == 0 {
+		return game.Stone
+	}
+
+	return game.Air
+}
+
+func (generator *countingChunkGenerator) GenerateChunk(_ int64, _ game.ChunkPosition) game.GeneratedChunk {
+	generator.chunkCalls.Add(1)
+
+	return &countingGeneratedChunk{generator: generator}
+}
+
+func (generator *countingChunkGenerator) GenerationBounds(_ int64, _ game.ChunkPosition) (int32, int32, bool) {
+	return protocol.OverworldMinY, protocol.OverworldMinY + protocol.OverworldSectionCount*game.ChunkWidth - 1, true
+}
+
+func (generated *countingGeneratedChunk) GenerateSection(sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
+	generated.generator.sectionCalls.Add(1)
+
+	if sectionMinY != 0 {
+		return game.Air, true
+	}
+
+	clear(blocks[:])
+
+	for localZ := range game.ChunkWidth {
+		for localX := range game.ChunkWidth {
+			blocks[localZ*game.ChunkWidth+localX] = game.Stone
+		}
+	}
+
+	return game.Air, false
+}
+
+func (generated *countingGeneratedChunk) BiomeAt(_, _, _ int32) game.Biome {
+	generated.generator.biomeCalls.Add(1)
+
+	return game.BiomePlains
 }
 
 func TestLevelChunksQueryWorldAcrossBoundaries(t *testing.T) {
@@ -59,6 +115,81 @@ func TestLevelChunksIncludeWorldOverrides(t *testing.T) {
 
 	assertChunkBlockState(t, chunk, 0, 69, 0, protocol.AirBlockState)
 	assertChunkBlockState(t, chunk, 5, 69, 0, protocol.StoneBlockState)
+}
+
+func TestWholeChunkGenerationIsPreparedOnceAndIncludesOverrides(t *testing.T) {
+	generator := &countingChunkGenerator{}
+
+	world := game.NewOverworld(generator, 42)
+
+	world.SetBlocks([]game.BlockChange{
+		{Position: game.BlockPosition{X: 3, Y: 0, Z: 4}, Replacement: game.Air},
+		{Position: game.BlockPosition{X: 5, Y: 1, Z: 6}, Replacement: game.Stone},
+	})
+
+	generator.blockCalls.Store(0)
+
+	chunk, err := buildLevelChunk(world, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if calls := generator.chunkCalls.Load(); calls != 1 {
+		t.Fatalf("GenerateChunk calls = %d, want 1", calls)
+	}
+
+	if calls := generator.sectionCalls.Load(); calls != protocol.OverworldSectionCount {
+		t.Fatalf("GenerateSection calls = %d, want %d", calls, protocol.OverworldSectionCount)
+	}
+
+	if calls := generator.biomeCalls.Load(); calls != protocol.OverworldSectionCount*protocol.BiomeSectionVolume {
+		t.Fatalf("BiomeAt calls = %d, want %d", calls, protocol.OverworldSectionCount*protocol.BiomeSectionVolume)
+	}
+
+	if calls := generator.blockCalls.Load(); calls != 0 {
+		t.Fatalf("BlockAt calls = %d, want 0", calls)
+	}
+
+	assertChunkBlockState(t, chunk, 2, 0, 4, protocol.StoneBlockState)
+	assertChunkBlockState(t, chunk, 3, 0, 4, protocol.AirBlockState)
+	assertChunkBlockState(t, chunk, 5, 1, 6, protocol.StoneBlockState)
+
+	for sectionIndex, section := range chunk.Sections {
+		if section.Biome != int32(game.BiomePlains) {
+			t.Fatalf("section %d biome = %d, want %d", sectionIndex, section.Biome, game.BiomePlains)
+		}
+	}
+}
+
+func TestNormalLightingPreparesEachContextChunkOnce(t *testing.T) {
+	generator := &countingChunkGenerator{}
+
+	world := game.NewOverworld(generator, 42)
+
+	world.SetLightingMode(game.LightingNormal)
+
+	chunk, err := buildLevelChunk(world, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if calls := generator.chunkCalls.Load(); calls != 9 {
+		t.Fatalf("GenerateChunk calls = %d, want 9", calls)
+	}
+
+	if calls := generator.sectionCalls.Load(); calls != 9*protocol.OverworldSectionCount {
+		t.Fatalf("GenerateSection calls = %d, want %d", calls, 9*protocol.OverworldSectionCount)
+	}
+
+	if calls := generator.biomeCalls.Load(); calls != protocol.OverworldSectionCount*protocol.BiomeSectionVolume {
+		t.Fatalf("BiomeAt calls = %d, want %d", calls, protocol.OverworldSectionCount*protocol.BiomeSectionVolume)
+	}
+
+	if calls := generator.blockCalls.Load(); calls != 0 {
+		t.Fatalf("BlockAt calls = %d, want 0", calls)
+	}
+
+	assertChunkBlockState(t, chunk, 2, 0, 4, protocol.StoneBlockState)
 }
 
 func TestBulkGeneratorsMatchBlockAt(t *testing.T) {

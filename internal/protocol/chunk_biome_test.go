@@ -14,6 +14,7 @@ func TestSectionBiomesPaletteModes(t *testing.T) {
 		{name: "three", paletteSize: 3, bits: 2},
 		{name: "eight", paletteSize: 8, bits: 3},
 		{name: "direct", paletteSize: 9, direct: true, bits: 4},
+		{name: "direct registry maximum", paletteSize: 9, direct: true, bits: 7},
 	}
 
 	for _, test := range tests {
@@ -22,6 +23,10 @@ func TestSectionBiomesPaletteModes(t *testing.T) {
 
 			for index := range biomes.States {
 				biomes.States[index] = int32(index % test.paletteSize)
+			}
+
+			if test.name == "direct registry maximum" {
+				biomes.States[len(biomes.States)-1] = 64
 			}
 
 			section := UniformChunkSection(AirBlockState, 0)

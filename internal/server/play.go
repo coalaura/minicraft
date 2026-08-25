@@ -375,15 +375,7 @@ func (s *Session) handlePlayerAction(action protocol.PlayerAction) error {
 		}
 
 		if !result.Allowed || !result.Changed {
-			state, stateErr := protocolBlockState(result.Block)
-			if stateErr != nil {
-				return stateErr
-			}
-
-			err = s.sendBlockUpdate(action.Position, state)
-			if err != nil {
-				return err
-			}
+			return s.resynchronizeBlocks([]game.BlockPosition{action.Position}, action.Sequence)
 		}
 	case protocol.PlayerActionAbortDestroyBlock:
 	case protocol.PlayerActionDropAllItems:

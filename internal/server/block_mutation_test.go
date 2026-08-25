@@ -1,7 +1,9 @@
 package server
 
 import (
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
@@ -23,6 +25,23 @@ func (policy denyPositionBlockMutationPolicy) AllowBlockMutation(mutation BlockM
 
 type blockMutationTestGenerator struct {
 	block game.Block
+}
+
+type blockingConnection struct {
+	*recordingConnection
+	writeStarted chan struct{}
+	releaseWrite chan struct{}
+	writeOnce    sync.Once
+}
+
+func (c *blockingConnection) Write(data []byte) (int, error) {
+	c.writeOnce.Do(func() {
+		close(c.writeStarted)
+	})
+
+	<-c.releaseWrite
+
+	return c.recordingConnection.Write(data)
 }
 
 func (g blockMutationTestGenerator) BlockAt(_ int64, _ game.BlockPosition) game.Block {
@@ -139,6 +158,172 @@ func TestMultiBlockMutationIsAtomicAndSynchronizesEveryChange(t *testing.T) {
 
 	assertPacketIDs(t, actorConnection.packetIDs(t), nil)
 	assertPacketIDs(t, observerConnection.packetIDs(t), nil)
+}
+
+func TestBlockMutationReleasesLocksBeforeBroadcast(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	actor, _ := newBlockMutationTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Actor", game.GameModeCreative)
+	observer, _ := newBlockMutationTestSession(runtime, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Observer", game.GameModeCreative)
+
+	first := game.BlockPosition{Y: 70}
+	second := game.BlockPosition{X: 1, Y: 70}
+
+	actor.Player.Position = blockMutationTestPlayerPosition(first)
+
+	markPlacementChunksLoaded(actor, first, second)
+	markPlacementChunksLoaded(observer, first, second)
+
+	joinTestSession(t, runtime, actor)
+	joinTestSession(t, runtime, observer)
+
+	connection := &blockingConnection{
+		recordingConnection: &recordingConnection{},
+		writeStarted:        make(chan struct{}),
+		releaseWrite:        make(chan struct{}),
+	}
+
+	observer.Conn = protocol.NewConnection(connection, nil)
+
+	var releaseOnce sync.Once
+
+	releaseWrite := func() {
+		releaseOnce.Do(func() {
+			close(connection.releaseWrite)
+		})
+	}
+
+	defer releaseWrite()
+
+	firstResult := make(chan error, 1)
+
+	go func() {
+		_, err := runtime.MutateBlock(actor, BlockMutationPlace, first, game.Stone)
+		firstResult <- err
+	}()
+
+	select {
+	case <-connection.writeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("mutation broadcast did not reach the blocked connection")
+	}
+
+	lifecycleComplete := make(chan struct{})
+
+	go func() {
+		actor.handleSetHeldItem(protocol.SetHeldItem{Slot: 0})
+
+		close(lifecycleComplete)
+	}()
+
+	select {
+	case <-lifecycleComplete:
+	case <-time.After(time.Second):
+		t.Fatal("lifecycle operation blocked by mutation broadcast")
+	}
+
+	secondResult := make(chan error, 1)
+
+	go func() {
+		_, err := runtime.MutateBlock(actor, BlockMutationPlace, second, game.Dirt)
+		secondResult <- err
+	}()
+
+	deadline := time.After(time.Second)
+
+	for runtime.World.BlockAt(second) != game.Dirt {
+		select {
+		case <-deadline:
+			t.Fatal("second mutation did not commit during blocked broadcast")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	releaseWrite()
+
+	for _, result := range []chan error{firstResult, secondResult} {
+		select {
+		case err := <-result:
+			if err != nil {
+				t.Fatalf("mutate block: %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("mutation did not finish after broadcast was released")
+		}
+	}
+}
+
+func TestBlockMutationBroadcastsFollowCommitOrder(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	actor, connection := newBlockMutationTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Actor", game.GameModeCreative)
+	position := game.BlockPosition{Y: 70}
+
+	actor.Player.Position = blockMutationTestPlayerPosition(position)
+
+	markChunkLoaded(actor, position)
+
+	joinTestSession(t, runtime, actor)
+
+	connection.reset()
+
+	commit := func(action BlockMutationAction, replacement game.Block) (BlockMutationResult, blockMutationDelivery, error) {
+		runtime.worldMutationMu.Lock()
+		defer runtime.worldMutationMu.Unlock()
+
+		changes := []game.BlockChange{{Position: position, Replacement: replacement}}
+
+		return runtime.mutateBlocksLocked(actor, action, changes, 1, true)
+	}
+
+	firstResult, firstDelivery, err := commit(BlockMutationPlace, game.Stone)
+	if err != nil {
+		t.Fatalf("commit first mutation: %v", err)
+	}
+
+	secondResult, secondDelivery, err := commit(BlockMutationInteract, game.Dirt)
+	if err != nil {
+		t.Fatalf("commit second mutation: %v", err)
+	}
+
+	secondComplete := make(chan error, 1)
+
+	go func() {
+		_, err := runtime.completeBlockMutation(secondResult, secondDelivery, nil)
+		secondComplete <- err
+	}()
+
+	select {
+	case err := <-secondComplete:
+		t.Fatalf("second delivery completed before first: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	_, err = runtime.completeBlockMutation(firstResult, firstDelivery, nil)
+	if err != nil {
+		t.Fatalf("complete first mutation: %v", err)
+	}
+
+	select {
+	case err := <-secondComplete:
+		if err != nil {
+			t.Fatalf("complete second mutation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second delivery did not follow first")
+	}
+
+	packets := connection.packets(t)
+
+	dirtState, err := protocolBlockState(game.Dirt)
+	if err != nil {
+		t.Fatalf("encode dirt state: %v", err)
+	}
+
+	assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID})
+	assertBlockUpdate(t, packets[0], position, protocol.StoneBlockState)
+	assertBlockUpdate(t, packets[1], position, dirtState)
 }
 
 func TestDeniedBlockBreakingCorrectsActorWithoutBroadcast(t *testing.T) {

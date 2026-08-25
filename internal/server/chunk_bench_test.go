@@ -53,6 +53,7 @@ func BenchmarkBuildLevelChunk(b *testing.B) {
 		generator game.Generator
 	}{
 		{name: "spawn_platform", generator: spawnplatform.New()},
+		{name: "natural", generator: natural.New()},
 		{name: "wave_terrain", generator: waveterrain.New()},
 		{name: "menger_sponge", generator: mengersponge.New()},
 		{name: "fractal_vaults", generator: fractalvaults.New()},

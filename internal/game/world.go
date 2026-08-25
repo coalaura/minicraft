@@ -54,6 +54,14 @@ type SpawnGenerator interface {
 	Spawn(seed int64) Position
 }
 
+type WorldMetadata struct {
+	SeaLevel int32
+}
+
+type WorldMetadataGenerator interface {
+	WorldMetadata(seed int64) WorldMetadata
+}
+
 func (w *World) BlockAt(position BlockPosition) Block {
 	chunk, local := blockIndex(position)
 
@@ -189,8 +197,14 @@ func NewOverworld(generator Generator, seed ...int64) *World {
 
 	spawn := Position{X: 0.5, Y: 70, Z: 0.5}
 
+	metadata := WorldMetadata{SeaLevel: 63}
+
 	if spawnGenerator, ok := generator.(SpawnGenerator); ok {
 		spawn = spawnGenerator.Spawn(worldSeed)
+	}
+
+	if metadataGenerator, ok := generator.(WorldMetadataGenerator); ok {
+		metadata = metadataGenerator.WorldMetadata(worldSeed)
 	}
 
 	world := &World{
@@ -200,7 +214,7 @@ func NewOverworld(generator Generator, seed ...int64) *World {
 		Generator:     generator,
 		Spawn:         spawn,
 
-		SeaLevel: 64,
+		SeaLevel: metadata.SeaLevel,
 		Lighting: LightingFullbright,
 	}
 
