@@ -29,6 +29,9 @@ type Runtime struct {
 	nowFunc                   func() time.Time
 	worldMutationMu           sync.Mutex
 	blockMutationDeliveryTail chan struct{}
+	activeChunksMu            sync.RWMutex
+	activeChunks              map[LoadedChunk]*activeChunkReference
+	sessionActiveChunks       map[*Session]map[LoadedChunk]struct{}
 	mu                        sync.RWMutex
 	nextEntityID              int32
 	reserved                  int
@@ -67,6 +70,8 @@ func NewRuntime(world *game.World) *Runtime {
 		AllowBlockBreaking:        true,
 		AllowBlockPlacing:         true,
 		blockMutationDeliveryTail: initialDelivery,
+		activeChunks:              make(map[LoadedChunk]*activeChunkReference),
+		sessionActiveChunks:       make(map[*Session]map[LoadedChunk]struct{}),
 		sessions:                  make(map[*Session]*game.Player),
 	}
 }
@@ -176,6 +181,8 @@ func (r *Runtime) JoinSession(session *Session) error {
 func (r *Runtime) LeaveSession(session *Session) {
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
+
+	r.releaseSessionActiveChunks(session)
 
 	r.mu.Lock()
 	_, active := r.sessions[session]

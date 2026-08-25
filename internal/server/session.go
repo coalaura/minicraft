@@ -37,6 +37,7 @@ type Session struct {
 	chunkFeedbackTimedOut bool
 	chunkStreamNotify     chan struct{}
 	chunkStreamStarted    bool
+	runtimeChunksReleased bool
 
 	nextTeleportID int32
 	chunksPerTick  float32

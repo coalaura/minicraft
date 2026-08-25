@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	worldTickInterval = 50 * time.Millisecond
-	timeSyncTicks     = 20
+	gameTickInterval = 50 * time.Millisecond
+	timeSyncTicks    = 20
 )
 
-func (r *Runtime) RunWorldClock(ctx context.Context) {
-	ticker := time.NewTicker(worldTickInterval)
+func (r *Runtime) RunGameLoop(ctx context.Context) {
+	ticker := time.NewTicker(gameTickInterval)
 	defer ticker.Stop()
 
 	var ticksUntilSync int
@@ -24,7 +24,7 @@ func (r *Runtime) RunWorldClock(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			state := r.TickWorld()
+			state := r.Tick()
 
 			ticksUntilSync++
 
@@ -37,8 +37,12 @@ func (r *Runtime) RunWorldClock(ctx context.Context) {
 	}
 }
 
-func (r *Runtime) TickWorld() game.TimeState {
-	return r.World.AdvanceTime()
+func (r *Runtime) Tick() game.TimeState {
+	state := r.World.AdvanceTime()
+
+	r.tickActiveChunks()
+
+	return state
 }
 
 func (r *Runtime) broadcastTime(state game.TimeState) {

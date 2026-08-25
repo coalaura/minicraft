@@ -61,7 +61,7 @@ func main() {
 
 	defer cancel()
 
-	go runtime.RunWorldClock(ctx)
+	go runtime.RunGameLoop(ctx)
 
 	go func() {
 		<-ctx.Done()

@@ -1,0 +1,165 @@
+package server
+
+import (
+	"sync"
+	"testing"
+
+	"github.com/coalaura/minicraft/internal/game"
+)
+
+type runtimeTickLog struct {
+	mu      sync.Mutex
+	entries []string
+}
+
+type recordingRuntimeTicker struct {
+	label string
+	log   *runtimeTickLog
+}
+
+func (t *recordingRuntimeTicker) Tick(_ *Runtime, _ *ActiveChunk) {
+	t.log.mu.Lock()
+	defer t.log.mu.Unlock()
+
+	t.log.entries = append(t.log.entries, t.label)
+}
+
+func TestRuntimeActiveChunksFollowSessionViews(t *testing.T) {
+	runtime := NewRuntime(game.NewOverworld(nil))
+
+	first := &Session{}
+	second := &Session{}
+
+	sharedPosition := LoadedChunk{X: 1, Z: 0}
+
+	runtime.setSessionActiveChunks(first, []LoadedChunk{{X: 0, Z: 0}, sharedPosition})
+	runtime.setSessionActiveChunks(second, []LoadedChunk{sharedPosition})
+
+	if count := runtime.ActiveChunkCount(); count != 2 {
+		t.Fatalf("active chunk count = %d, want 2", count)
+	}
+
+	shared, active := runtime.ActiveChunk(sharedPosition)
+	if !active {
+		t.Fatal("shared chunk is not active")
+	}
+
+	shared.SetEntity(1, &recordingRuntimeTicker{log: &runtimeTickLog{}})
+
+	runtime.setSessionActiveChunks(first, []LoadedChunk{{X: 2, Z: 0}})
+
+	retained, active := runtime.ActiveChunk(sharedPosition)
+	if !active || retained != shared || retained.EntityCount() != 1 {
+		t.Fatal("shared chunk state was not retained for the second session")
+	}
+
+	if _, active = runtime.ActiveChunk(LoadedChunk{}); active {
+		t.Fatal("chunk left by all sessions is still active")
+	}
+
+	runtime.LeaveSession(second)
+
+	if _, active = runtime.ActiveChunk(sharedPosition); active {
+		t.Fatal("shared chunk remained active after its final session left")
+	}
+
+	runtime.LeaveSession(first)
+
+	if count := runtime.ActiveChunkCount(); count != 0 {
+		t.Fatalf("active chunk count after leaves = %d, want 0", count)
+	}
+}
+
+func TestRuntimeTickProcessesOnlyActiveChunkStateInStableOrder(t *testing.T) {
+	runtime := NewRuntime(game.NewOverworld(nil))
+
+	session := &Session{}
+
+	log := &runtimeTickLog{}
+
+	runtime.setSessionActiveChunks(session, []LoadedChunk{{X: 2, Z: 0}, {X: -1, Z: 3}})
+
+	first, _ := runtime.ActiveChunk(LoadedChunk{X: -1, Z: 3})
+
+	first.SetEntity(9, &recordingRuntimeTicker{label: "first entity 9", log: log})
+	first.SetEntity(2, &recordingRuntimeTicker{label: "first entity 2", log: log})
+	first.SetBlockEntity(game.BlockPosition{X: -15, Y: 70, Z: 50}, &recordingRuntimeTicker{label: "first block", log: log})
+
+	second, _ := runtime.ActiveChunk(LoadedChunk{X: 2, Z: 0})
+
+	second.SetEntity(1, &recordingRuntimeTicker{label: "second entity", log: log})
+
+	runtime.Tick()
+
+	expected := []string{
+		"first entity 2",
+		"first entity 9",
+		"first block",
+		"second entity",
+	}
+
+	assertRuntimeTickLog(t, log, expected)
+
+	runtime.LeaveSession(session)
+	runtime.Tick()
+
+	assertRuntimeTickLog(t, log, expected)
+}
+
+func TestVisibleChunksActivateRuntimeStateBeforeDelivery(t *testing.T) {
+	session, _ := newChunkTestSession(game.Position{})
+
+	session.startChunkStream(t.Context())
+
+	err := session.updatePlayerChunks()
+	if err != nil {
+		t.Fatalf("queue visible chunks: %v", err)
+	}
+
+	expected := len(chunksInView(LoadedChunk{}, 2))
+	if count := session.Runtime.ActiveChunkCount(); count != expected {
+		t.Fatalf("active chunk count = %d, want %d", count, expected)
+	}
+
+	session.Runtime.LeaveSession(session)
+
+	if count := session.Runtime.ActiveChunkCount(); count != 0 {
+		t.Fatalf("active chunk count after leave = %d, want 0", count)
+	}
+}
+
+func TestReleasedSessionCannotReactivateChunks(t *testing.T) {
+	runtime := NewRuntime(game.NewOverworld(nil))
+
+	session := &Session{Runtime: runtime}
+
+	runtime.setSessionActiveChunks(session, []LoadedChunk{{X: 1, Z: 1}})
+
+	runtime.LeaveSession(session)
+
+	err := session.updateVisibleChunks(LoadedChunk{X: 2, Z: 2})
+	if err != nil {
+		t.Fatalf("late visible chunk update: %v", err)
+	}
+
+	if count := runtime.ActiveChunkCount(); count != 0 {
+		t.Fatalf("active chunk count after late update = %d, want 0", count)
+	}
+}
+
+func assertRuntimeTickLog(t *testing.T, log *runtimeTickLog, expected []string) {
+	t.Helper()
+
+	log.mu.Lock()
+	defer log.mu.Unlock()
+
+	if len(log.entries) != len(expected) {
+		t.Fatalf("tick log = %v, want %v", log.entries, expected)
+	}
+
+	for index := range expected {
+		if log.entries[index] != expected[index] {
+			t.Fatalf("tick log = %v, want %v", log.entries, expected)
+		}
+	}
+}

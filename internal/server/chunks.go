@@ -269,6 +269,12 @@ func (s *Session) updatePlayerChunks() error {
 func (s *Session) updateVisibleChunks(center LoadedChunk) error {
 	s.chunkMx.Lock()
 
+	if s.runtimeChunksReleased {
+		s.chunkMx.Unlock()
+
+		return nil
+	}
+
 	if s.hasChunkCenter && s.centerChunk == center {
 		s.chunkMx.Unlock()
 
@@ -324,6 +330,9 @@ func (s *Session) updateVisibleChunks(center LoadedChunk) error {
 
 	notify := s.chunkStreamNotify
 	streamStarted := s.chunkStreamStarted
+
+	s.Runtime.setSessionActiveChunks(s, visibleChunks)
+
 	s.chunkMx.Unlock()
 
 	err := s.sendCenterChunk(center.X, center.Z)

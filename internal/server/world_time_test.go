@@ -1,13 +1,42 @@
 package server
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/coalaura/minicraft/internal/config"
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 	"github.com/coalaura/plain"
 )
+
+func TestGameTickRate(t *testing.T) {
+	if gameTickInterval != time.Second/20 {
+		t.Fatalf("game tick interval = %s, want 20 TPS", gameTickInterval)
+	}
+}
+
+func TestGameLoopStopsWhenCancelled(t *testing.T) {
+	runtime := NewRuntime(game.NewOverworld(nil))
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+
+	go func() {
+		runtime.RunGameLoop(ctx)
+		close(done)
+	}()
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("game loop did not stop after cancellation")
+	}
+}
 
 func TestRuntimeTicksSharedWorldTime(t *testing.T) {
 	world := game.NewOverworld(nil)
@@ -16,14 +45,14 @@ func TestRuntimeTicksSharedWorldTime(t *testing.T) {
 
 	world.SetTime(18000, false)
 
-	state := runtime.TickWorld()
+	state := runtime.Tick()
 	if state.Age != 1 || state.DayTime != 18000 || state.DayCycle {
 		t.Fatalf("fixed world tick = %+v", state)
 	}
 
 	world.SetTime(6000, true)
 
-	state = runtime.TickWorld()
+	state = runtime.Tick()
 	if state.Age != 1 || state.DayTime != 6001 || !state.DayCycle {
 		t.Fatalf("cycling world tick = %+v", state)
 	}
