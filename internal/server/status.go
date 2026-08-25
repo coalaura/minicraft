@@ -26,6 +26,11 @@ func (s *Session) handleStatus(ctx context.Context) error {
 
 		switch packet.ID {
 		case protocol.ServerboundStatusRequestID:
+			err = protocol.DecodeEmptyPacket(packet.Data, "status request")
+			if err != nil {
+				return err
+			}
+
 			err = s.sendStatusResponse()
 			if err != nil {
 				return err

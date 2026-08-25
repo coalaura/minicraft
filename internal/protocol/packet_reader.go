@@ -247,3 +247,21 @@ func (r *PacketReader) UUID() string {
 func (r *PacketReader) Err() error {
 	return r.err
 }
+
+func (r *PacketReader) Done(packetName string) error {
+	if r.err != nil {
+		return r.err
+	}
+
+	if r.Len() != 0 {
+		return fmt.Errorf("%s has %d trailing bytes", packetName, r.Len())
+	}
+
+	return nil
+}
+
+func DecodeEmptyPacket(data []byte, packetName string) error {
+	rd := NewPacketReader(data)
+
+	return rd.Done(packetName)
+}

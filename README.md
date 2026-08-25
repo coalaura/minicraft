@@ -26,6 +26,8 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 
 Minicraft is intentionally lightweight. It runs as a single Go binary and avoids the JVM, vanilla server internals and persistent world storage of a regular Minecraft server, making it especially quick to start and inexpensive to run.
 
+![Multiplayer in a generated world](.github/multiplayer.png)
+
 <p align="center">
   <img src=".github/blocks.png" alt="Block placement in a generated world" width="49%">
   <img src=".github/sponge.png" alt="The Menger sponge generator" width="49%">

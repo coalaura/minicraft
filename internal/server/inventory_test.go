@@ -89,6 +89,103 @@ func TestCreativeSlotUpdatesRejectInvalidOrNonCreativeChanges(t *testing.T) {
 	}
 }
 
+func TestCreativePickBlockPlacesItemInSelectedHotbarSlot(t *testing.T) {
+	world := &game.World{}
+
+	session, connection := newMovementTestSession(NewRuntime(world), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Builder")
+
+	position := game.BlockPosition{X: 4, Y: 70, Z: -3}
+
+	session.Player.GameMode = game.GameModeCreative
+	session.Player.SelectedHotbarSlot = 2
+	session.Player.Inventory.StateID = 7
+	session.loadedChunks = map[LoadedChunk]struct{}{blockLoadedChunk(position): {}}
+
+	world.SetBlock(position, game.Stone)
+
+	session.handlePickItemFromBlock(protocol.PickItemFromBlock{Position: position, IncludeData: true})
+
+	player := session.snapshotPlayer()
+	if !player.Inventory.Hotbar[2].Equal(game.ItemStack{Item: game.ItemStone, Count: 64}) {
+		t.Fatalf("picked stack = %+v", player.Inventory.Hotbar[2])
+	}
+
+	if player.SelectedHotbarSlot != 2 || player.Inventory.StateID != 8 {
+		t.Fatalf("player after pick = %+v", player)
+	}
+
+	assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundContainerSetContentID})
+	assertInventoryContentHeader(t, connection.packets(t)[0], 8, game.PlayerInventorySlots)
+}
+
+func TestCreativePickBlockSelectsExistingHotbarStack(t *testing.T) {
+	world := &game.World{}
+
+	session, connection := newMovementTestSession(NewRuntime(world), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Builder")
+
+	position := game.BlockPosition{X: 4, Y: 70, Z: -3}
+
+	session.Player.GameMode = game.GameModeCreative
+	session.Player.Inventory.StateID = 7
+	session.Player.Inventory.Hotbar[5] = game.ItemStack{Item: game.ItemStone, Count: 3}
+	session.loadedChunks = map[LoadedChunk]struct{}{blockLoadedChunk(position): {}}
+
+	world.SetBlock(position, game.Stone)
+
+	session.handlePickItemFromBlock(protocol.PickItemFromBlock{Position: position})
+
+	player := session.snapshotPlayer()
+	if player.SelectedHotbarSlot != 5 {
+		t.Fatalf("selected hotbar slot = %d, want 5", player.SelectedHotbarSlot)
+	}
+
+	if !player.Inventory.Hotbar[5].Equal(game.ItemStack{Item: game.ItemStone, Count: 3}) || player.Inventory.StateID != 7 {
+		t.Fatalf("inventory changed while selecting existing stack: %+v", player.Inventory)
+	}
+
+	assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundSetHeldSlotID})
+
+	reader := protocol.NewPacketReader(connection.packets(t)[0].Data)
+	if slot := reader.VarInt(); slot != 5 {
+		t.Fatalf("client selected slot = %d, want 5", slot)
+	}
+
+	err := reader.Done("set held slot")
+	if err != nil {
+		t.Fatalf("decode selected slot: %v", err)
+	}
+}
+
+func TestPickBlockRejectsSurvivalAndUnloadedBlocks(t *testing.T) {
+	world := &game.World{}
+
+	session, connection := newMovementTestSession(NewRuntime(world), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Builder")
+
+	position := game.BlockPosition{X: 4, Y: 70, Z: -3}
+
+	world.SetBlock(position, game.Stone)
+
+	session.loadedChunks = map[LoadedChunk]struct{}{blockLoadedChunk(position): {}}
+	session.Player.GameMode = game.GameModeSurvival
+
+	session.handlePickItemFromBlock(protocol.PickItemFromBlock{Position: position})
+
+	if !session.snapshotPlayer().Inventory.Hotbar[0].Empty() {
+		t.Fatal("survival pick changed inventory")
+	}
+
+	session.Player.GameMode = game.GameModeCreative
+	session.loadedChunks = nil
+
+	session.handlePickItemFromBlock(protocol.PickItemFromBlock{Position: position})
+
+	if !session.snapshotPlayer().Inventory.Hotbar[0].Empty() {
+		t.Fatal("unloaded pick changed inventory")
+	}
+
+	assertPacketIDs(t, connection.packetIDs(t), nil)
+}
+
 func TestHeldEquipmentUpdatesVisiblePlayers(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 

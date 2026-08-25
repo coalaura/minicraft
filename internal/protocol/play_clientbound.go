@@ -105,6 +105,10 @@ type ContainerSetSlot struct {
 	Item     game.ItemStack
 }
 
+type SetHeldSlot struct {
+	Slot int32
+}
+
 type SynchronizeEntityPosition struct {
 	EntityID int32
 
@@ -401,6 +405,10 @@ func (p ContainerSetSlot) Encode(wr *PacketWriter) {
 	wr.VarInt(p.StateID)
 	wr.Short(p.Slot)
 	encodeItemStack(wr, p.Item)
+}
+
+func (p SetHeldSlot) Encode(wr *PacketWriter) {
+	wr.VarInt(p.Slot)
 }
 
 func encodeItemStack(wr *PacketWriter, stack game.ItemStack) {

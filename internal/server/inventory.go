@@ -122,6 +122,89 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 	}
 }
 
+func (s *Session) handlePickItemFromBlock(pick protocol.PickItemFromBlock) {
+	if !s.hasLoadedBlock(pick.Position) {
+		return
+	}
+
+	block := s.Runtime.World.BlockAt(pick.Position)
+
+	item, valid := game.ItemForBlock(block)
+	if !valid {
+		return
+	}
+
+	definition, valid := item.Definition()
+	if !valid || definition.StackSize <= 0 {
+		return
+	}
+
+	pickedStack := game.ItemStack{Item: item, Count: definition.StackSize}
+
+	s.Runtime.lifecycleMu.Lock()
+	defer s.Runtime.lifecycleMu.Unlock()
+
+	var (
+		inventoryChanged bool
+		selectionChanged bool
+	)
+
+	player, changed := s.updatePlayerState(func(player *game.Player) bool {
+		if player.GameMode != game.GameModeCreative {
+			return false
+		}
+
+		for slot := range player.Inventory.Hotbar {
+			if !player.Inventory.Hotbar[slot].SameItem(pickedStack) {
+				continue
+			}
+
+			if player.SelectedHotbarSlot == slot {
+				return false
+			}
+
+			player.SelectedHotbarSlot = slot
+
+			selectionChanged = true
+
+			return true
+		}
+
+		held := player.Inventory.Held(player.SelectedHotbarSlot)
+		if held == nil {
+			return false
+		}
+
+		*held = pickedStack
+
+		player.Inventory.StateID = nextInventoryStateID(player.Inventory.StateID)
+
+		inventoryChanged = true
+
+		return true
+	})
+
+	if !changed {
+		return
+	}
+
+	if selectionChanged {
+		err := s.writePacket(protocol.ClientboundSetHeldSlotID, protocol.SetHeldSlot{Slot: int32(player.SelectedHotbarSlot)})
+		if err != nil {
+			s.Log.Warnf("[play] failed to synchronize picked hotbar slot: %v\n", err)
+		}
+	}
+
+	if inventoryChanged {
+		err := s.sendPlayerInventorySnapshot(player.Inventory)
+		if err != nil {
+			s.Log.Warnf("[play] failed to synchronize picked block item: %v\n", err)
+		}
+	}
+
+	s.Runtime.broadcastPlayerEquipment(s, player, protocol.EquipmentSlotMainHand)
+}
+
 func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()

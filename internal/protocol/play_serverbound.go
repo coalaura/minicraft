@@ -114,6 +114,11 @@ type MovePlayerStatus struct {
 	Flags MovementFlags
 }
 
+type PickItemFromBlock struct {
+	Position    game.BlockPosition
+	IncludeData bool
+}
+
 type PlayerCommand struct {
 	EntityID int32
 	Action   int32
@@ -207,7 +212,7 @@ func DecodeConfirmTeleport(data []byte) (ConfirmTeleport, error) {
 
 	teleportID := rd.VarInt()
 
-	err := rd.Err()
+	err := rd.Done("confirm teleport")
 	if err != nil {
 		return ConfirmTeleport{}, err
 	}
@@ -220,7 +225,7 @@ func DecodeChunkBatchReceived(data []byte) (ChunkBatchReceived, error) {
 
 	chunksPerTick := rd.Float()
 
-	err := rd.Err()
+	err := rd.Done("chunk batch received")
 	if err != nil {
 		return ChunkBatchReceived{}, err
 	}
@@ -252,13 +257,9 @@ func DecodeChatMessage(data []byte) (ChatMessage, error) {
 
 	message.Checksum = rd.Byte()
 
-	err := rd.Err()
+	err := rd.Done("chat message")
 	if err != nil {
 		return ChatMessage{}, err
-	}
-
-	if rd.Len() != 0 {
-		return ChatMessage{}, fmt.Errorf("chat message has %d trailing bytes", rd.Len())
 	}
 
 	if !validChatMessage(message.Message) {
@@ -277,17 +278,13 @@ func DecodeChatAck(data []byte) (ChatAck, error) {
 
 	acknowledgement := ChatAck{MessageCount: rd.VarInt()}
 
-	err := rd.Err()
+	err := rd.Done("chat acknowledgement")
 	if err != nil {
 		return ChatAck{}, err
 	}
 
 	if acknowledgement.MessageCount < 0 {
 		return ChatAck{}, fmt.Errorf("invalid chat acknowledgement count %d", acknowledgement.MessageCount)
-	}
-
-	if rd.Len() != 0 {
-		return ChatAck{}, fmt.Errorf("chat acknowledgement has %d trailing bytes", rd.Len())
 	}
 
 	return acknowledgement, nil
@@ -303,13 +300,9 @@ func DecodeChatSessionUpdate(data []byte) (ChatSessionUpdate, error) {
 		CertificateSignature: rd.BytesMax(maxChatSessionBytes),
 	}
 
-	err := rd.Err()
+	err := rd.Done("chat session update")
 	if err != nil {
 		return ChatSessionUpdate{}, err
-	}
-
-	if rd.Len() != 0 {
-		return ChatSessionUpdate{}, fmt.Errorf("chat session update has %d trailing bytes", rd.Len())
 	}
 
 	return update, nil
@@ -330,7 +323,7 @@ func DecodeClientInformation(data []byte) (ClientInformation, error) {
 		ParticleStatus: rd.VarInt(),
 	}
 
-	err := rd.Err()
+	err := rd.Done("client information")
 	if err != nil {
 		return ClientInformation{}, err
 	}
@@ -348,7 +341,7 @@ func DecodeMovePlayerPosition(data []byte) (MovePlayerPosition, error) {
 		Flags: MovementFlags(rd.Byte()),
 	}
 
-	err := rd.Err()
+	err := rd.Done("move player position")
 	if err != nil {
 		return MovePlayerPosition{}, err
 	}
@@ -368,7 +361,7 @@ func DecodeMovePlayerPositionRotation(data []byte) (MovePlayerPositionRotation, 
 		Flags: MovementFlags(rd.Byte()),
 	}
 
-	err := rd.Err()
+	err := rd.Done("move player position and rotation")
 	if err != nil {
 		return MovePlayerPositionRotation{}, err
 	}
@@ -385,7 +378,7 @@ func DecodeMovePlayerRotation(data []byte) (MovePlayerRotation, error) {
 		Flags: MovementFlags(rd.Byte()),
 	}
 
-	err := rd.Err()
+	err := rd.Done("move player rotation")
 	if err != nil {
 		return MovePlayerRotation{}, err
 	}
@@ -400,12 +393,28 @@ func DecodeMovePlayerStatus(data []byte) (MovePlayerStatus, error) {
 		Flags: MovementFlags(rd.Byte()),
 	}
 
-	err := rd.Err()
+	err := rd.Done("move player status")
 	if err != nil {
 		return MovePlayerStatus{}, err
 	}
 
 	return move, nil
+}
+
+func DecodePickItemFromBlock(data []byte) (PickItemFromBlock, error) {
+	rd := NewPacketReader(data)
+
+	pick := PickItemFromBlock{
+		Position:    rd.BlockPosition(),
+		IncludeData: rd.Bool(),
+	}
+
+	err := rd.Done("pick item from block")
+	if err != nil {
+		return PickItemFromBlock{}, err
+	}
+
+	return pick, nil
 }
 
 func DecodePlayerCommand(data []byte) (PlayerCommand, error) {
@@ -417,7 +426,7 @@ func DecodePlayerCommand(data []byte) (PlayerCommand, error) {
 		Data:     rd.VarInt(),
 	}
 
-	err := rd.Err()
+	err := rd.Done("player command")
 	if err != nil {
 		return PlayerCommand{}, err
 	}
@@ -435,7 +444,7 @@ func DecodePlayerAction(data []byte) (PlayerAction, error) {
 		Sequence: rd.VarInt(),
 	}
 
-	err := rd.Err()
+	err := rd.Done("player action")
 	if err != nil {
 		return PlayerAction{}, err
 	}
@@ -448,7 +457,7 @@ func DecodePlayerInput(data []byte) (PlayerInput, error) {
 
 	input := PlayerInput{Flags: rd.Byte()}
 
-	err := rd.Err()
+	err := rd.Done("player input")
 	if err != nil {
 		return PlayerInput{}, err
 	}
@@ -461,7 +470,7 @@ func DecodeSetHeldItem(data []byte) (SetHeldItem, error) {
 
 	selection := SetHeldItem{Slot: rd.Short()}
 
-	err := rd.Err()
+	err := rd.Done("set held item")
 	if err != nil {
 		return SetHeldItem{}, err
 	}
@@ -505,13 +514,9 @@ func DecodeContainerClick(data []byte) (ContainerClick, error) {
 
 	click.CursorItem = cursor
 
-	err = rd.Err()
+	err = rd.Done("container click")
 	if err != nil {
 		return ContainerClick{}, err
-	}
-
-	if rd.Len() != 0 {
-		return ContainerClick{}, fmt.Errorf("container click has %d trailing bytes", rd.Len())
 	}
 
 	return click, nil
@@ -529,13 +534,9 @@ func DecodeSetCreativeModeSlot(data []byte) (SetCreativeModeSlot, error) {
 
 	creativeSlot.Item = item
 
-	err = rd.Err()
+	err = rd.Done("creative mode slot")
 	if err != nil {
 		return SetCreativeModeSlot{}, err
-	}
-
-	if rd.Len() != 0 {
-		return SetCreativeModeSlot{}, fmt.Errorf("creative mode slot has %d trailing bytes", rd.Len())
 	}
 
 	return creativeSlot, nil
@@ -546,7 +547,7 @@ func DecodeSwingArm(data []byte) (SwingArm, error) {
 
 	swing := SwingArm{Hand: rd.VarInt()}
 
-	err := rd.Err()
+	err := rd.Done("swing arm")
 	if err != nil {
 		return SwingArm{}, err
 	}
@@ -569,7 +570,7 @@ func DecodeUseItemOn(data []byte) (UseItemOn, error) {
 		Sequence:       rd.VarInt(),
 	}
 
-	err := rd.Err()
+	err := rd.Done("use item on")
 	if err != nil {
 		return UseItemOn{}, err
 	}
@@ -582,7 +583,7 @@ func DecodePlayKeepAliveResponse(data []byte) (PlayKeepAliveResponse, error) {
 
 	response := PlayKeepAliveResponse{ID: rd.Long()}
 
-	err := rd.Err()
+	err := rd.Done("play keepalive response")
 	if err != nil {
 		return PlayKeepAliveResponse{}, err
 	}

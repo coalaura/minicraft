@@ -121,7 +121,7 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 
 		s.handleChunkBatchReceived(batch)
 	case protocol.ServerboundClientTickEndID:
-		// End of client tick; nothing to do for now.
+		return protocol.DecodeEmptyPacket(packet.Data, "client tick end")
 	case protocol.ServerboundPlayClientInformationID:
 		information, err := protocol.DecodeClientInformation(packet.Data)
 		if err != nil {
@@ -173,6 +173,13 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		}
 
 		s.handleMovePlayerStatus(move)
+	case protocol.ServerboundPickItemFromBlockID:
+		pick, err := protocol.DecodePickItemFromBlock(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		s.handlePickItemFromBlock(pick)
 	case protocol.ServerboundPlayerActionID:
 		action, err := protocol.DecodePlayerAction(packet.Data)
 		if err != nil {
@@ -195,6 +202,11 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 
 		s.handlePlayerInput(input)
 	case protocol.ServerboundPlayerLoadedID:
+		err := protocol.DecodeEmptyPacket(packet.Data, "player loaded")
+		if err != nil {
+			return err
+		}
+
 		s.handlePlayerLoaded()
 	case protocol.ServerboundSetHeldItemID:
 		selection, err := protocol.DecodeSetHeldItem(packet.Data)

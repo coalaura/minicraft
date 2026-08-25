@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"math"
+	"unicode/utf8"
 )
 
 const (
@@ -127,7 +128,7 @@ func ReadString(rd *ByteReader, max int) (string, error) {
 		return "", err
 	}
 
-	if int(ln) < 0 || int(ln) > max*3+3 {
+	if ln < 0 || int64(ln) > int64(max)*3 {
 		return "", errors.New("string too long")
 	}
 
@@ -136,6 +137,14 @@ func ReadString(rd *ByteReader, max int) (string, error) {
 	_, err = io.ReadFull(rd, buf)
 	if err != nil {
 		return "", err
+	}
+
+	if !utf8.Valid(buf) {
+		return "", errors.New("string is not valid UTF-8")
+	}
+
+	if utf8.RuneCount(buf) > max {
+		return "", errors.New("string too long")
 	}
 
 	return string(buf), nil

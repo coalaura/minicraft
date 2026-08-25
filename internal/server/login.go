@@ -76,6 +76,11 @@ func (s *Session) handleLogin(ctx context.Context) error {
 		return errors.New("client did not acknowledge login success")
 	}
 
+	err = protocol.DecodeEmptyPacket(packet.Data, "login acknowledged")
+	if err != nil {
+		return err
+	}
+
 	s.Log.Printf("[login] %s - received login acknowledge\n", s.Conn.RemoteAddr())
 
 	return s.handleConfiguration(ctx)

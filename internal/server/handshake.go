@@ -26,7 +26,7 @@ func decodeHandshake(data []byte) (Handshake, error) {
 		NextState:       rd.VarInt(),
 	}
 
-	err := rd.Err()
+	err := rd.Done("handshake")
 	if err != nil {
 		return Handshake{}, err
 	}

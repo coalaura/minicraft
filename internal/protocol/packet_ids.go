@@ -71,6 +71,7 @@ const (
 	ServerboundMovePlayerPositionRotationID = 0x1E
 	ServerboundMovePlayerRotationID         = 0x1F
 	ServerboundMovePlayerStatusID           = 0x20
+	ServerboundPickItemFromBlockID          = 0x23
 	ServerboundPlayerActionID               = 0x28
 	ServerboundPlayerCommandID              = 0x29
 	ServerboundPlayerInputID                = 0x2A
@@ -109,6 +110,7 @@ const (
 	ClientboundSetCenterChunkID               = 0x5C
 	ClientboundEntityMetadataID               = 0x61
 	ClientboundEntityEquipmentID              = 0x64
+	ClientboundSetHeldSlotID                  = 0x67
 	ClientboundUpdateTimeID                   = 0x6F
 	ClientboundSystemChatID                   = 0x77
 )

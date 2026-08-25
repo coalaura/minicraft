@@ -1,12 +1,6 @@
 package protocol
 
-import (
-	"encoding/hex"
-	"fmt"
-	"io"
-
-	"github.com/coalaura/minicraft/internal/game"
-)
+import "github.com/coalaura/minicraft/internal/game"
 
 type LoginStart struct {
 	Name string
@@ -37,26 +31,12 @@ type SetCompression struct {
 func DecodeLoginStart(data []byte) (LoginStart, error) {
 	rd := NewPacketReader(data)
 
-	name := rd.String(16)
-
-	start := LoginStart{Name: name}
-
-	if rd.Len() >= 16 {
-		var uuid [16]byte
-
-		_, err := io.ReadFull(rd, uuid[:])
-		if err != nil {
-			rd.err = err
-
-			return LoginStart{}, err
-		}
-
-		raw := hex.EncodeToString(uuid[:])
-
-		start.UUID = fmt.Sprintf("%s-%s-%s-%s-%s", raw[0:8], raw[8:12], raw[12:16], raw[16:20], raw[20:])
+	start := LoginStart{
+		Name: rd.String(16),
+		UUID: rd.UUID(),
 	}
 
-	err := rd.Err()
+	err := rd.Done("login start")
 	if err != nil {
 		return LoginStart{}, err
 	}
@@ -72,7 +52,7 @@ func DecodeEncryptionResponse(data []byte) (EncryptionResponse, error) {
 		VerifyToken:  rd.Bytes(),
 	}
 
-	err := rd.Err()
+	err := rd.Done("encryption response")
 	if err != nil {
 		return EncryptionResponse{}, err
 	}

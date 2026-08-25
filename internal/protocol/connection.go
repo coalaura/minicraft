@@ -8,12 +8,18 @@ import (
 	"crypto/cipher"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/coalaura/minicraft/internal/crypto"
+)
+
+const (
+	maxPacketFrameLength = 0x1FFFFF
+	maxPacketDataLength  = 8 * 1024 * 1024
 )
 
 type Connection struct {
@@ -96,16 +102,12 @@ func (c *Connection) Read(p []byte) (int, error) {
 }
 
 func (c *Connection) ReadPacket() (*Packet, error) {
-	ln, err := ReadVarInt(c)
+	frameLength, err := readPacketFrameLength(c)
 	if err != nil {
 		return nil, err
 	}
 
-	if ln < 0 {
-		return nil, io.ErrUnexpectedEOF
-	}
-
-	payload := make([]byte, ln)
+	payload := make([]byte, frameLength)
 
 	_, err = io.ReadFull(c, payload)
 	if err != nil {
@@ -116,12 +118,20 @@ func (c *Connection) ReadPacket() (*Packet, error) {
 	rd := ByteReader{br}
 
 	if c.compThr > 0 {
-		ulen, err := ReadVarInt(rd)
+		uncompressedLength, err := ReadVarInt(rd)
 		if err != nil {
 			return nil, err
 		}
 
-		if ulen != 0 {
+		if uncompressedLength < 0 || uncompressedLength > maxPacketDataLength {
+			return nil, fmt.Errorf("invalid uncompressed packet length %d", uncompressedLength)
+		}
+
+		if uncompressedLength != 0 {
+			if int(uncompressedLength) < c.compThr {
+				return nil, fmt.Errorf("compressed packet length %d is below threshold %d", uncompressedLength, c.compThr)
+			}
+
 			zr, err := zlib.NewReader(br)
 			if err != nil {
 				return nil, err
@@ -129,15 +139,32 @@ func (c *Connection) ReadPacket() (*Packet, error) {
 
 			defer zr.Close()
 
-			decompressed := make([]byte, ulen)
+			decompressed := make([]byte, uncompressedLength)
 
 			_, err = io.ReadFull(zr, decompressed)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("decompressed packet length does not match declared length %d: %w", uncompressedLength, err)
+			}
+
+			var extra [1]byte
+
+			extraLength, extraErr := zr.Read(extra[:])
+			if extraLength != 0 || extraErr != io.EOF {
+				if extraErr == nil {
+					extraErr = errors.New("decompressed packet contains extra data")
+				}
+
+				return nil, fmt.Errorf("decompressed packet length does not match declared length %d: %w", uncompressedLength, extraErr)
+			}
+
+			if br.Len() != 0 {
+				return nil, errors.New("compressed packet contains trailing data")
 			}
 
 			br = bytes.NewReader(decompressed)
 			rd = ByteReader{br}
+		} else if br.Len() >= c.compThr {
+			return nil, fmt.Errorf("uncompressed packet length %d meets compression threshold %d", br.Len(), c.compThr)
 		}
 	}
 
@@ -156,6 +183,33 @@ func (c *Connection) ReadPacket() (*Packet, error) {
 	c.logPacket("RECV", pkt)
 
 	return pkt, nil
+}
+
+func readPacketFrameLength(rd io.ByteReader) (int, error) {
+	var frameLength int
+
+	for index := range 3 {
+		currentByte, err := rd.ReadByte()
+		if err != nil {
+			return 0, err
+		}
+
+		frameLength |= int(currentByte&VarSegmentBits) << (7 * index)
+
+		if currentByte&VarContinueBit == 0 {
+			if frameLength == 0 {
+				return 0, errors.New("packet frame length must be positive")
+			}
+
+			if frameLength > maxPacketFrameLength {
+				return 0, fmt.Errorf("packet frame length %d exceeds maximum %d", frameLength, maxPacketFrameLength)
+			}
+
+			return frameLength, nil
+		}
+	}
+
+	return 0, errors.New("packet frame length VarInt is too big")
 }
 
 func (c *Connection) WritePacket(packet Packet) error {

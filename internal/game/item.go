@@ -86,6 +86,25 @@ func (item Item) PlacementRule() ItemPlacementRule {
 	return itemPlacementRules[item]
 }
 
+func ItemForBlock(block Block) (Item, bool) {
+	if block == Air {
+		return 0, false
+	}
+
+	blockDefinition, valid := block.Definition()
+	if !valid {
+		return 0, false
+	}
+
+	for item, itemDefinition := range itemDefinitions {
+		if itemDefinition.Name == blockDefinition.Name && Item(item) != ItemAir {
+			return Item(item), true
+		}
+	}
+
+	return 0, false
+}
+
 func (stack ItemStack) Empty() bool {
 	return stack.Count <= 0 || !stack.Item.Valid() || stack.Item == ItemAir
 }

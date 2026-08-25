@@ -238,9 +238,116 @@ func TestDecodeMovementFlags(t *testing.T) {
 	assertMovementFlags(t, status.Flags, false, true)
 }
 
+func TestDecodePickItemFromBlock(t *testing.T) {
+	var writer PacketWriter
+
+	position := game.BlockPosition{X: -12, Y: 64, Z: 34}
+
+	writer.BlockPosition(position)
+	writer.Bool(true)
+
+	pick, err := DecodePickItemFromBlock(writer.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode pick item from block: %v", err)
+	}
+
+	if pick.Position != position || !pick.IncludeData {
+		t.Fatalf("pick item from block = %+v", pick)
+	}
+
+	_, err = DecodePickItemFromBlock(writer.Buffer.Bytes()[:8])
+	if err == nil {
+		t.Fatal("truncated pick item from block decoded")
+	}
+
+	_, err = DecodePickItemFromBlock(append(writer.Buffer.Bytes(), 0x00))
+	if err == nil {
+		t.Fatal("pick item from block with trailing data decoded")
+	}
+}
+
+func TestFixedPlayDecodersRejectTrailingData(t *testing.T) {
+	var writer PacketWriter
+
+	writer.VarInt(1)
+
+	assertTrailingRejected(t, "confirm teleport", writer.Buffer.Bytes(), DecodeConfirmTeleport)
+
+	writer.Reset()
+	writer.Float(1)
+
+	assertTrailingRejected(t, "chunk batch received", writer.Buffer.Bytes(), DecodeChunkBatchReceived)
+
+	clientInformation := []byte{0x05, 'e', 'n', '_', 'u', 's', 0x0C, 0x00, 0x01, 0x7F, 0x01, 0x00, 0x01, 0x02}
+	assertTrailingRejected(t, "client information", clientInformation, DecodeClientInformation)
+
+	writer.Reset()
+	writer.Double(1)
+	writer.Double(2)
+	writer.Double(3)
+	writer.Byte(0)
+
+	assertTrailingRejected(t, "move position", writer.Buffer.Bytes(), DecodeMovePlayerPosition)
+
+	writer.Float(4)
+	writer.Float(5)
+	writer.Byte(0)
+
+	assertTrailingRejected(t, "move position rotation", writer.Buffer.Bytes(), DecodeMovePlayerPositionRotation)
+
+	writer.Reset()
+	writer.Float(4)
+	writer.Float(5)
+	writer.Byte(0)
+
+	assertTrailingRejected(t, "move rotation", writer.Buffer.Bytes(), DecodeMovePlayerRotation)
+	assertTrailingRejected(t, "move status", []byte{0}, DecodeMovePlayerStatus)
+
+	writer.Reset()
+	writer.VarInt(1)
+	writer.VarInt(2)
+	writer.VarInt(3)
+
+	assertTrailingRejected(t, "player command", writer.Buffer.Bytes(), DecodePlayerCommand)
+
+	writer.Reset()
+	writer.VarInt(0)
+	writer.BlockPosition(game.BlockPosition{})
+	writer.Byte(0)
+	writer.VarInt(1)
+
+	assertTrailingRejected(t, "player action", writer.Buffer.Bytes(), DecodePlayerAction)
+	assertTrailingRejected(t, "player input", []byte{0}, DecodePlayerInput)
+
+	writer.Reset()
+	writer.Short(0)
+
+	assertTrailingRejected(t, "set held item", writer.Buffer.Bytes(), DecodeSetHeldItem)
+	assertTrailingRejected(t, "swing arm", []byte{0}, DecodeSwingArm)
+
+	writer.Reset()
+	writer.VarInt(0)
+	writer.BlockPosition(game.BlockPosition{})
+	writer.VarInt(0)
+	writer.Float(0)
+	writer.Float(0)
+	writer.Float(0)
+	writer.Bool(false)
+	writer.Bool(false)
+	writer.VarInt(0)
+
+	assertTrailingRejected(t, "use item on", writer.Buffer.Bytes(), DecodeUseItemOn)
+
+	writer.Reset()
+	writer.Long(1)
+
+	assertTrailingRejected(t, "keepalive", writer.Buffer.Bytes(), DecodePlayKeepAliveResponse)
+}
+
 func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 	packetIDs := map[string]packetIDTest{
 		"container click": {actual: ServerboundContainerClickID, expected: 0x11},
+		"pick block":      {actual: ServerboundPickItemFromBlockID, expected: 0x23},
 		"block action":    {actual: ServerboundPlayerActionID, expected: 0x28},
 		"block ack":       {actual: ClientboundBlockChangedAckID, expected: 0x04},
 		"block update":    {actual: ClientboundBlockUpdateID, expected: 0x08},
@@ -252,6 +359,7 @@ func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 		"swing arm":       {actual: ServerboundSwingArmID, expected: 0x3C},
 		"use item on":     {actual: ServerboundUseItemOnID, expected: 0x3F},
 		"animation":       {actual: ClientboundEntityAnimationID, expected: 0x02},
+		"set held slot":   {actual: ClientboundSetHeldSlotID, expected: 0x67},
 	}
 
 	for name, packetID := range packetIDs {
@@ -260,6 +368,17 @@ func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 				t.Fatalf("packet id = %#x, want %#x", packetID.actual, packetID.expected)
 			}
 		})
+	}
+}
+
+func assertTrailingRejected[T any](t *testing.T, name string, data []byte, decode func([]byte) (T, error)) {
+	t.Helper()
+
+	trailing := append(append([]byte(nil), data...), 0x00)
+
+	_, err := decode(trailing)
+	if err == nil {
+		t.Fatalf("%s with trailing data decoded", name)
 	}
 }
 

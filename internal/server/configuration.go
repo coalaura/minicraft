@@ -93,11 +93,19 @@ func (s *Session) handleConfiguration(ctx context.Context) error {
 				sentFinish = true
 			}
 		case protocol.ServerboundConfigurationFinishAcknowledgedID:
+			err = protocol.DecodeEmptyPacket(packet.Data, "configuration finish acknowledged")
+			if err != nil {
+				return err
+			}
+
 			s.Log.Printf("[configuration] %s - client acknowledged finish config, switching to play\n", s.Conn.RemoteAddr())
 
 			return s.handlePlay(ctx)
 		case protocol.ServerboundConfigurationKeepAliveID:
-			// Keep-alive response; nothing to do.
+			_, err = protocol.DecodePlayKeepAliveResponse(packet.Data)
+			if err != nil {
+				return err
+			}
 		default:
 			s.Log.Warnf("[configuration] %s - unhandled packet id: 0x%02X\n", s.Conn.RemoteAddr(), packet.ID)
 

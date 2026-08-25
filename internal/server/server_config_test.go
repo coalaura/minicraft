@@ -53,7 +53,10 @@ func TestFullServerRejectsLogin(t *testing.T) {
 	var writer protocol.PacketWriter
 
 	writer.String("Laura")
-	if err := writer.Err(); err != nil {
+	writer.UUID("00000000-0000-0000-0000-000000000001")
+
+	err := writer.Err()
+	if err != nil {
 		t.Fatalf("encode login start: %v", err)
 	}
 
@@ -72,7 +75,7 @@ func TestFullServerRejectsLogin(t *testing.T) {
 		Runtime: runtime,
 	}
 
-	err := session.handleLogin(t.Context())
+	err = session.handleLogin(t.Context())
 	if err == nil || !strings.Contains(err.Error(), "Server is full") {
 		t.Fatalf("login error = %v, want server full", err)
 	}
