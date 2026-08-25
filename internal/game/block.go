@@ -11,6 +11,8 @@ type BlockID uint16
 
 type BlockBehavior uint8
 
+type BlockCollision uint8
+
 const (
 	BlockBehaviorNone BlockBehavior = iota
 	BlockBehaviorSolid
@@ -23,6 +25,19 @@ const (
 	BlockBehaviorFence
 	BlockBehaviorPane
 	BlockBehaviorWall
+)
+
+const (
+	BlockCollisionNone BlockCollision = iota
+	BlockCollisionFull
+	BlockCollisionSlab
+	BlockCollisionStairs
+	BlockCollisionDoor
+	BlockCollisionTrapdoor
+	BlockCollisionFenceGate
+	BlockCollisionFence
+	BlockCollisionPane
+	BlockCollisionWall
 )
 
 type BlockProperty struct {
@@ -42,6 +57,7 @@ type BlockDefinition struct {
 	MinState     Block
 	MaxState     Block
 	Behavior     BlockBehavior
+	Collision    BlockCollision
 	Emission     uint8
 	LightFilter  uint8
 	Properties   []BlockProperty

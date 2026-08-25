@@ -23,6 +23,7 @@ const (
 	EntityFlagSprinting = 0x08
 
 	EntityPoseStanding  = 0
+	EntityPoseSwimming  = 3
 	EntityPoseCrouching = 5
 
 	EntityAnimationSwingMainHand = 0

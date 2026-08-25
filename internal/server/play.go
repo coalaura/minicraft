@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
+
+const MaxPlayerCoordinate = 30_000_000
 
 func (s *Session) handlePlay(ctx context.Context) error {
 	s.Log.Printf("[play] %s - entering play state\n", s.Conn.RemoteAddr())
@@ -165,7 +168,7 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 			return err
 		}
 
-		s.handleMovePlayerRotation(move)
+		return s.handleMovePlayerRotation(move)
 	case protocol.ServerboundMovePlayerStatusID:
 		move, err := protocol.DecodeMovePlayerStatus(packet.Data)
 		if err != nil {
@@ -385,6 +388,10 @@ func (s *Session) handleChunkBatchReceived(batch protocol.ChunkBatchReceived) {
 }
 
 func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) error {
+	if !validPlayerPosition(move.X, move.Y, move.Z) {
+		return fmt.Errorf("invalid player position")
+	}
+
 	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
 		player.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
 		player.OnGround = move.Flags.OnGround()
@@ -399,6 +406,10 @@ func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) err
 }
 
 func (s *Session) handleMovePlayerPositionRotation(move protocol.MovePlayerPositionRotation) error {
+	if !validPlayerPosition(move.X, move.Y, move.Z) || !validPlayerRotation(move.Yaw, move.Pitch) {
+		return fmt.Errorf("invalid player position or rotation")
+	}
+
 	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
 		player.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
 		player.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
@@ -413,11 +424,17 @@ func (s *Session) handleMovePlayerPositionRotation(move protocol.MovePlayerPosit
 	return err
 }
 
-func (s *Session) handleMovePlayerRotation(move protocol.MovePlayerRotation) {
+func (s *Session) handleMovePlayerRotation(move protocol.MovePlayerRotation) error {
+	if !validPlayerRotation(move.Yaw, move.Pitch) {
+		return fmt.Errorf("invalid player rotation")
+	}
+
 	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
 		player.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
 		player.OnGround = move.Flags.OnGround()
 	})
+
+	return nil
 }
 
 func (s *Session) handleMovePlayerStatus(move protocol.MovePlayerStatus) {
@@ -478,6 +495,23 @@ func (s *Session) sendBlockChangedAck(sequence int32) error {
 
 func (s *Session) handlePlayerInput(input protocol.PlayerInput) {
 	s.Runtime.UpdateSneaking(s, input.Flags&protocol.PlayerInputSneak != 0)
+}
+
+func validPlayerPosition(x, y, z float64) bool {
+	coordinates := [...]float64{x, y, z}
+
+	for _, coordinate := range coordinates {
+		if math.IsNaN(coordinate) || math.IsInf(coordinate, 0) || math.Abs(coordinate) > MaxPlayerCoordinate {
+			return false
+		}
+	}
+
+	return true
+}
+
+func validPlayerRotation(yaw, pitch float32) bool {
+	return !math.IsNaN(float64(yaw)) && !math.IsInf(float64(yaw), 0) &&
+		!math.IsNaN(float64(pitch)) && !math.IsInf(float64(pitch), 0)
 }
 
 func (s *Session) handleSwingArm(swing protocol.SwingArm) {

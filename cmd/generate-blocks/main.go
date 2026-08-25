@@ -113,13 +113,14 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	for _, block := range blocks {
 		fmt.Fprintf(
 			&output,
-			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Emission: %d, LightFilter: %d",
+			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Collision: %s, Emission: %d, LightFilter: %d",
 			goName(block.Name),
 			block.Name,
 			goName(block.Name),
 			block.MinState,
 			block.MaxState,
 			blockBehavior(block),
+			blockCollision(block),
 			block.EmitLight,
 			block.FilterLight,
 		)
@@ -319,6 +320,31 @@ func blockBehavior(block BlockDefinition) string {
 		return "BlockBehaviorSolid"
 	default:
 		return "BlockBehaviorNone"
+	}
+}
+
+func blockCollision(block BlockDefinition) string {
+	switch {
+	case strings.HasSuffix(block.Name, "_slab"):
+		return "BlockCollisionSlab"
+	case strings.HasSuffix(block.Name, "_stairs"):
+		return "BlockCollisionStairs"
+	case strings.HasSuffix(block.Name, "_trapdoor"):
+		return "BlockCollisionTrapdoor"
+	case strings.HasSuffix(block.Name, "_door"):
+		return "BlockCollisionDoor"
+	case strings.HasSuffix(block.Name, "_fence_gate"):
+		return "BlockCollisionFenceGate"
+	case strings.HasSuffix(block.Name, "_fence"):
+		return "BlockCollisionFence"
+	case block.Name == "iron_bars" || strings.HasSuffix(block.Name, "_glass_pane") || block.Name == "glass_pane":
+		return "BlockCollisionPane"
+	case strings.HasSuffix(block.Name, "_wall"):
+		return "BlockCollisionWall"
+	case block.BoundingBox == "block":
+		return "BlockCollisionFull"
+	default:
+		return "BlockCollisionNone"
 	}
 }
 

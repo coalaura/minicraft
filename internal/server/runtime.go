@@ -179,8 +179,17 @@ func (r *Runtime) AssignEntityID(session *Session) int32 {
 }
 
 func (r *Runtime) JoinSession(session *Session) error {
+	r.worldMutationMu.Lock()
+	defer r.worldMutationMu.Unlock()
+
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
+
+	session.updatePlayerState(func(player *game.Player) bool {
+		player.Pose = r.calculatedPlayerPose(*player)
+
+		return true
+	})
 
 	existing := r.snapshotSessions()
 
@@ -419,12 +428,19 @@ func (r *Runtime) UpdateSkinParts(session *Session, skinParts byte) {
 }
 
 func (r *Runtime) UpdateSneaking(session *Session, sneaking bool) {
+	r.worldMutationMu.Lock()
+	defer r.worldMutationMu.Unlock()
+
 	r.updatePlayerMetadata(session, func(player *game.Player) bool {
-		if player.Sneaking == sneaking {
-			return false
-		}
+		previousSneaking := player.Sneaking
+		previousPose := player.Pose
 
 		player.Sneaking = sneaking
+		player.Pose = r.calculatedPlayerPose(*player)
+
+		if previousSneaking == player.Sneaking && previousPose == player.Pose {
+			return false
+		}
 
 		return true
 	})
@@ -506,6 +522,9 @@ func (r *Runtime) updatePlayerMetadata(session *Session, update func(*game.Playe
 }
 
 func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Player)) {
+	r.worldMutationMu.Lock()
+	defer r.worldMutationMu.Unlock()
+
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
 
@@ -513,6 +532,8 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 	previous := *session.Player
 
 	update(session.Player)
+
+	session.Player.Pose = r.calculatedPlayerPose(*session.Player)
 
 	current := *session.Player
 	session.playerMx.Unlock()
@@ -550,6 +571,13 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 			err := other.sendPlayerMovement(previous, current)
 			if err != nil {
 				other.Log.Warnf("[play] failed to update player movement: %v\n", err)
+			}
+
+			if previous.Pose != current.Pose {
+				err = other.sendPlayerMetadata(current)
+				if err != nil {
+					other.Log.Warnf("[play] failed to update player pose: %v\n", err)
+				}
 			}
 		}
 

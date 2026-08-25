@@ -1,5 +1,13 @@
 package game
 
+type PlayerPose uint8
+
+const (
+	PlayerPoseStanding PlayerPose = iota
+	PlayerPoseCrouching
+	PlayerPoseCrawling
+)
+
 type ProfileProperty struct {
 	Name      string `json:"name"`
 	Value     string `json:"value"`
@@ -23,6 +31,7 @@ type Player struct {
 	OnGround  bool
 	Sneaking  bool
 	Sprinting bool
+	Pose      PlayerPose
 
 	SelectedHotbarSlot int
 	Inventory          PlayerInventory

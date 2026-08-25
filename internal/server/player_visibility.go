@@ -256,8 +256,11 @@ func (s *Session) sendPlayerMetadata(player game.Player) error {
 
 	pose := protocol.EntityPoseStanding
 
-	if player.Sneaking {
+	switch player.Pose {
+	case game.PlayerPoseCrouching:
 		pose = protocol.EntityPoseCrouching
+	case game.PlayerPoseCrawling:
+		pose = protocol.EntityPoseSwimming
 	}
 
 	metadata := protocol.EntityMetadata{

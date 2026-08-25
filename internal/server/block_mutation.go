@@ -41,6 +41,7 @@ type blockMutationDelivery struct {
 	breakPosition      game.BlockPosition
 	breakState         int32
 	recipients         []*Session
+	poseChanges        []game.Player
 	waitForDelivery    <-chan struct{}
 	deliveryComplete   chan struct{}
 }
@@ -97,7 +98,7 @@ func (r *Runtime) MutateBlocks(session *Session, action BlockMutationAction, cha
 
 		changes = r.withStructuralNeighborChanges(changes)
 
-		return r.mutateBlocksLocked(session, action, changes, requiredChanges, true)
+		return r.mutateBlocksLocked(session, action, changes, requiredChanges, true, false)
 	}()
 
 	return r.completeBlockMutation(result, delivery, err)
@@ -116,13 +117,13 @@ func (r *Runtime) PlaceBlock(session *Session, clicked, position game.BlockPosit
 
 		changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: position, Replacement: replacement}})
 
-		return r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true)
+		return r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true)
 	}()
 
 	return r.completeBlockMutation(result, delivery, err)
 }
 
-func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationAction, changes []game.BlockChange, requiredChanges int, allowOccupied bool) (BlockMutationResult, blockMutationDelivery, error) {
+func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationAction, changes []game.BlockChange, requiredChanges int, allowOccupied, checkPlayerObstruction bool) (BlockMutationResult, blockMutationDelivery, error) {
 	r.mu.RLock()
 	_, active := r.sessions[session]
 	r.mu.RUnlock()
@@ -227,7 +228,14 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 		return result, blockMutationDelivery{}, nil
 	}
 
+	if checkPlayerObstruction && r.placementObstructed(committed) {
+		result.Allowed = false
+
+		return result, blockMutationDelivery{}, nil
+	}
+
 	r.World.SetBlocks(committed)
+	poseChanges := r.recalculateActivePlayerPoses()
 
 	result.Block = committed[0].Replacement
 	result.Changes = committed
@@ -244,6 +252,7 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 		breakPosition:      changes[0].Position,
 		breakState:         breakState,
 		recipients:         r.snapshotSessions(),
+		poseChanges:        poseChanges,
 		waitForDelivery:    r.blockMutationDeliveryTail,
 		deliveryComplete:   deliveryComplete,
 	}
@@ -301,6 +310,19 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 			err := other.sendLevelEventIfLoaded(event)
 			if err != nil {
 				other.Log.Warnf("[play] failed to send block break effect: %v\n", err)
+			}
+		}
+	}
+
+	for _, player := range delivery.poseChanges {
+		for _, other := range delivery.recipients {
+			if other.snapshotPlayer().EntityID == player.EntityID || !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+				continue
+			}
+
+			err := other.sendPlayerMetadata(player)
+			if err != nil {
+				other.Log.Warnf("[play] failed to update player pose: %v\n", err)
 			}
 		}
 	}

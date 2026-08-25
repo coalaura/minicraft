@@ -376,6 +376,8 @@ func newPlacementTestSession(runtime *Runtime, clicked game.BlockPosition) (*Ses
 
 	session.Player.Position = blockMutationTestPlayerPosition(clicked)
 
+	session.Player.Position.X += 2
+
 	session.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 64}
 
 	markPlacementChunksLoaded(session, clicked)
