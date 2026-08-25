@@ -247,4 +247,4 @@ func (definition BlockDefinition) propertyIndices(block Block) []int {
 	return indices
 }
 
-//go:generate go run ../../cmd/generate-blocks -input ../../ref/1.21.11/blocks.json -output blocks_generated.go
+//go:generate go run ../../cmd/generate-blocks -input ../../data/blocks.json -output blocks_generated.go

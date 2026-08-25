@@ -186,4 +186,4 @@ func (inventory PlayerInventory) Contents() []ItemStack {
 	return contents
 }
 
-//go:generate go run ../../cmd/generate-items -items ../../ref/1.21.11/items.json -blocks ../../ref/1.21.11/blocks.json -output items_generated.go
+//go:generate go run ../../cmd/generate-items -items ../../data/items.json -blocks ../../data/blocks.json -output items_generated.go
