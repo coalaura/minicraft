@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/coalaura/minicraft/internal/crypto"
 )
@@ -247,6 +248,10 @@ func (c *Connection) WritePacket(packet Packet) error {
 
 func (c *Connection) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
+}
+
+func (c *Connection) SetReadDeadline(deadline time.Time) error {
+	return c.conn.SetReadDeadline(deadline)
 }
 
 // TODO: implement correctly later, not now

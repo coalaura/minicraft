@@ -26,7 +26,7 @@ type SessionProfileResponse struct {
 func (s *Session) handleLogin(ctx context.Context) error {
 	s.Log.Printf("[login] %s - processing login\n", s.Conn.RemoteAddr())
 
-	packet, err := s.Conn.ReadPacket()
+	packet, err := s.readPacket()
 	if err != nil {
 		return fmt.Errorf("read login start: %w", err)
 	}
@@ -67,7 +67,7 @@ func (s *Session) handleLogin(ctx context.Context) error {
 
 	s.Log.Printf("[login] %s - sent login success\n", s.Conn.RemoteAddr())
 
-	packet, err = s.Conn.ReadPacket()
+	packet, err = s.readPacket()
 	if err != nil {
 		return fmt.Errorf("read login acknowledged: %w", err)
 	}
@@ -94,7 +94,7 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 
 	s.Log.Printf("[login] %s - sent encryption request\n", s.Conn.RemoteAddr())
 
-	packet, err := s.Conn.ReadPacket()
+	packet, err := s.readPacket()
 	if err != nil {
 		return fmt.Errorf("read encryption response: %w", err)
 	}

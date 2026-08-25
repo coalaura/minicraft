@@ -23,7 +23,7 @@ func (s *Session) handleConfiguration(ctx context.Context) error {
 	)
 
 	for {
-		packet, err := s.Conn.ReadPacket()
+		packet, err := s.readPacket()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				s.Log.Printf("[configuration] %s - client disconnected\n", s.Conn.RemoteAddr())

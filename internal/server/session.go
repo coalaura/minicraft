@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
+
+const connectionReadTimeout = 30 * time.Second
 
 type Session struct {
 	Conn    *protocol.Connection
@@ -71,6 +74,15 @@ func (s *Session) writeRawPacket(packet protocol.Packet) error {
 	defer s.writeMx.Unlock()
 
 	return s.Conn.WritePacket(packet)
+}
+
+func (s *Session) readPacket() (*protocol.Packet, error) {
+	err := s.Conn.SetReadDeadline(time.Now().Add(connectionReadTimeout))
+	if err != nil {
+		return nil, fmt.Errorf("set read deadline: %w", err)
+	}
+
+	return s.Conn.ReadPacket()
 }
 
 func (s *Session) snapshotPlayer() game.Player {

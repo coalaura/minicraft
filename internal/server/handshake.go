@@ -37,7 +37,7 @@ func decodeHandshake(data []byte) (Handshake, error) {
 func (s *Session) handleHandshake(ctx context.Context) error {
 	s.Log.Printf("[handshake] %s - new connection\n", s.Conn.RemoteAddr())
 
-	packet, err := s.Conn.ReadPacket()
+	packet, err := s.readPacket()
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			s.Log.Printf("[net] %s - disconnected (EOF)\n", s.Conn.RemoteAddr())

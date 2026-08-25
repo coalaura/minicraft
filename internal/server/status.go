@@ -13,7 +13,7 @@ import (
 
 func (s *Session) handleStatus(ctx context.Context) error {
 	for {
-		packet, err := s.Conn.ReadPacket()
+		packet, err := s.readPacket()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				s.Log.Printf("[status] %s - disconnected (EOF)\n", s.Conn.RemoteAddr())

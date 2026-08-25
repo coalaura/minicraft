@@ -33,7 +33,7 @@ func (s *Session) handlePlay(ctx context.Context) error {
 	s.Log.Printf("[play] player %s joined the world\n", player.Name)
 
 	for {
-		packet, err := s.Conn.ReadPacket()
+		packet, err := s.readPacket()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				s.Log.Printf("[play] client disconnected\n")
