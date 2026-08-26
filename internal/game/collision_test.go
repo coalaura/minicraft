@@ -136,3 +136,50 @@ func TestStraightWallCollisionOmitsCenterPost(t *testing.T) {
 		t.Fatalf("straight wall boxes = %+v", boxes)
 	}
 }
+
+func TestNewPlacementFamilyCollisionShapes(t *testing.T) {
+	carpetBoxes := WhiteCarpet.CollisionBoxes(BlockPosition{})
+	if len(carpetBoxes) != 1 || carpetBoxes[0].MaxY != 1.0/16.0 {
+		t.Fatalf("carpet collision boxes = %+v", carpetBoxes)
+	}
+
+	oneLayer, _ := Snow.WithProperties(BlockPropertyValue{Name: "layers", Value: "1"})
+	eightLayers, _ := Snow.WithProperties(BlockPropertyValue{Name: "layers", Value: "8"})
+
+	boxes := oneLayer.CollisionBoxes(BlockPosition{})
+	if len(boxes) != 0 {
+		t.Fatalf("one snow layer collision boxes = %+v", boxes)
+	}
+
+	boxes = eightLayers.CollisionBoxes(BlockPosition{})
+	if len(boxes) != 1 || boxes[0].MaxY != 14.0/16.0 {
+		t.Fatalf("eight snow layer collision boxes = %+v", boxes)
+	}
+
+	boxes = Candle.CollisionBoxes(BlockPosition{})
+	if len(boxes) != 0 {
+		t.Fatalf("candle collision boxes = %+v", boxes)
+	}
+
+	horizontalChain, _ := IronChain.WithProperties(BlockPropertyValue{Name: "axis", Value: "x"})
+
+	chainBox := horizontalChain.CollisionBoxes(BlockPosition{})[0]
+	if chainBox.MaxX != 1 || chainBox.MaxY-chainBox.MinY != 3.0/16.0 {
+		t.Fatalf("horizontal chain collision box = %+v", chainBox)
+	}
+
+	tip, _ := PointedDripstone.WithProperties(
+		BlockPropertyValue{Name: "thickness", Value: "tip"},
+		BlockPropertyValue{Name: "vertical_direction", Value: "up"},
+	)
+
+	tipBox := tip.CollisionBoxes(BlockPosition{})[0]
+	if tipBox.MaxY != 11.0/16.0 || tipBox.MinX != 5.0/16.0 {
+		t.Fatalf("pointed dripstone tip collision box = %+v", tipBox)
+	}
+
+	cakeBox := Cake.CollisionBoxes(BlockPosition{})[0]
+	if cakeBox.MinX != 1.0/16.0 || cakeBox.MaxY != 0.5 {
+		t.Fatalf("cake collision box = %+v", cakeBox)
+	}
+}

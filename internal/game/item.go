@@ -21,6 +21,16 @@ const (
 	ItemPlacementFence
 	ItemPlacementPane
 	ItemPlacementWall
+	ItemPlacementLeaves
+	ItemPlacementChain
+	ItemPlacementSupported
+	ItemPlacementButton
+	ItemPlacementPressurePlate
+	ItemPlacementWeightedPressurePlate
+	ItemPlacementPlant
+	ItemPlacementSnow
+	ItemPlacementCandle
+	ItemPlacementPointedDripstone
 )
 
 type Item uint16

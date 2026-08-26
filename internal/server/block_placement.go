@@ -2,6 +2,7 @@ package server
 
 import (
 	"math"
+	"strconv"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
@@ -54,6 +55,7 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 		defer r.worldMutationMu.Unlock()
 
 		block := r.World.BlockAt(position)
+		blockDefinition, _ := block.Definition()
 
 		changes := make([]game.BlockChange, 0, 2)
 
@@ -61,6 +63,10 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 
 		switch block.Behavior() {
 		case game.BlockBehaviorDoor:
+			if blockDefinition.Name == "iron_door" {
+				return false, BlockMutationResult{}, nil, blockMutationDelivery{}, nil
+			}
+
 			otherPosition := position
 
 			if blockProperty(block, "half") == "upper" {
@@ -83,6 +89,10 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 
 			affected = append(affected, otherPosition)
 		case game.BlockBehaviorTrapdoor, game.BlockBehaviorFenceGate:
+			if blockDefinition.Name == "iron_trapdoor" {
+				return false, BlockMutationResult{}, nil, blockMutationDelivery{}, nil
+			}
+
 			open := blockProperty(block, "open") != "true"
 
 			changes = append(changes, game.BlockChange{Position: position, Replacement: withBlockProperties(block, game.BlockPropertyValue{Name: "open", Value: boolProperty(open)})})
@@ -138,6 +148,20 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 			}
 		}
 
+		if replacement, convert := candleCakePlacement(base, rule, r.World.BlockAt(interaction.Position), interaction.Face); convert {
+			changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
+
+			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
+			return result, []game.BlockPosition{interaction.Position}, delivery, err
+		}
+
+		if replacement, stack := stackedPlacement(base, rule, r.World.BlockAt(interaction.Position), interaction.Face); stack {
+			changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
+
+			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
+			return result, []game.BlockPosition{interaction.Position}, delivery, err
+		}
+
 		if r.World.BlockAt(target) != game.Air {
 			return BlockMutationResult{Block: r.World.BlockAt(target)}, []game.BlockPosition{target}, blockMutationDelivery{}, nil
 		}
@@ -146,6 +170,10 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 
 		state, valid := placementState(base, rule, interaction, player.Rotation.Yaw)
 		if !valid {
+			return BlockMutationResult{Block: game.Air}, []game.BlockPosition{target}, blockMutationDelivery{}, nil
+		}
+
+		if !validPlacementSupport(r.World.BlockAt, target, state, rule) {
 			return BlockMutationResult{Block: game.Air}, []game.BlockPosition{target}, blockMutationDelivery{}, nil
 		}
 
@@ -205,15 +233,8 @@ func placementState(base game.Block, rule game.ItemPlacementRule, interaction pr
 	case game.ItemPlacementDefault:
 		return base, true
 	case game.ItemPlacementAxis:
-		axis := "y"
-
-		switch interaction.Face {
-		case protocol.BlockFaceWest, protocol.BlockFaceEast:
-			axis = "x"
-		case protocol.BlockFaceNorth, protocol.BlockFaceSouth:
-			axis = "z"
-		case protocol.BlockFaceDown, protocol.BlockFaceUp:
-		default:
+		axis, valid := placementAxis(interaction.Face)
+		if !valid {
 			return 0, false
 		}
 
@@ -255,11 +276,146 @@ func placementState(base game.Block, rule game.ItemPlacementRule, interaction pr
 			game.BlockPropertyValue{Name: "open", Value: "false"},
 			game.BlockPropertyValue{Name: "powered", Value: "false"},
 		)
-	case game.ItemPlacementFence, game.ItemPlacementPane, game.ItemPlacementWall:
+	case game.ItemPlacementLeaves:
+		return base.WithProperties(
+			game.BlockPropertyValue{Name: "distance", Value: "7"},
+			game.BlockPropertyValue{Name: "persistent", Value: "true"},
+			game.BlockPropertyValue{Name: "waterlogged", Value: "false"},
+		)
+	case game.ItemPlacementChain:
+		axis, valid := placementAxis(interaction.Face)
+		if !valid {
+			return 0, false
+		}
+
+		return base.WithProperties(
+			game.BlockPropertyValue{Name: "axis", Value: axis},
+			game.BlockPropertyValue{Name: "waterlogged", Value: "false"},
+		)
+	case game.ItemPlacementButton:
+		face := "wall"
+		buttonFacing := facing
+
+		switch interaction.Face {
+		case protocol.BlockFaceUp:
+			face = "floor"
+		case protocol.BlockFaceDown:
+			face = "ceiling"
+		default:
+			clickedDirection, valid := blockFaceDirection(interaction.Face)
+			if !valid {
+				return 0, false
+			}
+
+			buttonFacing = clickedDirection
+		}
+
+		return base.WithProperties(
+			game.BlockPropertyValue{Name: "face", Value: face},
+			game.BlockPropertyValue{Name: "facing", Value: buttonFacing.name()},
+			game.BlockPropertyValue{Name: "powered", Value: "false"},
+		)
+	case game.ItemPlacementPressurePlate:
+		return base.WithProperties(game.BlockPropertyValue{Name: "powered", Value: "false"})
+	case game.ItemPlacementWeightedPressurePlate:
+		return base.WithProperties(game.BlockPropertyValue{Name: "power", Value: "0"})
+	case game.ItemPlacementSnow:
+		return base.WithProperties(game.BlockPropertyValue{Name: "layers", Value: "1"})
+	case game.ItemPlacementCandle:
+		return base.WithProperties(
+			game.BlockPropertyValue{Name: "candles", Value: "1"},
+			game.BlockPropertyValue{Name: "lit", Value: "false"},
+			game.BlockPropertyValue{Name: "waterlogged", Value: "false"},
+		)
+	case game.ItemPlacementPointedDripstone:
+		direction := ""
+		if interaction.Face == protocol.BlockFaceUp {
+			direction = "up"
+		}
+
+		if interaction.Face == protocol.BlockFaceDown {
+			direction = "down"
+		}
+
+		if direction == "" {
+			return 0, false
+		}
+
+		return base.WithProperties(
+			game.BlockPropertyValue{Name: "thickness", Value: "tip"},
+			game.BlockPropertyValue{Name: "vertical_direction", Value: direction},
+			game.BlockPropertyValue{Name: "waterlogged", Value: "false"},
+		)
+	case game.ItemPlacementFence, game.ItemPlacementPane, game.ItemPlacementWall, game.ItemPlacementSupported, game.ItemPlacementPlant:
 		return base, true
 	default:
 		return 0, false
 	}
+}
+
+func placementAxis(face int32) (string, bool) {
+	switch face {
+	case protocol.BlockFaceWest, protocol.BlockFaceEast:
+		return "x", true
+	case protocol.BlockFaceNorth, protocol.BlockFaceSouth:
+		return "z", true
+	case protocol.BlockFaceDown, protocol.BlockFaceUp:
+		return "y", true
+	default:
+		return "", false
+	}
+}
+
+func stackedPlacement(base game.Block, rule game.ItemPlacementRule, existing game.Block, face int32) (game.Block, bool) {
+	if !sameBlockType(base, existing) {
+		return 0, false
+	}
+
+	property := ""
+	maximum := 0
+
+	switch rule {
+	case game.ItemPlacementSnow:
+		if face != protocol.BlockFaceUp {
+			return 0, false
+		}
+
+		property = "layers"
+		maximum = 8
+	case game.ItemPlacementCandle:
+		property = "candles"
+		maximum = 4
+	default:
+		return 0, false
+	}
+
+	count := blockPropertyInt(existing, property)
+	if count <= 0 || count >= maximum {
+		return 0, false
+	}
+
+	replacement, valid := existing.WithProperties(game.BlockPropertyValue{Name: property, Value: strconv.Itoa(count + 1)})
+	return replacement, valid
+}
+
+func candleCakePlacement(base game.Block, rule game.ItemPlacementRule, existing game.Block, face int32) (game.Block, bool) {
+	if rule != game.ItemPlacementCandle || face != protocol.BlockFaceUp {
+		return 0, false
+	}
+
+	existingDefinition, valid := existing.Definition()
+	if !valid || existingDefinition.Name != "cake" || blockProperty(existing, "bites") != "0" {
+		return 0, false
+	}
+
+	baseDefinition, _ := base.Definition()
+
+	candleCake, valid := game.BlockByName(baseDefinition.Name + "_cake")
+	if !valid {
+		return 0, false
+	}
+
+	return candleCake.WithProperties(game.BlockPropertyValue{Name: "lit", Value: "false"})
 }
 
 func placementHalf(face int32, cursorY float32) string {

@@ -295,9 +295,15 @@ func propertyValue(block BlockDefinition, state uint16, name string) string {
 }
 
 func blockBehavior(block BlockDefinition) string {
-	switch {
-	case block.Name == "iron_door" || block.Name == "iron_trapdoor":
+	if strings.HasSuffix(block.Name, "_chain") {
 		return "BlockBehaviorNone"
+	}
+
+	if block.Name == "pale_moss_carpet" {
+		return "BlockBehaviorNone"
+	}
+
+	switch {
 	case strings.HasSuffix(block.Name, "_slab"):
 		return "BlockBehaviorSlab"
 	case strings.HasSuffix(block.Name, "_stairs"):
@@ -310,10 +316,18 @@ func blockBehavior(block BlockDefinition) string {
 		return "BlockBehaviorFenceGate"
 	case strings.HasSuffix(block.Name, "_fence"):
 		return "BlockBehaviorFence"
-	case block.Name == "iron_bars" || strings.HasSuffix(block.Name, "_glass_pane") || block.Name == "glass_pane":
+	case block.Name == "iron_bars" || strings.HasSuffix(block.Name, "copper_bars") || strings.HasSuffix(block.Name, "_glass_pane") || block.Name == "glass_pane":
 		return "BlockBehaviorPane"
 	case strings.HasSuffix(block.Name, "_wall"):
 		return "BlockBehaviorWall"
+	case isSimpleCarpet(block.Name) || block.Name == "snow" || block.Name == "candle" || strings.HasSuffix(block.Name, "_candle") || block.Name == "cake" || strings.HasSuffix(block.Name, "_candle_cake") || strings.HasSuffix(block.Name, "_pressure_plate"):
+		return "BlockBehaviorSupported"
+	case strings.HasSuffix(block.Name, "_button"):
+		return "BlockBehaviorButton"
+	case isSimplePlant(block.Name):
+		return "BlockBehaviorPlant"
+	case block.Name == "pointed_dripstone":
+		return "BlockBehaviorPointedDripstone"
 	case horizontalFacingProperties(block.Properties):
 		return "BlockBehaviorHorizontalFacing"
 	case block.BoundingBox == "block":
@@ -324,6 +338,10 @@ func blockBehavior(block BlockDefinition) string {
 }
 
 func blockCollision(block BlockDefinition) string {
+	if strings.HasSuffix(block.Name, "_chain") {
+		return "BlockCollisionChain"
+	}
+
 	switch {
 	case strings.HasSuffix(block.Name, "_slab"):
 		return "BlockCollisionSlab"
@@ -337,15 +355,42 @@ func blockCollision(block BlockDefinition) string {
 		return "BlockCollisionFenceGate"
 	case strings.HasSuffix(block.Name, "_fence"):
 		return "BlockCollisionFence"
-	case block.Name == "iron_bars" || strings.HasSuffix(block.Name, "_glass_pane") || block.Name == "glass_pane":
+	case block.Name == "iron_bars" || strings.HasSuffix(block.Name, "copper_bars") || strings.HasSuffix(block.Name, "_glass_pane") || block.Name == "glass_pane":
 		return "BlockCollisionPane"
 	case strings.HasSuffix(block.Name, "_wall"):
 		return "BlockCollisionWall"
+	case strings.HasSuffix(block.Name, "_carpet") || block.Name == "moss_carpet":
+		return "BlockCollisionCarpet"
+	case block.Name == "snow":
+		return "BlockCollisionSnow"
+	case block.Name == "candle" || strings.HasSuffix(block.Name, "_candle"):
+		return "BlockCollisionNone"
+	case block.Name == "pointed_dripstone":
+		return "BlockCollisionPointedDripstone"
+	case block.Name == "cake" || strings.HasSuffix(block.Name, "_candle_cake"):
+		return "BlockCollisionCake"
 	case block.BoundingBox == "block":
 		return "BlockCollisionFull"
 	default:
 		return "BlockCollisionNone"
 	}
+}
+
+func isSimplePlant(name string) bool {
+	switch name {
+	case "short_grass", "fern", "dead_bush", "bush", "short_dry_grass", "tall_dry_grass",
+		"dandelion", "poppy", "blue_orchid", "allium", "azure_bluet", "red_tulip",
+		"orange_tulip", "white_tulip", "pink_tulip", "oxeye_daisy", "cornflower",
+		"wither_rose", "lily_of_the_valley", "open_eyeblossom", "closed_eyeblossom",
+		"firefly_bush":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSimpleCarpet(name string) bool {
+	return name != "pale_moss_carpet" && (name == "moss_carpet" || strings.HasSuffix(name, "_carpet"))
 }
 
 func horizontalFacingProperties(properties []BlockProperty) bool {

@@ -48,15 +48,27 @@ func TestItemPlacementBlockMapping(t *testing.T) {
 	}
 
 	for item, rule := range map[Item]ItemPlacementRule{
-		ItemOakSlab:         ItemPlacementSlab,
-		ItemOakStairs:       ItemPlacementStairs,
-		ItemOakDoor:         ItemPlacementDoor,
-		ItemOakTrapdoor:     ItemPlacementTrapdoor,
-		ItemOakFenceGate:    ItemPlacementFenceGate,
-		ItemOakFence:        ItemPlacementFence,
-		ItemGlassPane:       ItemPlacementPane,
-		ItemIronBars:        ItemPlacementPane,
-		ItemCobblestoneWall: ItemPlacementWall,
+		ItemOakSlab:          ItemPlacementSlab,
+		ItemOakStairs:        ItemPlacementStairs,
+		ItemOakDoor:          ItemPlacementDoor,
+		ItemOakTrapdoor:      ItemPlacementTrapdoor,
+		ItemOakFenceGate:     ItemPlacementFenceGate,
+		ItemOakFence:         ItemPlacementFence,
+		ItemGlassPane:        ItemPlacementPane,
+		ItemIronBars:         ItemPlacementPane,
+		ItemCobblestoneWall:  ItemPlacementWall,
+		ItemIronDoor:         ItemPlacementDoor,
+		ItemIronTrapdoor:     ItemPlacementTrapdoor,
+		ItemOakLeaves:        ItemPlacementLeaves,
+		ItemIronChain:        ItemPlacementChain,
+		ItemStoneButton:      ItemPlacementButton,
+		ItemSnow:             ItemPlacementSnow,
+		ItemCandle:           ItemPlacementCandle,
+		ItemPointedDripstone: ItemPlacementPointedDripstone,
+		ItemFern:             ItemPlacementPlant,
+		ItemPoppy:            ItemPlacementPlant,
+		ItemCopperBars:       ItemPlacementPane,
+		ItemCobweb:           ItemPlacementDefault,
 	} {
 		if actual := item.PlacementRule(); actual != rule {
 			t.Errorf("item %d placement rule = %d, want %d", item, actual, rule)
@@ -71,8 +83,6 @@ func TestUnsupportedItemsAreNotMappedToPlacementStates(t *testing.T) {
 		ItemChest,
 		ItemRedstone,
 		ItemWaterBucket,
-		ItemIronDoor,
-		ItemIronTrapdoor,
 	}
 
 	for _, item := range items {

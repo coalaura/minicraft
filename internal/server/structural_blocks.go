@@ -2,6 +2,8 @@ package server
 
 import (
 	"math"
+	"strconv"
+	"strings"
 
 	"github.com/coalaura/minicraft/internal/game"
 )
@@ -91,6 +93,15 @@ func blockProperty(block game.Block, name string) string {
 	return value
 }
 
+func blockPropertyInt(block game.Block, name string) int {
+	value, err := strconv.Atoi(blockProperty(block, name))
+	if err != nil {
+		return 0
+	}
+
+	return value
+}
+
 func withBlockProperties(block game.Block, values ...game.BlockPropertyValue) game.Block {
 	state, ok := block.WithProperties(values...)
 	if !ok {
@@ -125,7 +136,7 @@ func (r *Runtime) breakChanges(position game.BlockPosition) []game.BlockChange {
 }
 
 func isTwoBlockDoor(block game.Block) bool {
-	return block.Behavior() == game.BlockBehaviorDoor || sameBlockType(block, game.IronDoor)
+	return block.Behavior() == game.BlockBehaviorDoor
 }
 
 func (r *Runtime) withAuthoritativeDoorChanges(primary []game.BlockChange) []game.BlockChange {
@@ -182,36 +193,23 @@ func (r *Runtime) withAuthoritativeDoorChanges(primary []game.BlockChange) []gam
 
 func (r *Runtime) withStructuralNeighborChanges(primary []game.BlockChange) []game.BlockChange {
 	overlay := make(map[game.BlockPosition]game.Block, len(primary)+8)
-	positions := make([]game.BlockPosition, 0, len(primary)*5)
-	seenPositions := make(map[game.BlockPosition]struct{}, len(primary)*5)
+	positions := make([]game.BlockPosition, 0, len(primary)*7)
+	seenPositions := make(map[game.BlockPosition]struct{}, len(primary)*7)
+	queue := make([]game.BlockPosition, 0, len(primary)*7)
+	pending := make(map[game.BlockPosition]struct{}, len(primary)*7)
+
+	enqueue := func(position game.BlockPosition) {
+		if _, exists := pending[position]; exists {
+			return
+		}
+
+		pending[position] = struct{}{}
+		queue = append(queue, position)
+	}
 
 	for _, change := range primary {
 		overlay[change.Position] = change.Replacement
-
-		positions = appendStructuralPosition(positions, seenPositions, change.Position)
-
-		for _, direction := range horizontalDirections {
-			neighbor, ok := direction.offset(change.Position)
-			if ok {
-				positions = appendStructuralPosition(positions, seenPositions, neighbor)
-			}
-		}
-
-		if change.Position.Y < math.MaxInt32 {
-			above := change.Position
-
-			above.Y++
-
-			positions = appendStructuralPosition(positions, seenPositions, above)
-		}
-
-		if change.Position.Y > math.MinInt32 {
-			below := change.Position
-
-			below.Y--
-
-			positions = appendStructuralPosition(positions, seenPositions, below)
-		}
+		enqueueStructuralNeighborhood(change.Position, enqueue)
 	}
 
 	blockAt := func(position game.BlockPosition) game.Block {
@@ -222,13 +220,21 @@ func (r *Runtime) withStructuralNeighborChanges(primary []game.BlockChange) []ga
 		return r.World.BlockAt(position)
 	}
 
-	for _, position := range positions {
+	for len(queue) != 0 {
+		position := queue[0]
+		queue = queue[1:]
+		delete(pending, position)
+
+		positions = appendStructuralPosition(positions, seenPositions, position)
+
 		block := blockAt(position)
 
 		updated := recalculateStructuralBlock(blockAt, position, block)
 
 		if updated != block {
 			overlay[position] = updated
+
+			enqueueStructuralNeighborhood(position, enqueue)
 		}
 	}
 
@@ -259,6 +265,33 @@ func (r *Runtime) withStructuralNeighborChanges(primary []game.BlockChange) []ga
 	return changes
 }
 
+func enqueueStructuralNeighborhood(position game.BlockPosition, enqueue func(game.BlockPosition)) {
+	enqueue(position)
+
+	for _, direction := range horizontalDirections {
+		neighbor, ok := direction.offset(position)
+		if ok {
+			enqueue(neighbor)
+		}
+	}
+
+	if position.Y < math.MaxInt32 {
+		above := position
+
+		above.Y++
+
+		enqueue(above)
+	}
+
+	if position.Y > math.MinInt32 {
+		below := position
+
+		below.Y--
+
+		enqueue(below)
+	}
+}
+
 func appendStructuralPosition(positions []game.BlockPosition, seen map[game.BlockPosition]struct{}, position game.BlockPosition) []game.BlockPosition {
 	if _, exists := seen[position]; exists {
 		return positions
@@ -270,6 +303,21 @@ func appendStructuralPosition(positions []game.BlockPosition, seen map[game.Bloc
 }
 
 func recalculateStructuralBlock(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) game.Block {
+	if _, hasSnowy := block.Property("snowy"); hasSnowy {
+		snowy := false
+		if position.Y < math.MaxInt32 {
+			above := position
+
+			above.Y++
+
+			aboveDefinition, valid := blockAt(above).Definition()
+
+			snowy = valid && aboveDefinition.Name == "snow"
+		}
+
+		block = withBlockProperties(block, game.BlockPropertyValue{Name: "snowy", Value: boolProperty(snowy)})
+	}
+
 	switch block.Behavior() {
 	case game.BlockBehaviorStairs:
 		return recalculateStairs(blockAt, position, block)
@@ -279,9 +327,252 @@ func recalculateStructuralBlock(blockAt func(game.BlockPosition) game.Block, pos
 		return recalculateConnections(blockAt, position, block)
 	case game.BlockBehaviorWall:
 		return recalculateWall(blockAt, position, block)
+	case game.BlockBehaviorDoor:
+		return recalculateDoor(blockAt, position, block)
+	case game.BlockBehaviorSupported:
+		if supportedFromBelow(blockAt, position, block) {
+			return block
+		}
+
+		return game.Air
+	case game.BlockBehaviorButton:
+		if buttonSupported(blockAt, position, block) {
+			return block
+		}
+
+		return game.Air
+	case game.BlockBehaviorPlant:
+		if plantSupported(blockAt, position, block) {
+			return block
+		}
+
+		return game.Air
+	case game.BlockBehaviorPointedDripstone:
+		return recalculatePointedDripstone(blockAt, position, block)
 	default:
 		return block
 	}
+}
+
+func validPlacementSupport(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block, rule game.ItemPlacementRule) bool {
+	switch rule {
+	case game.ItemPlacementSupported, game.ItemPlacementPressurePlate, game.ItemPlacementWeightedPressurePlate, game.ItemPlacementSnow, game.ItemPlacementCandle:
+		return supportedFromBelow(blockAt, position, block)
+	case game.ItemPlacementButton:
+		return buttonSupported(blockAt, position, block)
+	case game.ItemPlacementPlant:
+		return plantSupported(blockAt, position, block)
+	case game.ItemPlacementPointedDripstone:
+		return pointedDripstoneSupported(blockAt, position, block)
+	default:
+		return true
+	}
+}
+
+func supportedFromBelow(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) bool {
+	if position.Y == math.MinInt32 {
+		return false
+	}
+
+	below := position
+
+	below.Y--
+
+	support := blockAt(below)
+
+	definition, _ := block.Definition()
+
+	if definition.Name == "snow" && sameBlockType(block, support) {
+		return blockPropertyInt(support, "layers") == 8
+	}
+
+	return support.Behavior() == game.BlockBehaviorSolid
+}
+
+func buttonSupported(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) bool {
+	support := position
+
+	switch blockProperty(block, "face") {
+	case "floor":
+		if support.Y == math.MinInt32 {
+			return false
+		}
+
+		support.Y--
+	case "ceiling":
+		if support.Y == math.MaxInt32 {
+			return false
+		}
+
+		support.Y++
+	case "wall":
+		facing, valid := directionFromName(blockProperty(block, "facing"))
+		if !valid {
+			return false
+		}
+
+		var offsetValid bool
+		support, offsetValid = facing.opposite().offset(support)
+		if !offsetValid {
+			return false
+		}
+	default:
+		return false
+	}
+
+	return blockAt(support).Behavior() == game.BlockBehaviorSolid
+}
+
+func plantSupported(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, plant game.Block) bool {
+	if position.Y == math.MinInt32 {
+		return false
+	}
+
+	below := position
+
+	below.Y--
+
+	supportDefinition, valid := blockAt(below).Definition()
+	if !valid {
+		return false
+	}
+
+	plantDefinition, _ := plant.Definition()
+	if plantDefinition.Name == "dead_bush" || strings.HasSuffix(plantDefinition.Name, "dry_grass") {
+		return isDirtPlantSupport(supportDefinition.Name) || supportDefinition.Name == "sand" || supportDefinition.Name == "red_sand" || strings.HasSuffix(supportDefinition.Name, "terracotta")
+	}
+
+	if plantDefinition.Name == "wither_rose" {
+		return isDirtPlantSupport(supportDefinition.Name) || supportDefinition.Name == "netherrack" || supportDefinition.Name == "soul_sand" || supportDefinition.Name == "soul_soil"
+	}
+
+	return isDirtPlantSupport(supportDefinition.Name)
+}
+
+func isDirtPlantSupport(name string) bool {
+	switch name {
+	case "grass_block", "dirt", "coarse_dirt", "podzol", "rooted_dirt", "mud", "muddy_mangrove_roots", "moss_block", "pale_moss_block", "farmland", "mycelium":
+		return true
+	default:
+		return false
+	}
+}
+
+func recalculateDoor(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) game.Block {
+	otherPosition := position
+
+	if blockProperty(block, "half") == "upper" {
+		if otherPosition.Y == math.MinInt32 {
+			return game.Air
+		}
+
+		otherPosition.Y--
+
+		other := blockAt(otherPosition)
+		if other.Behavior() == game.BlockBehaviorDoor && sameBlockType(block, other) && blockProperty(other, "half") == "lower" {
+			return block
+		}
+
+		return game.Air
+	}
+
+	if otherPosition.Y == math.MinInt32 || otherPosition.Y == math.MaxInt32 {
+		return game.Air
+	}
+
+	below := otherPosition
+
+	below.Y--
+
+	otherPosition.Y++
+
+	other := blockAt(otherPosition)
+
+	if blockAt(below).Behavior() == game.BlockBehaviorSolid && other.Behavior() == game.BlockBehaviorDoor && sameBlockType(block, other) && blockProperty(other, "half") == "upper" {
+		return block
+	}
+
+	return game.Air
+}
+
+func pointedDripstoneSupported(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) bool {
+	direction := blockProperty(block, "vertical_direction")
+
+	support, valid := verticalOffset(position, direction == "down")
+	if !valid {
+		return false
+	}
+
+	neighbor := blockAt(support)
+	if neighbor.Behavior() == game.BlockBehaviorSolid {
+		return true
+	}
+
+	return neighbor.Behavior() == game.BlockBehaviorPointedDripstone && blockProperty(neighbor, "vertical_direction") == direction
+}
+
+func recalculatePointedDripstone(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) game.Block {
+	if !pointedDripstoneSupported(blockAt, position, block) {
+		return game.Air
+	}
+
+	direction := blockProperty(block, "vertical_direction")
+
+	tipPosition, valid := verticalOffset(position, direction == "up")
+	if !valid {
+		return block
+	}
+
+	tipNeighbor := blockAt(tipPosition)
+	thickness := "tip"
+
+	if tipNeighbor.Behavior() == game.BlockBehaviorPointedDripstone {
+		neighborDirection := blockProperty(tipNeighbor, "vertical_direction")
+		neighborThickness := blockProperty(tipNeighbor, "thickness")
+
+		if neighborDirection != direction {
+			if neighborThickness == "tip" || neighborThickness == "tip_merge" {
+				thickness = "tip_merge"
+			}
+		} else {
+			switch neighborThickness {
+			case "tip", "tip_merge":
+				thickness = "frustum"
+			default:
+				supportPosition, supportValid := verticalOffset(position, direction == "down")
+				if supportValid {
+					supportNeighbor := blockAt(supportPosition)
+					if supportNeighbor.Behavior() == game.BlockBehaviorPointedDripstone && blockProperty(supportNeighbor, "vertical_direction") == direction {
+						thickness = "middle"
+					} else {
+						thickness = "base"
+					}
+				}
+			}
+		}
+	}
+
+	return withBlockProperties(block, game.BlockPropertyValue{Name: "thickness", Value: thickness})
+}
+
+func verticalOffset(position game.BlockPosition, up bool) (game.BlockPosition, bool) {
+	if up {
+		if position.Y == math.MaxInt32 {
+			return game.BlockPosition{}, false
+		}
+
+		position.Y++
+
+		return position, true
+	}
+
+	if position.Y == math.MinInt32 {
+		return game.BlockPosition{}, false
+	}
+
+	position.Y--
+
+	return position, true
 }
 
 func recalculateStairs(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) game.Block {

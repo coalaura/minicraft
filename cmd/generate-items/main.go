@@ -107,7 +107,7 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 
 	for _, block := range blocks {
 		rule := blockPlacementRule(block)
-		if block.DefaultState == 0 || rule == "" || block.BoundingBox != "block" {
+		if block.DefaultState == 0 || rule == "" {
 			continue
 		}
 
@@ -179,7 +179,7 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 
 func blockPlacementRule(block BlockDefinition) string {
 	switch {
-	case block.Name == "iron_door" || block.Name == "iron_trapdoor":
+	case isExcludedPlacementBlock(block.Name):
 		return ""
 	case strings.HasSuffix(block.Name, "_slab"):
 		return "ItemPlacementSlab"
@@ -193,13 +193,43 @@ func blockPlacementRule(block BlockDefinition) string {
 		return "ItemPlacementFenceGate"
 	case strings.HasSuffix(block.Name, "_fence"):
 		return "ItemPlacementFence"
-	case block.Name == "iron_bars" || strings.HasSuffix(block.Name, "_glass_pane") || block.Name == "glass_pane":
+	case block.Name == "iron_bars" || strings.HasSuffix(block.Name, "copper_bars") || strings.HasSuffix(block.Name, "_glass_pane") || block.Name == "glass_pane":
 		return "ItemPlacementPane"
 	case strings.HasSuffix(block.Name, "_wall"):
 		return "ItemPlacementWall"
+	case strings.HasSuffix(block.Name, "_leaves"):
+		return "ItemPlacementLeaves"
+	case strings.HasSuffix(block.Name, "_chain"):
+		return "ItemPlacementChain"
+	case isSimpleCarpet(block.Name):
+		return "ItemPlacementSupported"
+	case strings.HasSuffix(block.Name, "_button"):
+		return "ItemPlacementButton"
+	case strings.HasSuffix(block.Name, "_pressure_plate"):
+		if hasProperty(block.Properties, "power") {
+			return "ItemPlacementWeightedPressurePlate"
+		}
+
+		return "ItemPlacementPressurePlate"
+	case block.Name == "snow":
+		return "ItemPlacementSnow"
+	case block.Name == "candle" || strings.HasSuffix(block.Name, "_candle"):
+		return "ItemPlacementCandle"
+	case block.Name == "pointed_dripstone":
+		return "ItemPlacementPointedDripstone"
+	case isSimplePlant(block.Name):
+		return "ItemPlacementPlant"
+	case block.Name == "cobweb":
+		return "ItemPlacementDefault"
+	case isMushroomBlock(block.Name) && hasOnlyProperties(block.Properties, "down", "east", "north", "south", "up", "west"):
+		return "ItemPlacementDefault"
+	case hasOnlyProperties(block.Properties, "snowy"):
+		return "ItemPlacementDefault"
+	case isCopperGrate(block.Name) && hasOnlyProperties(block.Properties, "waterlogged"):
+		return "ItemPlacementDefault"
 	}
 
-	if len(block.Properties) == 0 {
+	if len(block.Properties) == 0 && block.BoundingBox == "block" {
 		return "ItemPlacementDefault"
 	}
 
@@ -221,6 +251,70 @@ func blockPlacementRule(block BlockDefinition) string {
 	}
 
 	return "ItemPlacementAxis"
+}
+
+func isExcludedPlacementBlock(name string) bool {
+	switch name {
+	case "barrel", "beacon", "beehive", "bee_nest", "blast_furnace", "brewing_stand",
+		"campfire", "soul_campfire", "suspicious_gravel", "suspicious_sand",
+		"chest", "chiseled_bookshelf", "crafter", "decorated_pot", "dispenser", "dropper",
+		"enchanting_table", "ender_chest", "furnace", "hopper", "jukebox", "lectern",
+		"smoker", "spawner", "trial_spawner", "trapped_chest", "vault":
+		return true
+	}
+
+	return strings.HasSuffix(name, "_bed") || strings.HasSuffix(name, "_banner") ||
+		strings.HasSuffix(name, "_chest") || strings.HasSuffix(name, "_shulker_box") ||
+		strings.HasSuffix(name, "_shelf") || strings.HasSuffix(name, "_sign") || strings.HasSuffix(name, "_hanging_sign")
+}
+
+func isCopperGrate(name string) bool {
+	return name == "copper_grate" || strings.HasSuffix(name, "_copper_grate")
+}
+
+func isSimplePlant(name string) bool {
+	switch name {
+	case "short_grass", "fern", "dead_bush", "bush", "short_dry_grass", "tall_dry_grass",
+		"dandelion", "poppy", "blue_orchid", "allium", "azure_bluet", "red_tulip",
+		"orange_tulip", "white_tulip", "pink_tulip", "oxeye_daisy", "cornflower",
+		"wither_rose", "lily_of_the_valley", "open_eyeblossom", "closed_eyeblossom",
+		"firefly_bush":
+		return true
+	default:
+		return false
+	}
+}
+
+func isMushroomBlock(name string) bool {
+	return name == "brown_mushroom_block" || name == "red_mushroom_block" || name == "mushroom_stem"
+}
+
+func isSimpleCarpet(name string) bool {
+	return name != "pale_moss_carpet" && (name == "moss_carpet" || strings.HasSuffix(name, "_carpet"))
+}
+
+func hasOnlyProperties(properties []BlockProperty, names ...string) bool {
+	if len(properties) != len(names) {
+		return false
+	}
+
+	for index, name := range names {
+		if properties[index].Name != name {
+			return false
+		}
+	}
+
+	return true
+}
+
+func hasProperty(properties []BlockProperty, name string) bool {
+	for _, property := range properties {
+		if property.Name == name {
+			return true
+		}
+	}
+
+	return false
 }
 
 func horizontalFacingProperties(properties []BlockProperty) bool {

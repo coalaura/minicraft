@@ -22,6 +22,12 @@ type authoritativeDoorMutationTestCase struct {
 	changes []game.BlockChange
 }
 
+type structuralSupportTestCase struct {
+	name    string
+	support game.Block
+	block   game.Block
+}
+
 func TestSlabPlacementAndMerging(t *testing.T) {
 	for name, cursorY := range map[string]float32{"bottom": 0.25, "top": 0.75} {
 		t.Run(name, func(t *testing.T) {

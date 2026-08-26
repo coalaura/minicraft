@@ -1,5 +1,7 @@
 package game
 
+import "strconv"
+
 const (
 	playerWidth           = 0.6
 	standingPlayerHeight  = 1.8
@@ -83,6 +85,16 @@ func (block Block) CollisionBoxes(position BlockPosition) []AABB {
 		boxes = connectedCollisionBoxes(block, 7, 9, 16)
 	case BlockCollisionWall:
 		boxes = wallCollisionBoxes(block)
+	case BlockCollisionCarpet:
+		boxes = []AABB{unitBox(0, 0, 0, 16, 1, 16)}
+	case BlockCollisionSnow:
+		boxes = snowCollisionBoxes(block)
+	case BlockCollisionPointedDripstone:
+		boxes = pointedDripstoneCollisionBoxes(block)
+	case BlockCollisionChain:
+		boxes = chainCollisionBoxes(block)
+	case BlockCollisionCake:
+		boxes = cakeCollisionBoxes(block)
 	}
 
 	for index := range boxes {
@@ -90,6 +102,54 @@ func (block Block) CollisionBoxes(position BlockPosition) []AABB {
 	}
 
 	return boxes
+}
+
+func cakeCollisionBoxes(block Block) []AABB {
+	bites := collisionPropertyInt(block, "bites")
+	return []AABB{unitBox(float64(1+bites*2), 0, 1, 15, 8, 15)}
+}
+
+func chainCollisionBoxes(block Block) []AABB {
+	switch collisionProperty(block, "axis") {
+	case "x":
+		return []AABB{unitBox(0, 6.5, 6.5, 16, 9.5, 9.5)}
+	case "z":
+		return []AABB{unitBox(6.5, 6.5, 0, 9.5, 9.5, 16)}
+	default:
+		return []AABB{unitBox(6.5, 0, 6.5, 9.5, 16, 9.5)}
+	}
+}
+
+func snowCollisionBoxes(block Block) []AABB {
+	layers := collisionPropertyInt(block, "layers")
+
+	height := (layers - 1) * 2
+	if height <= 0 {
+		return nil
+	}
+
+	return []AABB{unitBox(0, 0, 0, 16, float64(height), 16)}
+}
+
+func pointedDripstoneCollisionBoxes(block Block) []AABB {
+	switch collisionProperty(block, "thickness") {
+	case "tip_merge":
+		return []AABB{unitBox(5, 0, 5, 11, 16, 11)}
+	case "tip":
+		if collisionProperty(block, "vertical_direction") == "down" {
+			return []AABB{unitBox(5, 5, 5, 11, 16, 11)}
+		}
+
+		return []AABB{unitBox(5, 0, 5, 11, 11, 11)}
+	case "frustum":
+		return []AABB{unitBox(4, 0, 4, 12, 16, 12)}
+	case "middle":
+		return []AABB{unitBox(3, 0, 3, 13, 16, 13)}
+	case "base":
+		return []AABB{unitBox(2, 0, 2, 14, 16, 14)}
+	default:
+		return nil
+	}
 }
 
 func slabCollisionBoxes(block Block) []AABB {
@@ -278,6 +338,15 @@ func stairQuarter(facing string, left bool) (minX, minZ, maxX, maxZ float64) {
 
 func collisionProperty(block Block, name string) string {
 	value, _ := block.Property(name)
+	return value
+}
+
+func collisionPropertyInt(block Block, name string) int {
+	value, err := strconv.Atoi(collisionProperty(block, name))
+	if err != nil {
+		return 0
+	}
+
 	return value
 }
 
