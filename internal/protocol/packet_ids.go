@@ -95,6 +95,7 @@ const (
 	ClientboundCommandSuggestionsID           = 0x0F
 	ClientboundDeclareCommandsID              = 0x10
 	ClientboundPlayDisconnectID               = 0x20
+	ClientboundEntityEventID                  = 0x22
 	ClientboundSynchronizeEntityPositionID    = 0x23
 	ClientboundForgetLevelChunkID             = 0x25
 	ClientboundGameEventID                    = 0x26

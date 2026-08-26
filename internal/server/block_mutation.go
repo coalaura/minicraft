@@ -114,13 +114,41 @@ func (r *Runtime) MutateBlocks(session *Session, action BlockMutationAction, cha
 
 // MutateWorldBlocks applies authoritative world changes without player interaction restrictions.
 func (r *Runtime) MutateWorldBlocks(changes []game.BlockChange) (BlockMutationResult, error) {
+	return r.mutateWorldBlocks(changes, false, false)
+}
+
+// MutateWorldBlocksStrict applies authoritative changes without updating neighboring shapes.
+func (r *Runtime) MutateWorldBlocksStrict(changes []game.BlockChange) (BlockMutationResult, error) {
+	return r.mutateWorldBlocks(changes, true, false)
+}
+
+// MutateEmptyWorldBlocks applies authoritative changes only where the current block is air.
+func (r *Runtime) MutateEmptyWorldBlocks(changes []game.BlockChange) (BlockMutationResult, error) {
+	return r.mutateWorldBlocks(changes, false, true)
+}
+
+func (r *Runtime) mutateWorldBlocks(changes []game.BlockChange, strict, emptyOnly bool) (BlockMutationResult, error) {
 	r.worldMutationMu.Lock()
 
 	result, delivery, err := func() (BlockMutationResult, blockMutationDelivery, error) {
 		defer r.worldMutationMu.Unlock()
 
-		changes = r.withAuthoritativeDoorChanges(changes)
-		changes = r.withStructuralNeighborChanges(changes)
+		if emptyOnly {
+			applicable := changes[:0]
+
+			for _, change := range changes {
+				if r.World.BlockAt(change.Position) == game.Air {
+					applicable = append(applicable, change)
+				}
+			}
+
+			changes = applicable
+		}
+
+		if !strict {
+			changes = r.withAuthoritativeDoorChanges(changes)
+			changes = r.withStructuralNeighborChanges(changes)
+		}
 
 		return r.mutateBlocksLocked(nil, BlockMutationPlace, changes, len(changes), true, false, true)
 	}()

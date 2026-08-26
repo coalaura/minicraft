@@ -137,7 +137,12 @@ func TestChatAndLevelEventPacketsProtocol774(t *testing.T) {
 		0x00,
 	})
 
-	assertPacketEncoding(t, SystemChat{Content: "hello"}, []byte{0x08, 0x00, 0x05, 'h', 'e', 'l', 'l', 'o', 0x00})
+	assertPacketEncoding(t, SystemChat{Content: game.LiteralText("hello")}, []byte{
+		0x0a,
+		0x08, 0x00, 0x04, 't', 'e', 'x', 't', 0x00, 0x05, 'h', 'e', 'l', 'l', 'o',
+		0x00,
+		0x00,
+	})
 }
 
 func TestCommandPacketsEncodeProtocol774(t *testing.T) {
@@ -193,6 +198,17 @@ func TestCommandPacketsEncodeProtocol774(t *testing.T) {
 		0x02, 0x00, 0x08, 's', 'e', 'l', 'e', 'c', 't', 'o', 'r', 0x30, 0x14, 'm', 'i', 'n', 'e', 'c', 'r', 'a', 'f', 't', ':', 'l', 'o', 'o', 't', '_', 't', 'a', 'b', 'l', 'e',
 		0x02, 0x00, 0x02, 'i', 'd', 0x38,
 		0x00,
+	})
+}
+
+func TestEntityEventEncode(t *testing.T) {
+	if ClientboundEntityEventID != 0x22 {
+		t.Fatalf("entity event packet ID = %#x", ClientboundEntityEventID)
+	}
+
+	assertPacketEncoding(t, EntityEvent{EntityID: 1234, Event: 26}, []byte{
+		0x00, 0x00, 0x04, 0xD2,
+		0x1A,
 	})
 }
 
@@ -336,11 +352,13 @@ func TestPlayDisconnectEncode(t *testing.T) {
 }
 
 func TestSystemChatModifiedUTF8Encode(t *testing.T) {
-	assertPacketEncoding(t, SystemChat{Content: "A\x00😀"}, []byte{
-		0x08, 0x00, 0x09,
+	assertPacketEncoding(t, SystemChat{Content: game.LiteralText("A\x00😀")}, []byte{
+		0x0a,
+		0x08, 0x00, 0x04, 't', 'e', 'x', 't', 0x00, 0x09,
 		'A', 0xC0, 0x80,
 		0xED, 0xA0, 0xBD,
 		0xED, 0xB8, 0x80,
+		0x00,
 		0x00,
 	})
 }

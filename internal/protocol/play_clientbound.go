@@ -336,6 +336,11 @@ type GameEvent struct {
 	Value float32
 }
 
+type EntityEvent struct {
+	EntityID int32
+	Event    byte
+}
+
 type PlayKeepAlive struct {
 	ID int64
 }
@@ -377,7 +382,7 @@ type LevelEvent struct {
 }
 
 type SystemChat struct {
-	Content   string
+	Content   game.TextComponent
 	ActionBar bool
 }
 
@@ -832,6 +837,11 @@ func (p GameEvent) Encode(wr *PacketWriter) {
 	wr.Float(p.Value)
 }
 
+func (p EntityEvent) Encode(wr *PacketWriter) {
+	wr.Int(p.EntityID)
+	wr.Byte(p.Event)
+}
+
 func (p PlayKeepAlive) Encode(wr *PacketWriter) {
 	wr.Long(p.ID)
 }
@@ -879,7 +889,7 @@ func (p LevelEvent) Encode(wr *PacketWriter) {
 }
 
 func (p SystemChat) Encode(wr *PacketWriter) {
-	wr.AnonymousNBTString(p.Content)
+	wr.AnonymousNBTText(p.Content)
 	wr.Bool(p.ActionBar)
 }
 

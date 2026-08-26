@@ -19,7 +19,7 @@ type commandInventoryChange struct {
 	player  game.Player
 }
 
-func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) error {
+func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) (bool, error) {
 	r.lifecycleMu.Lock()
 
 	player, changed := session.updatePlayerState(func(player *game.Player) bool {
@@ -35,7 +35,7 @@ func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) error {
 	r.lifecycleMu.Unlock()
 
 	if !changed {
-		return nil
+		return false, nil
 	}
 
 	err := session.writePacket(protocol.ClientboundGameEventID, protocol.GameEvent{
@@ -44,7 +44,7 @@ func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("synchronize game mode: %w", err)
+		return false, fmt.Errorf("synchronize game mode: %w", err)
 	}
 
 	update := protocol.PlayerInfoUpdate{
@@ -58,11 +58,11 @@ func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) error {
 	for _, other := range r.snapshotSessions() {
 		err = other.writePacket(protocol.ClientboundPlayerInfoUpdateID, update)
 		if err != nil {
-			return fmt.Errorf("synchronize player game mode: %w", err)
+			return false, fmt.Errorf("synchronize player game mode: %w", err)
 		}
 	}
 
-	return nil
+	return true, nil
 }
 
 func (r *Runtime) GiveItem(session *Session, item game.Item, count int32) error {
@@ -131,7 +131,7 @@ func giveItemToInventory(inventory *game.PlayerInventory, item game.Item, count 
 	return nil
 }
 
-func (r *Runtime) ClearItems(session *Session, item *game.Item) (int32, error) {
+func (r *Runtime) ClearItems(session *Session, item *game.Item, maximum int32) (int32, error) {
 	var removed int32
 
 	err := r.mutateCommandInventory(session, func(inventory *game.PlayerInventory) error {
@@ -141,15 +141,43 @@ func (r *Runtime) ClearItems(session *Session, item *game.Item) (int32, error) {
 				continue
 			}
 
-			removed += stack.Count
+			if maximum == 0 {
+				removed += stack.Count
 
-			*stack = game.ItemStack{}
+				continue
+			}
+
+			count := stack.Count
+			if maximum > 0 {
+				count = min(count, maximum-removed)
+			}
+
+			removed += count
+			stack.Count -= count
+
+			if stack.Count == 0 {
+				*stack = game.ItemStack{}
+			}
+
+			if maximum > 0 && removed == maximum {
+				break
+			}
 		}
 
-		if !inventory.Carried.Empty() && (item == nil || inventory.Carried.Item == *item) {
-			removed += inventory.Carried.Count
+		if !inventory.Carried.Empty() && (item == nil || inventory.Carried.Item == *item) && (maximum < 0 || removed < maximum || maximum == 0) {
+			count := inventory.Carried.Count
+			if maximum > 0 {
+				count = min(count, maximum-removed)
+			}
 
-			inventory.Carried = game.ItemStack{}
+			removed += count
+
+			if maximum != 0 {
+				inventory.Carried.Count -= count
+				if inventory.Carried.Count == 0 {
+					inventory.Carried = game.ItemStack{}
+				}
+			}
 		}
 
 		return nil
@@ -195,15 +223,19 @@ func (r *Runtime) mutateCommandInventory(session *Session, mutate func(*game.Pla
 	return nil
 }
 
-func (r *Runtime) TeleportPlayer(session *Session, position game.Position) error {
+func (r *Runtime) TeleportPlayer(session *Session, position game.Position, rotation *game.Rotation) error {
 	if !validPlayerPosition(position.X, position.Y, position.Z) {
 		return errors.New("invalid teleport destination")
 	}
 
 	r.updatePlayerMovement(session, func(player *game.Player) {
 		player.Position = position
-		player.Velocity = game.Velocity{}
-		player.OnGround = false
+		player.Velocity.Y = 0
+		player.OnGround = true
+
+		if rotation != nil {
+			player.Rotation = *rotation
+		}
 	})
 
 	err := session.updatePlayerChunks()

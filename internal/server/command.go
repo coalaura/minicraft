@@ -19,7 +19,8 @@ const commandSuggestionProvider = "minecraft:ask_server"
 type CommandSource interface {
 	Name() string
 	Position() game.Position
-	Feedback(string) error
+	Feedback(game.TextComponent) error
+	Failure(game.TextComponent) error
 	HasPermission(string) bool
 	PlayerSession() (*Session, bool)
 }
@@ -35,11 +36,10 @@ type commandRegistry struct {
 }
 
 type registeredCommand struct {
-	Name        string
-	Usage       string
-	Description string
-	Permission  string
-	Patterns    []commandPattern
+	Name       string
+	Permission string
+	Patterns   []commandPattern
+	Redirect   *registeredCommand
 }
 
 type commandPattern struct {
@@ -50,10 +50,11 @@ type commandPattern struct {
 type commandExecutor func(CommandSource, []any) error
 
 type commandElement interface {
-	parse(CommandSource, []string) (any, int, error)
+	parse(CommandSource, []commandToken, int) (any, int, error)
 	suggestions(CommandSource, string) []string
 	commandNode() protocol.CommandNode
 	key() string
+	usage() string
 }
 
 type commandLiteral struct {
@@ -65,15 +66,22 @@ type commandArgument struct {
 	parser         int32
 	properties     protocol.CommandParserProperties
 	width          int
-	parseValue     func(CommandSource, []string) (any, error)
+	parseValue     func(CommandSource, []commandToken) (any, error)
 	suggestValues  func(CommandSource) []string
 	clientSuggests bool
+}
+
+type commandToken struct {
+	value string
+	start int
+	end   int
 }
 
 type commandTreeNode struct {
 	node       protocol.CommandNode
 	key        string
 	children   []*commandTreeNode
+	redirect   *commandTreeNode
 	executable bool
 }
 
@@ -83,11 +91,20 @@ type commandMatch struct {
 }
 
 type commandSyntaxError struct {
-	message string
+	message game.TextComponent
+	cursor  int
+}
+
+type commandFailure struct {
+	message game.TextComponent
 }
 
 func (err commandSyntaxError) Error() string {
-	return err.message
+	return "invalid command syntax"
+}
+
+func (err commandFailure) Error() string {
+	return "command failed"
 }
 
 func (source playerCommandSource) Name() string {
@@ -98,8 +115,12 @@ func (source playerCommandSource) Position() game.Position {
 	return source.session.snapshotPlayer().Position
 }
 
-func (source playerCommandSource) Feedback(message string) error {
-	return source.session.sendSystemMessage(message)
+func (source playerCommandSource) Feedback(message game.TextComponent) error {
+	return source.session.sendSystemComponent(message)
+}
+
+func (source playerCommandSource) Failure(message game.TextComponent) error {
+	return source.session.sendSystemComponent(message.WithColor(game.TextColorRed))
 }
 
 func (source playerCommandSource) HasPermission(string) bool {
@@ -126,22 +147,41 @@ func (registry *commandRegistry) register(command *registeredCommand) {
 	registry.byName[command.Name] = command
 }
 
+func (registry *commandRegistry) registerRedirect(name string, target *registeredCommand) {
+	registry.register(&registeredCommand{Name: name, Permission: target.Permission, Redirect: target})
+}
+
 func (registry *commandRegistry) execute(source CommandSource, input string) error {
-	input = strings.TrimSpace(strings.TrimPrefix(input, "/"))
-	if input == "" {
-		return source.Feedback("Unknown command")
+	input = strings.TrimPrefix(input, "/")
+	tokens := tokenizeCommand(input)
+
+	if len(tokens) == 0 {
+		return registry.sendSyntaxError(source, input, commandSyntaxError{
+			message: game.TranslatableText("command.unknown.command"),
+			cursor:  0,
+		})
 	}
 
-	tokens := strings.Fields(input)
-
-	command := registry.byName[strings.ToLower(tokens[0])]
+	command := registry.byName[tokens[0].value]
 	if command == nil || !source.HasPermission(command.Permission) {
-		return source.Feedback(fmt.Sprintf("Unknown command: %s", tokens[0]))
+		return registry.sendSyntaxError(source, input, commandSyntaxError{
+			message: game.TranslatableText("command.unknown.command"),
+			cursor:  tokens[0].start,
+		})
 	}
 
-	match, err := registry.match(source, command, tokens[1:])
+	if command.Redirect != nil {
+		command = command.Redirect
+	}
+
+	match, err := registry.match(source, command, tokens[1:], len(input))
 	if err != nil {
-		return source.Feedback(fmt.Sprintf("%s\nUsage: %s", err, command.Usage))
+		syntaxError, syntax := errors.AsType[commandSyntaxError](err)
+		if syntax {
+			return registry.sendSyntaxError(source, input, syntaxError)
+		}
+
+		return source.Failure(game.LiteralText(err.Error()))
 	}
 
 	err = match.pattern.Execute(source, match.values)
@@ -149,18 +189,57 @@ func (registry *commandRegistry) execute(source CommandSource, input string) err
 		return nil
 	}
 
-	syntaxError, syntax := errors.AsType[commandSyntaxError](err)
-	if syntax {
-		return source.Feedback(fmt.Sprintf("%s\nUsage: %s", syntaxError.message, command.Usage))
+	failure, failed := errors.AsType[commandFailure](err)
+	if failed {
+		return source.Failure(failure.message)
 	}
 
-	return source.Feedback(fmt.Sprintf("Command failed: %v", err))
+	syntaxError, syntax := errors.AsType[commandSyntaxError](err)
+	if syntax {
+		return registry.sendSyntaxError(source, input, syntaxError)
+	}
+
+	return source.Failure(game.LiteralText(err.Error()))
 }
 
-func (registry *commandRegistry) match(source CommandSource, command *registeredCommand, tokens []string) (commandMatch, error) {
-	var bestErr error
+func (registry *commandRegistry) sendSyntaxError(source CommandSource, input string, syntaxError commandSyntaxError) error {
+	err := source.Failure(syntaxError.message)
+	if err != nil {
+		return err
+	}
 
+	cursor := max(0, min(syntaxError.cursor, len(input)))
+	contextStart := max(0, cursor-10)
+	prefix := input[contextStart:cursor]
+
+	if contextStart > 0 {
+		prefix = "..." + prefix
+	}
+
+	context := game.LiteralText(prefix).WithColor(game.TextColorGray)
+
+	invalid := game.LiteralText(input[cursor:]).
+		WithColor(game.TextColorRed).
+		WithUnderline(true)
+
+	if invalid.Text != "" {
+		context = context.Append(invalid)
+	}
+
+	context = context.Append(game.TranslatableText("command.context.here").
+		WithColor(game.TextColorRed).
+		WithItalic(true))
+
+	context = context.WithClickEvent(game.ClickSuggestCommand, "/"+input)
+
+	return source.Feedback(context)
+}
+
+func (registry *commandRegistry) match(source CommandSource, command *registeredCommand, tokens []commandToken, end int) (commandMatch, error) {
 	bestConsumed := -1
+	bestCursor := -1
+
+	var bestErr error
 
 	for _, pattern := range command.Patterns {
 		values := make([]any, 0, len(pattern.Elements))
@@ -169,14 +248,28 @@ func (registry *commandRegistry) match(source CommandSource, command *registered
 		valid := true
 
 		for _, element := range pattern.Elements {
-			value, count, err := element.parse(source, tokens[consumed:])
+			cursor := end
+			if consumed < len(tokens) {
+				cursor = tokens[consumed].start
+			}
+
+			value, count, err := element.parse(source, tokens[consumed:], cursor)
 			if err != nil {
-				if consumed > bestConsumed {
+				syntaxError, syntax := errors.AsType[commandSyntaxError](err)
+				errorCursor := cursor
+
+				if syntax {
+					errorCursor = syntaxError.cursor
+				}
+
+				if consumed > bestConsumed || consumed == bestConsumed && errorCursor >= bestCursor {
 					bestErr = err
 					bestConsumed = consumed
+					bestCursor = errorCursor
 				}
 
 				valid = false
+
 				break
 			}
 
@@ -187,25 +280,34 @@ func (registry *commandRegistry) match(source CommandSource, command *registered
 		if valid && consumed == len(tokens) {
 			return commandMatch{pattern: pattern, values: values}, nil
 		}
+
+		if valid && consumed < len(tokens) && consumed >= bestConsumed {
+			bestConsumed = consumed
+			bestCursor = tokens[consumed].start
+			bestErr = commandSyntaxError{
+				message: game.TranslatableText("command.unknown.argument"),
+				cursor:  tokens[consumed].start,
+			}
+		}
 	}
 
 	if bestErr != nil {
 		return commandMatch{}, bestErr
 	}
 
-	return commandMatch{}, commandSyntaxError{message: "Invalid command syntax"}
+	return commandMatch{}, commandSyntaxError{message: game.TranslatableText("command.unknown.argument"), cursor: end}
 }
 
-func (literal commandLiteral) parse(_ CommandSource, tokens []string) (any, int, error) {
-	if len(tokens) == 0 || !strings.EqualFold(tokens[0], literal.value) {
-		return nil, 0, commandSyntaxError{message: fmt.Sprintf("Expected %q", literal.value)}
+func (literal commandLiteral) parse(_ CommandSource, tokens []commandToken, cursor int) (any, int, error) {
+	if len(tokens) == 0 || tokens[0].value != literal.value {
+		return nil, 0, commandSyntaxError{message: game.TranslatableText("command.unknown.argument"), cursor: cursor}
 	}
 
 	return literal.value, 1, nil
 }
 
 func (literal commandLiteral) suggestions(_ CommandSource, prefix string) []string {
-	if strings.HasPrefix(strings.ToLower(literal.value), strings.ToLower(prefix)) {
+	if commandSuggestionMatches(literal.value, prefix) {
 		return []string{literal.value}
 	}
 
@@ -220,17 +322,26 @@ func (literal commandLiteral) key() string {
 	return "literal:" + literal.value
 }
 
-func (argument commandArgument) parse(source CommandSource, tokens []string) (any, int, error) {
-	if len(tokens) < argument.width {
-		return nil, 0, commandSyntaxError{message: fmt.Sprintf("Missing %s", argument.name)}
+func (literal commandLiteral) usage() string {
+	return literal.value
+}
+
+func (argument commandArgument) parse(source CommandSource, tokens []commandToken, cursor int) (any, int, error) {
+	width := argument.width
+	if width < 0 {
+		width = len(tokens)
 	}
 
-	value, err := argument.parseValue(source, tokens[:argument.width])
+	if width == 0 || len(tokens) < width {
+		return nil, 0, commandSyntaxError{message: game.TranslatableText("command.unknown.argument"), cursor: cursor}
+	}
+
+	value, err := argument.parseValue(source, tokens[:width])
 	if err != nil {
 		return nil, 0, err
 	}
 
-	return value, argument.width, nil
+	return value, width, nil
 }
 
 func (argument commandArgument) suggestions(source CommandSource, prefix string) []string {
@@ -260,17 +371,35 @@ func (argument commandArgument) key() string {
 	return fmt.Sprintf("argument:%s:%d:%#v:%t", argument.name, argument.parser, argument.properties, argument.clientSuggests)
 }
 
+func (argument commandArgument) usage() string {
+	return "<" + argument.name + ">"
+}
+
 func (registry *commandRegistry) declaration() protocol.DeclareCommands {
 	root := &commandTreeNode{node: protocol.CommandNode{Type: protocol.CommandNodeRoot}, key: "root"}
 
+	literals := make(map[*registeredCommand]*commandTreeNode, len(registry.commands))
+
 	for _, command := range registry.commands {
 		literal := findOrAppendTreeChild(root, protocol.CommandNode{Type: protocol.CommandNodeLiteral, Name: command.Name}, "command:"+command.Name)
+		literals[command] = literal
+	}
+
+	for _, command := range registry.commands {
+		literal := literals[command]
+
+		if command.Redirect != nil {
+			literal.redirect = literals[command.Redirect]
+
+			continue
+		}
 
 		for _, pattern := range command.Patterns {
 			current := literal
 
 			if len(pattern.Elements) == 0 {
 				current.executable = true
+
 				continue
 			}
 
@@ -302,6 +431,11 @@ func (registry *commandRegistry) declaration() protocol.DeclareCommands {
 
 		for childIndex, child := range treeNode.children {
 			node.Children[childIndex] = indices[child]
+		}
+
+		if treeNode.redirect != nil {
+			node.HasRedirect = true
+			node.Redirect = indices[treeNode.redirect]
 		}
 
 		nodes[index] = node
@@ -365,7 +499,12 @@ func (registry *commandRegistry) suggestions(source CommandSource, text string) 
 		completedText = commandText[:lastSpace]
 	}
 
-	completed := strings.Fields(completedText)
+	completedTokens := tokenizeCommand(completedText)
+	completed := make([]string, len(completedTokens))
+
+	for index, token := range completedTokens {
+		completed[index] = token.value
+	}
 
 	var values []string
 
@@ -376,8 +515,12 @@ func (registry *commandRegistry) suggestions(source CommandSource, text string) 
 			}
 		}
 	} else {
-		command := registry.byName[strings.ToLower(completed[0])]
+		command := registry.byName[completed[0]]
 		if command != nil && source.HasPermission(command.Permission) {
+			if command.Redirect != nil {
+				command = command.Redirect
+			}
+
 			values = registry.argumentSuggestions(source, command, completed[1:], prefix)
 		}
 	}
@@ -401,6 +544,12 @@ func utf16Length(value string) int32 {
 }
 
 func (registry *commandRegistry) argumentSuggestions(source CommandSource, command *registeredCommand, completed []string, prefix string) []string {
+	tokens := make([]commandToken, len(completed))
+
+	for index, value := range completed {
+		tokens[index] = commandToken{value: value}
+	}
+
 	var suggestions []string
 
 	for _, pattern := range command.Patterns {
@@ -408,15 +557,15 @@ func (registry *commandRegistry) argumentSuggestions(source CommandSource, comma
 		valid := true
 
 		for _, element := range pattern.Elements {
-			if consumed == len(completed) {
+			if consumed == len(tokens) {
 				suggestions = append(suggestions, element.suggestions(source, prefix)...)
 				valid = false
 
 				break
 			}
 
-			_, count, err := element.parse(source, completed[consumed:])
-			if err != nil || consumed+count > len(completed) {
+			_, count, err := element.parse(source, tokens[consumed:], 0)
+			if err != nil || consumed+count > len(tokens) {
 				valid = false
 
 				break
@@ -425,7 +574,7 @@ func (registry *commandRegistry) argumentSuggestions(source CommandSource, comma
 			consumed += count
 		}
 
-		if valid && consumed != len(completed) {
+		if valid && consumed != len(tokens) {
 			continue
 		}
 	}
@@ -434,13 +583,11 @@ func (registry *commandRegistry) argumentSuggestions(source CommandSource, comma
 }
 
 func filterSuggestions(values []string, prefix string) []string {
-	prefix = strings.ToLower(prefix)
-
 	seen := make(map[string]struct{}, len(values))
 	filtered := make([]string, 0, len(values))
 
 	for _, value := range values {
-		if !strings.HasPrefix(strings.ToLower(value), prefix) {
+		if !commandSuggestionMatches(value, prefix) {
 			continue
 		}
 
@@ -457,19 +604,56 @@ func filterSuggestions(values []string, prefix string) []string {
 	return filtered
 }
 
-func parseInteger(_ CommandSource, tokens []string) (any, error) {
-	value, err := strconv.ParseInt(tokens[0], 10, 32)
+func commandSuggestionMatches(value, prefix string) bool {
+	return strings.HasPrefix(strings.ToLower(value), strings.ToLower(prefix))
+}
+
+func tokenizeCommand(input string) []commandToken {
+	var tokens []commandToken
+
+	for cursor := 0; cursor < len(input); {
+		for cursor < len(input) && input[cursor] == ' ' {
+			cursor++
+		}
+
+		if cursor == len(input) {
+			break
+		}
+
+		start := cursor
+
+		for cursor < len(input) && input[cursor] != ' ' {
+			cursor++
+		}
+
+		tokens = append(tokens, commandToken{value: input[start:cursor], start: start, end: cursor})
+	}
+
+	return tokens
+}
+
+func parseInteger(_ CommandSource, tokens []commandToken) (any, error) {
+	value, err := strconv.ParseInt(tokens[0].value, 10, 32)
 	if err != nil {
-		return nil, commandSyntaxError{message: fmt.Sprintf("Invalid integer %q", tokens[0])}
+		return nil, commandSyntaxError{
+			message: game.TranslatableText("argument.integer.invalid", game.LiteralText(tokens[0].value)),
+			cursor:  tokens[0].start,
+		}
 	}
 
 	return int32(value), nil
 }
 
-func parseString(_ CommandSource, tokens []string) (any, error) {
-	if !utf8.ValidString(tokens[0]) {
-		return nil, commandSyntaxError{message: "Invalid text"}
+func parseString(_ CommandSource, tokens []commandToken) (any, error) {
+	values := make([]string, len(tokens))
+
+	for index, token := range tokens {
+		if !utf8.ValidString(token.value) {
+			return nil, commandSyntaxError{message: game.LiteralText("Invalid text"), cursor: token.start}
+		}
+
+		values[index] = token.value
 	}
 
-	return tokens[0], nil
+	return strings.Join(values, " "), nil
 }

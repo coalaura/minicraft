@@ -1,7 +1,9 @@
 package server
 
 import (
+	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -15,6 +17,21 @@ const (
 	commandTestAliceUUID = "10111213-1415-1617-1819-1a1b1c1d1e1f"
 	commandTestZedUUID   = "20212223-2425-2627-2829-2a2b2c2d2e2f"
 )
+
+type commandTimeQueryTestCase struct {
+	input string
+	value int64
+}
+
+type commandTimeMutationTestCase struct {
+	input string
+	want  int64
+}
+
+type commandTargetErrorTestCase struct {
+	input   string
+	message game.TextComponent
+}
 
 func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 	registry := NewRuntime(&game.World{}).commands
@@ -41,7 +58,7 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 		commandNames = append(commandNames, child.Name)
 	}
 
-	expectedCommands := []string{"help", "seed", "time", "gamemode", "give", "clear", "tp", "setblock", "fill"}
+	expectedCommands := []string{"help", "seed", "time", "gamemode", "give", "clear", "teleport", "tp", "setblock", "fill"}
 	if strings.Join(commandNames, ",") != strings.Join(expectedCommands, ",") {
 		t.Fatalf("root command literals = %v, want %v", commandNames, expectedCommands)
 	}
@@ -57,7 +74,7 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 	}
 
 	helpCommand := commandNodeChild(declaration.Nodes, help, protocol.CommandNodeArgument, "command")
-	if helpCommand == nil || !helpCommand.Executable || helpCommand.Parser != protocol.CommandParserString {
+	if helpCommand == nil || !helpCommand.Executable || helpCommand.Parser != protocol.CommandParserString || helpCommand.Properties != (protocol.CommandStringProperties{Type: 2}) {
 		t.Fatalf("help command argument = %+v", helpCommand)
 	}
 
@@ -68,26 +85,26 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 	timeLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "time")
 	query := commandNodeChild(declaration.Nodes, timeLiteral, protocol.CommandNodeLiteral, "query")
 
-	if query == nil || !query.Executable || len(query.Children) != 0 {
-		t.Fatalf("time query node = %+v, want executable leaf", query)
+	if query == nil || query.Executable || len(query.Children) != 3 {
+		t.Fatalf("time query node = %+v, want daytime, gametime, and day children", query)
 	}
 
 	setLiteral := commandNodeChild(declaration.Nodes, timeLiteral, protocol.CommandNodeLiteral, "set")
 	timeValue := commandNodeChild(declaration.Nodes, setLiteral, protocol.CommandNodeArgument, "time")
 
-	if timeValue == nil || !timeValue.Executable || timeValue.Parser != protocol.CommandParserString {
+	if timeValue == nil || !timeValue.Executable || timeValue.Parser != protocol.CommandParserTime || timeValue.SuggestionType != "" {
 		t.Fatalf("time value argument = %+v", timeValue)
 	}
 
 	gamemodeLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "gamemode")
-	mode := commandNodeChild(declaration.Nodes, gamemodeLiteral, protocol.CommandNodeArgument, "mode")
+	mode := commandNodeChild(declaration.Nodes, gamemodeLiteral, protocol.CommandNodeArgument, "gamemode")
 
-	if mode == nil || !mode.Executable || mode.Parser != protocol.CommandParserGameMode {
+	if mode == nil || !mode.Executable || mode.Parser != protocol.CommandParserGameMode || mode.SuggestionType != "" {
 		t.Fatalf("gamemode mode argument = %+v", mode)
 	}
 
 	gamemodeTargets := commandNodeChild(declaration.Nodes, mode, protocol.CommandNodeArgument, "targets")
-	if gamemodeTargets == nil || !gamemodeTargets.Executable || gamemodeTargets.Parser != protocol.CommandParserEntity {
+	if gamemodeTargets == nil || !gamemodeTargets.Executable || gamemodeTargets.Parser != protocol.CommandParserEntity || gamemodeTargets.SuggestionType != "" {
 		t.Fatalf("gamemode targets argument = %+v", gamemodeTargets)
 	}
 
@@ -95,17 +112,15 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 	if !validProperties || entityProperties.SingleTarget || !entityProperties.OnlyPlayers {
 		t.Fatalf("gamemode targets properties = %+v", gamemodeTargets.Properties)
 	}
-
 	giveLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "give")
 	giveTargets := commandNodeChild(declaration.Nodes, giveLiteral, protocol.CommandNodeArgument, "targets")
 	item := commandNodeChild(declaration.Nodes, giveTargets, protocol.CommandNodeArgument, "item")
 	count := commandNodeChild(declaration.Nodes, item, protocol.CommandNodeArgument, "count")
 
-	if giveTargets == nil || giveTargets.Executable || giveTargets.Parser != protocol.CommandParserEntity {
+	if giveTargets == nil || giveTargets.Executable || giveTargets.Parser != protocol.CommandParserEntity || giveTargets.SuggestionType != "" {
 		t.Fatalf("give targets argument = %+v", giveTargets)
 	}
-
-	if item == nil || !item.Executable || item.Parser != protocol.CommandParserItemStack {
+	if item == nil || !item.Executable || item.Parser != protocol.CommandParserResource || item.Properties != (protocol.CommandResourceProperties{Registry: "minecraft:item"}) || item.SuggestionType != "" {
 		t.Fatalf("give item argument = %+v", item)
 	}
 
@@ -114,14 +129,34 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 	}
 
 	countProperties, validProperties := count.Properties.(protocol.CommandIntegerProperties)
-	if !validProperties || !countProperties.HasMin || !countProperties.HasMax || countProperties.Min != 1 || countProperties.Max != 32767 {
+	if !validProperties || !countProperties.HasMin || countProperties.HasMax || countProperties.Min != 1 {
 		t.Fatalf("give count properties = %+v", count.Properties)
 	}
 
+	clearLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "clear")
+	clearTargets := commandNodeChild(declaration.Nodes, clearLiteral, protocol.CommandNodeArgument, "targets")
+	clearItem := commandNodeChild(declaration.Nodes, clearTargets, protocol.CommandNodeArgument, "item")
+	maxCount := commandNodeChild(declaration.Nodes, clearItem, protocol.CommandNodeArgument, "maxCount")
+
+	if maxCount == nil {
+		t.Fatal("clear maxCount argument is not declared")
+	}
+
+	maxCountProperties, validProperties := maxCount.Properties.(protocol.CommandIntegerProperties)
+	if !maxCount.Executable || !validProperties || !maxCountProperties.HasMin || maxCountProperties.HasMax || maxCountProperties.Min != 0 {
+		t.Fatalf("clear maxCount argument = %+v", maxCount)
+	}
+
+	teleportLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "teleport")
 	tpLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "tp")
-	location := commandNodeChild(declaration.Nodes, tpLiteral, protocol.CommandNodeArgument, "location")
-	destination := commandNodeChild(declaration.Nodes, tpLiteral, protocol.CommandNodeArgument, "destination")
-	tpTargets := commandNodeChild(declaration.Nodes, tpLiteral, protocol.CommandNodeArgument, "targets")
+
+	if teleportLiteral == nil || tpLiteral == nil || !tpLiteral.HasRedirect || tpLiteral.Redirect != int32(indexCommandNode(declaration.Nodes, teleportLiteral)) {
+		t.Fatalf("teleport redirect = %+v, want tp redirected to teleport", tpLiteral)
+	}
+
+	location := commandNodeChild(declaration.Nodes, teleportLiteral, protocol.CommandNodeArgument, "location")
+	destination := commandNodeChild(declaration.Nodes, teleportLiteral, protocol.CommandNodeArgument, "destination")
+	tpTargets := commandNodeChild(declaration.Nodes, teleportLiteral, protocol.CommandNodeArgument, "targets")
 
 	if location == nil || !location.Executable || location.Parser != protocol.CommandParserVec3 {
 		t.Fatalf("tp location argument = %+v", location)
@@ -168,8 +203,14 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 		t.Fatalf("setblock position argument = %+v", setblockPosition)
 	}
 
-	if setblockBlock == nil || !setblockBlock.Executable || setblockBlock.Parser != protocol.CommandParserBlockState {
+	if setblockBlock == nil || !setblockBlock.Executable || setblockBlock.Parser != protocol.CommandParserResource || setblockBlock.Properties != (protocol.CommandResourceProperties{Registry: "minecraft:block"}) || setblockBlock.SuggestionType != "" {
 		t.Fatalf("setblock block argument = %+v", setblockBlock)
+	}
+
+	for _, modeName := range []string{"replace", "keep", "strict"} {
+		if commandNodeChild(declaration.Nodes, setblockBlock, protocol.CommandNodeLiteral, modeName) == nil {
+			t.Fatalf("setblock mode %q is not declared", modeName)
+		}
 	}
 
 	fillLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "fill")
@@ -185,8 +226,14 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 		t.Fatalf("fill to argument = %+v", fillTo)
 	}
 
-	if fillBlock == nil || !fillBlock.Executable || fillBlock.Parser != protocol.CommandParserBlockState {
+	if fillBlock == nil || !fillBlock.Executable || fillBlock.Parser != protocol.CommandParserResource || fillBlock.Properties != (protocol.CommandResourceProperties{Registry: "minecraft:block"}) || fillBlock.SuggestionType != "" {
 		t.Fatalf("fill block argument = %+v", fillBlock)
+	}
+
+	for _, modeName := range []string{"replace", "keep", "outline", "hollow", "strict"} {
+		if commandNodeChild(declaration.Nodes, fillBlock, protocol.CommandNodeLiteral, modeName) == nil {
+			t.Fatalf("fill mode %q is not declared", modeName)
+		}
 	}
 
 	var writer protocol.PacketWriter
@@ -227,61 +274,58 @@ func TestCommandHelpUsageAndSeedFeedback(t *testing.T) {
 
 	executeCommand(t, session, "help")
 
-	expectedHelp := strings.Join([]string{
-		"/help [command] - Shows available commands or help for one command.",
-		"/seed - Shows the world seed.",
-		"/time query | /time set <day|noon|night|midnight|ticks> - Queries or sets the world time.",
-		"/gamemode <survival|creative|adventure|spectator> [targets] - Changes game mode for one or more players.",
-		"/give <targets> <item> [count] - Adds items when every requested stack fits.",
-		"/clear [targets] [item] - Clears all or matching inventory items.",
-		"/tp <destination|x y z> | /tp <targets> <destination|x y z> - Teleports players to a player or coordinates.",
-		"/setblock <x> <y> <z> <block> - Sets one block through authoritative world mutation.",
-		"/fill <x1> <y1> <z1> <x2> <y2> <z2> <block> - Atomically fills up to 32768 blocks.",
-	}, "\n")
-
-	assertSystemMessages(t, connection, expectedHelp)
+	assertSystemMessages(t, connection,
+		"/help", "/help <command>", "/seed",
+		"/time query daytime", "/time query gametime", "/time query day", "/time set day", "/time set noon", "/time set night", "/time set midnight", "/time set <time>", "/time add <time>",
+		"/gamemode <gamemode>", "/gamemode <gamemode> <targets>",
+		"/give <targets> <item>", "/give <targets> <item> <count>",
+		"/clear", "/clear <targets>", "/clear <targets> <item>", "/clear <targets> <item> <maxCount>",
+		"/teleport <location>", "/teleport <destination>", "/teleport <targets> <destination>", "/teleport <targets> <location>",
+		"/tp <location>", "/tp <destination>", "/tp <targets> <destination>", "/tp <targets> <location>",
+		"/setblock <position> <block>", "/setblock <position> <block> replace", "/setblock <position> <block> keep", "/setblock <position> <block> strict",
+		"/fill <from> <to> <block>", "/fill <from> <to> <block> replace", "/fill <from> <to> <block> keep", "/fill <from> <to> <block> outline", "/fill <from> <to> <block> hollow", "/fill <from> <to> <block> strict")
 
 	connection.reset()
 
-	executeCommand(t, session, "help seed")
+	executeCommand(t, session, "help time set")
 
-	assertSystemMessages(t, connection, "/seed - Shows the world seed.")
+	assertSystemMessages(t, connection, "/time set day", "/time set noon", "/time set night", "/time set midnight", "/time set <time>")
 
 	connection.reset()
 
 	executeCommand(t, session, "seed")
 
-	assertSystemMessages(t, connection, "Seed: 12345")
+	assertSystemComponents(t, connection, game.TranslatableText("commands.seed.success", game.LiteralText("12345").WithColor(game.TextColorGreen).WithClickEvent(game.ClickCopyToClipboard, "12345")))
 
 	connection.reset()
 
 	executeCommand(t, session, "SEED")
 
-	assertSystemMessages(t, connection, "Seed: 12345")
+	assertSyntaxError(t, connection, "SEED", 0, game.TranslatableText("command.unknown.command"))
 
 	connection.reset()
 
 	executeCommand(t, session, "help bogus")
 
-	assertSystemMessages(t, connection, "Unknown command \"bogus\"\nUsage: /help [command]")
+	assertSystemComponents(t, connection, game.TranslatableText("commands.help.failed").WithColor(game.TextColorRed))
 
 	connection.reset()
 
 	executeCommand(t, session, "seed extra")
 
-	assertSystemMessages(t, connection, "Invalid command syntax\nUsage: /seed")
+	assertSyntaxError(t, connection, "seed extra", 5, game.TranslatableText("command.unknown.argument"))
 
 	connection.reset()
 
 	executeCommand(t, session, "bogus")
 
-	assertSystemMessages(t, connection, "Unknown command: bogus")
+	assertSyntaxError(t, connection, "bogus", 0, game.TranslatableText("command.unknown.command"))
 
 	connection.reset()
 
 	executeCommand(t, session, "/")
 
-	assertSystemMessages(t, connection, "Unknown command")
+	assertSyntaxError(t, connection, "", 0, game.TranslatableText("command.unknown.command"))
 }
 
 func TestCommandTimeQueryAndSet(t *testing.T) {
@@ -289,52 +333,54 @@ func TestCommandTimeQueryAndSet(t *testing.T) {
 
 	session, connection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
 
-	executeCommand(t, session, "time query")
+	runtime.World.SetTime(48001, false)
 
-	assertSystemMessages(t, connection, "Time: 0")
+	for _, query := range []commandTimeQueryTestCase{
+		{"time query daytime", 1},
+		{"time query gametime", 0},
+		{"time query day", 2},
+	} {
+		connection.reset()
 
-	presets := map[string]int64{
-		"day":      1000,
-		"noon":     6000,
-		"night":    13000,
-		"midnight": 18000,
+		executeCommand(t, session, query.input)
+
+		assertSystemComponents(t, connection, game.TranslatableText("commands.time.query", game.LiteralText(fmt.Sprint(query.value))))
 	}
 
-	for _, preset := range []string{"day", "noon", "night", "midnight"} {
+	presets := map[string]int64{"day": 1000, "noon": 6000, "night": 13000, "midnight": 18000}
+	for preset, ticks := range presets {
 		connection.reset()
 
 		executeCommand(t, session, "time set "+preset)
 
-		assertSystemMessages(t, connection, fmt.Sprintf("Set time to %d", presets[preset]))
+		assertSystemComponents(t, connection, game.TranslatableText("commands.time.set", game.LiteralText(fmt.Sprint(ticks))))
 
 		dayTime := runtime.World.Time().DayTime
-		if dayTime != presets[preset] {
-			t.Fatalf("world day time after %s = %d, want %d", preset, dayTime, presets[preset])
+		if dayTime != ticks {
+			t.Fatalf("world day time after %s = %d, want %d", preset, dayTime, ticks)
 		}
 	}
 
-	connection.reset()
+	for _, test := range []commandTimeMutationTestCase{{"time set 4242", 4242}, {"time set 2t", 2}, {"time set 1.5s", 30}, {"time set 0.5d", 12000}, {"time add 0.5s", 12010}} {
+		connection.reset()
 
-	executeCommand(t, session, "time set 4242")
+		executeCommand(t, session, test.input)
 
-	assertSystemMessages(t, connection, "Set time to 4242")
+		if dayTime := runtime.World.Time().DayTime; dayTime != test.want {
+			t.Fatalf("day time after %q = %d, want %d", test.input, dayTime, test.want)
+		}
 
-	dayTime := runtime.World.Time().DayTime
-	if dayTime != 4242 {
-		t.Fatalf("world day time = %d, want 4242", dayTime)
+		assertSystemComponents(t, connection, game.TranslatableText("commands.time.set", game.LiteralText(fmt.Sprint(test.want))))
 	}
 
-	connection.reset()
+	for _, input := range []string{"time set -1", "time set 1x", "time set nope", "time set DAY", "time query DAY"} {
+		connection.reset()
+		executeCommand(t, session, input)
 
-	executeCommand(t, session, "time set -1")
-
-	assertSystemMessages(t, connection, "Invalid time \"-1\"\nUsage: /time query | /time set <day|noon|night|midnight|ticks>")
-
-	connection.reset()
-
-	executeCommand(t, session, "time bogus")
-
-	assertSystemMessages(t, connection, "Expected \"query\"\nUsage: /time query | /time set <day|noon|night|midnight|ticks>")
+		if len(packetsByID(t, connection, protocol.ClientboundSystemChatID)) != 2 {
+			t.Fatalf("%q did not produce a syntax failure and context", input)
+		}
+	}
 }
 
 func TestCommandTimeSetSynchronizesWorldTime(t *testing.T) {
@@ -365,14 +411,14 @@ func TestCommandTimeSetSynchronizesWorldTime(t *testing.T) {
 	}
 
 	assertTimeUpdatePacket(t, timeUpdates[0], 37, 1000, false)
-	assertSystemMessages(t, connection, "Set time to 1000")
+	assertSystemComponents(t, connection, game.TranslatableText("commands.time.set", game.LiteralText("1000")))
 }
 
 func TestCommandTargetsPlayersByName(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
 	bob, bobConnection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
-	alice, _ := newCommandTestSession(runtime, commandTestAliceUUID, "Alice")
+	alice, aliceConnection := newCommandTestSession(runtime, commandTestAliceUUID, "Alice")
 
 	joinTestSession(t, runtime, bob)
 	joinTestSession(t, runtime, alice)
@@ -380,6 +426,9 @@ func TestCommandTargetsPlayersByName(t *testing.T) {
 	bobConnection.reset()
 
 	executeCommand(t, bob, "gamemode spectator Alice")
+
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.gamemode.success.other", game.LiteralText("Alice"), game.TranslatableText("gameMode.spectator")))
+	assertSystemComponents(t, aliceConnection, game.TranslatableText("gameMode.changed", game.TranslatableText("gameMode.spectator")))
 
 	if mode := alice.snapshotPlayer().GameMode; mode != game.GameModeSpectator {
 		t.Fatalf("alice game mode = %d, want spectator", mode)
@@ -401,13 +450,13 @@ func TestCommandTargetsPlayersByName(t *testing.T) {
 
 	executeCommand(t, bob, "gamemode creative Nobody")
 
-	assertSystemMessages(t, bobConnection, "No player matched \"Nobody\"\nUsage: /gamemode <survival|creative|adventure|spectator> [targets]")
+	assertSyntaxError(t, bobConnection, "gamemode creative Nobody", 18, game.TranslatableText("argument.player.unknown"))
 
 	bobConnection.reset()
 
 	executeCommand(t, bob, "gamemode creative not!valid")
 
-	assertSystemMessages(t, bobConnection, "Invalid player name \"not!valid\"\nUsage: /gamemode <survival|creative|adventure|spectator> [targets]")
+	assertSyntaxError(t, bobConnection, "gamemode creative not!valid", 18, game.TranslatableText("argument.entity.invalid"))
 }
 
 func TestCommandSelectorResolution(t *testing.T) {
@@ -483,16 +532,45 @@ func TestCommandRejectsUnsupportedSelectors(t *testing.T) {
 
 	executeCommand(t, bob, "gamemode creative @e")
 
-	assertSystemMessages(t, bobConnection, "Unsupported selector \"@e\"\nUsage: /gamemode <survival|creative|adventure|spectator> [targets]")
+	assertSyntaxError(t, bobConnection, "gamemode creative @e", 18, game.TranslatableText("argument.player.entities"))
 
 	bobConnection.reset()
 
 	executeCommand(t, bob, "gamemode creative @a[gamemode=survival]")
 
-	assertSystemMessages(t, bobConnection, "Selector options are not supported\nUsage: /gamemode <survival|creative|adventure|spectator> [targets]")
+	assertSyntaxError(t, bobConnection, "gamemode creative @a[gamemode=survival]", 18, game.LiteralText("Selector options are not supported"))
 
 	if mode := bob.snapshotPlayer().GameMode; mode != game.GameModeSurvival {
 		t.Fatalf("bob game mode after rejected selectors = %d, want survival", mode)
+	}
+
+	alice, _ := newCommandTestSession(runtime, commandTestAliceUUID, "Alice")
+
+	joinTestSession(t, runtime, alice)
+
+	for _, test := range []commandTargetErrorTestCase{
+		{"teleport @a", game.TranslatableText("argument.player.toomany")},
+		{"teleport Nobody", game.TranslatableText("argument.player.unknown")},
+	} {
+		argument := runtime.commands.targetArgument("destination", false)
+
+		token := commandToken{value: strings.TrimPrefix(test.input, "teleport "), start: len("teleport "), end: len(test.input)}
+
+		_, _, err := argument.parse(playerCommandSource{session: bob}, []commandToken{token}, token.start)
+
+		syntax, valid := errors.AsType[commandSyntaxError](err)
+		if !valid {
+			t.Fatalf("single destination %q error = %v, want syntax error", token.value, err)
+		}
+
+		bobConnection.reset()
+
+		err = runtime.commands.sendSyntaxError(playerCommandSource{session: bob}, test.input, syntax)
+		if err != nil {
+			t.Fatalf("send destination error: %v", err)
+		}
+
+		assertSyntaxError(t, bobConnection, test.input, token.start, test.message)
 	}
 }
 
@@ -507,13 +585,13 @@ func TestCommandSuggestions(t *testing.T) {
 
 	source := playerCommandSource{session: bob}
 
-	commandNames := []string{"clear", "fill", "gamemode", "give", "help", "seed", "setblock", "time", "tp"}
+	commandNames := []string{"clear", "fill", "gamemode", "give", "help", "seed", "setblock", "teleport", "time", "tp"}
 	targets := []string{"@a", "@p", "@r", "@s", "Alice", "Bob"}
 
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/"), 1, 0, commandNames)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/he"), 1, 2, []string{"help"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help"), 1, 4, []string{"help"})
-	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help "), 6, 0, commandNames)
+	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help "), 6, 0, []string{"clear", "fill", "gamemode", "give", "help", "seed", "setblock", "teleport", "time", "time add", "time query", "time query day", "time query daytime", "time query gametime", "time set", "time set day", "time set midnight", "time set night", "time set noon", "tp"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/gamemode "), 10, 0, []string{"adventure", "creative", "spectator", "survival"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/gamemode creative "), 19, 0, targets)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/time set "), 10, 0, []string{"day", "midnight", "night", "noon"})
@@ -521,10 +599,10 @@ func TestCommandSuggestions(t *testing.T) {
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/give "), 6, 0, targets)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/tp "), 4, 0, targets)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/tp @"), 4, 1, []string{"@a", "@p", "@r", "@s"})
-	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/give Bob "), 10, 0, game.ItemNames)
-	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/give Bob stone_a"), 10, 7, []string{"stone_axe"})
-	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/setblock 0 70 0 "), 17, 0, game.BlockNames)
-	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/setblock 0 70 0 grass_bl"), 17, 8, []string{"grass_block"})
+	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/give Bob "), 10, 0, nil)
+	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/give Bob stone_a"), 10, 7, nil)
+	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/setblock 0 70 0 "), 17, 0, nil)
+	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/setblock 0 70 0 grass_bl"), 17, 8, nil)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/bogus "), 7, 0, nil)
 }
 
@@ -580,21 +658,21 @@ func TestCommandGameModeSynchronization(t *testing.T) {
 	assertGameModeInfoPacket(t, bobPackets[1], commandTestBobUUID, game.GameModeCreative)
 	assertGameModeInfoPacket(t, aliceConnection.packets(t)[0], commandTestBobUUID, game.GameModeCreative)
 
-	assertSystemMessages(t, bobConnection, "Set game mode for 1 player(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.gamemode.success.self", game.TranslatableText("gameMode.creative")))
 
 	bobConnection.reset()
 	aliceConnection.reset()
 
 	executeCommand(t, bob, "gamemode creative")
 
-	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundSystemChatID})
+	assertPacketIDs(t, bobConnection.packetIDs(t), nil)
 	assertPacketIDs(t, aliceConnection.packetIDs(t), nil)
 
 	bobConnection.reset()
 
 	executeCommand(t, bob, "gamemode bogus")
 
-	assertSystemMessages(t, bobConnection, "invalid game mode \"bogus\"\nUsage: /gamemode <survival|creative|adventure|spectator> [targets]")
+	assertSyntaxError(t, bobConnection, "gamemode bogus", 9, game.TranslatableText("argument.gamemode.invalid", game.LiteralText("bogus")))
 
 	if mode := bob.snapshotPlayer().GameMode; mode != game.GameModeCreative {
 		t.Fatalf("bob game mode after invalid mode = %d, want creative", mode)
@@ -625,7 +703,7 @@ func TestCommandGiveUpdatesTargetInventory(t *testing.T) {
 		t.Fatalf("carried stack after give = %+v, want empty", carried)
 	}
 
-	assertSystemMessages(t, bobConnection, "Gave 1 item(s) to 1 player(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.give.success.single", game.LiteralText("1"), game.TranslatableText("block.minecraft.stone"), game.LiteralText("Bob")))
 
 	bobConnection.reset()
 
@@ -699,25 +777,25 @@ func TestCommandGiveRejectsInvalidArguments(t *testing.T) {
 
 	executeCommand(t, bob, "give Bob air")
 
-	assertSystemMessages(t, bobConnection, "Unknown item \"air\"\nUsage: /give <targets> <item> [count]")
+	assertSyntaxError(t, bobConnection, "give Bob air", 9, game.LiteralText("Unknown item 'air'"))
 
 	bobConnection.reset()
 
 	executeCommand(t, bob, "give Bob bogus")
 
-	assertSystemMessages(t, bobConnection, "Unknown item \"bogus\"\nUsage: /give <targets> <item> [count]")
+	assertSyntaxError(t, bobConnection, "give Bob bogus", 9, game.LiteralText("Unknown item 'bogus'"))
 
 	bobConnection.reset()
 
 	executeCommand(t, bob, "give Bob stone 0")
 
-	assertSystemMessages(t, bobConnection, "count must be between 1 and 32767\nUsage: /give <targets> <item> [count]")
+	assertSyntaxError(t, bobConnection, "give Bob stone 0", 15, game.TranslatableText("argument.integer.low", game.LiteralText("0"), game.LiteralText("1")))
 
 	bobConnection.reset()
 
-	executeCommand(t, bob, "give Bob stone 32768")
+	executeCommand(t, bob, "give Bob stone 6401")
 
-	assertSystemMessages(t, bobConnection, "count must be between 1 and 32767\nUsage: /give <targets> <item> [count]")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.give.failed.toomanyitems", game.LiteralText("6400"), game.TranslatableText("block.minecraft.stone")).WithColor(game.TextColorRed))
 
 	player := bob.snapshotPlayer()
 	if player.Inventory.StateID != 0 {
@@ -752,7 +830,7 @@ func TestCommandGiveFailsWhenInventoryIsFull(t *testing.T) {
 
 	executeCommand(t, bob, "give Bob stone")
 
-	assertSystemMessages(t, bobConnection, "Command failed: give to Bob: inventory does not have enough space")
+	assertSystemMessages(t, bobConnection, "give to Bob: inventory does not have enough space")
 
 	player := bob.snapshotPlayer()
 	if player.Inventory.StateID != 0 {
@@ -875,7 +953,7 @@ func TestCommandGiveMultipleTargetsCommitsAtomically(t *testing.T) {
 			t.Fatal("failed multi-target give synchronized an inventory")
 		}
 
-		assertSystemMessages(t, bobConnection, "Command failed: give to Alice: inventory does not have enough space")
+		assertSystemMessages(t, bobConnection, "give to Alice: inventory does not have enough space")
 	})
 }
 
@@ -917,7 +995,7 @@ func TestCommandClearRemovesInventoryAndCursor(t *testing.T) {
 		}
 	}
 
-	assertSystemMessages(t, bobConnection, "Cleared 9 item(s) from 1 player(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.clear.success.single", game.LiteralText("9"), game.LiteralText("Bob")))
 
 	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundEntityEquipmentID})
 	assertEmptyEquipmentUpdate(t, observerConnection.packets(t)[0], bob.Player.EntityID, protocol.EquipmentSlotMainHand)
@@ -952,13 +1030,33 @@ func TestCommandClearFiltersByItem(t *testing.T) {
 		t.Fatalf("offhand dirt after filtered clear = %+v, want untouched", player.Inventory.Offhand)
 	}
 
-	assertSystemMessages(t, bobConnection, "Cleared 8 item(s) from 1 player(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.clear.success.single", game.LiteralText("8"), game.LiteralText("Bob")))
+
+	bobConnection.reset()
+
+	executeCommand(t, bob, "clear Bob dirt 0")
+
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.clear.test.single", game.LiteralText("3"), game.LiteralText("Bob")))
+
+	if !bob.snapshotPlayer().Inventory.Main[0].Equal(game.ItemStack{Item: game.ItemDirt, Count: 2}) {
+		t.Fatal("clear maxCount 0 mutated the inventory")
+	}
+
+	bobConnection.reset()
+
+	executeCommand(t, bob, "clear Bob dirt 2")
+
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.clear.success.single", game.LiteralText("2"), game.LiteralText("Bob")))
+
+	if !bob.snapshotPlayer().Inventory.Offhand.Equal(game.ItemStack{Item: game.ItemDirt, Count: 1}) {
+		t.Fatal("clear maxCount 2 removed more than two items")
+	}
 
 	bobConnection.reset()
 
 	executeCommand(t, bob, "clear Bob oak_log")
 
-	assertSystemMessages(t, bobConnection, "Cleared 0 item(s) from 1 player(s)")
+	assertSystemMessages(t, bobConnection, "No items were found on player Bob")
 
 	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundSystemChatID})
 }
@@ -979,7 +1077,7 @@ func TestCommandTeleportRelativeCoordinates(t *testing.T) {
 
 	bobConnection.reset()
 
-	executeCommand(t, bob, "tp ~1 ~2 ~-1")
+	executeCommand(t, bob, "teleport ~1 ~2 ~-1")
 
 	expected := game.Position{X: 9.5, Y: 72, Z: 7.5}
 
@@ -988,8 +1086,8 @@ func TestCommandTeleportRelativeCoordinates(t *testing.T) {
 		t.Fatalf("position after relative teleport = %+v, want %+v", player.Position, expected)
 	}
 
-	if player.Velocity != (game.Velocity{}) || player.OnGround {
-		t.Fatalf("movement state after teleport = %+v on ground %v, want reset velocity and airborne", player.Velocity, player.OnGround)
+	if player.Velocity != (game.Velocity{X: 3, Z: 5}) || !player.OnGround {
+		t.Fatalf("movement state after teleport = %+v on ground %v, want X/Z velocity retained, Y zero, and grounded", player.Velocity, player.OnGround)
 	}
 
 	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{
@@ -998,14 +1096,12 @@ func TestCommandTeleportRelativeCoordinates(t *testing.T) {
 	})
 
 	assertPlayerPositionPacket(t, bobConnection.packets(t)[0], 1, expected)
-	assertSystemMessages(t, bobConnection, "Teleported 1 player(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.teleport.success.location.single", game.LiteralText("Bob"), game.LiteralText("9.500000"), game.LiteralText("72.000000"), game.LiteralText("7.500000")))
 
-	usage := "Usage: /tp <destination|x y z> | /tp <targets> <destination|x y z>"
-
-	invalidTeleports := map[string]string{
-		"tp ^1 ^ ^":        "Local (^) coordinates are not supported\n" + usage,
-		"tp abc 64 0":      "Invalid coordinate \"abc\"\n" + usage,
-		"tp 30000001 64 0": "Coordinates are outside the valid world range\n" + usage,
+	invalidTeleports := map[string]game.TextComponent{
+		"teleport ^1 ^ ^":        game.TranslatableText("argument.entity.invalid"),
+		"teleport abc 64 0":      game.TranslatableText("argument.player.unknown"),
+		"teleport 30000001 64 0": game.TranslatableText("argument.player.unknown"),
 	}
 
 	for input, feedback := range invalidTeleports {
@@ -1018,7 +1114,7 @@ func TestCommandTeleportRelativeCoordinates(t *testing.T) {
 			t.Fatalf("position after %q = %+v, want %+v", input, position, expected)
 		}
 
-		assertSystemMessages(t, bobConnection, feedback)
+		assertSyntaxError(t, bobConnection, input, len("teleport "), feedback)
 	}
 
 	bobConnection.reset()
@@ -1102,7 +1198,7 @@ func TestCommandTeleportToPlayerAndMultipleTargets(t *testing.T) {
 
 	executeCommand(t, bob, "tp @a")
 
-	assertSystemMessages(t, bobConnection, "Missing destination\nUsage: /tp <destination|x y z> | /tp <targets> <destination|x y z>")
+	assertSyntaxError(t, bobConnection, "tp @a", 5, game.TranslatableText("command.unknown.argument"))
 }
 
 func TestCommandSetBlockMutatesWorldAndNotifiesSessions(t *testing.T) {
@@ -1132,7 +1228,7 @@ func TestCommandSetBlockMutatesWorldAndNotifiesSessions(t *testing.T) {
 	})
 
 	assertBlockUpdate(t, bobConnection.packets(t)[0], position, protocol.StoneBlockState)
-	assertSystemMessages(t, bobConnection, "Changed 1 block(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.setblock.success", game.LiteralText("3"), game.LiteralText("70"), game.LiteralText("-2")))
 
 	bobConnection.reset()
 
@@ -1148,20 +1244,20 @@ func TestCommandSetBlockMutatesWorldAndNotifiesSessions(t *testing.T) {
 	}
 
 	assertBlockUpdate(t, bobConnection.packets(t)[0], position, dirtState)
-	assertSystemMessages(t, bobConnection, "Changed 1 block(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.setblock.success", game.LiteralText("3"), game.LiteralText("70"), game.LiteralText("-2")))
 
 	bobConnection.reset()
 
 	executeCommand(t, bob, "setblock 3 70 -2 dirt")
 
-	assertSystemMessages(t, bobConnection, "Changed 0 block(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.setblock.failed").WithColor(game.TextColorRed))
 	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundSystemChatID})
 
 	bobConnection.reset()
 
 	executeCommand(t, bob, "setblock 3 70 -2 bogus")
 
-	assertSystemMessages(t, bobConnection, "Unknown block \"bogus\"\nUsage: /setblock <x> <y> <z> <block>")
+	assertSyntaxError(t, bobConnection, "setblock 3 70 -2 bogus", 17, game.LiteralText("Unknown block 'bogus'"))
 
 	if block := runtime.World.BlockAt(position); block != game.Dirt {
 		t.Fatalf("block after unknown block = %d, want dirt", block)
@@ -1183,7 +1279,7 @@ func TestCommandSetBlockMutatesWorldAndNotifiesSessions(t *testing.T) {
 	}
 
 	assertBlockUpdate(t, bobConnection.packets(t)[0], relative, cobblestoneState)
-	assertSystemMessages(t, bobConnection, "Changed 1 block(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.setblock.success", game.LiteralText("4"), game.LiteralText("70"), game.LiteralText("-2")))
 }
 
 func TestCommandSetBlockInsidePlayerRecalculatesPose(t *testing.T) {
@@ -1211,7 +1307,61 @@ func TestCommandSetBlockInsidePlayerRecalculatesPose(t *testing.T) {
 		t.Fatalf("pose after placing a block at head height = %d, want crawling", pose)
 	}
 
-	assertSystemMessages(t, bobConnection, "Changed 1 block(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.setblock.success", game.LiteralText("8"), game.LiteralText("71"), game.LiteralText("8")))
+}
+
+func TestCommandBlockMutationModes(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+	bob, connection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+
+	executeCommand(t, bob, "setblock 0 70 0 stone replace")
+
+	block := runtime.World.BlockAt(game.BlockPosition{X: 0, Y: 70, Z: 0})
+	if block != game.Stone {
+		t.Fatalf("replace setblock = %d, want stone", block)
+	}
+
+	connection.reset()
+
+	executeCommand(t, bob, "setblock 0 70 0 dirt keep")
+
+	assertSystemComponents(t, connection, game.TranslatableText("commands.setblock.failed").WithColor(game.TextColorRed))
+
+	executeCommand(t, bob, "setblock 0 70 0 dirt strict")
+
+	block = runtime.World.BlockAt(game.BlockPosition{X: 0, Y: 70, Z: 0})
+	if block != game.Dirt {
+		t.Fatalf("strict setblock = %d, want dirt", block)
+	}
+
+	executeCommand(t, bob, "fill 0 70 0 2 72 2 stone replace")
+	executeCommand(t, bob, "fill 0 70 0 2 72 2 dirt outline")
+
+	block = runtime.World.BlockAt(game.BlockPosition{X: 1, Y: 71, Z: 1})
+	if block != game.Stone {
+		t.Fatalf("outline fill changed center to %d, want stone", block)
+	}
+
+	executeCommand(t, bob, "fill 0 70 0 2 72 2 dirt hollow")
+
+	block = runtime.World.BlockAt(game.BlockPosition{X: 1, Y: 71, Z: 1})
+	if block != game.Air {
+		t.Fatalf("hollow fill center = %d, want air", block)
+	}
+
+	executeCommand(t, bob, "fill 0 70 0 2 72 2 stone keep")
+
+	block = runtime.World.BlockAt(game.BlockPosition{X: 1, Y: 71, Z: 1})
+	if block != game.Stone {
+		t.Fatalf("keep fill did not fill air center: %d", block)
+	}
+
+	executeCommand(t, bob, "fill 0 70 0 0 70 0 cobblestone strict")
+
+	block = runtime.World.BlockAt(game.BlockPosition{X: 0, Y: 70, Z: 0})
+	if block != game.Cobblestone {
+		t.Fatalf("strict fill = %d, want cobblestone", block)
+	}
 }
 
 func TestCommandFillMutatesRegion(t *testing.T) {
@@ -1252,13 +1402,13 @@ func TestCommandFillMutatesRegion(t *testing.T) {
 		assertBlockUpdate(t, packets[index], position, protocol.StoneBlockState)
 	}
 
-	assertSystemMessages(t, bobConnection, "Changed 4 block(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.fill.success", game.LiteralText("4")))
 
 	bobConnection.reset()
 
 	executeCommand(t, bob, "fill 0 70 0 1 70 1 stone")
 
-	assertSystemMessages(t, bobConnection, "Changed 0 block(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.fill.failed").WithColor(game.TextColorRed))
 	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundSystemChatID})
 
 	bobConnection.reset()
@@ -1271,7 +1421,7 @@ func TestCommandFillMutatesRegion(t *testing.T) {
 		}
 	}
 
-	assertSystemMessages(t, bobConnection, "Changed 4 block(s)")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.fill.success", game.LiteralText("4")))
 }
 
 func TestCommandFillVolumeLimits(t *testing.T) {
@@ -1282,7 +1432,7 @@ func TestCommandFillVolumeLimits(t *testing.T) {
 
 		executeCommand(t, bob, "fill 0 0 0 31 31 31 stone")
 
-		assertSystemMessages(t, bobConnection, "Changed 32768 block(s)")
+		assertSystemComponents(t, bobConnection, game.TranslatableText("commands.fill.success", game.LiteralText("32768")))
 
 		samples := []game.BlockPosition{
 			{X: 0, Y: 0, Z: 0},
@@ -1304,7 +1454,7 @@ func TestCommandFillVolumeLimits(t *testing.T) {
 
 		executeCommand(t, bob, "fill 0 0 0 32 31 31 stone")
 
-		assertSystemMessages(t, bobConnection, "Fill volume 33792 exceeds 32768 blocks\nUsage: /fill <x1> <y1> <z1> <x2> <y2> <z2> <block>")
+		assertSystemComponents(t, bobConnection, game.TranslatableText("commands.fill.toobig", game.LiteralText("32768"), game.LiteralText("33792")).WithColor(game.TextColorRed))
 
 		for _, position := range []game.BlockPosition{{X: 0, Y: 0, Z: 0}, {X: 32, Y: 31, Z: 31}} {
 			if block := runtime.World.BlockAt(position); block != game.Air {
@@ -1320,7 +1470,7 @@ func TestCommandFillVolumeLimits(t *testing.T) {
 
 		executeCommand(t, bob, "fill 0 0 0 32768 0 0 stone")
 
-		assertSystemMessages(t, bobConnection, "Fill volume exceeds 32768 blocks\nUsage: /fill <x1> <y1> <z1> <x2> <y2> <z2> <block>")
+		assertSystemComponents(t, bobConnection, game.TranslatableText("commands.fill.toobig", game.LiteralText("32768"), game.LiteralText("32769")).WithColor(game.TextColorRed))
 
 		for _, position := range []game.BlockPosition{{X: 0, Y: 0, Z: 0}, {X: 32768, Y: 0, Z: 0}} {
 			if block := runtime.World.BlockAt(position); block != game.Air {
@@ -1340,7 +1490,7 @@ func TestCommandFillVolumeLimits(t *testing.T) {
 
 		executeCommand(t, bob, "fill 0 70 0 1 70 0 dirt")
 
-		assertSystemMessages(t, bobConnection, "Changed 1 block(s)")
+		assertSystemComponents(t, bobConnection, game.TranslatableText("commands.fill.success", game.LiteralText("1")))
 
 		if block := runtime.World.BlockAt(game.BlockPosition{X: 0, Y: 70, Z: 0}); block != game.Dirt {
 			t.Fatalf("existing block after partial fill = %d, want dirt", block)
@@ -1370,7 +1520,7 @@ func TestCommandDispatchThroughPlayPackets(t *testing.T) {
 		t.Fatalf("handle chat command packet: %v", err)
 	}
 
-	assertSystemMessages(t, bobConnection, "Seed: -987")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.seed.success", game.LiteralText("-987").WithColor(game.TextColorGreen).WithClickEvent(game.ClickCopyToClipboard, "-987")))
 
 	var requestWriter protocol.PacketWriter
 
@@ -1444,6 +1594,55 @@ func commandNodeChild(nodes []protocol.CommandNode, parent *protocol.CommandNode
 	}
 
 	return nil
+}
+
+func indexCommandNode(nodes []protocol.CommandNode, target *protocol.CommandNode) int {
+	for index := range nodes {
+		if &nodes[index] == target {
+			return index
+		}
+	}
+
+	return -1
+}
+
+func assertSystemComponents(t *testing.T, connection *recordingConnection, expected ...game.TextComponent) {
+	t.Helper()
+
+	var actual []game.TextComponent
+
+	for _, packet := range connection.packets(t) {
+		if packet.ID == protocol.ClientboundSystemChatID {
+			actual = append(actual, decodeSystemComponent(t, packet.Data))
+		}
+	}
+
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("system components = %#v, want %#v", actual, expected)
+	}
+}
+
+func assertSyntaxError(t *testing.T, connection *recordingConnection, input string, cursor int, message game.TextComponent) {
+	t.Helper()
+
+	contextStart := max(0, cursor-10)
+	prefix := input[contextStart:cursor]
+
+	if contextStart > 0 {
+		prefix = "..." + prefix
+	}
+
+	context := game.LiteralText(prefix).WithColor(game.TextColorGray)
+	invalid := game.LiteralText(input[cursor:]).WithColor(game.TextColorRed).WithUnderline(true)
+
+	if invalid.Text != "" {
+		context = context.Append(invalid)
+	}
+
+	context = context.Append(game.TranslatableText("command.context.here").WithColor(game.TextColorRed).WithItalic(true))
+	context = context.WithClickEvent(game.ClickSuggestCommand, "/"+input)
+
+	assertSystemComponents(t, connection, message.WithColor(game.TextColorRed), context)
 }
 
 func packetsByID(t *testing.T, connection *recordingConnection, packetID int32) []protocol.Packet {

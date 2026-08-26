@@ -174,6 +174,15 @@ func (w *PacketWriter) AnonymousNBTString(value string) {
 	_, w.err = w.Write(encoded)
 }
 
+func (w *PacketWriter) AnonymousNBTText(component game.TextComponent) {
+	if w.err != nil {
+		return
+	}
+
+	w.Byte(10)
+	w.nbtTextCompound(component)
+}
+
 func (w *PacketWriter) Byte(value byte) {
 	if w.err != nil {
 		return
@@ -221,6 +230,90 @@ func (w *PacketWriter) UUID(value string) {
 
 func (w *PacketWriter) Err() error {
 	return w.err
+}
+
+func (w *PacketWriter) nbtTextCompound(component game.TextComponent) {
+	if component.Translate != "" {
+		w.nbtStringField("translate", component.Translate)
+
+		if len(component.Arguments) != 0 {
+			w.nbtTextList("with", component.Arguments)
+		}
+	} else {
+		w.nbtStringField("text", component.Text)
+	}
+
+	if len(component.Siblings) != 0 {
+		w.nbtTextList("extra", component.Siblings)
+	}
+
+	if component.Style.Color != "" {
+		w.nbtStringField("color", string(component.Style.Color))
+	}
+
+	if component.Style.Italic != nil {
+		w.nbtByteField("italic", *component.Style.Italic)
+	}
+
+	if component.Style.Underlined != nil {
+		w.nbtByteField("underlined", *component.Style.Underlined)
+	}
+
+	if component.Style.ClickEvent != nil {
+		w.nbtHeader(10, "click_event")
+		w.nbtStringField("action", string(component.Style.ClickEvent.Action))
+
+		field := "value"
+		if component.Style.ClickEvent.Action == game.ClickSuggestCommand {
+			field = "command"
+		}
+
+		w.nbtStringField(field, component.Style.ClickEvent.Value)
+		w.Byte(0)
+	}
+
+	w.Byte(0)
+}
+
+func (w *PacketWriter) nbtTextList(name string, components []game.TextComponent) {
+	w.nbtHeader(9, name)
+	w.Byte(10)
+	w.Int(int32(len(components)))
+
+	for _, component := range components {
+		w.nbtTextCompound(component)
+	}
+}
+
+func (w *PacketWriter) nbtStringField(name, value string) {
+	w.nbtHeader(8, name)
+	w.nbtString(value)
+}
+
+func (w *PacketWriter) nbtByteField(name string, value bool) {
+	w.nbtHeader(1, name)
+	w.Bool(value)
+}
+
+func (w *PacketWriter) nbtHeader(tag byte, name string) {
+	w.Byte(tag)
+	w.nbtString(name)
+}
+
+func (w *PacketWriter) nbtString(value string) {
+	if w.err != nil {
+		return
+	}
+
+	encoded := modifiedUTF8(value)
+	if len(encoded) > math.MaxUint16 {
+		w.err = errors.New("nbt string too long")
+
+		return
+	}
+
+	w.Short(int16(len(encoded)))
+	w.Raw(encoded)
 }
 
 func sanitizeLowPrecisionVectorValue(value float64) float64 {

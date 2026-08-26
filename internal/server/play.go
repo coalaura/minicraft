@@ -291,6 +291,17 @@ func (s *Session) sendInitialPlayState() error {
 		return err
 	}
 
+	player := s.snapshotPlayer()
+
+	err = s.writePacket(protocol.ClientboundEntityEventID, protocol.EntityEvent{
+		EntityID: player.EntityID,
+		Event:    26,
+	})
+
+	if err != nil {
+		return err
+	}
+
 	err = s.writePacket(protocol.ClientboundDeclareCommandsID, s.Runtime.commands.declaration())
 	if err != nil {
 		return err
@@ -354,6 +365,10 @@ func (s *Session) sendPlayLogin() error {
 }
 
 func (s *Session) sendSystemMessage(content string) error {
+	return s.sendSystemComponent(game.LiteralText(content))
+}
+
+func (s *Session) sendSystemComponent(content game.TextComponent) error {
 	var wr protocol.PacketWriter
 
 	message := protocol.SystemChat{Content: content}

@@ -1,8 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/config"
@@ -169,16 +173,196 @@ func assertSystemMessages(t *testing.T, connection *recordingConnection, expecte
 func decodeSystemMessage(t *testing.T, data []byte) string {
 	t.Helper()
 
-	if len(data) < 4 || data[0] != 8 {
+	return renderTextComponent(decodeSystemComponent(t, data))
+}
+
+func decodeSystemComponent(t *testing.T, data []byte) game.TextComponent {
+	t.Helper()
+
+	if len(data) < 2 || data[0] != 10 || data[len(data)-1] != 0 {
 		t.Fatalf("invalid system chat payload %x", data)
 	}
 
-	length := int(binary.BigEndian.Uint16(data[1:3]))
-	if len(data) != length+4 || data[len(data)-1] != 0 {
-		t.Fatalf("invalid system chat payload %x", data)
+	reader := bytes.NewReader(data[1:])
+
+	component := readTextComponent(t, reader)
+
+	actionBar, err := reader.ReadByte()
+	if err != nil || actionBar != 0 || reader.Len() != 0 {
+		t.Fatalf("invalid system chat trailer %x", data)
 	}
 
-	return string(data[3 : 3+length])
+	return component
+}
+
+func readTextComponent(t *testing.T, reader *bytes.Reader) game.TextComponent {
+	t.Helper()
+
+	var component game.TextComponent
+
+	for {
+		tag, err := reader.ReadByte()
+		if err != nil {
+			t.Fatalf("read text component tag: %v", err)
+		}
+
+		if tag == 0 {
+			return component
+		}
+
+		name := readNBTString(t, reader)
+
+		switch tag {
+		case 1:
+			value, readErr := reader.ReadByte()
+			if readErr != nil {
+				t.Fatalf("read text component byte: %v", readErr)
+			}
+
+			boolean := value != 0
+
+			switch name {
+			case "italic":
+				component.Style.Italic = &boolean
+			case "underlined":
+				component.Style.Underlined = &boolean
+			default:
+				t.Fatalf("unexpected text component byte field %q", name)
+			}
+		case 8:
+			value := readNBTString(t, reader)
+
+			switch name {
+			case "text":
+				component.Text = value
+			case "translate":
+				component.Translate = value
+			case "color":
+				component.Style.Color = game.TextColor(value)
+			default:
+				t.Fatalf("unexpected text component string field %q", name)
+			}
+		case 9:
+			components := readTextComponentList(t, reader)
+
+			switch name {
+			case "with":
+				component.Arguments = components
+			case "extra":
+				component.Siblings = components
+			default:
+				t.Fatalf("unexpected text component list field %q", name)
+			}
+		case 10:
+			if name != "click_event" {
+				t.Fatalf("unexpected text component compound field %q", name)
+			}
+
+			component.Style.ClickEvent = readClickEvent(t, reader)
+		default:
+			t.Fatalf("unexpected text component tag %d for %q", tag, name)
+		}
+	}
+}
+
+func readTextComponentList(t *testing.T, reader *bytes.Reader) []game.TextComponent {
+	t.Helper()
+
+	tag, err := reader.ReadByte()
+	if err != nil || tag != 10 {
+		t.Fatalf("invalid text component list tag %d: %v", tag, err)
+	}
+
+	var count int32
+
+	err = binary.Read(reader, binary.BigEndian, &count)
+	if err != nil || count < 0 {
+		t.Fatalf("invalid text component list length %d: %v", count, err)
+	}
+
+	components := make([]game.TextComponent, count)
+
+	for index := range components {
+		components[index] = readTextComponent(t, reader)
+	}
+
+	return components
+}
+
+func readClickEvent(t *testing.T, reader *bytes.Reader) *game.ClickEvent {
+	t.Helper()
+
+	event := &game.ClickEvent{}
+
+	for {
+		tag, err := reader.ReadByte()
+		if err != nil {
+			t.Fatalf("read click event tag: %v", err)
+		}
+
+		if tag == 0 {
+			return event
+		}
+
+		name := readNBTString(t, reader)
+
+		if tag != 8 {
+			t.Fatalf("unexpected click event tag %d for %q", tag, name)
+		}
+
+		value := readNBTString(t, reader)
+
+		switch name {
+		case "action":
+			event.Action = game.ClickAction(value)
+		case "command", "value":
+			event.Value = value
+		default:
+			t.Fatalf("unexpected click event field %q", name)
+		}
+	}
+}
+
+func readNBTString(t *testing.T, reader *bytes.Reader) string {
+	t.Helper()
+
+	var length uint16
+
+	err := binary.Read(reader, binary.BigEndian, &length)
+	if err != nil {
+		t.Fatalf("read nbt string length: %v", err)
+	}
+
+	value := make([]byte, length)
+
+	_, err = io.ReadFull(reader, value)
+	if err != nil {
+		t.Fatalf("read nbt string: %v", err)
+	}
+
+	return string(value)
+}
+
+func renderTextComponent(component game.TextComponent) string {
+	var value string
+
+	if component.Translate != "" {
+		arguments := make([]string, len(component.Arguments))
+
+		for index, argument := range component.Arguments {
+			arguments[index] = renderTextComponent(argument)
+		}
+
+		value = fmt.Sprintf("%s(%s)", component.Translate, strings.Join(arguments, ", "))
+	} else {
+		value = component.Text
+	}
+
+	for _, sibling := range component.Siblings {
+		value += renderTextComponent(sibling)
+	}
+
+	return value
 }
 
 func serverChatPacketData(message string) []byte {

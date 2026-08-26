@@ -383,7 +383,7 @@ func TestSignedCommandAppliesChatAcknowledgementAndExecutes(t *testing.T) {
 		t.Fatalf("handle signed command: %v", err)
 	}
 
-	assertSystemMessages(t, fixture.senderConnection, "Seed: 12345")
+	assertSystemComponents(t, fixture.senderConnection, game.TranslatableText("commands.seed.success", game.LiteralText("12345").WithColor(game.TextColorGreen).WithClickEvent(game.ClickCopyToClipboard, "12345")))
 }
 
 func TestSignedCommandRejectsUnsupportedArgumentSignatures(t *testing.T) {
