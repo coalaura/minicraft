@@ -52,27 +52,32 @@ func (registry *commandRegistry) registerHelp() {
 		Usage:       "/help [command]",
 		Description: "Shows available commands or help for one command.",
 		Patterns: []commandPattern{
-			{Execute: func(source CommandSource, _ []any) error {
-				lines := make([]string, 0, len(registry.commands))
+			{
+				Execute: func(source CommandSource, _ []any) error {
+					lines := make([]string, 0, len(registry.commands))
 
-				for _, command := range registry.commands {
-					if source.HasPermission(command.Permission) {
-						lines = append(lines, fmt.Sprintf("%s - %s", command.Usage, command.Description))
+					for _, command := range registry.commands {
+						if source.HasPermission(command.Permission) {
+							lines = append(lines, fmt.Sprintf("%s - %s", command.Usage, command.Description))
+						}
 					}
-				}
 
-				return source.Feedback(strings.Join(lines, "\n"))
-			}},
-			{Elements: []commandElement{commandName}, Execute: func(source CommandSource, values []any) error {
-				name := strings.ToLower(values[0].(string))
+					return source.Feedback(strings.Join(lines, "\n"))
+				},
+			},
+			{
+				Elements: []commandElement{commandName},
+				Execute: func(source CommandSource, values []any) error {
+					name := strings.ToLower(values[0].(string))
 
-				command := registry.byName[name]
-				if command == nil || !source.HasPermission(command.Permission) {
-					return commandSyntaxError{message: fmt.Sprintf("Unknown command %q", name)}
-				}
+					command := registry.byName[name]
+					if command == nil || !source.HasPermission(command.Permission) {
+						return commandSyntaxError{message: fmt.Sprintf("Unknown command %q", name)}
+					}
 
-				return source.Feedback(fmt.Sprintf("%s - %s", command.Usage, command.Description))
-			}},
+					return source.Feedback(fmt.Sprintf("%s - %s", command.Usage, command.Description))
+				},
+			},
 		},
 	})
 }
@@ -82,9 +87,11 @@ func (registry *commandRegistry) registerSeed() {
 		Name:        "seed",
 		Usage:       "/seed",
 		Description: "Shows the world seed.",
-		Patterns: []commandPattern{{Execute: func(source CommandSource, _ []any) error {
-			return source.Feedback(fmt.Sprintf("Seed: %d", registry.runtime.World.Seed))
-		}}},
+		Patterns: []commandPattern{{
+			Execute: func(source CommandSource, _ []any) error {
+				return source.Feedback(fmt.Sprintf("Seed: %d", registry.runtime.World.Seed))
+			},
+		}},
 	})
 }
 
@@ -104,20 +111,24 @@ func (registry *commandRegistry) registerTime() {
 		Usage:       "/time query | /time set <day|noon|night|midnight|ticks>",
 		Description: "Queries or sets the world time.",
 		Patterns: []commandPattern{
-			{Elements: []commandElement{commandLiteral{value: "query"}}, Execute: func(source CommandSource, _ []any) error {
-				return source.Feedback(fmt.Sprintf("Time: %d", registry.runtime.World.Time().DayTime))
-			}},
-			{Elements: []commandElement{commandLiteral{value: "set"}, timeValue}, Execute: func(source CommandSource, values []any) error {
-				state := registry.runtime.World.Time()
+			{
+				Elements: []commandElement{commandLiteral{value: "query"}},
+				Execute: func(source CommandSource, _ []any) error {
+					return source.Feedback(fmt.Sprintf("Time: %d", registry.runtime.World.Time().DayTime))
+				},
+			},
+			{
+				Elements: []commandElement{commandLiteral{value: "set"}, timeValue},
+				Execute: func(source CommandSource, values []any) error {
+					registry.runtime.World.SetDayTime(values[1].(commandTimeValue).ticks)
 
-				registry.runtime.World.SetTime(values[1].(commandTimeValue).ticks, state.DayCycle)
+					state := registry.runtime.World.Time()
 
-				state = registry.runtime.World.Time()
+					registry.runtime.broadcastTime(state)
 
-				registry.runtime.broadcastTime(state)
-
-				return source.Feedback(fmt.Sprintf("Set time to %d", state.DayTime))
-			}},
+					return source.Feedback(fmt.Sprintf("Set time to %d", state.DayTime))
+				},
+			},
 		},
 	})
 }
@@ -150,8 +161,14 @@ func (registry *commandRegistry) registerGameMode() {
 		Usage:       "/gamemode <survival|creative|adventure|spectator> [targets]",
 		Description: "Changes game mode for one or more players.",
 		Patterns: []commandPattern{
-			{Elements: []commandElement{mode}, Execute: execute},
-			{Elements: []commandElement{mode, targets}, Execute: execute},
+			{
+				Elements: []commandElement{mode},
+				Execute:  execute,
+			},
+			{
+				Elements: []commandElement{mode, targets},
+				Execute:  execute,
+			},
 		},
 	})
 }
@@ -173,11 +190,9 @@ func (registry *commandRegistry) registerGive() {
 			itemCount = values[2].(int32)
 		}
 
-		for _, target := range resolved {
-			err := registry.runtime.GiveItem(target, selectedItem, itemCount)
-			if err != nil {
-				return fmt.Errorf("give to %s: %w", target.snapshotPlayer().Name, err)
-			}
+		err := registry.runtime.GiveItems(resolved, selectedItem, itemCount)
+		if err != nil {
+			return err
 		}
 
 		return source.Feedback(fmt.Sprintf("Gave %d item(s) to %d player(s)", itemCount, len(resolved)))
@@ -188,8 +203,14 @@ func (registry *commandRegistry) registerGive() {
 		Usage:       "/give <targets> <item> [count]",
 		Description: "Adds items when every requested stack fits.",
 		Patterns: []commandPattern{
-			{Elements: []commandElement{targets, item}, Execute: execute},
-			{Elements: []commandElement{targets, item, count}, Execute: execute},
+			{
+				Elements: []commandElement{targets, item},
+				Execute:  execute,
+			},
+			{
+				Elements: []commandElement{targets, item, count},
+				Execute:  execute,
+			},
 		},
 	})
 }
@@ -233,9 +254,17 @@ func (registry *commandRegistry) registerClear() {
 		Usage:       "/clear [targets] [item]",
 		Description: "Clears all or matching inventory items.",
 		Patterns: []commandPattern{
-			{Execute: execute},
-			{Elements: []commandElement{targets}, Execute: execute},
-			{Elements: []commandElement{targets, item}, Execute: execute},
+			{
+				Execute: execute,
+			},
+			{
+				Elements: []commandElement{targets},
+				Execute:  execute,
+			},
+			{
+				Elements: []commandElement{targets, item},
+				Execute:  execute,
+			},
 		},
 	})
 }
@@ -244,9 +273,6 @@ func (registry *commandRegistry) registerTeleport() {
 	targets := registry.targetArgument("targets", true)
 	destination := registry.targetArgument("destination", false)
 
-	targets.declarationKey = "teleport-player"
-	destination.declarationKey = "teleport-player"
-
 	position := positionArgument("location", protocol.CommandParserVec3)
 
 	registry.register(&registeredCommand{
@@ -254,20 +280,34 @@ func (registry *commandRegistry) registerTeleport() {
 		Usage:       "/tp <destination|x y z> | /tp <targets> <destination|x y z>",
 		Description: "Teleports players to a player or coordinates.",
 		Patterns: []commandPattern{
-			{Elements: []commandElement{position}, Execute: func(source CommandSource, values []any) error {
-				return registry.teleport(source, registry.sourceTargets(source), values[0].(commandPosition).position)
-			}},
-			{Elements: []commandElement{destination}, Execute: func(source CommandSource, values []any) error {
-				player := values[0].([]*Session)[0].snapshotPlayer()
-				return registry.teleport(source, registry.sourceTargets(source), player.Position)
-			}},
-			{Elements: []commandElement{targets, destination}, Execute: func(source CommandSource, values []any) error {
-				player := values[1].([]*Session)[0].snapshotPlayer()
-				return registry.teleport(source, values[0].([]*Session), player.Position)
-			}},
-			{Elements: []commandElement{targets, position}, Execute: func(source CommandSource, values []any) error {
-				return registry.teleport(source, values[0].([]*Session), values[1].(commandPosition).position)
-			}},
+			{
+				Elements: []commandElement{position},
+				Execute: func(source CommandSource, values []any) error {
+					return registry.teleport(source, registry.sourceTargets(source), values[0].(commandPosition).position)
+				},
+			},
+			{
+				Elements: []commandElement{destination},
+				Execute: func(source CommandSource, values []any) error {
+					player := values[0].([]*Session)[0].snapshotPlayer()
+
+					return registry.teleport(source, registry.sourceTargets(source), player.Position)
+				},
+			},
+			{
+				Elements: []commandElement{targets, destination},
+				Execute: func(source CommandSource, values []any) error {
+					player := values[1].([]*Session)[0].snapshotPlayer()
+
+					return registry.teleport(source, values[0].([]*Session), player.Position)
+				},
+			},
+			{
+				Elements: []commandElement{targets, position},
+				Execute: func(source CommandSource, values []any) error {
+					return registry.teleport(source, values[0].([]*Session), values[1].(commandPosition).position)
+				},
+			},
 		},
 	})
 }
@@ -281,15 +321,19 @@ func (registry *commandRegistry) registerSetBlock() {
 		Name:        "setblock",
 		Usage:       "/setblock <x> <y> <z> <block>",
 		Description: "Sets one block through authoritative world mutation.",
-		Patterns: []commandPattern{{Elements: []commandElement{position, block}, Execute: func(source CommandSource, values []any) error {
-			blockPosition := toBlockPosition(values[0].(commandPosition).position)
-			result, err := registry.runtime.MutateWorldBlocks([]game.BlockChange{{Position: blockPosition, Replacement: values[1].(game.Block)}})
-			if err != nil {
-				return err
-			}
+		Patterns: []commandPattern{{
+			Elements: []commandElement{position, block},
+			Execute: func(source CommandSource, values []any) error {
+				blockPosition := toBlockPosition(values[0].(commandPosition).position)
 
-			return source.Feedback(fmt.Sprintf("Changed %d block(s)", len(result.Changes)))
-		}}},
+				result, err := registry.runtime.MutateWorldBlocks([]game.BlockChange{{Position: blockPosition, Replacement: values[1].(game.Block)}})
+				if err != nil {
+					return err
+				}
+
+				return source.Feedback(fmt.Sprintf("Changed %d block(s)", len(result.Changes)))
+			},
+		}},
 	})
 }
 
@@ -303,42 +347,45 @@ func (registry *commandRegistry) registerFill() {
 		Name:        "fill",
 		Usage:       "/fill <x1> <y1> <z1> <x2> <y2> <z2> <block>",
 		Description: "Atomically fills up to 32768 blocks.",
-		Patterns: []commandPattern{{Elements: []commandElement{first, second, block}, Execute: func(source CommandSource, values []any) error {
-			from := toBlockPosition(values[0].(commandPosition).position)
-			to := toBlockPosition(values[1].(commandPosition).position)
+		Patterns: []commandPattern{{
+			Elements: []commandElement{first, second, block},
+			Execute: func(source CommandSource, values []any) error {
+				from := toBlockPosition(values[0].(commandPosition).position)
+				to := toBlockPosition(values[1].(commandPosition).position)
 
-			minimum, maximum := orderedBlockPositions(from, to)
+				minimum, maximum := orderedBlockPositions(from, to)
 
-			xSize := int64(maximum.X) - int64(minimum.X) + 1
-			ySize := int64(maximum.Y) - int64(minimum.Y) + 1
-			zSize := int64(maximum.Z) - int64(minimum.Z) + 1
+				xSize := int64(maximum.X) - int64(minimum.X) + 1
+				ySize := int64(maximum.Y) - int64(minimum.Y) + 1
+				zSize := int64(maximum.Z) - int64(minimum.Z) + 1
 
-			if xSize > maxFillVolume || ySize > maxFillVolume || zSize > maxFillVolume {
-				return commandSyntaxError{message: fmt.Sprintf("Fill volume exceeds %d blocks", maxFillVolume)}
-			}
+				if xSize > maxFillVolume || ySize > maxFillVolume || zSize > maxFillVolume {
+					return commandSyntaxError{message: fmt.Sprintf("Fill volume exceeds %d blocks", maxFillVolume)}
+				}
 
-			volume := xSize * ySize * zSize
-			if volume > maxFillVolume {
-				return commandSyntaxError{message: fmt.Sprintf("Fill volume %d exceeds %d blocks", volume, maxFillVolume)}
-			}
+				volume := xSize * ySize * zSize
+				if volume > maxFillVolume {
+					return commandSyntaxError{message: fmt.Sprintf("Fill volume %d exceeds %d blocks", volume, maxFillVolume)}
+				}
 
-			changes := make([]game.BlockChange, 0, int(volume))
+				changes := make([]game.BlockChange, 0, int(volume))
 
-			for x := minimum.X; x <= maximum.X; x++ {
-				for y := minimum.Y; y <= maximum.Y; y++ {
-					for z := minimum.Z; z <= maximum.Z; z++ {
-						changes = append(changes, game.BlockChange{Position: game.BlockPosition{X: x, Y: y, Z: z}, Replacement: values[2].(game.Block)})
+				for x := minimum.X; x <= maximum.X; x++ {
+					for y := minimum.Y; y <= maximum.Y; y++ {
+						for z := minimum.Z; z <= maximum.Z; z++ {
+							changes = append(changes, game.BlockChange{Position: game.BlockPosition{X: x, Y: y, Z: z}, Replacement: values[2].(game.Block)})
+						}
 					}
 				}
-			}
 
-			result, err := registry.runtime.MutateWorldBlocks(changes)
-			if err != nil {
-				return err
-			}
+				result, err := registry.runtime.MutateWorldBlocks(changes)
+				if err != nil {
+					return err
+				}
 
-			return source.Feedback(fmt.Sprintf("Changed %d block(s)", len(result.Changes)))
-		}}},
+				return source.Feedback(fmt.Sprintf("Changed %d block(s)", len(result.Changes)))
+			},
+		}},
 	})
 }
 
@@ -375,7 +422,7 @@ func (registry *commandRegistry) targetArgument(name string, multiple bool) comm
 	return commandArgument{
 		name:           name,
 		parser:         protocol.CommandParserEntity,
-		properties:     protocol.CommandEntityProperties{OnlyEntities: !multiple, OnlyPlayers: true},
+		properties:     protocol.CommandEntityProperties{SingleTarget: !multiple, OnlyPlayers: true},
 		width:          1,
 		clientSuggests: true,
 		parseValue: func(source CommandSource, tokens []string) (any, error) {

@@ -92,7 +92,7 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 	}
 
 	entityProperties, validProperties := gamemodeTargets.Properties.(protocol.CommandEntityProperties)
-	if !validProperties || entityProperties.OnlyEntities || !entityProperties.OnlyPlayers {
+	if !validProperties || entityProperties.SingleTarget || !entityProperties.OnlyPlayers {
 		t.Fatalf("gamemode targets properties = %+v", gamemodeTargets.Properties)
 	}
 
@@ -131,21 +131,31 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 		t.Fatalf("tp destination argument = %+v", destination)
 	}
 
-	if tpTargets != nil {
-		t.Fatalf("tp has competing first entity argument %+v", tpTargets)
+	if tpTargets == nil || tpTargets.Executable || tpTargets.Parser != protocol.CommandParserEntity {
+		t.Fatalf("tp targets argument = %+v", tpTargets)
 	}
 
 	destinationProperties, validProperties := destination.Properties.(protocol.CommandEntityProperties)
-	if !validProperties || destinationProperties.OnlyEntities || !destinationProperties.OnlyPlayers {
-		t.Fatalf("tp destination properties = %+v, want multiple players allowed", destination.Properties)
+	if !validProperties || !destinationProperties.SingleTarget || !destinationProperties.OnlyPlayers {
+		t.Fatalf("tp destination properties = %+v, want one player", destination.Properties)
 	}
 
-	tpTargetDestination := commandNodeChild(declaration.Nodes, destination, protocol.CommandNodeArgument, "destination")
+	targetProperties, validProperties := tpTargets.Properties.(protocol.CommandEntityProperties)
+	if !validProperties || targetProperties.SingleTarget || !targetProperties.OnlyPlayers {
+		t.Fatalf("tp targets properties = %+v, want multiple players", tpTargets.Properties)
+	}
+
+	tpTargetDestination := commandNodeChild(declaration.Nodes, tpTargets, protocol.CommandNodeArgument, "destination")
 	if tpTargetDestination == nil || !tpTargetDestination.Executable {
 		t.Fatalf("tp targets destination argument = %+v, want executable", tpTargetDestination)
 	}
 
-	tpTargetLocation := commandNodeChild(declaration.Nodes, destination, protocol.CommandNodeArgument, "location")
+	tpTargetDestinationProperties, validProperties := tpTargetDestination.Properties.(protocol.CommandEntityProperties)
+	if !validProperties || !tpTargetDestinationProperties.SingleTarget || !tpTargetDestinationProperties.OnlyPlayers {
+		t.Fatalf("tp target destination properties = %+v, want one player", tpTargetDestination.Properties)
+	}
+
+	tpTargetLocation := commandNodeChild(declaration.Nodes, tpTargets, protocol.CommandNodeArgument, "location")
 	if tpTargetLocation == nil || !tpTargetLocation.Executable {
 		t.Fatalf("tp targets location argument = %+v, want executable", tpTargetLocation)
 	}
@@ -187,6 +197,27 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode command declaration: %v", err)
 	}
+}
+
+func TestCommandTreeRejectsIncompatibleNodeMerges(t *testing.T) {
+	existing := protocol.CommandNode{
+		Type:       protocol.CommandNodeArgument,
+		Name:       "target",
+		Parser:     protocol.CommandParserEntity,
+		Properties: protocol.CommandEntityProperties{SingleTarget: true, OnlyPlayers: true},
+	}
+
+	incoming := existing
+
+	incoming.Properties = protocol.CommandEntityProperties{OnlyPlayers: true}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("incompatible command node merge did not panic")
+		}
+	}()
+
+	mergeCommandTreeNode(&existing, incoming)
 }
 
 func TestCommandHelpUsageAndSeedFeedback(t *testing.T) {
@@ -309,7 +340,11 @@ func TestCommandTimeQueryAndSet(t *testing.T) {
 func TestCommandTimeSetSynchronizesWorldTime(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
-	runtime.World.SetTime(500, true)
+	runtime.World.SetTime(500, false)
+
+	for range 37 {
+		runtime.World.AdvanceTime()
+	}
 
 	session, connection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
 
@@ -320,8 +355,8 @@ func TestCommandTimeSetSynchronizesWorldTime(t *testing.T) {
 	executeCommand(t, session, "time set day")
 
 	state := runtime.World.Time()
-	if state.DayTime != 1000 || !state.DayCycle {
-		t.Fatalf("world time state = %+v, want day time 1000 with day cycle enabled", state)
+	if state.Age != 37 || state.DayTime != 1000 || state.DayCycle {
+		t.Fatalf("world time state = %+v, want age 37, day time 1000, and day cycle disabled", state)
 	}
 
 	timeUpdates := packetsByID(t, connection, protocol.ClientboundUpdateTimeID)
@@ -329,7 +364,7 @@ func TestCommandTimeSetSynchronizesWorldTime(t *testing.T) {
 		t.Fatalf("time update packets = %d, want 1", len(timeUpdates))
 	}
 
-	assertTimeUpdatePacket(t, timeUpdates[0], 0, 1000, true)
+	assertTimeUpdatePacket(t, timeUpdates[0], 37, 1000, false)
 	assertSystemMessages(t, connection, "Set time to 1000")
 }
 
@@ -491,6 +526,26 @@ func TestCommandSuggestions(t *testing.T) {
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/setblock 0 70 0 "), 17, 0, game.BlockNames)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/setblock 0 70 0 grass_bl"), 17, 8, []string{"grass_block"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/bogus "), 7, 0, nil)
+}
+
+func TestCommandSuggestionRangesUseUTF16Offsets(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	bob, _ := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+
+	source := playerCommandSource{session: bob}
+
+	first := commandArgument{name: "first", parser: protocol.CommandParserString, width: 1, parseValue: parseString}
+	second := commandArgument{name: "second", parser: protocol.CommandParserString, width: 1, parseValue: parseString, suggestValues: staticSuggestions([]string{"value"})}
+
+	runtime.commands.register(&registeredCommand{
+		Name:     "range",
+		Patterns: []commandPattern{{Elements: []commandElement{first, second}}},
+	})
+
+	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help café"), 6, 4, nil)
+	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help 😀"), 6, 2, nil)
+	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/range 😀 "), 10, 0, []string{"value"})
 }
 
 func TestCommandGameModeSynchronization(t *testing.T) {
@@ -744,6 +799,84 @@ func TestCommandGiveSynchronizesHeldEquipment(t *testing.T) {
 
 	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundEntityEquipmentID})
 	assertEquipmentUpdate(t, observerConnection.packets(t)[0], bob.Player.EntityID, protocol.EquipmentSlotMainHand, game.ItemStone, 1)
+}
+
+func TestCommandGiveMultipleTargetsCommitsAtomically(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		bob, bobConnection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+		alice, aliceConnection := newCommandTestSession(runtime, commandTestAliceUUID, "Alice")
+
+		joinTestSession(t, runtime, bob)
+		joinTestSession(t, runtime, alice)
+
+		bobConnection.reset()
+		aliceConnection.reset()
+
+		executeCommand(t, bob, "give @a stone 3")
+
+		for _, session := range []*Session{bob, alice} {
+			inventory := session.snapshotPlayer().Inventory
+			if inventory.StateID != 1 || !inventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemStone, Count: 3}) {
+				t.Fatalf("%s inventory after give = %+v", session.snapshotPlayer().Name, inventory)
+			}
+		}
+
+		if len(packetsByID(t, bobConnection, protocol.ClientboundContainerSetContentID)) != 1 || len(packetsByID(t, aliceConnection, protocol.ClientboundContainerSetContentID)) != 1 {
+			t.Fatal("successful multi-target give did not synchronize both inventories")
+		}
+
+		bobEquipment := packetsByID(t, aliceConnection, protocol.ClientboundEntityEquipmentID)
+		aliceEquipment := packetsByID(t, bobConnection, protocol.ClientboundEntityEquipmentID)
+
+		if len(bobEquipment) != 1 || len(aliceEquipment) != 1 {
+			t.Fatalf("equipment packets = bob %d alice %d, want one each", len(bobEquipment), len(aliceEquipment))
+		}
+
+		assertEquipmentUpdate(t, bobEquipment[0], bob.Player.EntityID, protocol.EquipmentSlotMainHand, game.ItemStone, 3)
+		assertEquipmentUpdate(t, aliceEquipment[0], alice.Player.EntityID, protocol.EquipmentSlotMainHand, game.ItemStone, 3)
+	})
+
+	t.Run("rollback", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		bob, bobConnection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+		alice, aliceConnection := newCommandTestSession(runtime, commandTestAliceUUID, "Alice")
+
+		for slot := range alice.Player.Inventory.Main {
+			alice.Player.Inventory.Main[slot] = game.ItemStack{Item: game.ItemDirt, Count: 64}
+		}
+
+		for slot := range alice.Player.Inventory.Hotbar {
+			alice.Player.Inventory.Hotbar[slot] = game.ItemStack{Item: game.ItemDirt, Count: 64}
+		}
+
+		joinTestSession(t, runtime, bob)
+		joinTestSession(t, runtime, alice)
+
+		bobConnection.reset()
+		aliceConnection.reset()
+
+		executeCommand(t, bob, "give @a stone")
+
+		bobInventory := bob.snapshotPlayer().Inventory
+		aliceInventory := alice.snapshotPlayer().Inventory
+
+		if bobInventory.StateID != 0 || !bobInventory.Hotbar[0].Empty() {
+			t.Fatalf("bob inventory changed during rollback: %+v", bobInventory)
+		}
+
+		if aliceInventory.StateID != 0 || !aliceInventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemDirt, Count: 64}) {
+			t.Fatalf("alice inventory changed during rollback: %+v", aliceInventory)
+		}
+
+		if len(packetsByID(t, bobConnection, protocol.ClientboundContainerSetContentID)) != 0 || len(packetsByID(t, aliceConnection, protocol.ClientboundContainerSetContentID)) != 0 {
+			t.Fatal("failed multi-target give synchronized an inventory")
+		}
+
+		assertSystemMessages(t, bobConnection, "Command failed: give to Alice: inventory does not have enough space")
+	})
 }
 
 func TestCommandClearRemovesInventoryAndCursor(t *testing.T) {

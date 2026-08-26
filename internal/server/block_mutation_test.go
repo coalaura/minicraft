@@ -160,6 +160,50 @@ func TestMultiBlockMutationIsAtomicAndSynchronizesEveryChange(t *testing.T) {
 	assertPacketIDs(t, observerConnection.packetIDs(t), nil)
 }
 
+func TestBulkBlockMutationUsesSectionUpdatesForLoadedChunks(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	loaded, loadedConnection := newBlockMutationTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Loaded", game.GameModeCreative)
+	partial, partialConnection := newBlockMutationTestSession(runtime, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Partial", game.GameModeCreative)
+	unloaded, unloadedConnection := newBlockMutationTestSession(runtime, "20212223-2425-2627-2829-2a2b2c2d2e2f", "Unloaded", game.GameModeCreative)
+
+	loaded.loadedChunks = map[LoadedChunk]struct{}{{X: 0, Z: 0}: {}, {X: 1, Z: 0}: {}}
+	partial.loadedChunks = map[LoadedChunk]struct{}{{X: 1, Z: 0}: {}}
+
+	joinTestSession(t, runtime, loaded)
+	joinTestSession(t, runtime, partial)
+	joinTestSession(t, runtime, unloaded)
+
+	loadedConnection.reset()
+	partialConnection.reset()
+	unloadedConnection.reset()
+
+	changes := make([]game.BlockChange, 0, 32)
+
+	for blockX := int32(0); blockX < 32; blockX++ {
+		changes = append(changes, game.BlockChange{Position: game.BlockPosition{X: blockX, Y: 70}, Replacement: game.Stone})
+	}
+
+	result, err := runtime.MutateWorldBlocks(changes)
+	if err != nil {
+		t.Fatalf("mutate world blocks: %v", err)
+	}
+
+	if !result.Changed || len(result.Changes) != len(changes) {
+		t.Fatalf("bulk mutation result = %+v, want %d changes", result, len(changes))
+	}
+
+	assertPacketIDs(t, loadedConnection.packetIDs(t), []int32{protocol.ClientboundSectionBlocksUpdateID, protocol.ClientboundSectionBlocksUpdateID})
+	assertPacketIDs(t, partialConnection.packetIDs(t), []int32{protocol.ClientboundSectionBlocksUpdateID})
+	assertPacketIDs(t, unloadedConnection.packetIDs(t), nil)
+
+	loadedPackets := loadedConnection.packets(t)
+
+	assertSectionBlocksUpdate(t, loadedPackets[0], 0, 4, 0, 16)
+	assertSectionBlocksUpdate(t, loadedPackets[1], 1, 4, 0, 16)
+	assertSectionBlocksUpdate(t, partialConnection.packets(t)[0], 1, 4, 0, 16)
+}
+
 func TestBlockMutationReleasesLocksBeforeBroadcast(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
@@ -628,6 +672,33 @@ func assertBlockUpdate(t *testing.T, packet protocol.Packet, position game.Block
 	err := reader.Err()
 	if err != nil {
 		t.Fatalf("decode block update: %v", err)
+	}
+}
+
+func assertSectionBlocksUpdate(t *testing.T, packet protocol.Packet, sectionX, sectionY, sectionZ int32, recordCount int32) {
+	t.Helper()
+
+	reader := protocol.NewPacketReader(packet.Data)
+
+	packedPosition := reader.Long()
+	expectedPosition := (int64(sectionX)&0x3FFFFF)<<42 | (int64(sectionZ)&0x3FFFFF)<<20 | int64(sectionY)&0xFFFFF
+
+	if packedPosition != expectedPosition {
+		t.Fatalf("section position = %#x, want %#x", packedPosition, expectedPosition)
+	}
+
+	actualCount := reader.VarInt()
+	if actualCount != recordCount {
+		t.Fatalf("section record count = %d, want %d", actualCount, recordCount)
+	}
+
+	for range actualCount {
+		reader.VarInt()
+	}
+
+	err := reader.Err()
+	if err != nil {
+		t.Fatalf("decode section blocks update: %v", err)
 	}
 }
 

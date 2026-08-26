@@ -12,6 +12,13 @@ const gameEventChangeGameMode = 3
 
 var errInventoryFull = errors.New("inventory does not have enough space")
 
+type commandInventoryChange struct {
+	session *Session
+	before  game.PlayerInventory
+	after   game.PlayerInventory
+	player  game.Player
+}
+
 func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) error {
 	r.lifecycleMu.Lock()
 
@@ -59,22 +66,69 @@ func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) error {
 }
 
 func (r *Runtime) GiveItem(session *Session, item game.Item, count int32) error {
+	return r.GiveItems([]*Session{session}, item, count)
+}
+
+func (r *Runtime) GiveItems(sessions []*Session, item game.Item, count int32) error {
 	if !item.Valid() || item == game.ItemAir || count <= 0 {
 		return errors.New("invalid item or count")
 	}
 
-	return r.mutateCommandInventory(session, func(inventory *game.PlayerInventory) error {
-		stack := game.ItemStack{Item: item, Count: count}
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
 
-		moveIntoSlots(inventory, &stack, slotRange(36, 44))
-		moveIntoSlots(inventory, &stack, slotRange(9, 35))
+	changes := make([]commandInventoryChange, 0, len(sessions))
 
-		if !stack.Empty() {
-			return errInventoryFull
+	for _, session := range sessions {
+		before := session.snapshotPlayer().Inventory
+		after := before.Clone()
+
+		err := giveItemToInventory(&after, item, count)
+		if err != nil {
+			return fmt.Errorf("give to %s: %w", session.snapshotPlayer().Name, err)
 		}
 
-		return nil
-	})
+		after.StateID = nextInventoryStateID(before.StateID)
+
+		changes = append(changes, commandInventoryChange{session: session, before: before, after: after})
+	}
+
+	for index := range changes {
+		change := &changes[index]
+
+		change.player, _ = change.session.updatePlayerState(func(player *game.Player) bool {
+			player.Inventory = change.after
+
+			return true
+		})
+	}
+
+	for _, change := range changes {
+		err := change.session.sendPlayerInventorySnapshot(change.after)
+		if err != nil {
+			return fmt.Errorf("synchronize inventory: %w", err)
+		}
+
+		equipment := changedEquipmentSlots(change.before, change.after, change.player.SelectedHotbarSlot)
+		if len(equipment) != 0 {
+			r.broadcastPlayerEquipment(change.session, change.player, equipment...)
+		}
+	}
+
+	return nil
+}
+
+func giveItemToInventory(inventory *game.PlayerInventory, item game.Item, count int32) error {
+	stack := game.ItemStack{Item: item, Count: count}
+
+	moveIntoSlots(inventory, &stack, slotRange(36, 44))
+	moveIntoSlots(inventory, &stack, slotRange(9, 35))
+
+	if !stack.Empty() {
+		return errInventoryFull
+	}
+
+	return nil
 }
 
 func (r *Runtime) ClearItems(session *Session, item *game.Item) (int32, error) {

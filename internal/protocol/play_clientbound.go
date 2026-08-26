@@ -355,6 +355,20 @@ type BlockUpdate struct {
 	State    int32
 }
 
+type SectionBlockUpdateRecord struct {
+	X     byte
+	Y     byte
+	Z     byte
+	State int32
+}
+
+type SectionBlocksUpdate struct {
+	SectionX int32
+	SectionY int32
+	SectionZ int32
+	Records  []SectionBlockUpdateRecord
+}
+
 type LevelEvent struct {
 	Event    int32
 	Position game.BlockPosition
@@ -417,7 +431,7 @@ type CommandStringProperties struct {
 }
 
 type CommandEntityProperties struct {
-	OnlyEntities bool
+	SingleTarget bool
 	OnlyPlayers  bool
 }
 
@@ -837,6 +851,26 @@ func (p BlockUpdate) Encode(wr *PacketWriter) {
 	wr.VarInt(p.State)
 }
 
+func (p SectionBlocksUpdate) Encode(wr *PacketWriter) {
+	sectionPosition := (int64(p.SectionX)&0x3FFFFF)<<42 |
+		(int64(p.SectionZ)&0x3FFFFF)<<20 |
+		int64(p.SectionY)&0xFFFFF
+
+	wr.Long(sectionPosition)
+	wr.VarInt(int32(len(p.Records)))
+
+	for _, record := range p.Records {
+		if record.X > 15 || record.Y > 15 || record.Z > 15 || record.State < 0 {
+			wr.err = errors.New("invalid section block update")
+
+			return
+		}
+
+		packed := record.State<<12 | int32(record.X)<<8 | int32(record.Z)<<4 | int32(record.Y)
+		wr.VarInt(packed)
+	}
+}
+
 func (p LevelEvent) Encode(wr *PacketWriter) {
 	wr.Int(p.Event)
 	wr.BlockPosition(p.Position)
@@ -942,7 +976,7 @@ func (p CommandStringProperties) encodeCommandParserProperties(wr *PacketWriter)
 }
 
 func (p CommandEntityProperties) encodeCommandParserProperties(wr *PacketWriter) {
-	wr.Byte(boolBits(p.OnlyEntities, p.OnlyPlayers))
+	wr.Byte(boolBits(p.SingleTarget, p.OnlyPlayers))
 }
 
 func (p CommandScoreHolderProperties) encodeCommandParserProperties(wr *PacketWriter) {

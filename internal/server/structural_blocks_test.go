@@ -17,6 +17,11 @@ type structuralConnectionTestCase struct {
 	disconnected string
 }
 
+type authoritativeDoorMutationTestCase struct {
+	name    string
+	changes []game.BlockChange
+}
+
 func TestSlabPlacementAndMerging(t *testing.T) {
 	for name, cursorY := range map[string]float32{"bottom": 0.25, "top": 0.75} {
 		t.Run(name, func(t *testing.T) {
@@ -279,6 +284,99 @@ func TestIronDoorBreaksAsTwoBlockStructureWithoutBecomingInteractable(t *testing
 			}
 		})
 	}
+}
+
+func TestAuthoritativeMutationsRemoveMatchingDoorHalves(t *testing.T) {
+	lowerPosition := game.BlockPosition{Y: 70}
+	upperPosition := game.BlockPosition{Y: 71}
+
+	lower := mustBlockState(t, game.OakDoor, game.BlockPropertyValue{Name: "half", Value: "lower"})
+	upper := mustBlockState(t, game.OakDoor, game.BlockPropertyValue{Name: "half", Value: "upper"})
+
+	tests := []authoritativeDoorMutationTestCase{
+		{name: "replace lower", changes: []game.BlockChange{{Position: lowerPosition, Replacement: game.Stone}}},
+		{name: "replace upper", changes: []game.BlockChange{{Position: upperPosition, Replacement: game.Stone}}},
+		{name: "replace both", changes: []game.BlockChange{{Position: lowerPosition, Replacement: game.Stone}, {Position: upperPosition, Replacement: game.Stone}}},
+		{name: "replace lower while fill includes upper", changes: []game.BlockChange{{Position: lowerPosition, Replacement: game.Air}, {Position: upperPosition, Replacement: upper}}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			world := &game.World{}
+
+			world.SetBlock(lowerPosition, lower)
+			world.SetBlock(upperPosition, upper)
+
+			runtime := NewRuntime(world)
+
+			result, err := runtime.MutateWorldBlocks(test.changes)
+			if err != nil {
+				t.Fatalf("mutate world blocks: %v", err)
+			}
+
+			if !result.Changed {
+				t.Fatalf("authoritative door mutation did not change world: %+v", result)
+			}
+
+			if len(test.changes) == 1 {
+				if world.BlockAt(test.changes[0].Position) != game.Stone {
+					t.Fatalf("changed door position %+v = %d, want stone", test.changes[0].Position, world.BlockAt(test.changes[0].Position))
+				}
+
+				otherPosition := lowerPosition
+				if test.changes[0].Position == lowerPosition {
+					otherPosition = upperPosition
+				}
+
+				if world.BlockAt(otherPosition) != game.Air {
+					t.Fatalf("matching door half at %+v = %d, want air", otherPosition, world.BlockAt(otherPosition))
+				}
+			} else if test.name == "replace both" {
+				if world.BlockAt(lowerPosition) != game.Stone || world.BlockAt(upperPosition) != game.Stone {
+					t.Fatalf("replaced door halves = %d, %d, want stone", world.BlockAt(lowerPosition), world.BlockAt(upperPosition))
+				}
+			} else if world.BlockAt(lowerPosition) != game.Air || world.BlockAt(upperPosition) != game.Air {
+				t.Fatalf("fill-intersected door halves = %d, %d, want air", world.BlockAt(lowerPosition), world.BlockAt(upperPosition))
+			}
+		})
+	}
+}
+
+func TestAuthoritativeBulkMutationRecalculatesStructuralNeighbors(t *testing.T) {
+	world := &game.World{}
+
+	runtime := NewRuntime(world)
+
+	changes := make([]game.BlockChange, 0, 9)
+
+	for blockX := int32(0); blockX < 9; blockX++ {
+		changes = append(changes, game.BlockChange{
+			Position:    game.BlockPosition{X: blockX, Y: 70},
+			Replacement: game.OakFence,
+		})
+	}
+
+	result, err := runtime.MutateWorldBlocks(changes)
+	if err != nil || !result.Changed {
+		t.Fatalf("place fence row: result=%+v err=%v", result, err)
+	}
+
+	assertBlockProperty(t, world.BlockAt(game.BlockPosition{X: 4, Y: 70}), "west", "true")
+	assertBlockProperty(t, world.BlockAt(game.BlockPosition{X: 4, Y: 70}), "east", "true")
+
+	removals := []game.BlockChange{
+		{Position: game.BlockPosition{X: 3, Y: 70}, Replacement: game.Air},
+		{Position: game.BlockPosition{X: 4, Y: 70}, Replacement: game.Air},
+		{Position: game.BlockPosition{X: 5, Y: 70}, Replacement: game.Air},
+	}
+
+	result, err = runtime.MutateWorldBlocks(removals)
+	if err != nil || !result.Changed {
+		t.Fatalf("remove fence row segment: result=%+v err=%v", result, err)
+	}
+
+	assertBlockProperty(t, world.BlockAt(game.BlockPosition{X: 2, Y: 70}), "east", "false")
+	assertBlockProperty(t, world.BlockAt(game.BlockPosition{X: 6, Y: 70}), "west", "false")
 }
 
 func TestTrapdoorAndFenceGateInteraction(t *testing.T) {

@@ -7,7 +7,10 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
-const blockInteractionRange = 6.0
+const (
+	blockInteractionRange       = 6.0
+	sectionBlockUpdateThreshold = 8
+)
 
 type BlockMutationAction uint8
 
@@ -44,6 +47,11 @@ type blockMutationDelivery struct {
 	poseChanges        []game.Player
 	waitForDelivery    <-chan struct{}
 	deliveryComplete   chan struct{}
+}
+
+type blockMutationSection struct {
+	position protocol.SectionBlocksUpdate
+	changes  []game.BlockChange
 }
 
 type BlockMutationPolicy interface {
@@ -111,6 +119,7 @@ func (r *Runtime) MutateWorldBlocks(changes []game.BlockChange) (BlockMutationRe
 	result, delivery, err := func() (BlockMutationResult, blockMutationDelivery, error) {
 		defer r.worldMutationMu.Unlock()
 
+		changes = r.withAuthoritativeDoorChanges(changes)
 		changes = r.withStructuralNeighborChanges(changes)
 
 		return r.mutateBlocksLocked(nil, BlockMutationPlace, changes, len(changes), true, false, true)
@@ -304,11 +313,24 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 		return result, fmt.Errorf("recalculate lighting: %w", lightingErr)
 	}
 
+	sections := blockMutationSections(delivery.changes, delivery.states)
+
 	for _, other := range delivery.recipients {
-		for index, change := range delivery.changes {
-			err := other.sendBlockUpdateIfLoaded(change.Position, delivery.states[index])
-			if err != nil {
-				other.Log.Warnf("[play] failed to update block: %v\n", err)
+		for _, section := range sections {
+			if len(section.position.Records) >= sectionBlockUpdateThreshold {
+				err := other.sendSectionBlocksUpdateIfLoaded(section.position)
+				if err != nil {
+					other.Log.Warnf("[play] failed to update block section: %v\n", err)
+				}
+
+				continue
+			}
+
+			for index, change := range section.changes {
+				err := other.sendBlockUpdateIfLoaded(change.Position, section.position.Records[index].State)
+				if err != nil {
+					other.Log.Warnf("[play] failed to update block: %v\n", err)
+				}
 			}
 		}
 
@@ -347,4 +369,42 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 	}
 
 	return result, nil
+}
+
+func blockMutationSections(changes []game.BlockChange, states []int32) []blockMutationSection {
+	sections := make([]blockMutationSection, 0)
+	sectionIndexes := make(map[[3]int32]int)
+
+	for index, change := range changes {
+		sectionX := change.Position.X >> 4
+		sectionY := change.Position.Y >> 4
+		sectionZ := change.Position.Z >> 4
+
+		key := [3]int32{sectionX, sectionY, sectionZ}
+
+		sectionIndex, exists := sectionIndexes[key]
+		if !exists {
+			sectionIndex = len(sections)
+			sectionIndexes[key] = sectionIndex
+
+			sections = append(sections, blockMutationSection{position: protocol.SectionBlocksUpdate{
+				SectionX: sectionX,
+				SectionY: sectionY,
+				SectionZ: sectionZ,
+			}})
+		}
+
+		section := &sections[sectionIndex]
+
+		section.position.Records = append(section.position.Records, protocol.SectionBlockUpdateRecord{
+			X:     byte(change.Position.X & 15),
+			Y:     byte(change.Position.Y & 15),
+			Z:     byte(change.Position.Z & 15),
+			State: states[index],
+		})
+
+		section.changes = append(section.changes, change)
+	}
+
+	return sections
 }

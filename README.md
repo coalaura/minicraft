@@ -18,6 +18,7 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Block breaking, placement and modification
 - Stateful block placement for common structures such as slabs, stairs, doors, trapdoors, fences and walls
 - Full player inventory and creative inventory interactions
+- Basic commands with client-side declarations and suggestions
 - Biomes, lighting, world time and a day/night cycle
 - Deterministic, seeded procedural world generation
 - In-memory world modifications without world save files
@@ -89,7 +90,6 @@ There are still gameplay systems and protocol features that are intentionally in
 ## Todo
 
 - Container inventories and interactions
-- Basic command system
 - Broader block placement and interaction support
 - Block entities
 - Chests and other inventory blocks

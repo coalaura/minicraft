@@ -3,9 +3,11 @@ package server
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/coalaura/minicraft/internal/game"
@@ -60,7 +62,6 @@ type commandLiteral struct {
 
 type commandArgument struct {
 	name           string
-	declarationKey string
 	parser         int32
 	properties     protocol.CommandParserProperties
 	width          int
@@ -256,11 +257,7 @@ func (argument commandArgument) commandNode() protocol.CommandNode {
 }
 
 func (argument commandArgument) key() string {
-	if argument.declarationKey != "" {
-		return "argument:" + argument.declarationKey
-	}
-
-	return fmt.Sprintf("argument:%s:%d", argument.name, argument.parser)
+	return fmt.Sprintf("argument:%s:%d:%#v:%t", argument.name, argument.parser, argument.properties, argument.clientSuggests)
 }
 
 func (registry *commandRegistry) declaration() protocol.DeclareCommands {
@@ -329,18 +326,14 @@ func findOrAppendTreeChild(parent *commandTreeNode, node protocol.CommandNode, k
 }
 
 func mergeCommandTreeNode(existing *protocol.CommandNode, incoming protocol.CommandNode) {
-	existingEntity, existingIsEntity := existing.Properties.(protocol.CommandEntityProperties)
-	incomingEntity, incomingIsEntity := incoming.Properties.(protocol.CommandEntityProperties)
+	compatible := existing.Type == incoming.Type &&
+		existing.Name == incoming.Name &&
+		existing.Parser == incoming.Parser &&
+		reflect.DeepEqual(existing.Properties, incoming.Properties) &&
+		existing.SuggestionType == incoming.SuggestionType
 
-	if existingIsEntity && incomingIsEntity {
-		existing.Properties = protocol.CommandEntityProperties{
-			OnlyEntities: existingEntity.OnlyEntities && incomingEntity.OnlyEntities,
-			OnlyPlayers:  existingEntity.OnlyPlayers && incomingEntity.OnlyPlayers,
-		}
-	}
-
-	if existing.SuggestionType == "" {
-		existing.SuggestionType = incoming.SuggestionType
+	if !compatible {
+		panic(fmt.Sprintf("incompatible command nodes share a declaration key: existing=%+v incoming=%+v", *existing, incoming))
 	}
 }
 
@@ -397,10 +390,14 @@ func (registry *commandRegistry) suggestions(source CommandSource, text string) 
 	}
 
 	return protocol.CommandSuggestions{
-		Start:   int32(offset + prefixStart),
-		Length:  int32(len(prefix)),
+		Start:   utf16Length(text[:offset+prefixStart]),
+		Length:  utf16Length(prefix),
 		Matches: matches,
 	}
+}
+
+func utf16Length(value string) int32 {
+	return int32(len(utf16.Encode([]rune(value))))
 }
 
 func (registry *commandRegistry) argumentSuggestions(source CommandSource, command *registeredCommand, completed []string, prefix string) []string {

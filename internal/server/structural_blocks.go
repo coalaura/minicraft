@@ -128,6 +128,58 @@ func isTwoBlockDoor(block game.Block) bool {
 	return block.Behavior() == game.BlockBehaviorDoor || sameBlockType(block, game.IronDoor)
 }
 
+func (r *Runtime) withAuthoritativeDoorChanges(primary []game.BlockChange) []game.BlockChange {
+	changeIndexes := make(map[game.BlockPosition]int, len(primary))
+
+	for index, change := range primary {
+		changeIndexes[change.Position] = index
+	}
+
+	changes := append([]game.BlockChange(nil), primary...)
+
+	for _, change := range primary {
+		current := r.World.BlockAt(change.Position)
+		if current == change.Replacement || !isTwoBlockDoor(current) {
+			continue
+		}
+
+		otherPosition := change.Position
+		if blockProperty(current, "half") == "upper" {
+			if otherPosition.Y == math.MinInt32 {
+				continue
+			}
+
+			otherPosition.Y--
+		} else {
+			if otherPosition.Y == math.MaxInt32 {
+				continue
+			}
+
+			otherPosition.Y++
+		}
+
+		other := r.World.BlockAt(otherPosition)
+		if !isTwoBlockDoor(other) || !sameBlockType(current, other) || blockProperty(current, "half") == blockProperty(other, "half") {
+			continue
+		}
+
+		otherIndex, changed := changeIndexes[otherPosition]
+		if changed {
+			if changes[otherIndex].Replacement == other {
+				changes[otherIndex].Replacement = game.Air
+			}
+
+			continue
+		}
+
+		changes = append(changes, game.BlockChange{Position: otherPosition, Replacement: game.Air})
+
+		changeIndexes[otherPosition] = len(changes) - 1
+	}
+
+	return changes
+}
+
 func (r *Runtime) withStructuralNeighborChanges(primary []game.BlockChange) []game.BlockChange {
 	overlay := make(map[game.BlockPosition]game.Block, len(primary)+8)
 	positions := make([]game.BlockPosition, 0, len(primary)*5)

@@ -112,6 +112,7 @@ const (
 	ClientboundPlayerPositionID               = 0x46
 	ClientboundRemoveEntitiesID               = 0x4B
 	ClientboundSetHeadRotationID              = 0x51
+	ClientboundSectionBlocksUpdateID          = 0x52
 	ClientboundSetCenterChunkID               = 0x5C
 	ClientboundEntityMetadataID               = 0x61
 	ClientboundEntityEquipmentID              = 0x64

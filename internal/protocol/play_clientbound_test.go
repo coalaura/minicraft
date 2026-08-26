@@ -92,6 +92,29 @@ func TestBlockUpdateEncode(t *testing.T) {
 	assertPacketEncoding(t, update, expected)
 }
 
+func TestSectionBlocksUpdateEncode(t *testing.T) {
+	if ClientboundSectionBlocksUpdateID != 0x52 {
+		t.Fatalf("section blocks update packet id = %#x, want 0x52", ClientboundSectionBlocksUpdateID)
+	}
+
+	update := SectionBlocksUpdate{
+		SectionX: -1,
+		SectionY: -2,
+		SectionZ: 3,
+		Records: []SectionBlockUpdateRecord{
+			{X: 1, Y: 2, Z: 3, State: 4},
+			{X: 15, Y: 14, Z: 13, State: 300},
+		},
+	}
+
+	assertPacketEncoding(t, update, []byte{
+		0xFF, 0xFF, 0xFC, 0x00, 0x00, 0x3F, 0xFF, 0xFE,
+		0x02,
+		0xB2, 0x82, 0x01,
+		0xDE, 0x9F, 0x4B,
+	})
+}
+
 func TestBlockChangedAckEncode(t *testing.T) {
 	assertPacketEncoding(t, BlockChangedAck{Sequence: 300}, []byte{0xAC, 0x02})
 }

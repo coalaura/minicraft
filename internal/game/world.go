@@ -114,6 +114,10 @@ func (w *World) SetTime(dayTime int64, dayCycle bool) {
 	w.dayCycle.Store(dayCycle)
 }
 
+func (w *World) SetDayTime(dayTime int64) {
+	w.dayTime.Store(dayTime)
+}
+
 func (w *World) Time() TimeState {
 	return TimeState{
 		Age:      w.age.Load(),
