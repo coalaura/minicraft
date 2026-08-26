@@ -137,7 +137,8 @@ func TestMultiBlockMutationIsAtomicAndSynchronizesEveryChange(t *testing.T) {
 	}
 
 	assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID})
-	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID})
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID})
+	assertSoundEvent(t, observerConnection.packets(t)[2], game.SoundBlockStonePlace)
 
 	third := game.BlockPosition{X: 2, Y: 70}
 	fourth := game.BlockPosition{X: 3, Y: 70}
@@ -735,5 +736,30 @@ func assertLevelEvent(t *testing.T, packet protocol.Packet, event int32, positio
 
 	if actualEvent != event || actualPosition != position || actualData != data || actualGlobal != global {
 		t.Fatalf("level event = event %d position %+v data %d global %v", actualEvent, actualPosition, actualData, actualGlobal)
+	}
+}
+
+func assertSoundEvent(t *testing.T, packet protocol.Packet, event game.SoundEvent) {
+	t.Helper()
+
+	reader := protocol.NewPacketReader(packet.Data)
+
+	actualEvent := reader.VarInt() - 1
+	actualSource := reader.VarInt()
+
+	reader.Int()
+	reader.Int()
+	reader.Int()
+	reader.Float()
+	reader.Float()
+	reader.Long()
+
+	err := reader.Err()
+	if err != nil {
+		t.Fatalf("decode sound: %v", err)
+	}
+
+	if actualEvent != int32(event) || actualSource != protocol.SoundSourceBlock {
+		t.Fatalf("sound = event %d source %d, want event %d source %d", actualEvent, actualSource, event, protocol.SoundSourceBlock)
 	}
 }

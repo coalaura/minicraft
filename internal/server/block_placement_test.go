@@ -21,6 +21,11 @@ type axisBlockPlacementTestCase struct {
 	axis int
 }
 
+type replaceabilityPlacementTestCase struct {
+	clicked game.Block
+	target  game.BlockPosition
+}
+
 func (g placementTestGenerator) BlockAt(_ int64, position game.BlockPosition) game.Block {
 	if position == g.clicked {
 		return game.Stone
@@ -106,9 +111,45 @@ func TestSuccessfulPlacementSynchronizesLoadedPlayers(t *testing.T) {
 	}
 
 	assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockChangedAckID})
-	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID})
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID})
 	assertPacketIDs(t, unloadedConnection.packetIDs(t), nil)
 	assertBlockUpdate(t, observerConnection.packets(t)[0], target, protocol.StoneBlockState)
+	assertSoundEvent(t, observerConnection.packets(t)[1], game.SoundBlockStonePlace)
+}
+
+func TestPlacementUsesVanillaReplaceabilityTarget(t *testing.T) {
+	tests := map[string]replaceabilityPlacementTestCase{
+		"short grass is replaced": {clicked: game.ShortGrass, target: game.BlockPosition{Y: 70}},
+		"flower targets adjacent": {clicked: game.Dandelion, target: game.BlockPosition{Y: 71}},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			clicked := game.BlockPosition{Y: 70}
+
+			world := &game.World{}
+
+			world.SetBlock(game.BlockPosition{Y: 69}, game.Dirt)
+			world.SetBlock(clicked, test.clicked)
+
+			runtime := NewRuntime(world)
+
+			actor, _ := newPlacementTestSession(runtime, clicked)
+
+			markPlacementChunksLoaded(actor, clicked, test.target)
+
+			joinTestSession(t, runtime, actor)
+
+			err := actor.handleUseItemOn(testUseItemOn(clicked, protocol.BlockFaceUp, protocol.MainHand, 110))
+			if err != nil {
+				t.Fatalf("place stone: %v", err)
+			}
+
+			if block := world.BlockAt(test.target); block != game.Stone {
+				t.Fatalf("placement target %+v = %d, want stone", test.target, block)
+			}
+		})
+	}
 }
 
 func TestDeniedPlacementResynchronizesAndAcknowledges(t *testing.T) {

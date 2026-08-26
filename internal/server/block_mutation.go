@@ -2,6 +2,8 @@ package server
 
 import (
 	"fmt"
+	"math/rand/v2"
+	"strings"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
@@ -35,18 +37,38 @@ type BlockMutationResult struct {
 	Changed bool
 }
 
+type blockMutationCause uint8
+
+const (
+	blockMutationStructural blockMutationCause = iota
+	blockMutationDirectPlace
+	blockMutationDirectBreak
+	blockMutationInteract
+	blockMutationSupportLoss
+)
+
+type blockMutationRecord struct {
+	change        game.BlockChange
+	previous      game.Block
+	previousState int32
+	cause         blockMutationCause
+}
+
 type blockMutationDelivery struct {
-	session            *Session
-	changes            []game.BlockChange
-	states             []int32
-	lightingChanges    []game.BlockChange
-	directBreakChanged bool
-	breakPosition      game.BlockPosition
-	breakState         int32
-	recipients         []*Session
-	poseChanges        []game.Player
-	waitForDelivery    <-chan struct{}
-	deliveryComplete   chan struct{}
+	session          *Session
+	changes          []game.BlockChange
+	states           []int32
+	records          []blockMutationRecord
+	lightingChanges  []game.BlockChange
+	recipients       []*Session
+	poseChanges      []game.Player
+	waitForDelivery  <-chan struct{}
+	deliveryComplete chan struct{}
+}
+
+type positionalBlockSound struct {
+	position game.BlockPosition
+	sound    protocol.Sound
 }
 
 type blockMutationSection struct {
@@ -212,23 +234,9 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	seen := make(map[game.BlockPosition]struct{}, len(changes))
 	committed := make([]game.BlockChange, 0, len(changes))
 	states := make([]int32, 0, len(changes))
-
-	breakState := int32(0)
-	directBreakChanged := false
+	records := make([]blockMutationRecord, 0, len(changes))
 
 	lightingChanges := make([]game.BlockChange, 0, len(changes))
-
-	if action == BlockMutationBreak && requiredChanges > 0 {
-		var err error
-
-		directBlock := r.World.BlockAt(changes[0].Position)
-		directBreakChanged = directBlock != changes[0].Replacement
-
-		breakState, err = protocolBlockState(directBlock)
-		if err != nil {
-			return BlockMutationResult{}, blockMutationDelivery{}, fmt.Errorf("encode broken block: %w", err)
-		}
-	}
 
 	for index, change := range changes {
 		if _, duplicate := seen[change.Position]; duplicate {
@@ -275,8 +283,30 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 			return BlockMutationResult{}, blockMutationDelivery{}, fmt.Errorf("encode replacement block: %w", err)
 		}
 
+		previousState, err := protocolBlockState(current)
+		if err != nil {
+			return BlockMutationResult{}, blockMutationDelivery{}, fmt.Errorf("encode previous block: %w", err)
+		}
+
+		cause := blockMutationStructural
+		if !authoritative && index < requiredChanges {
+			switch action {
+			case BlockMutationPlace:
+				cause = blockMutationDirectPlace
+			case BlockMutationBreak:
+				if index == 0 {
+					cause = blockMutationDirectBreak
+				}
+			case BlockMutationInteract:
+				cause = blockMutationInteract
+			}
+		} else if !authoritative && current != game.Air && change.Replacement == game.Air {
+			cause = blockMutationSupportLoss
+		}
+
 		committed = append(committed, change)
 		states = append(states, state)
+		records = append(records, blockMutationRecord{change: change, previous: current, previousState: previousState, cause: cause})
 	}
 
 	result.Allowed = true
@@ -300,17 +330,15 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	deliveryComplete := make(chan struct{})
 
 	delivery := blockMutationDelivery{
-		session:            session,
-		changes:            committed,
-		states:             states,
-		lightingChanges:    lightingChanges,
-		directBreakChanged: directBreakChanged,
-		breakPosition:      changes[0].Position,
-		breakState:         breakState,
-		recipients:         r.snapshotSessions(),
-		poseChanges:        poseChanges,
-		waitForDelivery:    r.blockMutationDeliveryTail,
-		deliveryComplete:   deliveryComplete,
+		session:          session,
+		changes:          committed,
+		states:           states,
+		records:          records,
+		lightingChanges:  lightingChanges,
+		recipients:       r.snapshotSessions(),
+		poseChanges:      poseChanges,
+		waitForDelivery:  r.blockMutationDeliveryTail,
+		deliveryComplete: deliveryComplete,
 	}
 
 	r.blockMutationDeliveryTail = deliveryComplete
@@ -342,6 +370,8 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 	}
 
 	sections := blockMutationSections(delivery.changes, delivery.states)
+	placementSound, hasPlacementSound := blockPlacementSound(delivery.records)
+	interactionSound, hasInteractionSound := blockInteractionSound(delivery.records)
 
 	for _, other := range delivery.recipients {
 		for _, section := range sections {
@@ -369,16 +399,29 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 			}
 		}
 
-		if delivery.directBreakChanged && other != delivery.session {
-			event := protocol.LevelEvent{
-				Event:    protocol.LevelEventBlockBreak,
-				Position: delivery.breakPosition,
-				Data:     delivery.breakState,
+		for _, record := range delivery.records {
+			if record.cause != blockMutationSupportLoss && (record.cause != blockMutationDirectBreak || other == delivery.session) {
+				continue
 			}
 
+			event := protocol.LevelEvent{Event: protocol.LevelEventBlockBreak, Position: record.change.Position, Data: record.previousState}
 			err := other.sendLevelEventIfLoaded(event)
 			if err != nil {
 				other.Log.Warnf("[play] failed to send block break effect: %v\n", err)
+			}
+		}
+
+		if hasPlacementSound && other != delivery.session {
+			err := other.sendSoundIfLoaded(placementSound.sound, placementSound.position)
+			if err != nil {
+				other.Log.Warnf("[play] failed to send block placement sound: %v\n", err)
+			}
+		}
+
+		if hasInteractionSound {
+			err := other.sendSoundIfLoaded(interactionSound.sound, interactionSound.position)
+			if err != nil {
+				other.Log.Warnf("[play] failed to send block interaction sound: %v\n", err)
 			}
 		}
 	}
@@ -397,6 +440,152 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 	}
 
 	return result, nil
+}
+
+func blockPlacementSound(records []blockMutationRecord) (positionalBlockSound, bool) {
+	for _, record := range records {
+		if record.cause != blockMutationDirectPlace {
+			continue
+		}
+
+		soundType := record.change.Replacement.SoundType()
+		if soundType.Place == 0 {
+			return positionalBlockSound{}, false
+		}
+
+		return positionalSound(record.change.Position, soundType.Place, (soundType.Volume+1)/2, soundType.Pitch*0.8), true
+	}
+
+	return positionalBlockSound{}, false
+}
+
+func blockInteractionSound(records []blockMutationRecord) (positionalBlockSound, bool) {
+	for _, record := range records {
+		if record.cause != blockMutationInteract {
+			continue
+		}
+
+		if blockProperty(record.previous, "powered") != blockProperty(record.change.Replacement, "powered") && record.change.Replacement.Behavior() == game.BlockBehaviorButton {
+			event, valid := blockButtonSound(record.change.Replacement, blockProperty(record.change.Replacement, "powered") == "true")
+			if !valid {
+				return positionalBlockSound{}, false
+			}
+
+			return positionalSound(record.change.Position, event, 1, 1), true
+		}
+
+		if blockProperty(record.previous, "open") == blockProperty(record.change.Replacement, "open") {
+			continue
+		}
+
+		event, valid := blockOpenCloseSound(record.change.Replacement, blockProperty(record.change.Replacement, "open") == "true")
+		if !valid {
+			return positionalBlockSound{}, false
+		}
+
+		return positionalSound(record.change.Position, event, 1, 0.9+rand.Float32()*0.1), true
+	}
+
+	return positionalBlockSound{}, false
+}
+
+func blockButtonSound(block game.Block, powered bool) (game.SoundEvent, bool) {
+	definition, valid := block.Definition()
+	if !valid || block.Behavior() != game.BlockBehaviorButton {
+		return 0, false
+	}
+
+	switch {
+	case strings.HasPrefix(definition.Name, "bamboo_"):
+		return chooseSound(powered, game.SoundBlockBambooWoodButtonClickOn, game.SoundBlockBambooWoodButtonClickOff), true
+	case strings.HasPrefix(definition.Name, "cherry_"):
+		return chooseSound(powered, game.SoundBlockCherryWoodButtonClickOn, game.SoundBlockCherryWoodButtonClickOff), true
+	case strings.HasPrefix(definition.Name, "crimson_") || strings.HasPrefix(definition.Name, "warped_"):
+		return chooseSound(powered, game.SoundBlockNetherWoodButtonClickOn, game.SoundBlockNetherWoodButtonClickOff), true
+	case definition.Name == "stone_button" || definition.Name == "polished_blackstone_button":
+		return chooseSound(powered, game.SoundBlockStoneButtonClickOn, game.SoundBlockStoneButtonClickOff), true
+	default:
+		return chooseSound(powered, game.SoundBlockWoodenButtonClickOn, game.SoundBlockWoodenButtonClickOff), true
+	}
+}
+
+func positionalSound(position game.BlockPosition, event game.SoundEvent, volume, pitch float32) positionalBlockSound {
+	return positionalBlockSound{
+		position: position,
+		sound: protocol.Sound{
+			Event:  protocol.SoundEventHolder{RegistryID: int32(event)},
+			Source: protocol.SoundSourceBlock,
+			X:      float64(position.X) + 0.5,
+			Y:      float64(position.Y) + 0.5,
+			Z:      float64(position.Z) + 0.5,
+			Volume: volume,
+			Pitch:  pitch,
+			Seed:   rand.Int64(),
+		},
+	}
+}
+
+func blockOpenCloseSound(block game.Block, open bool) (game.SoundEvent, bool) {
+	definition, valid := block.Definition()
+	if !valid {
+		return 0, false
+	}
+
+	variant := ""
+	switch {
+	case strings.HasPrefix(definition.Name, "bamboo_"):
+		variant = "bamboo"
+	case strings.HasPrefix(definition.Name, "cherry_"):
+		variant = "cherry"
+	case strings.HasPrefix(definition.Name, "crimson_") || strings.HasPrefix(definition.Name, "warped_"):
+		variant = "nether"
+	}
+
+	switch block.Behavior() {
+	case game.BlockBehaviorDoor:
+		switch variant {
+		case "bamboo":
+			return chooseSound(open, game.SoundBlockBambooWoodDoorOpen, game.SoundBlockBambooWoodDoorClose), true
+		case "cherry":
+			return chooseSound(open, game.SoundBlockCherryWoodDoorOpen, game.SoundBlockCherryWoodDoorClose), true
+		case "nether":
+			return chooseSound(open, game.SoundBlockNetherWoodDoorOpen, game.SoundBlockNetherWoodDoorClose), true
+		default:
+			return chooseSound(open, game.SoundBlockWoodenDoorOpen, game.SoundBlockWoodenDoorClose), true
+		}
+	case game.BlockBehaviorTrapdoor:
+		switch variant {
+		case "bamboo":
+			return chooseSound(open, game.SoundBlockBambooWoodTrapdoorOpen, game.SoundBlockBambooWoodTrapdoorClose), true
+		case "cherry":
+			return chooseSound(open, game.SoundBlockCherryWoodTrapdoorOpen, game.SoundBlockCherryWoodTrapdoorClose), true
+		case "nether":
+			return chooseSound(open, game.SoundBlockNetherWoodTrapdoorOpen, game.SoundBlockNetherWoodTrapdoorClose), true
+		default:
+			return chooseSound(open, game.SoundBlockWoodenTrapdoorOpen, game.SoundBlockWoodenTrapdoorClose), true
+		}
+	case game.BlockBehaviorFenceGate:
+		switch variant {
+		case "bamboo":
+			return chooseSound(open, game.SoundBlockBambooWoodFenceGateOpen, game.SoundBlockBambooWoodFenceGateClose), true
+		case "cherry":
+			return chooseSound(open, game.SoundBlockCherryWoodFenceGateOpen, game.SoundBlockCherryWoodFenceGateClose), true
+		case "nether":
+			return chooseSound(open, game.SoundBlockNetherWoodFenceGateOpen, game.SoundBlockNetherWoodFenceGateClose), true
+		default:
+			return chooseSound(open, game.SoundBlockFenceGateOpen, game.SoundBlockFenceGateClose), true
+		}
+	default:
+		return 0, false
+	}
+}
+
+func chooseSound(condition bool, whenTrue, whenFalse game.SoundEvent) game.SoundEvent {
+	if condition {
+		return whenTrue
+	}
+
+	return whenFalse
 }
 
 func blockMutationSections(changes []game.BlockChange, states []int32) []blockMutationSection {

@@ -381,12 +381,19 @@ func supportedFromBelow(blockAt func(game.BlockPosition) game.Block, position ga
 	support := blockAt(below)
 
 	definition, _ := block.Definition()
+	if isCarpet(definition.Name) {
+		return support != game.Air
+	}
 
 	if definition.Name == "snow" && sameBlockType(block, support) {
 		return blockPropertyInt(support, "layers") == 8
 	}
 
 	return support.Behavior() == game.BlockBehaviorSolid
+}
+
+func isCarpet(name string) bool {
+	return name == "moss_carpet" || name != "pale_moss_carpet" && strings.HasSuffix(name, "_carpet")
 }
 
 func buttonSupported(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) bool {

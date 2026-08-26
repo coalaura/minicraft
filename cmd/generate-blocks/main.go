@@ -113,7 +113,7 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	for _, block := range blocks {
 		fmt.Fprintf(
 			&output,
-			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Collision: %s, Emission: %d, LightFilter: %d",
+			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Collision: %s, Emission: %d, LightFilter: %d, Sound: %s, Replaceable: %t",
 			goName(block.Name),
 			block.Name,
 			goName(block.Name),
@@ -123,6 +123,8 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 			blockCollision(block),
 			block.EmitLight,
 			block.FilterLight,
+			blockSoundType(block),
+			blockReplaceable(block.Name),
 		)
 
 		if len(block.Properties) != 0 {
@@ -188,6 +190,61 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	}
 
 	return formatted, nil
+}
+
+func blockSoundType(block BlockDefinition) string {
+	name := block.Name
+
+	switch {
+	case name == "air" || strings.HasSuffix(name, "_air"):
+		return "BlockSoundEmpty"
+	case name == "grass_block" || isSimplePlant(name) || isFlower(name):
+		return "BlockSoundGrass"
+	case name == "glass" || name == "glass_pane" || strings.HasSuffix(name, "_stained_glass") || strings.HasSuffix(name, "_stained_glass_pane"):
+		return "BlockSoundGlass"
+	case name == "snow" || name == "snow_block":
+		return "BlockSoundSnow"
+	case name == "gold_block":
+		return "BlockSoundMetal"
+	case name == "candle" || strings.HasSuffix(name, "_candle"):
+		return "BlockSoundCandle"
+	case isSimpleCarpet(name):
+		return "BlockSoundWool"
+	case isWoodenBlock(name):
+		return "BlockSoundWood"
+	default:
+		return "BlockSoundStone"
+	}
+}
+
+func blockReplaceable(name string) bool {
+	switch name {
+	case "short_grass", "fern", "dead_bush", "bush", "short_dry_grass", "tall_dry_grass", "snow":
+		return true
+	default:
+		return false
+	}
+}
+
+func isFlower(name string) bool {
+	switch name {
+	case "dandelion", "poppy", "blue_orchid", "allium", "azure_bluet", "red_tulip", "orange_tulip", "white_tulip", "pink_tulip", "oxeye_daisy", "cornflower", "wither_rose", "lily_of_the_valley", "open_eyeblossom", "closed_eyeblossom":
+		return true
+	default:
+		return false
+	}
+}
+
+func isWoodenBlock(name string) bool {
+	woodParts := [...]string{"planks", "log", "wood", "stem", "hyphae", "door", "trapdoor", "fence", "fence_gate", "button", "pressure_plate"}
+
+	for _, part := range woodParts {
+		if strings.Contains(name, part) && !strings.HasPrefix(name, "iron_") && !strings.HasPrefix(name, "stone_") && !strings.HasPrefix(name, "polished_blackstone_") {
+			return true
+		}
+	}
+
+	return false
 }
 
 func stateEmission(block BlockDefinition, state uint16) uint8 {

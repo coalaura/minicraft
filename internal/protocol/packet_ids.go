@@ -119,5 +119,6 @@ const (
 	ClientboundEntityEquipmentID              = 0x64
 	ClientboundSetHeldSlotID                  = 0x67
 	ClientboundUpdateTimeID                   = 0x6F
+	ClientboundSoundID                        = 0x73
 	ClientboundSystemChatID                   = 0x77
 )

@@ -131,13 +131,16 @@ func TestSnowAndCandleStacking(t *testing.T) {
 
 			runtime := NewRuntime(world)
 
-			actor, _ := newPlacementTestSession(runtime, support)
+			actor, actorConnection := newPlacementTestSession(runtime, support)
+			observer, observerConnection := newPlacementTestSession(runtime, support)
 
 			actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: test.item, Count: 64}
 
 			markPlacementChunksLoaded(actor, support, position)
+			markPlacementChunksLoaded(observer, support, position)
 
 			joinTestSession(t, runtime, actor)
+			joinTestSession(t, runtime, observer)
 
 			err := actor.handleUseItemOn(testUseItemOn(support, protocol.BlockFaceUp, protocol.MainHand, 1))
 			if err != nil {
@@ -146,7 +149,19 @@ func TestSnowAndCandleStacking(t *testing.T) {
 
 			assertBlockProperty(t, world.BlockAt(position), test.property, "1")
 
-			for count := 2; count <= test.maximum; count++ {
+			actorConnection.reset()
+			observerConnection.reset()
+
+			err = actor.handleUseItemOn(testUseItemOn(position, protocol.BlockFaceUp, protocol.MainHand, 2))
+			if err != nil {
+				t.Fatalf("stack 2: %v", err)
+			}
+
+			assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockChangedAckID})
+			assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID})
+			assertSoundEvent(t, observerConnection.packets(t)[1], world.BlockAt(position).SoundType().Place)
+
+			for count := 3; count <= test.maximum; count++ {
 				err = actor.handleUseItemOn(testUseItemOn(position, protocol.BlockFaceUp, protocol.MainHand, int32(count)))
 				if err != nil {
 					t.Fatalf("stack %d: %v", count, err)
@@ -163,6 +178,45 @@ func TestSnowAndCandleStacking(t *testing.T) {
 			assertBlockProperty(t, world.BlockAt(position), test.property, blockPropertyValue(test.maximum))
 		})
 	}
+}
+
+func TestButtonInteractionPrecedesPlacementAndPlaysSound(t *testing.T) {
+	support := game.BlockPosition{Y: 69}
+	position := game.BlockPosition{Y: 70}
+
+	button := mustBlockState(t, game.OakButton,
+		game.BlockPropertyValue{Name: "face", Value: "floor"},
+		game.BlockPropertyValue{Name: "facing", Value: "south"},
+		game.BlockPropertyValue{Name: "powered", Value: "false"},
+	)
+
+	world := &game.World{}
+
+	world.SetBlock(support, game.Stone)
+	world.SetBlock(position, button)
+
+	runtime := NewRuntime(world)
+
+	actor, connection := newPlacementTestSession(runtime, position)
+
+	markPlacementChunksLoaded(actor, support, position, game.BlockPosition{Y: 71})
+
+	joinTestSession(t, runtime, actor)
+
+	connection.reset()
+
+	err := actor.handleUseItemOn(testUseItemOn(position, protocol.BlockFaceUp, protocol.MainHand, 30))
+	if err != nil {
+		t.Fatalf("press button: %v", err)
+	}
+
+	assertBlockProperty(t, world.BlockAt(position), "powered", "true")
+	if world.BlockAt(game.BlockPosition{Y: 71}) != game.Air {
+		t.Fatal("button interaction also placed held block")
+	}
+
+	assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID, protocol.ClientboundBlockChangedAckID})
+	assertSoundEvent(t, connection.packets(t)[1], game.SoundBlockWoodenButtonClickOn)
 }
 
 func TestCandleConvertsCake(t *testing.T) {
@@ -289,6 +343,103 @@ func TestSupportedPlantAndButtonBreakWithSupport(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPlayerBreakEmitsSupportLossEffects(t *testing.T) {
+	tests := []structuralSupportTestCase{
+		{name: "short grass", support: game.Dirt, block: game.ShortGrass},
+		{name: "snow", support: game.Stone, block: game.Snow},
+		{name: "carpet", support: game.Stone, block: game.WhiteCarpet},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			supportPosition := game.BlockPosition{Y: 69}
+			dependentPosition := game.BlockPosition{Y: 70}
+
+			world := &game.World{}
+
+			world.SetBlock(supportPosition, test.support)
+			world.SetBlock(dependentPosition, test.block)
+
+			runtime := NewRuntime(world)
+
+			actor, actorConnection := newPlacementTestSession(runtime, supportPosition)
+			observer, observerConnection := newPlacementTestSession(runtime, supportPosition)
+
+			markPlacementChunksLoaded(actor, supportPosition, dependentPosition)
+			markPlacementChunksLoaded(observer, supportPosition, dependentPosition)
+
+			joinTestSession(t, runtime, actor)
+			joinTestSession(t, runtime, observer)
+
+			actorConnection.reset()
+			observerConnection.reset()
+
+			dependentState, err := protocolBlockState(test.block)
+			if err != nil {
+				t.Fatalf("encode dependent block: %v", err)
+			}
+
+			result, err := runtime.MutateBlock(actor, BlockMutationBreak, supportPosition, game.Air)
+			if err != nil || !result.Changed {
+				t.Fatalf("break support: result=%+v err=%v", result, err)
+			}
+
+			if world.BlockAt(dependentPosition) != game.Air {
+				t.Fatal("dependent block survived support loss")
+			}
+
+			assertPacketIDs(t, actorConnection.packetIDs(t), []int32{
+				protocol.ClientboundBlockUpdateID,
+				protocol.ClientboundBlockUpdateID,
+				protocol.ClientboundLevelEventID,
+			})
+
+			assertLevelEvent(t, actorConnection.packets(t)[2], protocol.LevelEventBlockBreak, dependentPosition, dependentState, false)
+
+			assertPacketIDs(t, observerConnection.packetIDs(t), []int32{
+				protocol.ClientboundBlockUpdateID,
+				protocol.ClientboundBlockUpdateID,
+				protocol.ClientboundLevelEventID,
+				protocol.ClientboundLevelEventID,
+			})
+
+			assertLevelEvent(t, observerConnection.packets(t)[3], protocol.LevelEventBlockBreak, dependentPosition, dependentState, false)
+		})
+	}
+}
+
+func TestStructuralStateRecalculationHasNoBreakEffect(t *testing.T) {
+	grassPosition := game.BlockPosition{Y: 69}
+	snowPosition := game.BlockPosition{Y: 70}
+
+	world := &game.World{}
+
+	world.SetBlock(grassPosition, game.GrassBlock)
+
+	runtime := NewRuntime(world)
+
+	actor, actorConnection := newPlacementTestSession(runtime, grassPosition)
+	observer, observerConnection := newPlacementTestSession(runtime, grassPosition)
+
+	markPlacementChunksLoaded(actor, grassPosition, snowPosition)
+	markPlacementChunksLoaded(observer, grassPosition, snowPosition)
+
+	joinTestSession(t, runtime, actor)
+	joinTestSession(t, runtime, observer)
+
+	actorConnection.reset()
+	observerConnection.reset()
+
+	result, err := runtime.MutateBlock(actor, BlockMutationPlace, snowPosition, game.Snow)
+	if err != nil || !result.Changed {
+		t.Fatalf("place snow: result=%+v err=%v", result, err)
+	}
+
+	assertBlockProperty(t, world.BlockAt(grassPosition), "snowy", "true")
+	assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID})
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID})
 }
 
 func TestPointedDripstoneDirectionAndNeighborThickness(t *testing.T) {

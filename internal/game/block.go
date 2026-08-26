@@ -13,6 +13,8 @@ type BlockBehavior uint8
 
 type BlockCollision uint8
 
+type BlockSoundType uint8
+
 const (
 	BlockBehaviorNone BlockBehavior = iota
 	BlockBehaviorSolid
@@ -69,6 +71,8 @@ type BlockDefinition struct {
 	Collision    BlockCollision
 	Emission     uint8
 	LightFilter  uint8
+	Sound        BlockSoundType
+	Replaceable  bool
 	Properties   []BlockProperty
 }
 
@@ -143,6 +147,22 @@ func (block Block) LightProperties() (emission, filter uint8) {
 	properties := stateLightProperties[block]
 
 	return properties & 0x0f, properties >> 4
+}
+
+func (block Block) SoundType() BlockSound {
+	if !block.Valid() {
+		return BlockSound{}
+	}
+
+	return blockSounds[blockDefinitions[stateBlockIDs[block]].Sound]
+}
+
+func (block Block) Replaceable() bool {
+	if !block.Valid() {
+		return false
+	}
+
+	return blockDefinitions[stateBlockIDs[block]].Replaceable
 }
 
 func (block Block) SameLightProperties(other Block) bool {

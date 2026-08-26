@@ -42,6 +42,7 @@ const (
 	EquipmentSlotHead     byte = 5
 
 	LevelEventBlockBreak = 2001
+	SoundSourceBlock     = 4
 
 	maxCommandTreeNodes       = 32767
 	maxCommandNodeChildren    = 32767
@@ -379,6 +380,23 @@ type LevelEvent struct {
 	Position game.BlockPosition
 	Data     int32
 	Global   bool
+}
+
+type SoundEventHolder struct {
+	RegistryID int32
+	Name       string
+	FixedRange *float32
+}
+
+type Sound struct {
+	Event  SoundEventHolder
+	Source int32
+	X      float64
+	Y      float64
+	Z      float64
+	Volume float32
+	Pitch  float32
+	Seed   int64
 }
 
 type SystemChat struct {
@@ -886,6 +904,34 @@ func (p LevelEvent) Encode(wr *PacketWriter) {
 	wr.BlockPosition(p.Position)
 	wr.Int(p.Data)
 	wr.Bool(p.Global)
+}
+
+func (p SoundEventHolder) Encode(wr *PacketWriter) {
+	if p.Name == "" {
+		wr.VarInt(p.RegistryID + 1)
+
+		return
+	}
+
+	wr.VarInt(0)
+	wr.String(p.Name)
+	wr.Bool(p.FixedRange != nil)
+
+	if p.FixedRange != nil {
+		wr.Float(*p.FixedRange)
+	}
+}
+
+func (p Sound) Encode(wr *PacketWriter) {
+	p.Event.Encode(wr)
+
+	wr.VarInt(p.Source)
+	wr.Int(int32(p.X * 8))
+	wr.Int(int32(p.Y * 8))
+	wr.Int(int32(p.Z * 8))
+	wr.Float(p.Volume)
+	wr.Float(p.Pitch)
+	wr.Long(p.Seed)
 }
 
 func (p SystemChat) Encode(wr *PacketWriter) {

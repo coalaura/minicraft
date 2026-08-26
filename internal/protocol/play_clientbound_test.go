@@ -119,6 +119,32 @@ func TestBlockChangedAckEncode(t *testing.T) {
 	assertPacketEncoding(t, BlockChangedAck{Sequence: 300}, []byte{0xAC, 0x02})
 }
 
+func TestSoundPacketProtocol774(t *testing.T) {
+	if ClientboundSoundID != 0x73 {
+		t.Fatalf("sound packet id = %#x, want 0x73", ClientboundSoundID)
+	}
+
+	assertPacketEncoding(t, Sound{
+		Event:  SoundEventHolder{RegistryID: 1418},
+		Source: SoundSourceBlock,
+		X:      -1.25,
+		Y:      70.5,
+		Z:      3.875,
+		Volume: 1,
+		Pitch:  0.8,
+		Seed:   0x0102030405060708,
+	}, []byte{
+		0x8B, 0x0B,
+		0x04,
+		0xFF, 0xFF, 0xFF, 0xF6,
+		0x00, 0x00, 0x02, 0x34,
+		0x00, 0x00, 0x00, 0x1F,
+		0x3F, 0x80, 0x00, 0x00,
+		0x3F, 0x4C, 0xCC, 0xCD,
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+	})
+}
+
 func TestChatAndLevelEventPacketsProtocol774(t *testing.T) {
 	if ClientboundSystemChatID != 0x77 || ClientboundLevelEventID != 0x2D || ServerboundChatMessageID != 0x08 || ServerboundChatAckID != 0x05 || ServerboundChatSessionUpdateID != 0x09 || ClientboundPlayerChatID != 0x3F || ClientboundPlayDisconnectID != 0x20 {
 		t.Fatalf("chat/event packet ids = serverbound %#x system %#x level %#x", ServerboundChatMessageID, ClientboundSystemChatID, ClientboundLevelEventID)

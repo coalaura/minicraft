@@ -55,7 +55,14 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 		defer r.worldMutationMu.Unlock()
 
 		block := r.World.BlockAt(position)
+
 		blockDefinition, _ := block.Definition()
+
+		player := session.snapshotPlayer()
+
+		if secondaryUseActive(player) {
+			return false, BlockMutationResult{}, nil, blockMutationDelivery{}, nil
+		}
 
 		changes := make([]game.BlockChange, 0, 2)
 
@@ -96,6 +103,12 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 			open := blockProperty(block, "open") != "true"
 
 			changes = append(changes, game.BlockChange{Position: position, Replacement: withBlockProperties(block, game.BlockPropertyValue{Name: "open", Value: boolProperty(open)})})
+		case game.BlockBehaviorButton:
+			if blockProperty(block, "powered") == "true" {
+				return true, BlockMutationResult{Block: block, Allowed: true}, affected, blockMutationDelivery{}, nil
+			}
+
+			changes = append(changes, game.BlockChange{Position: position, Replacement: withBlockProperties(block, game.BlockPropertyValue{Name: "powered", Value: "true"})})
 		default:
 			return false, BlockMutationResult{}, nil, blockMutationDelivery{}, nil
 		}
@@ -110,13 +123,24 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 	return handled, result, affected, err
 }
 
+func secondaryUseActive(player game.Player) bool {
+	if !player.Sneaking {
+		return false
+	}
+
+	selected := player.SelectedHotbarSlot
+
+	mainHandHasItem := selected >= 0 && selected < len(player.Inventory.Hotbar) && !player.Inventory.Hotbar[selected].Empty()
+	return mainHandHasItem || !player.Inventory.Offhand.Empty()
+}
+
 func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, item game.Item) (BlockMutationResult, []game.BlockPosition, error) {
 	r.worldMutationMu.Lock()
 
 	result, affected, delivery, err := func() (BlockMutationResult, []game.BlockPosition, blockMutationDelivery, error) {
 		defer r.worldMutationMu.Unlock()
 
-		target, validTarget := placementTarget(interaction.Position, interaction.Face)
+		adjacent, validTarget := placementTarget(interaction.Position, interaction.Face)
 		if !validTarget {
 			return BlockMutationResult{}, []game.BlockPosition{interaction.Position}, blockMutationDelivery{}, nil
 		}
@@ -125,44 +149,51 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 		rule := item.PlacementRule()
 
 		if !placeable || rule == game.ItemPlacementUnsupported {
-			return BlockMutationResult{Block: r.World.BlockAt(target)}, []game.BlockPosition{target}, blockMutationDelivery{}, nil
+			return BlockMutationResult{Block: r.World.BlockAt(adjacent)}, []game.BlockPosition{adjacent}, blockMutationDelivery{}, nil
 		}
 
-		if !session.hasLoadedBlock(interaction.Position) || r.World.BlockAt(interaction.Position) == game.Air {
-			return BlockMutationResult{Block: r.World.BlockAt(target)}, []game.BlockPosition{target}, blockMutationDelivery{}, nil
+		clicked := r.World.BlockAt(interaction.Position)
+		if !session.hasLoadedBlock(interaction.Position) || clicked == game.Air {
+			return BlockMutationResult{Block: r.World.BlockAt(adjacent)}, []game.BlockPosition{adjacent}, blockMutationDelivery{}, nil
 		}
 
 		if rule == game.ItemPlacementSlab {
-			if replacement, merge := slabMerge(base, r.World.BlockAt(interaction.Position), interaction.Face, interaction.CursorY); merge {
+			if replacement, merge := slabMerge(base, clicked, interaction.Face, interaction.CursorY); merge {
 				changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
 				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
 				return result, []game.BlockPosition{interaction.Position}, delivery, err
 			}
 
-			if replacement, merge := slabMerge(base, r.World.BlockAt(target), oppositeBlockFace(interaction.Face), interaction.CursorY); merge {
-				changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: target, Replacement: replacement}})
+			if replacement, merge := slabMerge(base, r.World.BlockAt(adjacent), oppositeBlockFace(interaction.Face), interaction.CursorY); merge {
+				changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: adjacent, Replacement: replacement}})
 
 				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
-				return result, []game.BlockPosition{target}, delivery, err
+				return result, []game.BlockPosition{adjacent}, delivery, err
 			}
 		}
 
-		if replacement, convert := candleCakePlacement(base, rule, r.World.BlockAt(interaction.Position), interaction.Face); convert {
+		if replacement, convert := candleCakePlacement(base, rule, clicked, interaction.Face); convert {
 			changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
 			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
 			return result, []game.BlockPosition{interaction.Position}, delivery, err
 		}
 
-		if replacement, stack := stackedPlacement(base, rule, r.World.BlockAt(interaction.Position), interaction.Face); stack {
+		canStack := rule != game.ItemPlacementCandle || !secondaryUseActive(session.snapshotPlayer())
+		if replacement, stack := stackedPlacement(base, rule, clicked, interaction.Face); canStack && stack {
 			changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
 			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
 			return result, []game.BlockPosition{interaction.Position}, delivery, err
 		}
 
-		if r.World.BlockAt(target) != game.Air {
+		target := adjacent
+		if blockReplaceableBy(clicked, base) {
+			target = interaction.Position
+		}
+
+		if target != interaction.Position && r.World.BlockAt(target) != game.Air {
 			return BlockMutationResult{Block: r.World.BlockAt(target)}, []game.BlockPosition{target}, blockMutationDelivery{}, nil
 		}
 
@@ -224,6 +255,19 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 
 	result, err = r.completeBlockMutation(result, delivery, err)
 	return result, affected, err
+}
+
+func blockReplaceableBy(existing, replacement game.Block) bool {
+	if !existing.Replaceable() || sameBlockType(existing, replacement) {
+		return false
+	}
+
+	definition, _ := existing.Definition()
+	if definition.Name == "snow" {
+		return blockPropertyInt(existing, "layers") == 1
+	}
+
+	return true
 }
 
 func placementState(base game.Block, rule game.ItemPlacementRule, interaction protocol.UseItemOn, yaw float32) (game.Block, bool) {

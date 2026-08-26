@@ -2,6 +2,15 @@ package game
 
 import "testing"
 
+type blockSoundTestCase struct {
+	block       Block
+	soundType   BlockSoundType
+	place       SoundEvent
+	volume      float32
+	pitch       float32
+	replaceable bool
+}
+
 func TestGeneratedBlockCatalogueCoversVanillaStates(t *testing.T) {
 	if MaxBlockID != 1165 {
 		t.Fatalf("max block ID = %d, want 1165", MaxBlockID)
@@ -113,6 +122,40 @@ func TestEveryGeneratedStateRoundTripsThroughProperties(t *testing.T) {
 		if !ok || resolved != state {
 			t.Fatalf("state %d round trip = %d, %v", state, resolved, ok)
 		}
+	}
+}
+
+func TestGeneratedBlockSoundAndReplaceabilityMetadata(t *testing.T) {
+	tests := map[string]blockSoundTestCase{
+		"stone":       {block: Stone, soundType: BlockSoundStone, place: SoundBlockStonePlace, volume: 1, pitch: 1},
+		"grass":       {block: GrassBlock, soundType: BlockSoundGrass, place: SoundBlockGrassPlace, volume: 1, pitch: 1},
+		"short grass": {block: ShortGrass, soundType: BlockSoundGrass, place: SoundBlockGrassPlace, volume: 1, pitch: 1, replaceable: true},
+		"wood":        {block: OakPlanks, soundType: BlockSoundWood, place: SoundBlockWoodPlace, volume: 1, pitch: 1},
+		"glass":       {block: Glass, soundType: BlockSoundGlass, place: SoundBlockGlassPlace, volume: 1, pitch: 1},
+		"snow":        {block: Snow, soundType: BlockSoundSnow, place: SoundBlockSnowPlace, volume: 1, pitch: 1, replaceable: true},
+		"metal":       {block: GoldBlock, soundType: BlockSoundMetal, place: SoundBlockMetalPlace, volume: 1, pitch: 1.5},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			definition, valid := test.block.Definition()
+			if !valid {
+				t.Fatal("block definition is missing")
+			}
+
+			sound := test.block.SoundType()
+			if definition.Sound != test.soundType || sound.Place != test.place || sound.Volume != test.volume || sound.Pitch != test.pitch {
+				t.Fatalf("sound metadata = type %d sound %+v", definition.Sound, sound)
+			}
+
+			if test.block.Replaceable() != test.replaceable {
+				t.Fatalf("replaceable = %v, want %v", test.block.Replaceable(), test.replaceable)
+			}
+		})
+	}
+
+	if Dandelion.Replaceable() {
+		t.Fatal("flower is replaceable")
 	}
 }
 

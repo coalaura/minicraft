@@ -271,6 +271,29 @@ func (s *Session) sendLevelEventIfLoaded(event protocol.LevelEvent) error {
 	})
 }
 
+func (s *Session) sendSoundIfLoaded(sound protocol.Sound, position game.BlockPosition) error {
+	s.chunkMx.Lock()
+	defer s.chunkMx.Unlock()
+
+	if _, loaded := s.loadedChunks[blockLoadedChunk(position)]; !loaded {
+		return nil
+	}
+
+	var wr protocol.PacketWriter
+
+	sound.Encode(&wr)
+
+	err := wr.Err()
+	if err != nil {
+		return err
+	}
+
+	return s.writeRawPacket(protocol.Packet{
+		ID:   protocol.ClientboundSoundID,
+		Data: wr.Buffer.Bytes(),
+	})
+}
+
 func (s *Session) hasLoadedBlock(position game.BlockPosition) bool {
 	s.chunkMx.Lock()
 	defer s.chunkMx.Unlock()
