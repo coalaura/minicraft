@@ -16,6 +16,7 @@ Available reference data:
 * `entities.json` — entity IDs and properties
 * `biomes.json` — biome IDs and properties
 * `version.json` — Minecraft and protocol version information
+* `jars` — Minecraft client and server jar for 1.21.11 (from https://piston-data.mojang.com/)
 
 When implementing or verifying Minecraft protocol behavior, prefer these local, version-specific references before searching externally.
 
