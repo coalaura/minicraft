@@ -195,6 +195,7 @@ func TestDoorPlacementInteractionBreakingAndSynchronization(t *testing.T) {
 
 	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID})
 	assertSoundEvent(t, observerConnection.packets(t)[2], game.SoundBlockWoodenDoorOpen)
+	assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockChangedAckID})
 
 	actorConnection.reset()
 	observerConnection.reset()
@@ -205,7 +206,9 @@ func TestDoorPlacementInteractionBreakingAndSynchronization(t *testing.T) {
 	}
 
 	assertBlockProperty(t, world.BlockAt(lower), "open", "false")
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID})
 	assertSoundEvent(t, observerConnection.packets(t)[2], game.SoundBlockWoodenDoorClose)
+	assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockChangedAckID})
 
 	actorConnection.reset()
 	observerConnection.reset()
@@ -408,11 +411,16 @@ func TestTrapdoorAndFenceGateInteraction(t *testing.T) {
 
 			runtime := NewRuntime(world)
 
-			actor, connection := newPlacementTestSession(runtime, clicked)
+			actor, actorConnection := newPlacementTestSession(runtime, clicked)
+			observer, observerConnection := newPlacementTestSession(runtime, clicked)
 
 			actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: item, Count: 1}
 
+			markPlacementChunksLoaded(actor, clicked, target)
+			markPlacementChunksLoaded(observer, clicked, target)
+
 			joinTestSession(t, runtime, actor)
+			joinTestSession(t, runtime, observer)
 
 			interaction := testUseItemOn(clicked, protocol.BlockFaceEast, protocol.MainHand, 8)
 
@@ -428,7 +436,8 @@ func TestTrapdoorAndFenceGateInteraction(t *testing.T) {
 				assertBlockProperty(t, world.BlockAt(target), "facing", "east")
 			}
 
-			connection.reset()
+			actorConnection.reset()
+			observerConnection.reset()
 
 			err = actor.handleUseItemOn(testUseItemOn(target, protocol.BlockFaceUp, protocol.MainHand, 9))
 			if err != nil {
@@ -445,10 +454,12 @@ func TestTrapdoorAndFenceGateInteraction(t *testing.T) {
 				closeSound = game.SoundBlockWoodenTrapdoorClose
 			}
 
-			assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID, protocol.ClientboundBlockChangedAckID})
-			assertSoundEvent(t, connection.packets(t)[1], openSound)
+			assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockChangedAckID})
+			assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID})
+			assertSoundEvent(t, observerConnection.packets(t)[1], openSound)
 
-			connection.reset()
+			actorConnection.reset()
+			observerConnection.reset()
 
 			err = actor.handleUseItemOn(testUseItemOn(target, protocol.BlockFaceUp, protocol.MainHand, 10))
 			if err != nil {
@@ -456,7 +467,9 @@ func TestTrapdoorAndFenceGateInteraction(t *testing.T) {
 			}
 
 			assertBlockProperty(t, world.BlockAt(target), "open", "false")
-			assertSoundEvent(t, connection.packets(t)[1], closeSound)
+			assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockChangedAckID})
+			assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID})
+			assertSoundEvent(t, observerConnection.packets(t)[1], closeSound)
 		})
 	}
 }

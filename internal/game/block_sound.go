@@ -1,6 +1,6 @@
 package game
 
-type SoundEvent int32
+type SoundEvent string
 
 const (
 	BlockSoundEmpty BlockSoundType = iota
@@ -15,92 +15,92 @@ const (
 )
 
 const (
-	SoundBlockBambooWoodDoorClose      SoundEvent = 112
-	SoundBlockBambooWoodDoorOpen       SoundEvent = 113
-	SoundBlockBambooWoodTrapdoorClose  SoundEvent = 114
-	SoundBlockBambooWoodTrapdoorOpen   SoundEvent = 115
-	SoundBlockBambooWoodButtonClickOff SoundEvent = 116
-	SoundBlockBambooWoodButtonClickOn  SoundEvent = 117
-	SoundBlockBambooWoodFenceGateClose SoundEvent = 120
-	SoundBlockBambooWoodFenceGateOpen  SoundEvent = 121
+	SoundBlockBambooWoodDoorClose      SoundEvent = "minecraft:block.bamboo_wood_door.close"
+	SoundBlockBambooWoodDoorOpen       SoundEvent = "minecraft:block.bamboo_wood_door.open"
+	SoundBlockBambooWoodTrapdoorClose  SoundEvent = "minecraft:block.bamboo_wood_trapdoor.close"
+	SoundBlockBambooWoodTrapdoorOpen   SoundEvent = "minecraft:block.bamboo_wood_trapdoor.open"
+	SoundBlockBambooWoodButtonClickOff SoundEvent = "minecraft:block.bamboo_wood_button.click_off"
+	SoundBlockBambooWoodButtonClickOn  SoundEvent = "minecraft:block.bamboo_wood_button.click_on"
+	SoundBlockBambooWoodFenceGateClose SoundEvent = "minecraft:block.bamboo_wood_fence_gate.close"
+	SoundBlockBambooWoodFenceGateOpen  SoundEvent = "minecraft:block.bamboo_wood_fence_gate.open"
 
-	SoundBlockCandleBreak SoundEvent = 250
-	SoundBlockCandleFall  SoundEvent = 252
-	SoundBlockCandleHit   SoundEvent = 253
-	SoundBlockCandlePlace SoundEvent = 254
-	SoundBlockCandleStep  SoundEvent = 255
+	SoundBlockCandleBreak SoundEvent = "minecraft:block.candle.break"
+	SoundBlockCandleFall  SoundEvent = "minecraft:block.candle.fall"
+	SoundBlockCandleHit   SoundEvent = "minecraft:block.candle.hit"
+	SoundBlockCandlePlace SoundEvent = "minecraft:block.candle.place"
+	SoundBlockCandleStep  SoundEvent = "minecraft:block.candle.step"
 
-	SoundBlockCherryWoodDoorClose      SoundEvent = 296
-	SoundBlockCherryWoodDoorOpen       SoundEvent = 297
-	SoundBlockCherryWoodTrapdoorClose  SoundEvent = 298
-	SoundBlockCherryWoodTrapdoorOpen   SoundEvent = 299
-	SoundBlockCherryWoodButtonClickOff SoundEvent = 300
-	SoundBlockCherryWoodButtonClickOn  SoundEvent = 301
-	SoundBlockCherryWoodFenceGateClose SoundEvent = 304
-	SoundBlockCherryWoodFenceGateOpen  SoundEvent = 305
+	SoundBlockCherryWoodDoorClose      SoundEvent = "minecraft:block.cherry_wood_door.close"
+	SoundBlockCherryWoodDoorOpen       SoundEvent = "minecraft:block.cherry_wood_door.open"
+	SoundBlockCherryWoodTrapdoorClose  SoundEvent = "minecraft:block.cherry_wood_trapdoor.close"
+	SoundBlockCherryWoodTrapdoorOpen   SoundEvent = "minecraft:block.cherry_wood_trapdoor.open"
+	SoundBlockCherryWoodButtonClickOff SoundEvent = "minecraft:block.cherry_wood_button.click_off"
+	SoundBlockCherryWoodButtonClickOn  SoundEvent = "minecraft:block.cherry_wood_button.click_on"
+	SoundBlockCherryWoodFenceGateClose SoundEvent = "minecraft:block.cherry_wood_fence_gate.close"
+	SoundBlockCherryWoodFenceGateOpen  SoundEvent = "minecraft:block.cherry_wood_fence_gate.open"
 
-	SoundBlockFenceGateClose SoundEvent = 572
-	SoundBlockFenceGateOpen  SoundEvent = 573
+	SoundBlockFenceGateClose SoundEvent = "minecraft:block.fence_gate.close"
+	SoundBlockFenceGateOpen  SoundEvent = "minecraft:block.fence_gate.open"
 
-	SoundBlockGlassBreak SoundEvent = 665
-	SoundBlockGlassFall  SoundEvent = 666
-	SoundBlockGlassHit   SoundEvent = 667
-	SoundBlockGlassPlace SoundEvent = 668
-	SoundBlockGlassStep  SoundEvent = 669
+	SoundBlockGlassBreak SoundEvent = "minecraft:block.glass.break"
+	SoundBlockGlassFall  SoundEvent = "minecraft:block.glass.fall"
+	SoundBlockGlassHit   SoundEvent = "minecraft:block.glass.hit"
+	SoundBlockGlassPlace SoundEvent = "minecraft:block.glass.place"
+	SoundBlockGlassStep  SoundEvent = "minecraft:block.glass.step"
 
-	SoundBlockGrassBreak SoundEvent = 698
-	SoundBlockGrassFall  SoundEvent = 699
-	SoundBlockGrassHit   SoundEvent = 700
-	SoundBlockGrassPlace SoundEvent = 701
-	SoundBlockGrassStep  SoundEvent = 702
+	SoundBlockGrassBreak SoundEvent = "minecraft:block.grass.break"
+	SoundBlockGrassFall  SoundEvent = "minecraft:block.grass.fall"
+	SoundBlockGrassHit   SoundEvent = "minecraft:block.grass.hit"
+	SoundBlockGrassPlace SoundEvent = "minecraft:block.grass.place"
+	SoundBlockGrassStep  SoundEvent = "minecraft:block.grass.step"
 
-	SoundBlockMetalBreak SoundEvent = 894
-	SoundBlockMetalFall  SoundEvent = 895
-	SoundBlockMetalHit   SoundEvent = 896
-	SoundBlockMetalPlace SoundEvent = 897
-	SoundBlockMetalStep  SoundEvent = 900
+	SoundBlockMetalBreak SoundEvent = "minecraft:block.metal.break"
+	SoundBlockMetalFall  SoundEvent = "minecraft:block.metal.fall"
+	SoundBlockMetalHit   SoundEvent = "minecraft:block.metal.hit"
+	SoundBlockMetalPlace SoundEvent = "minecraft:block.metal.place"
+	SoundBlockMetalStep  SoundEvent = "minecraft:block.metal.step"
 
-	SoundBlockNetherWoodDoorClose      SoundEvent = 970
-	SoundBlockNetherWoodDoorOpen       SoundEvent = 971
-	SoundBlockNetherWoodTrapdoorClose  SoundEvent = 972
-	SoundBlockNetherWoodTrapdoorOpen   SoundEvent = 973
-	SoundBlockNetherWoodButtonClickOff SoundEvent = 974
-	SoundBlockNetherWoodButtonClickOn  SoundEvent = 975
-	SoundBlockNetherWoodFenceGateClose SoundEvent = 978
-	SoundBlockNetherWoodFenceGateOpen  SoundEvent = 979
+	SoundBlockNetherWoodDoorClose      SoundEvent = "minecraft:block.nether_wood_door.close"
+	SoundBlockNetherWoodDoorOpen       SoundEvent = "minecraft:block.nether_wood_door.open"
+	SoundBlockNetherWoodTrapdoorClose  SoundEvent = "minecraft:block.nether_wood_trapdoor.close"
+	SoundBlockNetherWoodTrapdoorOpen   SoundEvent = "minecraft:block.nether_wood_trapdoor.open"
+	SoundBlockNetherWoodButtonClickOff SoundEvent = "minecraft:block.nether_wood_button.click_off"
+	SoundBlockNetherWoodButtonClickOn  SoundEvent = "minecraft:block.nether_wood_button.click_on"
+	SoundBlockNetherWoodFenceGateClose SoundEvent = "minecraft:block.nether_wood_fence_gate.close"
+	SoundBlockNetherWoodFenceGateOpen  SoundEvent = "minecraft:block.nether_wood_fence_gate.open"
 
-	SoundBlockSnowBreak SoundEvent = 1385
-	SoundBlockSnowFall  SoundEvent = 1386
-	SoundBlockSnowHit   SoundEvent = 1392
-	SoundBlockSnowPlace SoundEvent = 1393
-	SoundBlockSnowStep  SoundEvent = 1394
+	SoundBlockSnowBreak SoundEvent = "minecraft:block.snow.break"
+	SoundBlockSnowFall  SoundEvent = "minecraft:block.snow.fall"
+	SoundBlockSnowHit   SoundEvent = "minecraft:block.snow.hit"
+	SoundBlockSnowPlace SoundEvent = "minecraft:block.snow.place"
+	SoundBlockSnowStep  SoundEvent = "minecraft:block.snow.step"
 
-	SoundBlockStoneBreak          SoundEvent = 1413
-	SoundBlockStoneButtonClickOff SoundEvent = 1414
-	SoundBlockStoneButtonClickOn  SoundEvent = 1415
-	SoundBlockStoneFall           SoundEvent = 1416
-	SoundBlockStoneHit            SoundEvent = 1417
-	SoundBlockStonePlace          SoundEvent = 1418
-	SoundBlockStoneStep           SoundEvent = 1421
+	SoundBlockStoneBreak          SoundEvent = "minecraft:block.stone.break"
+	SoundBlockStoneButtonClickOff SoundEvent = "minecraft:block.stone_button.click_off"
+	SoundBlockStoneButtonClickOn  SoundEvent = "minecraft:block.stone_button.click_on"
+	SoundBlockStoneFall           SoundEvent = "minecraft:block.stone.fall"
+	SoundBlockStoneHit            SoundEvent = "minecraft:block.stone.hit"
+	SoundBlockStonePlace          SoundEvent = "minecraft:block.stone.place"
+	SoundBlockStoneStep           SoundEvent = "minecraft:block.stone.step"
 
-	SoundBlockWoodenDoorClose      SoundEvent = 1604
-	SoundBlockWoodenDoorOpen       SoundEvent = 1605
-	SoundBlockWoodenTrapdoorClose  SoundEvent = 1606
-	SoundBlockWoodenTrapdoorOpen   SoundEvent = 1607
-	SoundBlockWoodenButtonClickOff SoundEvent = 1608
-	SoundBlockWoodenButtonClickOn  SoundEvent = 1609
+	SoundBlockWoodenDoorClose      SoundEvent = "minecraft:block.wooden_door.close"
+	SoundBlockWoodenDoorOpen       SoundEvent = "minecraft:block.wooden_door.open"
+	SoundBlockWoodenTrapdoorClose  SoundEvent = "minecraft:block.wooden_trapdoor.close"
+	SoundBlockWoodenTrapdoorOpen   SoundEvent = "minecraft:block.wooden_trapdoor.open"
+	SoundBlockWoodenButtonClickOff SoundEvent = "minecraft:block.wooden_button.click_off"
+	SoundBlockWoodenButtonClickOn  SoundEvent = "minecraft:block.wooden_button.click_on"
 
-	SoundBlockWoodBreak SoundEvent = 1612
-	SoundBlockWoodFall  SoundEvent = 1613
-	SoundBlockWoodHit   SoundEvent = 1614
-	SoundBlockWoodPlace SoundEvent = 1615
-	SoundBlockWoodStep  SoundEvent = 1616
+	SoundBlockWoodBreak SoundEvent = "minecraft:block.wood.break"
+	SoundBlockWoodFall  SoundEvent = "minecraft:block.wood.fall"
+	SoundBlockWoodHit   SoundEvent = "minecraft:block.wood.hit"
+	SoundBlockWoodPlace SoundEvent = "minecraft:block.wood.place"
+	SoundBlockWoodStep  SoundEvent = "minecraft:block.wood.step"
 
-	SoundBlockWoolBreak SoundEvent = 1617
-	SoundBlockWoolFall  SoundEvent = 1618
-	SoundBlockWoolHit   SoundEvent = 1619
-	SoundBlockWoolPlace SoundEvent = 1620
-	SoundBlockWoolStep  SoundEvent = 1621
+	SoundBlockWoolBreak SoundEvent = "minecraft:block.wool.break"
+	SoundBlockWoolFall  SoundEvent = "minecraft:block.wool.fall"
+	SoundBlockWoolHit   SoundEvent = "minecraft:block.wool.hit"
+	SoundBlockWoolPlace SoundEvent = "minecraft:block.wool.place"
+	SoundBlockWoolStep  SoundEvent = "minecraft:block.wool.step"
 )
 
 type BlockSound struct {

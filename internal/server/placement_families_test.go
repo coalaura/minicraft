@@ -197,13 +197,17 @@ func TestButtonInteractionPrecedesPlacementAndPlaysSound(t *testing.T) {
 
 	runtime := NewRuntime(world)
 
-	actor, connection := newPlacementTestSession(runtime, position)
+	actor, actorConnection := newPlacementTestSession(runtime, position)
+	observer, observerConnection := newPlacementTestSession(runtime, position)
 
 	markPlacementChunksLoaded(actor, support, position, game.BlockPosition{Y: 71})
+	markPlacementChunksLoaded(observer, support, position, game.BlockPosition{Y: 71})
 
 	joinTestSession(t, runtime, actor)
+	joinTestSession(t, runtime, observer)
 
-	connection.reset()
+	actorConnection.reset()
+	observerConnection.reset()
 
 	err := actor.handleUseItemOn(testUseItemOn(position, protocol.BlockFaceUp, protocol.MainHand, 30))
 	if err != nil {
@@ -215,8 +219,9 @@ func TestButtonInteractionPrecedesPlacementAndPlaysSound(t *testing.T) {
 		t.Fatal("button interaction also placed held block")
 	}
 
-	assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID, protocol.ClientboundBlockChangedAckID})
-	assertSoundEvent(t, connection.packets(t)[1], game.SoundBlockWoodenButtonClickOn)
+	assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockChangedAckID})
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID})
+	assertSoundEvent(t, observerConnection.packets(t)[1], game.SoundBlockWoodenButtonClickOn)
 }
 
 func TestCandleConvertsCake(t *testing.T) {

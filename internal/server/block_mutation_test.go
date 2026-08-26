@@ -744,7 +744,18 @@ func assertSoundEvent(t *testing.T, packet protocol.Packet, event game.SoundEven
 
 	reader := protocol.NewPacketReader(packet.Data)
 
-	actualEvent := reader.VarInt() - 1
+	holder := reader.VarInt()
+	if holder != 0 {
+		t.Fatalf("sound holder = %d, want direct holder", holder)
+	}
+
+	actualEvent := reader.String(32767)
+
+	hasFixedRange := reader.Bool()
+	if hasFixedRange {
+		reader.Float()
+	}
+
 	actualSource := reader.VarInt()
 
 	reader.Int()
@@ -759,7 +770,7 @@ func assertSoundEvent(t *testing.T, packet protocol.Packet, event game.SoundEven
 		t.Fatalf("decode sound: %v", err)
 	}
 
-	if actualEvent != int32(event) || actualSource != protocol.SoundSourceBlock {
-		t.Fatalf("sound = event %d source %d, want event %d source %d", actualEvent, actualSource, event, protocol.SoundSourceBlock)
+	if actualEvent != string(event) || actualSource != protocol.SoundSourceBlock {
+		t.Fatalf("sound = event %q source %d, want event %q source %d", actualEvent, actualSource, event, protocol.SoundSourceBlock)
 	}
 }

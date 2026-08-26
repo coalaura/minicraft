@@ -418,7 +418,7 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 			}
 		}
 
-		if hasInteractionSound {
+		if hasInteractionSound && other != delivery.session {
 			err := other.sendSoundIfLoaded(interactionSound.sound, interactionSound.position)
 			if err != nil {
 				other.Log.Warnf("[play] failed to send block interaction sound: %v\n", err)
@@ -449,7 +449,7 @@ func blockPlacementSound(records []blockMutationRecord) (positionalBlockSound, b
 		}
 
 		soundType := record.change.Replacement.SoundType()
-		if soundType.Place == 0 {
+		if soundType.Place == "" {
 			return positionalBlockSound{}, false
 		}
 
@@ -492,7 +492,7 @@ func blockInteractionSound(records []blockMutationRecord) (positionalBlockSound,
 func blockButtonSound(block game.Block, powered bool) (game.SoundEvent, bool) {
 	definition, valid := block.Definition()
 	if !valid || block.Behavior() != game.BlockBehaviorButton {
-		return 0, false
+		return "", false
 	}
 
 	switch {
@@ -513,7 +513,7 @@ func positionalSound(position game.BlockPosition, event game.SoundEvent, volume,
 	return positionalBlockSound{
 		position: position,
 		sound: protocol.Sound{
-			Event:  protocol.SoundEventHolder{RegistryID: int32(event)},
+			Event:  protocol.SoundEventHolder{Name: string(event)},
 			Source: protocol.SoundSourceBlock,
 			X:      float64(position.X) + 0.5,
 			Y:      float64(position.Y) + 0.5,
@@ -528,7 +528,7 @@ func positionalSound(position game.BlockPosition, event game.SoundEvent, volume,
 func blockOpenCloseSound(block game.Block, open bool) (game.SoundEvent, bool) {
 	definition, valid := block.Definition()
 	if !valid {
-		return 0, false
+		return "", false
 	}
 
 	variant := ""
@@ -576,7 +576,7 @@ func blockOpenCloseSound(block game.Block, open bool) (game.SoundEvent, bool) {
 			return chooseSound(open, game.SoundBlockFenceGateOpen, game.SoundBlockFenceGateClose), true
 		}
 	default:
-		return 0, false
+		return "", false
 	}
 }
 
