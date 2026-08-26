@@ -97,10 +97,12 @@ func TestBreakingCeilingNeverExposesOutsideBetweenLayers(t *testing.T) {
 func TestLayersUseDifferentDeterministicPlans(t *testing.T) {
 	for _, seed := range []int64{0, 17, -29} {
 		seen := make(map[uint64]struct{})
+
 		for layer := int64(-6); layer <= 6; layer++ {
 			current := zoneAtLayer(seed, 0, 0, layer)
 			seen[current.hash] = struct{}{}
 		}
+
 		if len(seen) < 10 {
 			t.Fatalf("seed %d sampled only %d distinct vertical zone plans", seed, len(seen))
 		}
@@ -120,8 +122,11 @@ func TestOrdinaryLayerConnectorsContainRealStaircases(t *testing.T) {
 
 				originX := zoneX*zoneSize - zoneSize/2
 				originZ := zoneZ*zoneSize - zoneSize/2
+
 				current := zoneAtLayer(0, originX, originZ, layer)
+
 				plan := connectorPlanForZone(current)
+
 				wantFacing := stairFacing(plan)
 
 				for step := range 8 {
@@ -139,9 +144,11 @@ func TestOrdinaryLayerConnectorsContainRealStaircases(t *testing.T) {
 							Y: layerFloorY(layer) + 1 + int32(step),
 							Z: int32(originZ + localZ),
 						})
+
 						if block.Behavior() != game.BlockBehaviorStairs {
 							t.Fatalf("layer %d connector stair step %d lane %d = %d", layer, step, lane, block)
 						}
+
 						if facing, ok := block.Property("facing"); ok && facing != wantFacing {
 							t.Fatalf("connector facing=%q want=%q", facing, wantFacing)
 						}
@@ -162,51 +169,54 @@ func TestGrandAtriaAreRareAndSpanMultipleLayers(t *testing.T) {
 	found := 0
 	totalGroups := 0
 
-	for group := int64(-4); group <= 4; group++ {
+	for group := int64(-2); group <= 4; group++ {
 		layer := group * verticalGroupSize
 		for zoneZ := int64(-12); zoneZ <= 12; zoneZ++ {
 			for zoneX := int64(-12); zoneX <= 12; zoneX++ {
 				totalGroups++
+
 				originX := zoneX*zoneSize - zoneSize/2
 				originZ := zoneZ*zoneSize - zoneSize/2
+
 				current := zoneAtLayer(0, originX, originZ, layer)
+
 				spec := grandAtriumForZone(0, current)
 				if !spec.enabled {
 					continue
 				}
+
 				found++
+
 				if spec.span < 2 || spec.span > 4 {
 					t.Fatalf("atrium span=%d, want 2..4", spec.span)
 				}
 
 				centerX := originX + (spec.x0+spec.x1)/2 + 4
 				centerZ := originZ + (spec.z0+spec.z1)/2 + 4
+
 				firstUpperFloor := layerFloorY(spec.anchorLayer + 1)
+
 				if block := generated.BlockAt(0, game.BlockPosition{X: int32(centerX), Y: firstUpperFloor, Z: int32(centerZ)}); block != game.Air {
 					t.Fatalf("atrium center at intermediate floor is %d, want air", block)
 				}
-				if found >= 5 {
-					break
-				}
 			}
-			if found >= 5 {
-				break
-			}
-		}
-		if found >= 5 {
-			break
 		}
 	}
 
 	if found == 0 {
 		t.Fatal("sample contained no grand atria")
 	}
+
+	if found*100 < totalGroups*2 {
+		t.Fatalf("grand atria still too rare: %d/%d sampled groups", found, totalGroups)
+	}
+
 	if found*20 > totalGroups {
 		t.Fatalf("grand atria too common: %d/%d sampled groups", found, totalGroups)
 	}
 }
 
-func TestGrandAtriumContainsBalconiesColumnsAndStairs(t *testing.T) {
+func TestGrandAtriumContainsIntegratedStairsBalconiesColumnsRailsAndLights(t *testing.T) {
 	generated := Generator{}
 
 	for group := int64(-2); group <= 5; group++ {
@@ -215,7 +225,9 @@ func TestGrandAtriumContainsBalconiesColumnsAndStairs(t *testing.T) {
 			for zoneX := int64(-16); zoneX <= 16; zoneX++ {
 				originX := zoneX*zoneSize - zoneSize/2
 				originZ := zoneZ*zoneSize - zoneSize/2
+
 				current := zoneAtLayer(0, originX, originZ, layer)
+
 				spec := grandAtriumForZone(0, current)
 				if !spec.enabled {
 					continue
@@ -223,23 +235,96 @@ func TestGrandAtriumContainsBalconiesColumnsAndStairs(t *testing.T) {
 
 				columnX := originX + spec.x0 + 7
 				columnZ := originZ + spec.z0 + 7
+
 				middleY := layerFloorY(spec.anchorLayer) + 3
+
 				if block := generated.BlockAt(0, game.BlockPosition{X: int32(columnX), Y: middleY, Z: int32(columnZ)}); block == game.Air {
 					t.Fatal("grand atrium support column is air")
 				}
 
 				upperFloor := layerFloorY(spec.anchorLayer + 1)
+
 				balconyX := originX + spec.x0 + 2
 				balconyZ := originZ + (spec.z0+spec.z1)/2
+
 				if block := generated.BlockAt(0, game.BlockPosition{X: int32(balconyX), Y: upperFloor, Z: int32(balconyZ)}); block == game.Air {
 					t.Fatal("grand atrium balcony floor is air")
 				}
 
-				plan := atriumStairPlan(spec, 0)
-				stepX, stepZ := plan.startX, plan.startZ
-				if block := generated.BlockAt(0, game.BlockPosition{X: int32(originX + stepX), Y: layerFloorY(spec.anchorLayer) + 1, Z: int32(originZ + stepZ)}); block.Behavior() != game.BlockBehaviorStairs {
-					t.Fatalf("grand atrium staircase start = %d, want stairs", block)
+				innerZ := spec.z0 + 5
+				railX := spec.x1 - 7
+
+				rail := generated.BlockAt(0, game.BlockPosition{X: int32(originX + railX), Y: upperFloor + 1, Z: int32(originZ + innerZ)})
+
+				if rail.Behavior() != game.BlockBehaviorPane {
+					t.Fatalf("grand atrium rail = %d, want pane", rail)
 				}
+
+				for _, direction := range []string{"east", "west"} {
+					connected, ok := rail.Property(direction)
+					if !ok || connected != "true" {
+						t.Fatalf("grand atrium rail %s connection = %q, want true", direction, connected)
+					}
+				}
+
+				plan := atriumStairPlan(spec, 0)
+
+				stairY := layerFloorY(spec.anchorLayer) + 1
+
+				stair := generated.BlockAt(0, game.BlockPosition{X: int32(originX + plan.startX), Y: stairY, Z: int32(originZ + plan.startZ)})
+				if stair.Behavior() != game.BlockBehaviorStairs {
+					t.Fatalf("grand atrium staircase start = %d, want stairs", stair)
+				}
+
+				sideX := plan.startX - plan.stepZ
+				sideZ := plan.startZ - plan.stepX
+
+				side := generated.BlockAt(0, game.BlockPosition{X: int32(originX + sideX), Y: stairY + 3, Z: int32(originZ + sideZ)})
+				if side != game.Air {
+					t.Fatalf("grand atrium staircase side = %d, want open air", side)
+				}
+
+				landingRailX := plan.startX + plan.stepX*8
+				landingRailZ := plan.startZ + 1
+
+				landingRail := generated.BlockAt(0, game.BlockPosition{X: int32(originX + landingRailX), Y: upperFloor + 1, Z: int32(originZ + landingRailZ)})
+				if landingRail.Behavior() != game.BlockBehaviorPane {
+					t.Fatalf("grand atrium landing rail = %d, want pane", landingRail)
+				}
+
+				connectedToStairs, ok := landingRail.Property("west")
+				if !ok || connectedToStairs != "false" {
+					t.Fatalf("grand atrium landing rail stair connection = %q, want false", connectedToStairs)
+				}
+
+				lights := 0
+				stairs := 0
+
+				for y := layerFloorY(spec.anchorLayer); y <= layerFloorY(spec.anchorLayer+spec.span-1)+5; y++ {
+					for z := spec.z0; z <= spec.z1; z++ {
+						for x := spec.x0; x <= spec.x1; x++ {
+							block := generated.BlockAt(0, game.BlockPosition{X: int32(originX + x), Y: y, Z: int32(originZ + z)})
+
+							emission, _ := block.LightProperties()
+							if emission > 0 {
+								lights++
+							}
+
+							if block.Behavior() == game.BlockBehaviorStairs {
+								stairs++
+							}
+						}
+					}
+				}
+
+				if lights == 0 {
+					t.Fatal("grand atrium contains no lights")
+				}
+
+				if stairs < 16 {
+					t.Fatalf("grand atrium contains %d stairs, want at least 16", stairs)
+				}
+
 				return
 			}
 		}
@@ -250,6 +335,7 @@ func TestGrandAtriumContainsBalconiesColumnsAndStairs(t *testing.T) {
 
 func TestOutOfWorldSectionIsUniformAir(t *testing.T) {
 	generated := Generator{}
+
 	var blocks [game.SectionVolume]game.Block
 
 	for _, sectionMinY := range []int32{-96, 320, 336} {
@@ -267,6 +353,7 @@ func TestGeneratorProducesVariedZones(t *testing.T) {
 	for zoneZ := int64(-12); zoneZ <= 12; zoneZ++ {
 		for zoneX := int64(-12); zoneX <= 12; zoneX++ {
 			current := zoneAt(0, zoneX*zoneSize, zoneZ*zoneSize)
+
 			layouts[current.layout] = struct{}{}
 			palettes[current.palette] = struct{}{}
 		}
@@ -287,6 +374,7 @@ func TestGeneratorUsesNormalAndTallCeilings(t *testing.T) {
 	for zoneZ := int64(-12); zoneZ <= 12; zoneZ++ {
 		for zoneX := int64(-12); zoneX <= 12; zoneX++ {
 			current := zoneAt(0, zoneX*zoneSize, zoneZ*zoneSize)
+
 			heights[zoneCeilingY(current)] = struct{}{}
 		}
 	}
@@ -306,6 +394,7 @@ func TestPalettePersistsAcrossRegion(t *testing.T) {
 			for regionX := int64(-2); regionX <= 2; regionX++ {
 				baseZoneX := regionX * paletteRegionSize
 				baseZoneZ := regionZ * paletteRegionSize
+
 				want := zoneAt(seed, baseZoneX*zoneSize, baseZoneZ*zoneSize).palette
 
 				for offsetZ := range int64(paletteRegionSize) {
@@ -337,6 +426,7 @@ func TestRareFeaturesArePresentAndSparse(t *testing.T) {
 	for zoneZ := int64(-64); zoneZ <= 64; zoneZ++ {
 		for zoneX := int64(-64); zoneX <= 64; zoneX++ {
 			current := zoneAt(0, zoneX*zoneSize, zoneZ*zoneSize)
+
 			counts[current.feature]++
 			total++
 		}
@@ -372,7 +462,9 @@ func TestAmbientDoorsIncludeFalseAndUsefulDoors(t *testing.T) {
 	for zoneZ := int64(-64); zoneZ <= 64; zoneZ++ {
 		for zoneX := int64(-64); zoneX <= 64; zoneX++ {
 			current := zoneAt(seed, zoneX*zoneSize, zoneZ*zoneSize)
+
 			spec := ambientDoorSpecForZone(seed, current)
+
 			total++
 
 			if !spec.enabled {
@@ -380,6 +472,7 @@ func TestAmbientDoorsIncludeFalseAndUsefulDoors(t *testing.T) {
 			}
 
 			doors++
+
 			if spec.falseDoor {
 				falseDoors++
 			} else {
@@ -392,17 +485,21 @@ func TestAmbientDoorsIncludeFalseAndUsefulDoors(t *testing.T) {
 
 			localX := spec.center
 			localZ := spec.line
+
 			backX := localX
 			backZ := spec.line + spec.direction
+
 			if spec.vertical {
 				localX = spec.line
 				localZ = spec.center
+
 				backX = spec.line + spec.direction
 				backZ = spec.center
 			}
 
 			worldX := zoneX*zoneSize - zoneSize/2 + localX
 			worldZ := zoneZ*zoneSize - zoneSize/2 + localZ
+
 			backWorldX := zoneX*zoneSize - zoneSize/2 + backX
 			backWorldZ := zoneZ*zoneSize - zoneSize/2 + backZ
 
@@ -416,11 +513,13 @@ func TestAmbientDoorsIncludeFalseAndUsefulDoors(t *testing.T) {
 				if behind == game.Air {
 					t.Fatal("ambient false door unexpectedly leads into air")
 				}
+
 				validatedFalseDoor = true
 			} else {
 				if behind != game.Air {
 					t.Fatalf("ambient useful door leads into block %d", behind)
 				}
+
 				validatedUsefulDoor = true
 			}
 		}
@@ -429,12 +528,15 @@ func TestAmbientDoorsIncludeFalseAndUsefulDoors(t *testing.T) {
 	if doors*100 < total || doors*100 > total*6 {
 		t.Fatalf("ambient door zones = %d/%d, want roughly 1%%..6%%", doors, total)
 	}
+
 	if falseDoors == 0 || usefulDoors == 0 {
 		t.Fatalf("ambient doors false=%d useful=%d, want both kinds", falseDoors, usefulDoors)
 	}
+
 	if !validatedFalseDoor {
 		t.Fatal("could not validate a generated false ambient door")
 	}
+
 	if !validatedUsefulDoor {
 		t.Fatal("could not validate a generated useful ambient door")
 	}
@@ -499,6 +601,7 @@ func TestExpandedRareFeaturesHaveSignatureGeometry(t *testing.T) {
 		featureClassroom,
 		featureMachineRoom,
 	}
+
 	found := make(map[zoneFeature][2]int64)
 
 	for zoneZ := int64(-64); zoneZ <= 64 && len(found) < len(wanted); zoneZ++ {
@@ -598,23 +701,28 @@ func TestDoorGalleryContainsDoorToWall(t *testing.T) {
 
 			doorLocalX := line
 			doorLocalZ := coordinate
+
 			backLocalX := line + direction
 			backLocalZ := coordinate
+
 			if !vertical {
 				doorLocalX = coordinate
 				doorLocalZ = line
+
 				backLocalX = coordinate
 				backLocalZ = line + direction
 			}
 
 			doorZone := zoneAt(seed, zoneX*zoneSize-zoneSize/2+doorLocalX, zoneZ*zoneSize-zoneSize/2+doorLocalZ)
 			backZone := zoneAt(seed, zoneX*zoneSize-zoneSize/2+backLocalX, zoneZ*zoneSize-zoneSize/2+backLocalZ)
+
 			if zoneSpineOpenAt(seed, doorZone) || zoneSpineOpenAt(seed, backZone) {
 				continue
 			}
 
 			doorWorldX := zoneX*zoneSize - zoneSize/2 + doorLocalX
 			doorWorldZ := zoneZ*zoneSize - zoneSize/2 + doorLocalZ
+
 			backWorldX := zoneX*zoneSize - zoneSize/2 + backLocalX
 			backWorldZ := zoneZ*zoneSize - zoneSize/2 + backLocalZ
 
@@ -653,6 +761,7 @@ func TestActualDoorUsesMatchingHalves(t *testing.T) {
 	if half, found := lower.Property("half"); !found || half != "lower" {
 		t.Fatalf("lower door half = %q, %v; want lower, true", half, found)
 	}
+
 	if half, found := upper.Property("half"); !found || half != "upper" {
 		t.Fatalf("upper door half = %q, %v; want upper, true", half, found)
 	}
@@ -669,6 +778,7 @@ func TestZoneBoundariesAlwaysHavePassages(t *testing.T) {
 			for boundary := int64(-4); boundary <= 4; boundary++ {
 				for _, vertical := range []bool{false, true} {
 					open := 0
+
 					for local := int64(1); local < zoneSize-1; local++ {
 						if boundaryOpening(seed, segment, local, boundary, vertical) {
 							open++
@@ -704,6 +814,7 @@ func TestZoneSpinesConnectPreferredEntrances(t *testing.T) {
 				}
 
 				reachable := floodZone(generated, seed, zoneX, zoneZ, entrances[0])
+
 				for _, entrance := range entrances[1:] {
 					if !reachable[entrance[1]][entrance[0]] {
 						t.Fatalf("seed %d zone (%d,%d) entrance (%d,%d) is disconnected", seed, zoneX, zoneZ, entrance[0], entrance[1])
@@ -782,6 +893,7 @@ func TestGenerateSectionMatchesBlockAt(t *testing.T) {
 		for _, chunk := range []game.ChunkPosition{{X: 0, Z: 0}, {X: -3, Z: 5}, {X: 7, Z: -2}} {
 			for _, sectionMinY := range []int32{-64, 0, 48, 64, 128, 304, 320} {
 				var blocks [game.SectionVolume]game.Block
+
 				_, uniform := generated.GenerateSection(seed, chunk, sectionMinY, &blocks)
 
 				allSame := true
@@ -791,6 +903,7 @@ func TestGenerateSectionMatchesBlockAt(t *testing.T) {
 					for localZ := range int32(game.ChunkWidth) {
 						for localX := range int32(game.ChunkWidth) {
 							index := localY*256 + localZ*16 + localX
+
 							position := game.BlockPosition{
 								X: chunk.X*game.ChunkWidth + localX,
 								Y: sectionMinY + localY,
@@ -819,6 +932,7 @@ func TestGenerateSectionMatchesBlockAt(t *testing.T) {
 
 func floodZone(generated Generator, seed, zoneX, zoneZ int64, start [2]int64) [zoneSize][zoneSize]bool {
 	var visited [zoneSize][zoneSize]bool
+
 	queue := make([][2]int64, 0, zoneSize*zoneSize)
 
 	visited[start[1]][start[0]] = true

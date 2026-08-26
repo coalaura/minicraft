@@ -1,6 +1,8 @@
 package backrooms
 
 import (
+	"strconv"
+
 	"github.com/coalaura/minicraft/internal/game"
 )
 
@@ -13,8 +15,8 @@ func grandAtriumForZone(seed int64, current zone) atriumSpec {
 
 	hash := coordinateHash(seed, current.x, current.z, hashSalt)
 
-	// Around 1.5% of 64x64 zones per six-floor vertical group.
-	if hash%2000 >= 30 {
+	// Around 3% of 64x64 zones per six-floor vertical group.
+	if hash%2000 >= 60 {
 		return atriumSpec{}
 	}
 
@@ -107,14 +109,18 @@ func grandAtriumBlockAt(seed, worldX, worldY, worldZ int64, current zone) (game.
 		levelFloor := int64(layerFloorY(layer))
 		if worldY == levelFloor {
 			if atriumBalconyAt(spec, current.localX, current.localZ, layer-spec.anchorLayer) {
+				if atriumBalconyLightAt(spec, current.localX, current.localZ, layer-spec.anchorLayer) {
+					return blocks.light, true
+				}
+
 				return blocks.floor, true
 			}
 
 			return game.Air, true
 		}
 
-		if worldY == levelFloor+1 && atriumRailAt(spec, current.localX, current.localZ, layer-spec.anchorLayer) {
-			return game.IronBars, true
+		if worldY == levelFloor+1 && atriumRailVisibleAt(spec, current.localX, current.localZ, layer-spec.anchorLayer) {
+			return atriumRailBlock(spec, current.localX, current.localZ, layer-spec.anchorLayer), true
 		}
 	}
 
@@ -189,6 +195,32 @@ func atriumRailAt(spec atriumSpec, x, z, level int64) bool {
 	return x == innerX0 || x == innerX1 || z == innerZ0 || z == innerZ1
 }
 
+func atriumRailBlock(spec atriumSpec, x, z, level int64) game.Block {
+	block, ok := game.IronBars.WithProperties(
+		game.BlockPropertyValue{Name: "east", Value: strconv.FormatBool(atriumRailVisibleAt(spec, x+1, z, level))},
+		game.BlockPropertyValue{Name: "north", Value: strconv.FormatBool(atriumRailVisibleAt(spec, x, z-1, level))},
+		game.BlockPropertyValue{Name: "south", Value: strconv.FormatBool(atriumRailVisibleAt(spec, x, z+1, level))},
+		game.BlockPropertyValue{Name: "west", Value: strconv.FormatBool(atriumRailVisibleAt(spec, x-1, z, level))},
+	)
+
+	if !ok {
+		return game.IronBars
+	}
+
+	return block
+}
+
+func atriumRailVisibleAt(spec atriumSpec, x, z, level int64) bool {
+	if !atriumRailAt(spec, x, z, level) {
+		return false
+	}
+
+	railY := int64(layerFloorY(spec.anchorLayer+level) + 1)
+	_, staircase := atriumStairBlockAt(spec, railY, x, z)
+
+	return !staircase
+}
+
 func atriumColumnAt(spec atriumSpec, x, z int64) bool {
 	positions := [][2]int64{
 		{spec.x0 + 7, spec.z0 + 7},
@@ -231,14 +263,6 @@ func atriumStairBlockAt(spec atriumSpec, worldY, x, z int64) (game.Block, bool) 
 			continue
 		}
 
-		if stairSideWallAt(plan, x, z) {
-			if worldY <= upperFloor+1 {
-				return game.CutSandstone, true
-			}
-
-			return game.Air, true
-		}
-
 		if step, ok := stairStepAt(plan, x, z); ok && worldY == lowerFloor+1+int64(step) {
 			return stairBlock(game.OakStairs, stairFacing(plan)), true
 		}
@@ -272,4 +296,22 @@ func atriumStairPlan(spec atriumSpec, gap int64) verticalPlan {
 	}
 
 	return plan
+}
+
+func atriumBalconyLightAt(spec atriumSpec, x, z, level int64) bool {
+	if !atriumBalconyAt(spec, x, z, level) {
+		return false
+	}
+
+	phase := int64(mix64(spec.hash^uint64(level)) % 9)
+
+	if z == spec.z0+2 || z == spec.z1-2 {
+		return floorMod(x+phase, 9) == 0
+	}
+
+	if x == spec.x0+2 || x == spec.x1-2 {
+		return floorMod(z+phase, 9) == 0
+	}
+
+	return false
 }
