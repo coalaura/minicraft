@@ -8,6 +8,12 @@ const (
 	PlayerPoseCrawling
 )
 
+const (
+	standingPlayerEyeHeight  = 1.62
+	crouchingPlayerEyeHeight = 1.27
+	crawlingPlayerEyeHeight  = 0.4
+)
+
 type ProfileProperty struct {
 	Name      string `json:"name"`
 	Value     string `json:"value"`
@@ -35,4 +41,23 @@ type Player struct {
 
 	SelectedHotbarSlot int
 	Inventory          PlayerInventory
+}
+
+func (player Player) EyeHeight() float64 {
+	switch player.Pose {
+	case PlayerPoseCrouching:
+		return crouchingPlayerEyeHeight
+	case PlayerPoseCrawling:
+		return crawlingPlayerEyeHeight
+	default:
+		return standingPlayerEyeHeight
+	}
+}
+
+func (player Player) EyePosition() Position {
+	position := player.Position
+
+	position.Y += player.EyeHeight()
+
+	return position
 }

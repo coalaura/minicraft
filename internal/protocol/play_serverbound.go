@@ -37,6 +37,9 @@ const (
 	chatMessageSignatureLength = 256
 	chatAcknowledgementLength  = 3
 	maxChatSessionBytes        = 4096
+	maxCommandCharacters       = 32500
+	maxCommandArgumentNameSize = 16
+	maxCommandArgumentCount    = 256
 )
 
 type MovementFlags byte
@@ -67,6 +70,30 @@ type ChatMessage struct {
 
 type ChatAck struct {
 	MessageCount int32
+}
+
+type ChatCommand struct {
+	Command string
+}
+
+type CommandArgumentSignature struct {
+	Name      string
+	Signature [chatMessageSignatureLength]byte
+}
+
+type SignedChatCommand struct {
+	Command            string
+	Timestamp          int64
+	Salt               int64
+	ArgumentSignatures []CommandArgumentSignature
+	MessageCount       int32
+	Acknowledged       [chatAcknowledgementLength]byte
+	Checksum           byte
+}
+
+type CommandSuggestionRequest struct {
+	TransactionID int32
+	Text          string
 }
 
 type ChatSessionUpdate struct {
@@ -288,6 +315,99 @@ func DecodeChatAck(data []byte) (ChatAck, error) {
 	}
 
 	return acknowledgement, nil
+}
+
+func DecodeChatCommand(data []byte) (ChatCommand, error) {
+	rd := NewPacketReader(data)
+
+	command := ChatCommand{Command: rd.String(maxCommandCharacters)}
+
+	err := rd.Done("chat command")
+	if err != nil {
+		return ChatCommand{}, err
+	}
+
+	if !validCommand(command.Command) {
+		return ChatCommand{}, fmt.Errorf("invalid chat command")
+	}
+
+	return command, nil
+}
+
+func DecodeSignedChatCommand(data []byte) (SignedChatCommand, error) {
+	rd := NewPacketReader(data)
+
+	command := SignedChatCommand{
+		Command:   rd.String(maxCommandCharacters),
+		Timestamp: rd.Long(),
+		Salt:      rd.Long(),
+	}
+
+	argumentCount := rd.VarInt()
+	if argumentCount < 0 || argumentCount > maxCommandArgumentCount {
+		return SignedChatCommand{}, fmt.Errorf("invalid command argument signature count %d", argumentCount)
+	}
+
+	command.ArgumentSignatures = make([]CommandArgumentSignature, argumentCount)
+
+	for index := range command.ArgumentSignatures {
+		argument := &command.ArgumentSignatures[index]
+
+		argument.Name = rd.String(maxCommandArgumentNameSize)
+
+		for signatureIndex := range argument.Signature {
+			argument.Signature[signatureIndex] = rd.Byte()
+		}
+	}
+
+	command.MessageCount = rd.VarInt()
+
+	for index := range command.Acknowledged {
+		command.Acknowledged[index] = rd.Byte()
+	}
+
+	command.Checksum = rd.Byte()
+
+	err := rd.Done("signed chat command")
+	if err != nil {
+		return SignedChatCommand{}, err
+	}
+
+	if !validCommand(command.Command) {
+		return SignedChatCommand{}, fmt.Errorf("invalid signed chat command")
+	}
+
+	if command.MessageCount < 0 {
+		return SignedChatCommand{}, fmt.Errorf("invalid signed chat command message count %d", command.MessageCount)
+	}
+
+	for _, argument := range command.ArgumentSignatures {
+		if !validCommandArgumentName(argument.Name) {
+			return SignedChatCommand{}, fmt.Errorf("invalid command argument name")
+		}
+	}
+
+	return command, nil
+}
+
+func DecodeCommandSuggestionRequest(data []byte) (CommandSuggestionRequest, error) {
+	rd := NewPacketReader(data)
+
+	request := CommandSuggestionRequest{
+		TransactionID: rd.VarInt(),
+		Text:          rd.String(maxCommandCharacters),
+	}
+
+	err := rd.Done("command suggestions")
+	if err != nil {
+		return CommandSuggestionRequest{}, err
+	}
+
+	if !utf8.ValidString(request.Text) {
+		return CommandSuggestionRequest{}, fmt.Errorf("invalid command suggestion text")
+	}
+
+	return request, nil
 }
 
 func DecodeChatSessionUpdate(data []byte) (ChatSessionUpdate, error) {
@@ -683,6 +803,34 @@ func validChatMessage(message string) bool {
 
 	for _, character := range message {
 		if character < ' ' || character == '\u007f' || character == '\u00a7' {
+			return false
+		}
+	}
+
+	return true
+}
+
+func validCommand(command string) bool {
+	if command == "" || !utf8.ValidString(command) || utf8.RuneCountInString(command) > maxCommandCharacters {
+		return false
+	}
+
+	for _, character := range command {
+		if character < ' ' || character == '\u007f' || character == '\u00a7' {
+			return false
+		}
+	}
+
+	return true
+}
+
+func validCommandArgumentName(name string) bool {
+	if name == "" || !utf8.ValidString(name) || utf8.RuneCountInString(name) > maxCommandArgumentNameSize {
+		return false
+	}
+
+	for _, character := range name {
+		if character != '_' && (character < 'a' || character > 'z') {
 			return false
 		}
 	}

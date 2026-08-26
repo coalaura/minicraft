@@ -1,6 +1,11 @@
 package protocol
 
-import "github.com/coalaura/minicraft/internal/game"
+import (
+	"errors"
+	"unicode/utf8"
+
+	"github.com/coalaura/minicraft/internal/game"
+)
 
 const (
 	PlayerInfoActionAddPlayer      = 1 << 0
@@ -37,6 +42,35 @@ const (
 	EquipmentSlotHead     byte = 5
 
 	LevelEventBlockBreak = 2001
+
+	maxCommandTreeNodes       = 32767
+	maxCommandNodeChildren    = 32767
+	maxCommandSuggestionCount = 32767
+
+	CommandNodeRoot     = 0
+	CommandNodeLiteral  = 1
+	CommandNodeArgument = 2
+
+	CommandParserBool             = 0
+	CommandParserFloat            = 1
+	CommandParserDouble           = 2
+	CommandParserInteger          = 3
+	CommandParserLong             = 4
+	CommandParserString           = 5
+	CommandParserEntity           = 6
+	CommandParserBlockPosition    = 8
+	CommandParserVec3             = 10
+	CommandParserBlockState       = 12
+	CommandParserItemStack        = 14
+	CommandParserScore            = 31
+	CommandParserGameMode         = 42
+	CommandParserTime             = 43
+	CommandParserResource         = 46
+	CommandParserResourceKey      = 47
+	CommandParserResourceSelector = 48
+	CommandParserResourceOrTag    = 44
+	CommandParserResourceOrTagKey = 45
+	CommandParserUUID             = 56
 )
 
 type AddEntity struct {
@@ -331,6 +365,90 @@ type LevelEvent struct {
 type SystemChat struct {
 	Content   string
 	ActionBar bool
+}
+
+type CommandNode struct {
+	Type           byte
+	Executable     bool
+	Restricted     bool
+	Children       []int32
+	Redirect       int32
+	HasRedirect    bool
+	Name           string
+	Parser         int32
+	Properties     CommandParserProperties
+	SuggestionType string
+}
+
+type CommandParserProperties interface {
+	encodeCommandParserProperties(*PacketWriter)
+}
+
+type CommandFloatProperties struct {
+	HasMin bool
+	HasMax bool
+	Min    float32
+	Max    float32
+}
+
+type CommandDoubleProperties struct {
+	HasMin bool
+	HasMax bool
+	Min    float64
+	Max    float64
+}
+
+type CommandIntegerProperties struct {
+	HasMin bool
+	HasMax bool
+	Min    int32
+	Max    int32
+}
+
+type CommandLongProperties struct {
+	HasMin bool
+	HasMax bool
+	Min    int64
+	Max    int64
+}
+
+type CommandStringProperties struct {
+	Type int32
+}
+
+type CommandEntityProperties struct {
+	OnlyEntities bool
+	OnlyPlayers  bool
+}
+
+type CommandScoreHolderProperties struct {
+	AllowMultiple bool
+}
+
+type CommandTimeProperties struct {
+	Min int32
+}
+
+type CommandResourceProperties struct {
+	Registry string
+}
+
+type DeclareCommands struct {
+	Nodes     []CommandNode
+	RootIndex int32
+}
+
+type CommandSuggestion struct {
+	Text       string
+	HasTooltip bool
+	Tooltip    string
+}
+
+type CommandSuggestions struct {
+	TransactionID int32
+	Start         int32
+	Length        int32
+	Matches       []CommandSuggestion
 }
 
 func (p AddEntity) Encode(wr *PacketWriter) {
@@ -729,4 +847,305 @@ func (p LevelEvent) Encode(wr *PacketWriter) {
 func (p SystemChat) Encode(wr *PacketWriter) {
 	wr.AnonymousNBTString(p.Content)
 	wr.Bool(p.ActionBar)
+}
+
+func (p CommandFloatProperties) encodeCommandParserProperties(wr *PacketWriter) {
+	flags := byte(0)
+
+	if p.HasMin {
+		flags |= 1
+	}
+
+	if p.HasMax {
+		flags |= 2
+	}
+
+	wr.Byte(flags)
+
+	if p.HasMin {
+		wr.Float(p.Min)
+	}
+
+	if p.HasMax {
+		wr.Float(p.Max)
+	}
+}
+
+func (p CommandDoubleProperties) encodeCommandParserProperties(wr *PacketWriter) {
+	flags := byte(0)
+
+	if p.HasMin {
+		flags |= 1
+	}
+
+	if p.HasMax {
+		flags |= 2
+	}
+
+	wr.Byte(flags)
+
+	if p.HasMin {
+		wr.Double(p.Min)
+	}
+
+	if p.HasMax {
+		wr.Double(p.Max)
+	}
+}
+
+func (p CommandIntegerProperties) encodeCommandParserProperties(wr *PacketWriter) {
+	flags := byte(0)
+
+	if p.HasMin {
+		flags |= 1
+	}
+
+	if p.HasMax {
+		flags |= 2
+	}
+
+	wr.Byte(flags)
+
+	if p.HasMin {
+		wr.Int(p.Min)
+	}
+
+	if p.HasMax {
+		wr.Int(p.Max)
+	}
+}
+
+func (p CommandLongProperties) encodeCommandParserProperties(wr *PacketWriter) {
+	flags := byte(0)
+
+	if p.HasMin {
+		flags |= 1
+	}
+
+	if p.HasMax {
+		flags |= 2
+	}
+
+	wr.Byte(flags)
+
+	if p.HasMin {
+		wr.Long(p.Min)
+	}
+
+	if p.HasMax {
+		wr.Long(p.Max)
+	}
+}
+
+func (p CommandStringProperties) encodeCommandParserProperties(wr *PacketWriter) {
+	wr.VarInt(p.Type)
+}
+
+func (p CommandEntityProperties) encodeCommandParserProperties(wr *PacketWriter) {
+	wr.Byte(boolBits(p.OnlyEntities, p.OnlyPlayers))
+}
+
+func (p CommandScoreHolderProperties) encodeCommandParserProperties(wr *PacketWriter) {
+	wr.Bool(p.AllowMultiple)
+}
+
+func (p CommandTimeProperties) encodeCommandParserProperties(wr *PacketWriter) {
+	wr.Int(p.Min)
+}
+
+func (p CommandResourceProperties) encodeCommandParserProperties(wr *PacketWriter) {
+	wr.String(p.Registry)
+}
+
+func (p DeclareCommands) Encode(wr *PacketWriter) {
+	if len(p.Nodes) == 0 || len(p.Nodes) > maxCommandTreeNodes || p.RootIndex < 0 || int(p.RootIndex) >= len(p.Nodes) {
+		wr.err = errors.New("invalid command tree")
+
+		return
+	}
+
+	for _, node := range p.Nodes {
+		for _, child := range node.Children {
+			if child < 0 || int(child) >= len(p.Nodes) {
+				wr.err = errors.New("invalid command node child")
+
+				return
+			}
+		}
+
+		if node.HasRedirect && (node.Redirect < 0 || int(node.Redirect) >= len(p.Nodes)) {
+			wr.err = errors.New("invalid command node redirect")
+
+			return
+		}
+	}
+
+	wr.VarInt(int32(len(p.Nodes)))
+
+	for _, node := range p.Nodes {
+		node.Encode(wr)
+	}
+
+	wr.VarInt(p.RootIndex)
+}
+
+func (p CommandNode) Encode(wr *PacketWriter) {
+	if p.Type > CommandNodeArgument || len(p.Children) > maxCommandNodeChildren || (p.Type != CommandNodeRoot && !validCommandNodeName(p.Name)) || (p.Type != CommandNodeArgument && p.SuggestionType != "") {
+		wr.err = errors.New("invalid command node")
+
+		return
+	}
+
+	flags := p.Type
+
+	if p.Executable {
+		flags |= 0x04
+	}
+
+	if p.HasRedirect {
+		flags |= 0x08
+	}
+
+	if p.SuggestionType != "" {
+		flags |= 0x10
+	}
+
+	if p.Restricted {
+		flags |= 0x20
+	}
+
+	wr.Byte(flags)
+	wr.VarInt(int32(len(p.Children)))
+
+	for _, child := range p.Children {
+		if child < 0 {
+			wr.err = errors.New("invalid command node child")
+
+			return
+		}
+
+		wr.VarInt(child)
+	}
+
+	if p.HasRedirect {
+		if p.Redirect < 0 {
+			wr.err = errors.New("invalid command node redirect")
+
+			return
+		}
+
+		wr.VarInt(p.Redirect)
+	}
+
+	if p.Type == CommandNodeRoot {
+		return
+	}
+
+	wr.String(p.Name)
+
+	if p.Type == CommandNodeLiteral {
+		return
+	}
+
+	if !validCommandParser(p.Parser, p.Properties) {
+		wr.err = errors.New("invalid command parser properties")
+
+		return
+	}
+
+	wr.VarInt(p.Parser)
+
+	if p.Properties != nil {
+		p.Properties.encodeCommandParserProperties(wr)
+	}
+
+	if p.SuggestionType != "" {
+		if !validCommandNodeName(p.SuggestionType) {
+			wr.err = errors.New("invalid command suggestion type")
+
+			return
+		}
+
+		wr.String(p.SuggestionType)
+	}
+}
+
+func (p CommandSuggestions) Encode(wr *PacketWriter) {
+	if p.Start < 0 || p.Length < 0 || len(p.Matches) > maxCommandSuggestionCount {
+		wr.err = errors.New("invalid command suggestions")
+
+		return
+	}
+
+	wr.VarInt(p.TransactionID)
+	wr.VarInt(p.Start)
+	wr.VarInt(p.Length)
+	wr.VarInt(int32(len(p.Matches)))
+
+	for _, match := range p.Matches {
+		if !utf8.ValidString(match.Text) || utf8.RuneCountInString(match.Text) > maxCommandCharacters {
+			wr.err = errors.New("invalid command suggestion")
+
+			return
+		}
+
+		wr.String(match.Text)
+		wr.Bool(match.HasTooltip)
+
+		if match.HasTooltip {
+			wr.AnonymousNBTString(match.Tooltip)
+		}
+	}
+}
+
+func validCommandNodeName(value string) bool {
+	return value != "" && utf8.ValidString(value) && utf8.RuneCountInString(value) <= maxCommandCharacters
+}
+
+func validCommandParser(parser int32, properties CommandParserProperties) bool {
+	switch parser {
+	case CommandParserFloat:
+		_, ok := properties.(CommandFloatProperties)
+		return ok
+	case CommandParserDouble:
+		_, ok := properties.(CommandDoubleProperties)
+		return ok
+	case CommandParserInteger:
+		_, ok := properties.(CommandIntegerProperties)
+		return ok
+	case CommandParserLong:
+		_, ok := properties.(CommandLongProperties)
+		return ok
+	case CommandParserString:
+		stringProperties, ok := properties.(CommandStringProperties)
+		return ok && stringProperties.Type >= 0 && stringProperties.Type <= 2
+	case CommandParserEntity:
+		_, ok := properties.(CommandEntityProperties)
+		return ok
+	case CommandParserScore:
+		_, ok := properties.(CommandScoreHolderProperties)
+		return ok
+	case CommandParserTime:
+		_, ok := properties.(CommandTimeProperties)
+		return ok
+	case CommandParserResource, CommandParserResourceKey, CommandParserResourceOrTag, CommandParserResourceOrTagKey, CommandParserResourceSelector:
+		_, ok := properties.(CommandResourceProperties)
+		return ok
+	default:
+		return parser >= 0 && parser <= CommandParserUUID && properties == nil
+	}
+}
+
+func boolBits(first, second bool) byte {
+	var value byte
+
+	if first {
+		value |= 1
+	}
+
+	if second {
+		value |= 2
+	}
+
+	return value
 }

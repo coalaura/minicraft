@@ -359,6 +359,54 @@ func TestSignedPlayerChatRejectsTamperingTransactionally(t *testing.T) {
 	}
 }
 
+func TestSignedCommandAppliesChatAcknowledgementAndExecutes(t *testing.T) {
+	fixture := newSecureChatTestFixture(t, config.DefaultChatFormat)
+
+	fixture.runtime.World.Seed = 12345
+	fixture.runtime.ChatEnabled = false
+	fixture.senderConnection.reset()
+
+	var writer protocol.PacketWriter
+
+	writer.String("seed")
+	writer.Long(fixture.now.UnixMilli())
+	writer.Long(41)
+	writer.VarInt(0)
+	writer.VarInt(0)
+	writer.Byte(0)
+	writer.Byte(0)
+	writer.Byte(0)
+	writer.Byte(1)
+
+	err := fixture.sender.handlePlayPacket(&protocol.Packet{ID: protocol.ServerboundSignedChatCommandID, Data: writer.Buffer.Bytes()})
+	if err != nil {
+		t.Fatalf("handle signed command: %v", err)
+	}
+
+	assertSystemMessages(t, fixture.senderConnection, "Seed: 12345")
+}
+
+func TestSignedCommandRejectsUnsupportedArgumentSignatures(t *testing.T) {
+	fixture := newSecureChatTestFixture(t, config.DefaultChatFormat)
+
+	fixture.senderConnection.reset()
+
+	command := protocol.SignedChatCommand{
+		Command:            "seed",
+		ArgumentSignatures: []protocol.CommandArgumentSignature{{Name: "target_player"}},
+		Checksum:           1,
+	}
+
+	err := fixture.sender.handleSignedCommandAcknowledgement(command)
+	if err == nil {
+		t.Fatal("signed command with argument signature was accepted")
+	}
+
+	if fixture.sender.chatState.tracked[0] != nil {
+		t.Fatal("rejected signed command changed tracked acknowledgement state")
+	}
+}
+
 func TestSecureCustomFormatFallsBackToSystemChatAfterVerification(t *testing.T) {
 	fixture := newSecureChatTestFixture(t, "[{player}] {message}")
 

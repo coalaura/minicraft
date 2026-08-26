@@ -107,6 +107,109 @@ func TestDecodeChatAck(t *testing.T) {
 	}
 }
 
+func TestDecodeChatCommands(t *testing.T) {
+	command, err := DecodeChatCommand([]byte{0x04, '/', 's', 'a', 'y'})
+	if err != nil {
+		t.Fatalf("decode chat command: %v", err)
+	}
+
+	if command.Command != "/say" {
+		t.Fatalf("command = %q, want /say", command.Command)
+	}
+
+	var writer PacketWriter
+
+	writer.String("/msg Alice hello")
+	writer.Long(1234)
+	writer.Long(5678)
+	writer.VarInt(1)
+	writer.String("target_player")
+
+	for index := range chatMessageSignatureLength {
+		writer.Byte(byte(index))
+	}
+
+	writer.VarInt(300)
+	writer.Byte(0xAA)
+	writer.Byte(0xBB)
+	writer.Byte(0xCC)
+	writer.Byte(0xDD)
+
+	signed, err := DecodeSignedChatCommand(writer.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode signed chat command: %v", err)
+	}
+
+	if signed.Command != "/msg Alice hello" || signed.Timestamp != 1234 || signed.Salt != 5678 || signed.MessageCount != 300 || signed.Acknowledged != [3]byte{0xAA, 0xBB, 0xCC} || signed.Checksum != 0xDD {
+		t.Fatalf("signed command = %+v", signed)
+	}
+
+	if len(signed.ArgumentSignatures) != 1 || signed.ArgumentSignatures[0].Name != "target_player" || signed.ArgumentSignatures[0].Signature[0] != 0 || signed.ArgumentSignatures[0].Signature[255] != 255 {
+		t.Fatalf("argument signatures = %+v", signed.ArgumentSignatures)
+	}
+}
+
+func TestDecodeChatCommandsRejectMalformedPayloads(t *testing.T) {
+	var writer PacketWriter
+
+	writer.String("/say hi")
+	writer.Long(0)
+	writer.Long(0)
+	writer.VarInt(1)
+	writer.String("message")
+
+	for range chatMessageSignatureLength {
+		writer.Byte(0)
+	}
+
+	writer.VarInt(-1)
+	writer.Byte(0)
+	writer.Byte(0)
+	writer.Byte(0)
+	writer.Byte(0)
+
+	for name, data := range map[string][]byte{
+		"empty unsigned":        {0},
+		"unsigned trailing":     {0x04, '/', 's', 'a', 'y', 0},
+		"signed negative count": writer.Buffer.Bytes(),
+		"signed truncated":      writer.Buffer.Bytes()[:40],
+	} {
+		t.Run(name, func(t *testing.T) {
+			if name[:6] == "signed" {
+				_, err := DecodeSignedChatCommand(data)
+				if err == nil {
+					t.Fatal("invalid signed command decoded")
+				}
+
+				return
+			}
+
+			_, err := DecodeChatCommand(data)
+			if err == nil {
+				t.Fatal("invalid command decoded")
+			}
+		})
+	}
+}
+
+func TestDecodeCommandSuggestionRequest(t *testing.T) {
+	request, err := DecodeCommandSuggestionRequest([]byte{0xAC, 0x02, 0x04, '/', 'g', 'i', 'v'})
+	if err != nil {
+		t.Fatalf("decode command suggestions: %v", err)
+	}
+
+	if request.TransactionID != 300 || request.Text != "/giv" {
+		t.Fatalf("suggestion request = %+v", request)
+	}
+
+	for _, data := range [][]byte{{0x01, 0x04, '/', 'g'}, {0x01, 0x00, 0x00}} {
+		_, err := DecodeCommandSuggestionRequest(data)
+		if err == nil {
+			t.Fatalf("invalid suggestion request %x decoded", data)
+		}
+	}
+}
+
 func TestDecodeChatSessionUpdate(t *testing.T) {
 	var writer PacketWriter
 
@@ -347,6 +450,9 @@ func TestFixedPlayDecodersRejectTrailingData(t *testing.T) {
 func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 	packetIDs := map[string]packetIDTest{
 		"container click": {actual: ServerboundContainerClickID, expected: 0x11},
+		"chat command":    {actual: ServerboundChatCommandID, expected: 0x06},
+		"signed command":  {actual: ServerboundSignedChatCommandID, expected: 0x07},
+		"suggestions":     {actual: ServerboundCommandSuggestionsID, expected: 0x0E},
 		"pick block":      {actual: ServerboundPickItemFromBlockID, expected: 0x23},
 		"block action":    {actual: ServerboundPlayerActionID, expected: 0x28},
 		"block ack":       {actual: ClientboundBlockChangedAckID, expected: 0x04},

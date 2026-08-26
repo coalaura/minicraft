@@ -245,6 +245,23 @@ func TestPlayerPoseSelectionAndRestoration(t *testing.T) {
 	}
 }
 
+func TestCalculatedPlayerPosePreservesCurrentPoseWhenNoBoxFits(t *testing.T) {
+	position := game.Position{X: 0.5, Y: 70, Z: 0.5}
+
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{Y: 70}, game.Stone)
+
+	runtime := NewRuntime(world)
+
+	player := game.Player{Position: position, Pose: game.PlayerPoseCrouching}
+
+	pose := runtime.calculatedPlayerPose(player)
+	if pose != game.PlayerPoseCrouching {
+		t.Fatalf("pose = %d, want crouching", pose)
+	}
+}
+
 func TestTrapdoorInteractionForcesCrawlingAndBroadcastsSwimmingPose(t *testing.T) {
 	position := game.BlockPosition{Y: 71}
 

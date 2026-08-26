@@ -11,6 +11,11 @@ type blockCollisionTestCase struct {
 	empty bool
 }
 
+type playerEyePositionTestCase struct {
+	pose      PlayerPose
+	eyeHeight float64
+}
+
 func TestBlockCollisionFamilies(t *testing.T) {
 	openGate, valid := OakFenceGate.WithProperties(BlockPropertyValue{Name: "open", Value: "true"})
 	if !valid {
@@ -87,6 +92,25 @@ func TestPlayerCollisionBoxUsesPose(t *testing.T) {
 
 		if math.Abs(box.MaxY-box.MinY-height) > 1e-9 || math.Abs(box.MaxX-box.MinX-0.6) > 1e-9 || math.Abs(box.MaxZ-box.MinZ-0.6) > 1e-9 {
 			t.Fatalf("pose %d collision box = %+v", pose, box)
+		}
+	}
+}
+
+func TestPlayerEyePositionUsesPose(t *testing.T) {
+	player := Player{Position: Position{X: 4, Y: 5, Z: 6}}
+
+	tests := []playerEyePositionTestCase{
+		{pose: PlayerPoseStanding, eyeHeight: 1.62},
+		{pose: PlayerPoseCrouching, eyeHeight: 1.27},
+		{pose: PlayerPoseCrawling, eyeHeight: 0.4},
+	}
+
+	for _, test := range tests {
+		player.Pose = test.pose
+
+		eyePosition := player.EyePosition()
+		if player.EyeHeight() != test.eyeHeight || eyePosition != (Position{X: 4, Y: 5 + test.eyeHeight, Z: 6}) {
+			t.Fatalf("pose %d eye position = %+v, height = %f", test.pose, eyePosition, player.EyeHeight())
 		}
 	}
 }

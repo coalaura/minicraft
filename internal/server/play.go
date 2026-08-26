@@ -65,6 +65,29 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		}
 
 		s.handleConfirmTeleport(teleport)
+	case protocol.ServerboundChatCommandID:
+		command, err := protocol.DecodeChatCommand(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		return s.Runtime.commands.execute(playerCommandSource{session: s}, command.Command)
+	case protocol.ServerboundSignedChatCommandID:
+		command, err := protocol.DecodeSignedChatCommand(packet.Data)
+		if err != nil {
+			if s.secureChatEnforced() {
+				return s.disconnectChatViolation(fmt.Sprintf("malformed signed command: %v", err))
+			}
+
+			return err
+		}
+
+		err = s.handleSignedCommandAcknowledgement(command)
+		if err != nil {
+			return s.disconnectChatViolation(fmt.Sprintf("invalid signed command acknowledgement: %v", err))
+		}
+
+		return s.Runtime.commands.execute(playerCommandSource{session: s}, command.Command)
 	case protocol.ServerboundChatMessageID:
 		message, err := protocol.DecodeChatMessage(packet.Data)
 		if err != nil {
@@ -134,6 +157,17 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		s.Runtime.UpdateSkinParts(s, information.SkinParts)
 
 		s.Log.Printf("[play] received client information\n")
+	case protocol.ServerboundCommandSuggestionsID:
+		request, err := protocol.DecodeCommandSuggestionRequest(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		suggestions := s.Runtime.commands.suggestions(playerCommandSource{session: s}, request.Text)
+
+		suggestions.TransactionID = request.TransactionID
+
+		return s.writePacket(protocol.ClientboundCommandSuggestionsID, suggestions)
 	case protocol.ServerboundContainerClickID:
 		click, err := protocol.DecodeContainerClick(packet.Data)
 		if err != nil {
@@ -253,6 +287,11 @@ func (s *Session) sendInitialPlayState() error {
 	}
 
 	err = s.sendTimeUpdate(s.Runtime.World.Time())
+	if err != nil {
+		return err
+	}
+
+	err = s.writePacket(protocol.ClientboundDeclareCommandsID, s.Runtime.commands.declaration())
 	if err != nil {
 		return err
 	}

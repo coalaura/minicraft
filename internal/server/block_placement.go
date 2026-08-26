@@ -92,7 +92,7 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 
 		changes = r.withStructuralNeighborChanges(changes)
 
-		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationInteract, changes, len(affected), true, false)
+		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationInteract, changes, len(affected), true, false, false)
 		return true, result, affected, delivery, err
 	}()
 
@@ -126,14 +126,14 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 			if replacement, merge := slabMerge(base, r.World.BlockAt(interaction.Position), interaction.Face, interaction.CursorY); merge {
 				changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
-				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true)
+				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
 				return result, []game.BlockPosition{interaction.Position}, delivery, err
 			}
 
 			if replacement, merge := slabMerge(base, r.World.BlockAt(target), oppositeBlockFace(interaction.Face), interaction.CursorY); merge {
 				changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: target, Replacement: replacement}})
 
-				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true)
+				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
 				return result, []game.BlockPosition{target}, delivery, err
 			}
 		}
@@ -190,7 +190,7 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 
 		changes = r.withStructuralNeighborChanges(changes)
 
-		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, requiredChanges, true, true)
+		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, requiredChanges, true, true, false)
 		return result, affected, delivery, err
 	}()
 

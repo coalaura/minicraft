@@ -61,11 +61,11 @@ func blockWithinInteractionRange(player game.Player, position game.BlockPosition
 	blockY := float64(position.Y) + 0.5
 	blockZ := float64(position.Z) + 0.5
 
-	eyeY := player.Position.Y + 1.62
+	eyePosition := player.EyePosition()
 
-	distanceX := blockX - player.Position.X
-	distanceY := blockY - eyeY
-	distanceZ := blockZ - player.Position.Z
+	distanceX := blockX - eyePosition.X
+	distanceY := blockY - eyePosition.Y
+	distanceZ := blockZ - eyePosition.Z
 
 	distanceSquared := distanceX*distanceX + distanceY*distanceY + distanceZ*distanceZ
 	return distanceSquared <= blockInteractionRange*blockInteractionRange
@@ -98,7 +98,22 @@ func (r *Runtime) MutateBlocks(session *Session, action BlockMutationAction, cha
 
 		changes = r.withStructuralNeighborChanges(changes)
 
-		return r.mutateBlocksLocked(session, action, changes, requiredChanges, true, false)
+		return r.mutateBlocksLocked(session, action, changes, requiredChanges, true, false, false)
+	}()
+
+	return r.completeBlockMutation(result, delivery, err)
+}
+
+// MutateWorldBlocks applies authoritative world changes without player interaction restrictions.
+func (r *Runtime) MutateWorldBlocks(changes []game.BlockChange) (BlockMutationResult, error) {
+	r.worldMutationMu.Lock()
+
+	result, delivery, err := func() (BlockMutationResult, blockMutationDelivery, error) {
+		defer r.worldMutationMu.Unlock()
+
+		changes = r.withStructuralNeighborChanges(changes)
+
+		return r.mutateBlocksLocked(nil, BlockMutationPlace, changes, len(changes), true, false, true)
 	}()
 
 	return r.completeBlockMutation(result, delivery, err)
@@ -117,13 +132,13 @@ func (r *Runtime) PlaceBlock(session *Session, clicked, position game.BlockPosit
 
 		changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: position, Replacement: replacement}})
 
-		return r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true)
+		return r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
 	}()
 
 	return r.completeBlockMutation(result, delivery, err)
 }
 
-func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationAction, changes []game.BlockChange, requiredChanges int, allowOccupied, checkPlayerObstruction bool) (BlockMutationResult, blockMutationDelivery, error) {
+func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationAction, changes []game.BlockChange, requiredChanges int, allowOccupied, checkPlayerObstruction, authoritative bool) (BlockMutationResult, blockMutationDelivery, error) {
 	r.mu.RLock()
 	_, active := r.sessions[session]
 	r.mu.RUnlock()
@@ -134,19 +149,23 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 		result.Block = r.World.BlockAt(changes[0].Position)
 	}
 
-	if !active || len(changes) == 0 {
+	if (!active && !authoritative) || len(changes) == 0 {
 		return result, blockMutationDelivery{}, nil
 	}
 
-	if action == BlockMutationBreak && !r.AllowBlockBreaking {
+	if !authoritative && action == BlockMutationBreak && !r.AllowBlockBreaking {
 		return result, blockMutationDelivery{}, nil
 	}
 
-	if (action == BlockMutationPlace || action == BlockMutationInteract) && !r.AllowBlockPlacing {
+	if !authoritative && (action == BlockMutationPlace || action == BlockMutationInteract) && !r.AllowBlockPlacing {
 		return result, blockMutationDelivery{}, nil
 	}
 
-	player := session.snapshotPlayer()
+	var player game.Player
+
+	if !authoritative {
+		player = session.snapshotPlayer()
+	}
 
 	policy := r.BlockMutationPolicy
 	if policy == nil {
@@ -187,7 +206,7 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 			return result, blockMutationDelivery{}, nil
 		}
 
-		if index < requiredChanges {
+		if index < requiredChanges && !authoritative {
 			if !session.hasLoadedBlock(change.Position) || !blockWithinInteractionRange(player, change.Position) {
 				return result, blockMutationDelivery{}, nil
 			}

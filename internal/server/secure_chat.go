@@ -350,6 +350,34 @@ func (s *Session) handleChatAck(acknowledgement protocol.ChatAck) error {
 	return nil
 }
 
+func (s *Session) handleSignedCommandAcknowledgement(command protocol.SignedChatCommand) error {
+	if !s.secureChatEnforced() {
+		return nil
+	}
+
+	if len(command.ArgumentSignatures) != 0 {
+		return errors.New("command contains signatures for unsupported signable arguments")
+	}
+
+	s.chatMx.Lock()
+	defer s.chatMx.Unlock()
+
+	if s.chatState == nil {
+		s.chatState = newSessionChatState()
+	}
+
+	tracked := cloneTrackedSignatures(s.chatState.tracked)
+
+	_, err := applyChatAcknowledgement(&tracked, command.MessageCount, command.Acknowledged, command.Checksum)
+	if err != nil {
+		return err
+	}
+
+	s.chatState.tracked = tracked
+
+	return nil
+}
+
 func (s *Session) chatSessionSnapshot() *protocol.ChatSession {
 	s.chatMx.Lock()
 	defer s.chatMx.Unlock()

@@ -117,6 +117,83 @@ func TestChatAndLevelEventPacketsProtocol774(t *testing.T) {
 	assertPacketEncoding(t, SystemChat{Content: "hello"}, []byte{0x08, 0x00, 0x05, 'h', 'e', 'l', 'l', 'o', 0x00})
 }
 
+func TestCommandPacketsEncodeProtocol774(t *testing.T) {
+	if ClientboundCommandSuggestionsID != 0x0F || ClientboundDeclareCommandsID != 0x10 {
+		t.Fatalf("command packet ids = %#x, %#x", ClientboundCommandSuggestionsID, ClientboundDeclareCommandsID)
+	}
+
+	tree := DeclareCommands{
+		Nodes: []CommandNode{
+			{Type: CommandNodeRoot, Children: []int32{1}},
+			{Type: CommandNodeLiteral, Children: []int32{2}, Name: "give"},
+			{
+				Type:           CommandNodeArgument,
+				Executable:     true,
+				Name:           "count",
+				Parser:         CommandParserInteger,
+				Properties:     CommandIntegerProperties{HasMin: true, HasMax: true, Min: 1, Max: 64},
+				SuggestionType: "minecraft:ask_server",
+			},
+		},
+		RootIndex: 0,
+	}
+
+	assertPacketEncoding(t, tree, []byte{
+		0x03,
+		0x00, 0x01, 0x01,
+		0x01, 0x01, 0x02, 0x04, 'g', 'i', 'v', 'e',
+		0x16, 0x00, 0x05, 'c', 'o', 'u', 'n', 't', 0x03, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x40,
+		0x14, 'm', 'i', 'n', 'e', 'c', 'r', 'a', 'f', 't', ':', 'a', 's', 'k', '_', 's', 'e', 'r', 'v', 'e', 'r',
+		0x00,
+	})
+
+	assertPacketEncoding(t, CommandSuggestions{
+		TransactionID: 300,
+		Start:         1,
+		Length:        2,
+		Matches: []CommandSuggestion{
+			{Text: "give item"},
+			{Text: ""},
+		},
+	}, []byte{0xAC, 0x02, 0x01, 0x02, 0x02, 0x09, 'g', 'i', 'v', 'e', ' ', 'i', 't', 'e', 'm', 0x00, 0x00, 0x00})
+
+	assertPacketEncoding(t, DeclareCommands{
+		Nodes: []CommandNode{
+			{Type: CommandNodeRoot, Children: []int32{1, 2}},
+			{Type: CommandNodeArgument, Name: "selector", Parser: CommandParserResourceSelector, Properties: CommandResourceProperties{Registry: "minecraft:loot_table"}},
+			{Type: CommandNodeArgument, Name: "id", Parser: CommandParserUUID},
+		},
+		RootIndex: 0,
+	}, []byte{
+		0x03,
+		0x00, 0x02, 0x01, 0x02,
+		0x02, 0x00, 0x08, 's', 'e', 'l', 'e', 'c', 't', 'o', 'r', 0x30, 0x14, 'm', 'i', 'n', 'e', 'c', 'r', 'a', 'f', 't', ':', 'l', 'o', 'o', 't', '_', 't', 'a', 'b', 'l', 'e',
+		0x02, 0x00, 0x02, 'i', 'd', 0x38,
+		0x00,
+	})
+}
+
+func TestCommandPacketEncodersRejectInvalidValues(t *testing.T) {
+	for name, encoder := range map[string]testPacketEncoder{
+		"empty tree":                 DeclareCommands{},
+		"invalid parser":             DeclareCommands{Nodes: []CommandNode{{Type: CommandNodeRoot}, {Type: CommandNodeArgument, Name: "target", Parser: CommandParserInteger}}, RootIndex: 0},
+		"invalid string parser type": DeclareCommands{Nodes: []CommandNode{{Type: CommandNodeRoot}, {Type: CommandNodeArgument, Name: "target", Parser: CommandParserString, Properties: CommandStringProperties{Type: 3}}}, RootIndex: 0},
+		"literal suggestions":        DeclareCommands{Nodes: []CommandNode{{Type: CommandNodeRoot}, {Type: CommandNodeLiteral, Name: "help", SuggestionType: "minecraft:ask_server"}}, RootIndex: 0},
+		"negative range":             CommandSuggestions{Start: -1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var writer PacketWriter
+
+			encoder.Encode(&writer)
+
+			err := writer.Err()
+			if err == nil {
+				t.Fatal("invalid command packet encoded")
+			}
+		})
+	}
+}
+
 func TestPlayerChatEncode(t *testing.T) {
 	chat := PlayerChat{
 		GlobalIndex:        1,

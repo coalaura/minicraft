@@ -274,7 +274,7 @@ func TestBlockMutationBroadcastsFollowCommitOrder(t *testing.T) {
 
 		changes := []game.BlockChange{{Position: position, Replacement: replacement}}
 
-		return runtime.mutateBlocksLocked(actor, action, changes, 1, true, false)
+		return runtime.mutateBlocksLocked(actor, action, changes, 1, true, false, false)
 	}
 
 	firstResult, firstDelivery, err := commit(BlockMutationPlace, game.Stone)
@@ -546,6 +546,30 @@ func TestDistantBlockBreakingIsDenied(t *testing.T) {
 
 	assertBlockUpdate(t, actorConnection.packets(t)[0], position, protocol.StoneBlockState)
 	assertBlockChangedAck(t, actorConnection.packets(t)[1], 14)
+}
+
+func TestBlockInteractionRangeUsesPlayerEyePosition(t *testing.T) {
+	position := game.BlockPosition{Y: -6}
+
+	player := game.Player{}
+
+	player.Pose = game.PlayerPoseStanding
+
+	if blockWithinInteractionRange(player, position) {
+		t.Fatal("standing player can reach block below range")
+	}
+
+	player.Pose = game.PlayerPoseCrouching
+
+	if blockWithinInteractionRange(player, position) {
+		t.Fatal("crouching player can reach block below range")
+	}
+
+	player.Pose = game.PlayerPoseCrawling
+
+	if !blockWithinInteractionRange(player, position) {
+		t.Fatal("crawling player cannot reach block within range")
+	}
 }
 
 func TestIgnoredPlayerActionAcknowledgesSequence(t *testing.T) {

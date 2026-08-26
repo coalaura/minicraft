@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +30,9 @@ type Runtime struct {
 	clockMu                   sync.RWMutex
 	nowFunc                   func() time.Time
 	worldMutationMu           sync.Mutex
+	commandRandomMu           sync.Mutex
+	commandRandom             func(int) int
+	commands                  *commandRegistry
 	blockMutationDeliveryTail chan struct{}
 	activeChunksMu            sync.RWMutex
 	activeChunks              map[LoadedChunk]*activeChunkReference
@@ -68,16 +72,21 @@ func NewRuntime(world *game.World) *Runtime {
 
 	close(initialDelivery)
 
-	return &Runtime{
+	runtime := &Runtime{
 		World:                     world,
 		AllowBlockBreaking:        true,
 		AllowBlockPlacing:         true,
 		blockMutationDeliveryTail: initialDelivery,
+		commandRandom:             rand.IntN,
 		activeChunks:              make(map[LoadedChunk]*activeChunkReference),
 		sessionActiveChunks:       make(map[*Session]map[LoadedChunk]struct{}),
 		sessions:                  make(map[*Session]*game.Player),
 		connectedSessions:         make(map[*Session]struct{}),
 	}
+
+	runtime.commands = newCommandRegistry(runtime)
+
+	return runtime
 }
 
 func (r *Runtime) registerConnectedSession(session *Session) bool {

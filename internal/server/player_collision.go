@@ -8,6 +8,7 @@ import (
 )
 
 func (r *Runtime) calculatedPlayerPose(player game.Player) game.PlayerPose {
+	currentPose := player.Pose
 	desired := game.PlayerPoseStanding
 
 	if player.Sneaking {
@@ -34,7 +35,7 @@ func (r *Runtime) calculatedPlayerPose(player game.Player) game.PlayerPose {
 		return game.PlayerPoseCrawling
 	}
 
-	return game.PlayerPoseCrawling
+	return currentPose
 }
 
 func (r *Runtime) playerFits(player game.Player) bool {
