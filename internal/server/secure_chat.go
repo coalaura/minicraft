@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -112,7 +113,7 @@ func LoadMinecraftCertificateVerifier(ctx context.Context, client *http.Client) 
 	}
 
 	if len(body) > maxCertificateResponseBytes {
-		return nil, fmt.Errorf("Minecraft certificate-key response exceeds %d bytes", maxCertificateResponseBytes)
+		return nil, fmt.Errorf("minecraft certificate-key response exceeds %d bytes", maxCertificateResponseBytes)
 	}
 
 	var payload minecraftPublicKeysResponse
@@ -137,7 +138,7 @@ func LoadMinecraftCertificateVerifier(ctx context.Context, client *http.Client) 
 
 		publicKey, ok := parsed.(*rsa.PublicKey)
 		if !ok {
-			return nil, fmt.Errorf("Minecraft player-certificate key has type %T, want RSA", parsed)
+			return nil, fmt.Errorf("minecraft player-certificate key has type %T, want RSA", parsed)
 		}
 
 		trustedKeys = append(trustedKeys, publicKey)
@@ -507,7 +508,7 @@ func applyChatAcknowledgement(tracked *[]*trackedChatSignature, offset int32, ac
 
 	previous := make([][chatSignatureLength]byte, 0, chatAcknowledgementBits)
 
-	for index := 0; index < chatAcknowledgementBits; index++ {
+	for index := range chatAcknowledgementBits {
 		entry := window[index]
 		set := acknowledged[index/8]&(1<<uint(index%8)) != 0
 
@@ -609,9 +610,7 @@ func updateSignatureCache(cache [][chatSignatureLength]byte, signature [chatSign
 	toAdd = append(toAdd, signature)
 	toAdd = append(toAdd, previous...)
 
-	for index := len(toAdd) - 1; index >= 0; index-- {
-		value := toAdd[index]
-
+	for _, value := range slices.Backward(toAdd) {
 		existing := signatureCacheIndex(cache, value)
 		if existing >= 0 {
 			cache = append(cache[:existing], cache[existing+1:]...)

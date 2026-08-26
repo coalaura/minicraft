@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -666,12 +667,12 @@ func assertPreviousSignatureCacheID(t *testing.T, connection *recordingConnectio
 
 	packets := connection.packets(t)
 
-	for index := len(packets) - 1; index >= 0; index-- {
-		if packets[index].ID != protocol.ClientboundPlayerChatID {
+	for _, packet := range slices.Backward(packets) {
+		if packet.ID != protocol.ClientboundPlayerChatID {
 			continue
 		}
 
-		reader := protocol.NewPacketReader(packets[index].Data)
+		reader := protocol.NewPacketReader(packet.Data)
 
 		reader.VarInt()
 		reader.UUID()

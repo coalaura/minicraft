@@ -181,7 +181,7 @@ func TestBulkBlockMutationUsesSectionUpdatesForLoadedChunks(t *testing.T) {
 
 	changes := make([]game.BlockChange, 0, 32)
 
-	for blockX := int32(0); blockX < 32; blockX++ {
+	for blockX := range int32(32) {
 		changes = append(changes, game.BlockChange{Position: game.BlockPosition{X: blockX, Y: 70}, Replacement: game.Stone})
 	}
 

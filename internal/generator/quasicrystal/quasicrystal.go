@@ -242,7 +242,7 @@ func nearestNode(seed int64, pointX, pointZ float64, samples [len(directions)]li
 	closestDistanceSquared := plazaRadius * plazaRadius
 	closest := nodeDescription{}
 
-	for firstFamily := 0; firstFamily < len(directions); firstFamily++ {
+	for firstFamily := range len(directions) {
 		firstAxis := directions[firstFamily]
 		firstSample := samples[firstFamily]
 

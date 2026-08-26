@@ -118,11 +118,7 @@ func TestPreparedSectionsAreDeterministicWhenConcurrent(t *testing.T) {
 	errors := make(chan string, 16)
 
 	for range 16 {
-		group.Add(1)
-
-		go func() {
-			defer group.Done()
-
+		group.Go(func() {
 			for range 8 {
 				var blocks [game.SectionVolume]game.Block
 
@@ -133,7 +129,7 @@ func TestPreparedSectionsAreDeterministicWhenConcurrent(t *testing.T) {
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	group.Wait()

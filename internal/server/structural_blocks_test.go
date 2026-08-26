@@ -368,7 +368,7 @@ func TestAuthoritativeBulkMutationRecalculatesStructuralNeighbors(t *testing.T) 
 
 	changes := make([]game.BlockChange, 0, 9)
 
-	for blockX := int32(0); blockX < 9; blockX++ {
+	for blockX := range int32(9) {
 		changes = append(changes, game.BlockChange{
 			Position:    game.BlockPosition{X: blockX, Y: 70},
 			Replacement: game.OakFence,
