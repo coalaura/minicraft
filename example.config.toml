@@ -48,6 +48,9 @@ generator = "spawn-platform"
 # Seed passed to the selected world generator.
 seed = 0
 
+# Generate a new seed whenever the server starts. When true, seed above is ignored.
+random-seed = false
+
 # Lighting mode: normal computes skylight and block light; fullbright skips lighting work.
 lighting = "normal"
 

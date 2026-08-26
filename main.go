@@ -27,7 +27,7 @@ func main() {
 	worldGenerator, err := generator.New(cfg.World.Generator)
 	log.MustFail(err)
 
-	world := game.NewOverworld(worldGenerator, cfg.World.Seed)
+	world := game.NewOverworld(worldGenerator, cfg.WorldSeed())
 
 	world.SetLightingMode(game.ParseLightingMode(cfg.World.Lighting))
 	world.SetTime(cfg.WorldTime(), cfg.DayCycle())

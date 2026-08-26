@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand/v2"
 	"os"
 
 	"github.com/coalaura/minicraft/internal/crypto"
@@ -35,12 +36,13 @@ type ServerConfig struct {
 }
 
 type WorldConfig struct {
-	Generator string       `toml:"generator"`
-	Seed      int64        `toml:"seed"`
-	Spawn     *SpawnConfig `toml:"spawn"`
-	Lighting  string       `toml:"lighting"`
-	DayCycle  *bool        `toml:"day-cycle"`
-	Time      *int64       `toml:"time"`
+	Generator  string       `toml:"generator"`
+	Seed       int64        `toml:"seed"`
+	RandomSeed bool         `toml:"random-seed"`
+	Spawn      *SpawnConfig `toml:"spawn"`
+	Lighting   string       `toml:"lighting"`
+	DayCycle   *bool        `toml:"day-cycle"`
+	Time       *int64       `toml:"time"`
 }
 
 type SpawnConfig struct {
@@ -241,6 +243,14 @@ func (c *Config) WorldTime() int64 {
 	}
 
 	return *c.World.Time
+}
+
+func (c *Config) WorldSeed() int64 {
+	if c.World.RandomSeed {
+		return int64(rand.Uint64())
+	}
+
+	return c.World.Seed
 }
 
 func (c *Config) MaxPlayers() int {

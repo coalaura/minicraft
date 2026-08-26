@@ -114,6 +114,25 @@ spawn = { x = 12.5, y = 80.0, z = -7.5 }
 	}
 }
 
+func TestWorldSeedUsesConfiguredSeedByDefault(t *testing.T) {
+	cfg := Config{World: WorldConfig{Seed: -42}}
+
+	if cfg.WorldSeed() != -42 {
+		t.Fatalf("world seed = %d, want -42", cfg.WorldSeed())
+	}
+}
+
+func TestConfigDecodesRandomWorldSeed(t *testing.T) {
+	cfg, err := decodeConfig(strings.NewReader("[world]\nseed = 42\nrandom-seed = true"))
+	if err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+
+	if !cfg.World.RandomSeed {
+		t.Fatal("random world seed is disabled")
+	}
+}
+
 func TestConfigRejectsInvalidGameMode(t *testing.T) {
 	cfg := Config{Server: ServerConfig{MaxPlayers: new(1), DefaultGameMode: "builder"}}
 
