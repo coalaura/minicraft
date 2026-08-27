@@ -64,18 +64,16 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 			return false, BlockMutationResult{}, nil, blockMutationDelivery{}, nil
 		}
 
-		entity, hasEntity := r.World.BlockEntityAt(position)
-		if hasEntity && entity.Type == game.BlockEntityTypeBarrel {
+		runtimeEntity, active := r.authoritativeRuntimeBlockEntityAt(position, block)
+		interaction, interactive := runtimeEntity.(RuntimeBlockEntityInteraction)
+
+		if interactive && active {
 			if !session.hasLoadedBlock(position) || !blockWithinInteractionRange(player, position) {
 				return true, BlockMutationResult{Block: block}, []game.BlockPosition{position}, blockMutationDelivery{}, nil
 			}
 
-			if _, active := r.runtimeBarrelAt(position); !active {
-				return true, BlockMutationResult{Block: block}, []game.BlockPosition{position}, blockMutationDelivery{}, nil
-			}
-
 			r.lifecycleMu.Lock()
-			err := r.openBarrelLocked(session, position)
+			err := interaction.InteractBlock(r, session)
 			r.lifecycleMu.Unlock()
 
 			return true, BlockMutationResult{Block: block, Allowed: true, Changed: true}, []game.BlockPosition{position}, blockMutationDelivery{}, err
@@ -309,9 +307,9 @@ func placementStateWithRotation(base game.Block, rule game.ItemPlacementRule, in
 		return base.WithProperties(game.BlockPropertyValue{Name: "axis", Value: axis})
 	case game.ItemPlacementHorizontalFacing:
 		return base.WithProperties(game.BlockPropertyValue{Name: "facing", Value: facing.name()})
-	case game.ItemPlacementBarrel:
+	case game.ItemPlacementDirectionalFacing:
 		return base.WithProperties(
-			game.BlockPropertyValue{Name: "facing", Value: barrelPlacementFacing(rotation)},
+			game.BlockPropertyValue{Name: "facing", Value: directionalPlacementFacing(rotation)},
 			game.BlockPropertyValue{Name: "open", Value: "false"},
 		)
 	case game.ItemPlacementSlab:
@@ -426,7 +424,7 @@ func placementStateWithRotation(base game.Block, rule game.ItemPlacementRule, in
 	}
 }
 
-func barrelPlacementFacing(rotation game.Rotation) string {
+func directionalPlacementFacing(rotation game.Rotation) string {
 	yaw := float64(rotation.Yaw) * math.Pi / 180
 	pitch := float64(rotation.Pitch) * math.Pi / 180
 

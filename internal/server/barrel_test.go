@@ -39,9 +39,11 @@ func (g barrelTestGenerator) GenerateBlockEntities(_ int64, chunk game.ChunkPosi
 func TestActiveBarrelRealizationIsPassive(t *testing.T) {
 	position := game.BlockPosition{X: 1, Y: 70, Z: 1}
 
-	entity := game.BlockEntity{Type: game.BlockEntityTypeBarrel}
+	entity := game.NewBlockEntity(game.BlockEntityTypeBarrel)
 
-	entity.Items[0] = game.ItemStack{Item: game.ItemStone, Count: 3}
+	entityItems := mustBarrelItems(t, &entity)
+
+	entityItems[0] = game.ItemStack{Item: game.ItemStone, Count: 3}
 
 	world := &game.World{Generator: barrelTestGenerator{position: position, entity: entity}}
 
@@ -103,7 +105,9 @@ func TestBarrelViewersShareContentsWithIndependentStateIDs(t *testing.T) {
 		t.Fatal("barrel is not active")
 	}
 
-	barrel.entity.Items[0] = game.ItemStack{Item: game.ItemStone, Count: 4}
+	barrelItems := mustBarrelItems(t, &barrel.entity)
+
+	barrelItems[0] = game.ItemStack{Item: game.ItemStone, Count: 4}
 
 	openBarrelForTest(t, runtime, first, position)
 	openBarrelForTest(t, runtime, second, position)
@@ -127,8 +131,8 @@ func TestBarrelViewersShareContentsWithIndependentStateIDs(t *testing.T) {
 		t.Fatalf("first viewer pickup: %v", err)
 	}
 
-	if !barrel.entity.Items[0].Empty() || !first.activeMenu().carried.Equal(game.ItemStack{Item: game.ItemStone, Count: 4}) {
-		t.Fatalf("shared barrel contents after pickup = %+v", barrel.entity.Items[0])
+	if !barrelItems[0].Empty() || !first.activeMenu().carried.Equal(game.ItemStack{Item: game.ItemStone, Count: 4}) {
+		t.Fatalf("shared barrel contents after pickup = %+v", barrelItems[0])
 	}
 
 	if first.activeMenu().stateID != 1 || second.activeMenu().stateID != 1 {
@@ -138,6 +142,45 @@ func TestBarrelViewersShareContentsWithIndependentStateIDs(t *testing.T) {
 	assertPacketIDs(t, firstConnection.packetIDs(t), []int32{protocol.ClientboundContainerSetContentID})
 	assertPacketIDs(t, secondConnection.packetIDs(t), []int32{protocol.ClientboundContainerSetContentID})
 	assertMenuSnapshotHeader(t, secondConnection.packets(t)[0], second.activeMenu().windowID, 1, 63)
+}
+
+func TestPlayerOnlyBarrelMenuClickDoesNotSynchronizeOtherViewers(t *testing.T) {
+	position := game.BlockPosition{Y: 70}
+
+	runtime, first, firstConnection := newBarrelTestRuntime(t, position)
+
+	second, secondConnection := newBarrelTestSession(t, runtime, position, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Second")
+
+	first.Player.Inventory.Main[0] = game.ItemStack{Item: game.ItemStone, Count: 4}
+
+	openBarrelForTest(t, runtime, first, position)
+	openBarrelForTest(t, runtime, second, position)
+
+	firstConnection.reset()
+	secondConnection.reset()
+
+	err := first.handleContainerClick(protocol.ContainerClick{
+		WindowID:    first.activeMenu().windowID,
+		StateID:     first.activeMenu().stateID,
+		Slot:        27,
+		MouseButton: 0,
+		Mode:        clickModePickup,
+		ChangedSlots: []protocol.ChangedSlot{{
+			Location: 27,
+		}},
+		CursorItem: hashedStack(game.ItemStack{Item: game.ItemStone, Count: 4}),
+	})
+
+	if err != nil {
+		t.Fatalf("player-only barrel click: %v", err)
+	}
+
+	if first.activeMenu().stateID != 1 || second.activeMenu().stateID != 0 {
+		t.Fatalf("viewer state ids = %d, %d; want 1, 0", first.activeMenu().stateID, second.activeMenu().stateID)
+	}
+
+	assertPacketIDs(t, firstConnection.packetIDs(t), []int32{protocol.ClientboundContainerSetContentID})
+	assertPacketIDs(t, secondConnection.packetIDs(t), nil)
 }
 
 func TestBarrelShiftClickMatchesVanillaReversePlayerRouting(t *testing.T) {
@@ -150,7 +193,9 @@ func TestBarrelShiftClickMatchesVanillaReversePlayerRouting(t *testing.T) {
 		t.Fatal("barrel is not active")
 	}
 
-	barrel.entity.Items[0] = game.ItemStack{Item: game.ItemStone, Count: 5}
+	barrelItems := mustBarrelItems(t, &barrel.entity)
+
+	barrelItems[0] = game.ItemStack{Item: game.ItemStone, Count: 5}
 
 	openBarrelForTest(t, runtime, session, position)
 	connection.reset()
@@ -172,8 +217,8 @@ func TestBarrelShiftClickMatchesVanillaReversePlayerRouting(t *testing.T) {
 	}
 
 	player := session.snapshotPlayer()
-	if !barrel.entity.Items[0].Empty() || !player.Inventory.Hotbar[8].Equal(game.ItemStack{Item: game.ItemStone, Count: 5}) {
-		t.Fatalf("shift-click result = barrel %+v, hotbar %+v", barrel.entity.Items[0], player.Inventory.Hotbar[8])
+	if !barrelItems[0].Empty() || !player.Inventory.Hotbar[8].Equal(game.ItemStack{Item: game.ItemStone, Count: 5}) {
+		t.Fatalf("shift-click result = barrel %+v, hotbar %+v", barrelItems[0], player.Inventory.Hotbar[8])
 	}
 
 	if currentMenu.stateID != 1 {
@@ -193,7 +238,10 @@ func TestCreativeCloneAndMiddleDragWorkInBarrelMenu(t *testing.T) {
 		t.Fatal("barrel is not active")
 	}
 
-	barrel.entity.Items[0] = game.ItemStack{Item: game.ItemStone, Count: 1}
+	barrelItems := mustBarrelItems(t, &barrel.entity)
+
+	barrelItems[0] = game.ItemStack{Item: game.ItemStone, Count: 1}
+
 	session.Player.GameMode = game.GameModeCreative
 
 	openBarrelForTest(t, runtime, session, position)
@@ -256,8 +304,8 @@ func TestCreativeCloneAndMiddleDragWorkInBarrelMenu(t *testing.T) {
 		}
 	}
 
-	if !barrel.entity.Items[1].Equal(fullStack) || !barrel.entity.Items[2].Equal(fullStack) || !currentMenu.carried.Empty() {
-		t.Fatalf("creative drag result = slots %+v, %+v, carried %+v", barrel.entity.Items[1], barrel.entity.Items[2], currentMenu.carried)
+	if !barrelItems[1].Equal(fullStack) || !barrelItems[2].Equal(fullStack) || !currentMenu.carried.Empty() {
+		t.Fatalf("creative drag result = slots %+v, %+v, carried %+v", barrelItems[1], barrelItems[2], currentMenu.carried)
 	}
 
 	if currentMenu.stateID != 2 {
@@ -328,6 +376,21 @@ func TestBarrelMenuClosesWhenPlayerMovesOutOfRange(t *testing.T) {
 	assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID, protocol.ClientboundCloseContainerID})
 }
 
+func TestBarrelValidityUsesStrictEyeToBlockBoundsDistance(t *testing.T) {
+	position := game.BlockPosition{}
+
+	player := game.Player{Position: game.Position{X: 11, Y: 0.5 - 1.62, Z: 0.5}}
+
+	if blockEntityMenuWithinRange(player, position, barrelValidityPadding) {
+		t.Fatal("barrel menu remained valid at the exact maximum distance")
+	}
+
+	player.Position.X -= 0.0001
+	if !blockEntityMenuWithinRange(player, position, barrelValidityPadding) {
+		t.Fatal("barrel menu was invalid just inside the maximum distance")
+	}
+}
+
 func TestBarrelMenuClosesWhenBarrelIsRemoved(t *testing.T) {
 	position := game.BlockPosition{Y: 70}
 
@@ -361,7 +424,7 @@ func TestBarrelPlacementUsesVerticalFacing(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			state, valid := placementStateWithRotation(game.Barrel, game.ItemPlacementBarrel, protocol.UseItemOn{}, test.rotation)
+			state, valid := placementStateWithRotation(game.Barrel, game.ItemPlacementDirectionalFacing, protocol.UseItemOn{}, test.rotation)
 			if !valid {
 				t.Fatal("barrel placement state is invalid")
 			}
@@ -407,7 +470,7 @@ func TestUseItemOnOpensBarrelAndAcknowledgesInteraction(t *testing.T) {
 		t.Fatalf("open barrel: %v", err)
 	}
 
-	if session.activeMenu().barrel == nil {
+	if session.activeMenu().backing == nil {
 		t.Fatal("barrel interaction did not open a container menu")
 	}
 
@@ -437,7 +500,9 @@ func TestNormalLightChunkIncludesBarrelBlockEntity(t *testing.T) {
 	}
 
 	entity := chunk.BlockEntities[0]
-	if entity.X != 0 || entity.Y != int16(position.Y) || entity.Z != 0 || entity.Type != barrelBlockEntityRegistryID {
+
+	definition, _ := game.BlockEntityTypeBarrel.Definition()
+	if entity.X != 0 || entity.Y != int16(position.Y) || entity.Z != 0 || entity.Type != definition.ProtocolRegistryID12111 {
 		t.Fatalf("normal-light barrel entity = %+v", entity)
 	}
 }
@@ -476,8 +541,13 @@ func newBarrelTestSession(t *testing.T, runtime *Runtime, position game.BlockPos
 func openBarrelForTest(t *testing.T, runtime *Runtime, session *Session, position game.BlockPosition) {
 	t.Helper()
 
+	barrel, active := runtime.runtimeBarrelAt(position)
+	if !active {
+		t.Fatal("barrel is not active")
+	}
+
 	runtime.lifecycleMu.Lock()
-	err := runtime.openBarrelLocked(session, position)
+	err := runtime.openBarrelLocked(session, barrel)
 	runtime.lifecycleMu.Unlock()
 
 	if err != nil {
@@ -505,9 +575,20 @@ func assertBarrelOpenScreen(t *testing.T, packet protocol.Packet, wantWindowID i
 	windowID := reader.VarInt()
 	menuType := reader.VarInt()
 
-	if windowID != wantWindowID || menuType != barrelMenuType {
-		t.Fatalf("barrel open screen = window %d type %d; want window %d type %d", windowID, menuType, wantWindowID, barrelMenuType)
+	if windowID != wantWindowID || menuType != protocol.MenuGeneric9x3 {
+		t.Fatalf("barrel open screen = window %d type %d; want window %d type %d", windowID, menuType, wantWindowID, protocol.MenuGeneric9x3)
 	}
+}
+
+func mustBarrelItems(t *testing.T, entity *game.BlockEntity) []game.ItemStack {
+	t.Helper()
+
+	items, inventory := entity.Inventory()
+	if !inventory || len(items) != game.BarrelSlotCount {
+		t.Fatal("barrel entity does not expose 27 inventory slots")
+	}
+
+	return items
 }
 
 func assertMenuSnapshotHeader(t *testing.T, packet protocol.Packet, wantWindowID, wantStateID, wantSlots int32) {

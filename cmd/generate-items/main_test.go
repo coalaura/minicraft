@@ -25,7 +25,7 @@ func TestBlockPlacementRuleFamilies(t *testing.T) {
 		{name: "copper_bars", properties: properties("east", "north", "south", "waterlogged", "west"), box: "block", rule: "ItemPlacementPane"},
 		{name: "cobweb", box: "empty", rule: "ItemPlacementDefault"},
 		{name: "mushroom_stem", properties: properties("down", "east", "north", "south", "up", "west"), box: "block", rule: "ItemPlacementDefault"},
-		{name: "barrel", properties: properties("facing", "open"), box: "block", rule: "ItemPlacementBarrel"},
+		{name: "barrel", properties: properties("facing", "open"), box: "block", rule: "ItemPlacementDirectionalFacing"},
 	}
 
 	for _, test := range tests {

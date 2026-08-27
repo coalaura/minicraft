@@ -4424,7 +4424,7 @@ var itemPlacementRules = [MaxItemID + 1]ItemPlacementRule{
 	ItemCauldron:                        ItemPlacementDefault,
 	ItemFlowerPot:                       ItemPlacementDefault,
 	ItemLoom:                            ItemPlacementHorizontalFacing,
-	ItemBarrel:                          ItemPlacementBarrel,
+	ItemBarrel:                          ItemPlacementDirectionalFacing,
 	ItemCartographyTable:                ItemPlacementDefault,
 	ItemFletchingTable:                  ItemPlacementDefault,
 	ItemSmithingTable:                   ItemPlacementDefault,

@@ -4,17 +4,34 @@ import (
 	"slices"
 
 	"github.com/coalaura/minicraft/internal/game"
+	"github.com/coalaura/minicraft/internal/protocol"
 )
 
 const noMenuSlot = -1
 
 type menuSlotRole uint8
 
+type menuStorage uint8
+
 const (
 	menuSlotNormal menuSlotRole = iota
 	menuSlotResult
 	menuSlotArmor
 )
+
+const (
+	menuStorageNone menuStorage = iota
+	menuStoragePlayer
+	menuStorageBacking
+)
+
+type menuBacking interface {
+	Position() game.BlockPosition
+	Attach(*Runtime, *Session)
+	Detach(*Runtime, *Session)
+	Changed(*Runtime, *Session)
+	StillValid(*Runtime, *Session) bool
+}
 
 type menuSlot struct {
 	stack         *game.ItemStack
@@ -23,16 +40,18 @@ type menuSlot struct {
 	limit         int32
 	playerSlot    int
 	hasPlayerSlot bool
+	storage       menuStorage
 }
 
 type menuQuickMove func(*menuCandidate, int)
 
 type menu struct {
-	windowID int32
-	stateID  int32
-	carried  game.ItemStack
-	drag     inventoryDragState
-	slots    []menuSlot
+	windowID         int32
+	protocolMenuType int32
+	stateID          int32
+	carried          game.ItemStack
+	drag             inventoryDragState
+	slots            []menuSlot
 
 	hotbarSlots    [game.HotbarSlotCount]int
 	hasHotbarSlots [game.HotbarSlotCount]bool
@@ -40,7 +59,8 @@ type menu struct {
 	hasOffhandSlot bool
 	hiddenOffhand  *game.ItemStack
 	quickMove      menuQuickMove
-	barrel         *runtimeBarrel
+	backing        menuBacking
+	containerSlots int
 }
 
 type menuCandidate struct {
@@ -66,6 +86,7 @@ func newPlayerInventoryMenu(inventory *game.PlayerInventory) *menu {
 			limit:         64,
 			playerSlot:    slot,
 			hasPlayerSlot: true,
+			storage:       menuStoragePlayer,
 		}
 	}
 
@@ -93,11 +114,18 @@ func newPlayerInventoryMenu(inventory *game.PlayerInventory) *menu {
 	return playerMenu
 }
 
-func newNineByThreeMenu(windowID int32, container *[27]game.ItemStack, inventory *game.PlayerInventory) *menu {
-	slots := make([]menuSlot, 0, 63)
+func newGenericContainerMenu(windowID int32, rows int, container []game.ItemStack, inventory *game.PlayerInventory) *menu {
+	containerSlots := rows * 9
+
+	menuType, validMenuType := protocol.Generic9xMenuType(rows)
+	if !validMenuType || len(container) != containerSlots {
+		return nil
+	}
+
+	slots := make([]menuSlot, 0, containerSlots+36)
 
 	for slot := range container {
-		slots = append(slots, menuSlot{stack: &container[slot], limit: 64})
+		slots = append(slots, menuSlot{stack: &container[slot], limit: 64, storage: menuStorageBacking})
 	}
 
 	for playerSlot := 9; playerSlot <= 44; playerSlot++ {
@@ -106,22 +134,36 @@ func newNineByThreeMenu(windowID int32, container *[27]game.ItemStack, inventory
 			limit:         64,
 			playerSlot:    playerSlot,
 			hasPlayerSlot: true,
+			storage:       menuStoragePlayer,
 		})
 	}
 
 	containerMenu := &menu{
-		windowID:      windowID,
-		slots:         slots,
-		hiddenOffhand: inventory.Slot(45),
-		quickMove:     quickMoveNineByThree,
+		windowID:         windowID,
+		protocolMenuType: menuType,
+		slots:            slots,
+		hiddenOffhand:    inventory.Slot(45),
+		quickMove:        quickMoveGenericContainer,
+		containerSlots:   containerSlots,
 	}
 
 	for hotbar := range game.HotbarSlotCount {
-		containerMenu.hotbarSlots[hotbar] = 54 + hotbar
+		containerMenu.hotbarSlots[hotbar] = containerSlots + 27 + hotbar
 		containerMenu.hasHotbarSlots[hotbar] = true
 	}
 
 	return containerMenu
+}
+
+func (candidate *menuCandidate) backingChanged() bool {
+	for slot := range candidate.slots {
+		definition := candidate.menu.slots[slot]
+		if definition.storage == menuStorageBacking && !definition.stack.Equal(candidate.slots[slot]) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (current *menu) candidate() *menuCandidate {
@@ -258,13 +300,15 @@ func quickMovePlayerInventory(candidate *menuCandidate, slot int) {
 	normalizeStack(&candidate.slots[slot])
 }
 
-func quickMoveNineByThree(candidate *menuCandidate, slot int) {
+func quickMoveGenericContainer(candidate *menuCandidate, slot int) {
 	remaining := candidate.slots[slot].Clone()
 
-	if slot < 27 {
-		moveIntoSlots(candidate, &remaining, reverseSlotRange(27, 62))
+	containerSlots := candidate.menu.containerSlots
+
+	if slot < containerSlots {
+		moveIntoSlots(candidate, &remaining, reverseSlotRange(containerSlots, len(candidate.slots)-1))
 	} else {
-		moveIntoSlots(candidate, &remaining, slotRange(0, 26))
+		moveIntoSlots(candidate, &remaining, slotRange(0, containerSlots-1))
 	}
 
 	candidate.slots[slot] = remaining

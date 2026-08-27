@@ -1,5 +1,22 @@
 package protocol
 
+const (
+	MenuGeneric9x1 int32 = iota
+	MenuGeneric9x2
+	MenuGeneric9x3
+	MenuGeneric9x4
+	MenuGeneric9x5
+	MenuGeneric9x6
+)
+
+func Generic9xMenuType(rows int) (int32, bool) {
+	if rows < 1 || rows > 6 {
+		return 0, false
+	}
+
+	return MenuGeneric9x1 + int32(rows-1), true
+}
+
 var ConfigurationRegistries = []Registry{
 	{
 		ID:      "minecraft:dimension_type",

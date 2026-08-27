@@ -113,7 +113,7 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	for _, block := range blocks {
 		fmt.Fprintf(
 			&output,
-			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Collision: %s, Emission: %d, LightFilter: %d, Sound: %s, Replaceable: %t",
+			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Collision: %s, Emission: %d, LightFilter: %d, Sound: %s, Replaceable: %t, BlockEntityType: %s",
 			goName(block.Name),
 			block.Name,
 			goName(block.Name),
@@ -125,6 +125,7 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 			block.FilterLight,
 			blockSoundType(block),
 			blockReplaceable(block.Name),
+			blockEntityType(block.Name),
 		)
 
 		if len(block.Properties) != 0 {
@@ -190,6 +191,14 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	}
 
 	return formatted, nil
+}
+
+func blockEntityType(name string) string {
+	if name == "barrel" {
+		return "BlockEntityTypeBarrel"
+	}
+
+	return "BlockEntityTypeNone"
 }
 
 func blockSoundType(block BlockDefinition) string {

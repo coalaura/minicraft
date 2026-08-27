@@ -13,8 +13,22 @@ type runtimeTickLog struct {
 }
 
 type recordingRuntimeTicker struct {
-	label string
-	log   *runtimeTickLog
+	label    string
+	log      *runtimeTickLog
+	position game.BlockPosition
+}
+
+type recordingBlockEntityInteraction struct {
+	position game.BlockPosition
+	calls    int
+}
+
+func (t *recordingRuntimeTicker) BlockEntityType() game.BlockEntityType {
+	return game.BlockEntityTypeBarrel
+}
+
+func (t *recordingRuntimeTicker) BlockPosition() game.BlockPosition {
+	return t.position
 }
 
 func (t *recordingRuntimeTicker) Tick(_ *Runtime, _ *ActiveChunk) {
@@ -22,6 +36,63 @@ func (t *recordingRuntimeTicker) Tick(_ *Runtime, _ *ActiveChunk) {
 	defer t.log.mu.Unlock()
 
 	t.log.entries = append(t.log.entries, t.label)
+}
+
+func (interaction *recordingBlockEntityInteraction) BlockEntityType() game.BlockEntityType {
+	return game.BlockEntityTypeBarrel
+}
+
+func (interaction *recordingBlockEntityInteraction) BlockPosition() game.BlockPosition {
+	return interaction.position
+}
+
+func (interaction *recordingBlockEntityInteraction) InteractBlock(_ *Runtime, _ *Session) error {
+	interaction.calls++
+	return nil
+}
+
+func TestRuntimeBlockEntityCapabilitiesAreOptionalAndGeneric(t *testing.T) {
+	position := game.BlockPosition{Y: 70}
+
+	runtime := NewRuntime(&game.World{})
+
+	session, _ := newPlacementTestSession(runtime, position)
+
+	runtime.World.SetBlock(position, game.Barrel)
+
+	runtime.setSessionActiveChunks(session, []LoadedChunk{blockLoadedChunk(position)})
+
+	chunk, _ := runtime.ActiveChunk(blockLoadedChunk(position))
+
+	interaction := &recordingBlockEntityInteraction{position: position}
+
+	chunk.SetBlockEntity(position, interaction)
+
+	if _, ticking := any(interaction).(RuntimeBlockEntityTicker); ticking {
+		t.Fatal("interaction-only block entity unexpectedly ticks")
+	}
+
+	handled, result, _, err := runtime.InteractBlock(session, position)
+	if err != nil {
+		t.Fatalf("generic block entity interaction: %v", err)
+	}
+
+	if !handled || !result.Allowed || !result.Changed || interaction.calls != 1 {
+		t.Fatalf("interaction result = handled %v, result %+v, calls %d", handled, result, interaction.calls)
+	}
+
+	runtime.World.SetBlock(position, game.Air)
+
+	chunk.SetBlockEntity(position, interaction)
+
+	handled, _, _, err = runtime.InteractBlock(session, position)
+	if err != nil {
+		t.Fatalf("stale generic block entity interaction: %v", err)
+	}
+
+	if handled || interaction.calls != 1 {
+		t.Fatalf("stale interaction result = handled %v, calls %d", handled, interaction.calls)
+	}
 }
 
 func TestRuntimeActiveChunksFollowSessionViews(t *testing.T) {
@@ -83,7 +154,10 @@ func TestRuntimeTickProcessesOnlyActiveChunkStateInStableOrder(t *testing.T) {
 
 	first.SetEntity(9, &recordingRuntimeTicker{label: "first entity 9", log: log})
 	first.SetEntity(2, &recordingRuntimeTicker{label: "first entity 2", log: log})
-	first.SetBlockEntity(game.BlockPosition{X: -15, Y: 70, Z: 50}, &recordingRuntimeTicker{label: "first block", log: log})
+
+	blockPosition := game.BlockPosition{X: -15, Y: 70, Z: 50}
+
+	first.SetBlockEntity(blockPosition, &recordingRuntimeTicker{label: "first block", log: log, position: blockPosition})
 
 	second, _ := runtime.ActiveChunk(LoadedChunk{X: 2, Z: 0})
 

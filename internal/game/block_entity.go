@@ -9,9 +9,24 @@ const (
 	BlockEntityTypeBarrel
 )
 
+type BlockEntityTypeDefinition struct {
+	Name                    string
+	ProtocolRegistryID12111 int32
+	InventorySlots          int
+}
+
+type BlockEntityData interface {
+	CloneBlockEntityData() BlockEntityData
+	EqualBlockEntityData(BlockEntityData) bool
+}
+
+type InventoryBlockEntityData struct {
+	Items []ItemStack
+}
+
 type BlockEntity struct {
-	Type  BlockEntityType
-	Items [BarrelSlotCount]ItemStack
+	Type BlockEntityType
+	Data BlockEntityData
 }
 
 type ChunkBlockEntities map[LocalBlockPosition]BlockEntity
@@ -22,11 +37,54 @@ type BlockEntityGenerator interface {
 	GenerateBlockEntities(seed int64, chunk ChunkPosition) ChunkBlockEntities
 }
 
+// BlockEntityPointGenerator avoids generating a complete chunk entity map for
+// authoritative point lookups.
+type BlockEntityPointGenerator interface {
+	GenerateBlockEntity(seed int64, position BlockPosition) (BlockEntity, bool)
+}
+
+var blockEntityTypeDefinitions = [...]BlockEntityTypeDefinition{
+	BlockEntityTypeNone:   {},
+	BlockEntityTypeBarrel: {Name: "barrel", ProtocolRegistryID12111: 27, InventorySlots: BarrelSlotCount},
+}
+
+func NewBlockEntity(entityType BlockEntityType) BlockEntity {
+	definition, valid := entityType.Definition()
+	if !valid || definition.InventorySlots == 0 {
+		return BlockEntity{Type: entityType}
+	}
+
+	return NewInventoryBlockEntity(entityType, definition.InventorySlots)
+}
+
+func NewInventoryBlockEntity(entityType BlockEntityType, slots int) BlockEntity {
+	return BlockEntity{
+		Type: entityType,
+		Data: &InventoryBlockEntityData{Items: make([]ItemStack, slots)},
+	}
+}
+
+func (entityType BlockEntityType) Definition() (BlockEntityTypeDefinition, bool) {
+	if entityType == BlockEntityTypeNone || int(entityType) >= len(blockEntityTypeDefinitions) {
+		return BlockEntityTypeDefinition{}, false
+	}
+
+	return blockEntityTypeDefinitions[entityType], true
+}
+
+func (entity *BlockEntity) Inventory() ([]ItemStack, bool) {
+	data, valid := entity.Data.(*InventoryBlockEntityData)
+	if !valid {
+		return nil, false
+	}
+
+	return data.Items, true
+}
+
 func (entity BlockEntity) Clone() BlockEntity {
 	clone := entity
-
-	for slot := range entity.Items {
-		clone.Items[slot] = entity.Items[slot].Clone()
+	if entity.Data != nil {
+		clone.Data = entity.Data.CloneBlockEntityData()
 	}
 
 	return clone
@@ -37,13 +95,11 @@ func (entity BlockEntity) Equal(other BlockEntity) bool {
 		return false
 	}
 
-	for slot := range entity.Items {
-		if !entity.Items[slot].Equal(other.Items[slot]) {
-			return false
-		}
+	if entity.Data == nil || other.Data == nil {
+		return entity.Data == nil && other.Data == nil
 	}
 
-	return true
+	return entity.Data.EqualBlockEntityData(other.Data)
 }
 
 func BlockEntityTypeForBlock(block Block) BlockEntityType {
@@ -52,10 +108,30 @@ func BlockEntityTypeForBlock(block Block) BlockEntityType {
 		return BlockEntityTypeNone
 	}
 
-	switch definition.Name {
-	case "barrel":
-		return BlockEntityTypeBarrel
-	default:
-		return BlockEntityTypeNone
+	return definition.BlockEntityType
+}
+
+func (data *InventoryBlockEntityData) CloneBlockEntityData() BlockEntityData {
+	clone := &InventoryBlockEntityData{Items: make([]ItemStack, len(data.Items))}
+
+	for slot := range data.Items {
+		clone.Items[slot] = data.Items[slot].Clone()
 	}
+
+	return clone
+}
+
+func (data *InventoryBlockEntityData) EqualBlockEntityData(other BlockEntityData) bool {
+	otherInventory, valid := other.(*InventoryBlockEntityData)
+	if !valid || len(data.Items) != len(otherInventory.Items) {
+		return false
+	}
+
+	for slot := range data.Items {
+		if !data.Items[slot].Equal(otherInventory.Items[slot]) {
+			return false
+		}
+	}
+
+	return true
 }

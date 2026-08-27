@@ -180,7 +180,7 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 func blockPlacementRule(block BlockDefinition) string {
 	switch {
 	case block.Name == "barrel":
-		return "ItemPlacementBarrel"
+		return "ItemPlacementDirectionalFacing"
 	case isExcludedPlacementBlock(block.Name):
 		return ""
 	case strings.HasSuffix(block.Name, "_slab"):

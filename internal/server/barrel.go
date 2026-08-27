@@ -8,11 +8,7 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
-const (
-	barrelMenuType              = 2
-	barrelBlockEntityRegistryID = 27
-	barrelValidityPadding       = 4.0
-)
+const barrelValidityPadding = 4.0
 
 type runtimeBarrel struct {
 	position game.BlockPosition
@@ -20,61 +16,27 @@ type runtimeBarrel struct {
 	viewers  map[*Session]struct{}
 }
 
-func (r *Runtime) newActiveChunk(position LoadedChunk) *ActiveChunk {
-	chunk := &ActiveChunk{Position: position}
-	entities := r.World.SnapshotChunkBlockEntities(game.ChunkPosition{X: position.X, Z: position.Z})
-
-	for local, entity := range entities {
-		blockPosition := game.BlockPosition{
-			X: position.X*ChunkWidth + local.X,
-			Y: local.Y,
-			Z: position.Z*ChunkWidth + local.Z,
-		}
-
-		switch entity.Type {
-		case game.BlockEntityTypeBarrel:
-			chunk.SetBlockEntity(blockPosition, &runtimeBarrel{position: blockPosition, entity: entity.Clone()})
-		}
-	}
-
-	return chunk
+func newRuntimeBarrel(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
+	return &runtimeBarrel{position: position, entity: entity}
 }
 
-func (r *Runtime) runtimeBarrelAt(position game.BlockPosition) (*runtimeBarrel, bool) {
-	chunkPosition := LoadedChunk{X: chunkCoordinate(float64(position.X)), Z: chunkCoordinate(float64(position.Z))}
-
-	chunk, active := r.ActiveChunk(chunkPosition)
-	if !active {
-		return nil, false
-	}
-
-	entity, present := chunk.BlockEntity(position)
-	if !present {
-		return nil, false
-	}
-
-	barrel, valid := entity.(*runtimeBarrel)
-	return barrel, valid
+func (barrel *runtimeBarrel) BlockEntityType() game.BlockEntityType {
+	return game.BlockEntityTypeBarrel
 }
 
-func (r *Runtime) openBarrelLocked(session *Session, position game.BlockPosition) error {
-	entity, present := r.World.BlockEntityAt(position)
-	if !present || entity.Type != game.BlockEntityTypeBarrel {
-		return nil
-	}
+func (barrel *runtimeBarrel) BlockPosition() game.BlockPosition {
+	return barrel.position
+}
 
-	barrel, active := r.runtimeBarrelAt(position)
-	if !active {
-		return nil
-	}
+func (barrel *runtimeBarrel) Position() game.BlockPosition {
+	return barrel.position
+}
 
-	r.closeMenuLocked(session, false)
+func (barrel *runtimeBarrel) InteractBlock(runtime *Runtime, session *Session) error {
+	return runtime.openBarrelLocked(session, barrel)
+}
 
-	menu := newNineByThreeMenu(session.allocateWindowID(), &barrel.entity.Items, &session.Player.Inventory)
-
-	menu.barrel = barrel
-	session.containerMenu = menu
-
+func (barrel *runtimeBarrel) Attach(runtime *Runtime, session *Session) {
 	if barrel.viewers == nil {
 		barrel.viewers = make(map[*Session]struct{})
 	}
@@ -83,102 +45,20 @@ func (r *Runtime) openBarrelLocked(session *Session, position game.BlockPosition
 	barrel.viewers[session] = struct{}{}
 
 	if firstViewer {
-		r.setBarrelOpenStateLocked(barrel, true)
-	}
-
-	err := session.writePacket(protocol.ClientboundOpenScreenID, protocol.OpenScreen{
-		ContainerID: menu.windowID,
-		MenuType:    barrelMenuType,
-		Title:       game.TranslatableText("container.barrel"),
-	})
-
-	if err != nil {
-		r.closeMenuLocked(session, false)
-		return err
-	}
-
-	return session.sendMenuSnapshot(menu.snapshot())
-}
-
-func (r *Runtime) closeMenu(session *Session, notify bool) {
-	r.lifecycleMu.Lock()
-	defer r.lifecycleMu.Unlock()
-
-	r.closeMenuLocked(session, notify)
-}
-
-func (r *Runtime) closeMenuLocked(session *Session, notify bool) {
-	if session.Player == nil {
-		return
-	}
-
-	current := session.containerMenu
-	if current == nil || current == session.inventoryMenu {
-		session.returnToInventoryMenu()
-		return
-	}
-
-	windowID := current.windowID
-
-	r.preserveCarriedLocked(session, current.carried)
-
-	current.carried = game.ItemStack{}
-
-	current.resetDrag()
-
-	if current.barrel != nil {
-		delete(current.barrel.viewers, session)
-		if len(current.barrel.viewers) == 0 {
-			r.setBarrelOpenStateLocked(current.barrel, false)
-		}
-	}
-
-	session.returnToInventoryMenu()
-
-	if notify {
-		err := session.writePacket(protocol.ClientboundCloseContainerID, protocol.CloseContainer{ContainerID: windowID})
-		if err != nil && session.Log != nil {
-			session.Log.Warnf("[play] failed to close container: %v\n", err)
-		}
+		runtime.setBarrelOpenStateLocked(barrel, true)
 	}
 }
 
-func (r *Runtime) preserveCarriedLocked(session *Session, carried game.ItemStack) {
-	if carried.Empty() {
-		return
+func (barrel *runtimeBarrel) Detach(runtime *Runtime, session *Session) {
+	delete(barrel.viewers, session)
+
+	if len(barrel.viewers) == 0 {
+		runtime.setBarrelOpenStateLocked(barrel, false)
 	}
-
-	remaining := carried.Clone()
-
-	session.updatePlayerState(func(player *game.Player) bool {
-		if session.inventoryMenu == nil {
-			session.inventoryMenu = newPlayerInventoryMenu(&player.Inventory)
-		}
-
-		candidate := session.inventoryMenu.candidate()
-
-		moveIntoSlots(candidate, &remaining, slotRange(9, 44))
-
-		session.inventoryMenu.commit(candidate)
-
-		return !remaining.Equal(carried)
-	})
-
-	if remaining.Empty() {
-		return
-	}
-
-	if session.inventoryMenu.carried.Empty() {
-		session.inventoryMenu.carried = remaining
-
-		return
-	}
-
-	session.preservedCarried = append(session.preservedCarried, remaining)
 }
 
-func (r *Runtime) persistAndSynchronizeBarrelLocked(actor *Session, barrel *runtimeBarrel) {
-	r.World.SetBlockEntity(barrel.position, barrel.entity)
+func (barrel *runtimeBarrel) Changed(runtime *Runtime, actor *Session) {
+	runtime.World.SetBlockEntity(barrel.position, barrel.entity)
 
 	for viewer := range barrel.viewers {
 		if viewer == actor {
@@ -186,7 +66,7 @@ func (r *Runtime) persistAndSynchronizeBarrelLocked(actor *Session, barrel *runt
 		}
 
 		current := viewer.activeMenu()
-		if current.barrel != barrel {
+		if current.backing != barrel {
 			continue
 		}
 
@@ -197,6 +77,59 @@ func (r *Runtime) persistAndSynchronizeBarrelLocked(actor *Session, barrel *runt
 			viewer.Log.Warnf("[play] failed to synchronize barrel: %v\n", err)
 		}
 	}
+}
+
+func (barrel *runtimeBarrel) StillValid(runtime *Runtime, session *Session) bool {
+	block := runtime.World.BlockAt(barrel.position)
+
+	entity, present := runtime.authoritativeRuntimeBlockEntityAt(barrel.position, block)
+
+	activeBarrel, barrelActive := entity.(*runtimeBarrel)
+	if !present || !barrelActive || activeBarrel != barrel {
+		return false
+	}
+
+	return blockEntityMenuWithinRange(session.snapshotPlayer(), barrel.position, barrelValidityPadding)
+}
+
+func (r *Runtime) openBarrelLocked(session *Session, barrel *runtimeBarrel) error {
+	items, inventory := barrel.entity.Inventory()
+	if !inventory || len(items) != game.BarrelSlotCount {
+		return nil
+	}
+
+	r.closeMenuLocked(session, false)
+
+	menu := newGenericContainerMenu(session.allocateWindowID(), 3, items, &session.Player.Inventory)
+
+	menu.backing = barrel
+	session.containerMenu = menu
+
+	barrel.Attach(r, session)
+
+	err := session.writePacket(protocol.ClientboundOpenScreenID, protocol.OpenScreen{
+		ContainerID: menu.windowID,
+		MenuType:    menu.protocolMenuType,
+		Title:       game.TranslatableText("container.barrel"),
+	})
+
+	if err != nil {
+		r.closeMenuLocked(session, false)
+
+		return err
+	}
+
+	return session.sendMenuSnapshot(menu.snapshot())
+}
+
+func (r *Runtime) runtimeBarrelAt(position game.BlockPosition) (*runtimeBarrel, bool) {
+	entity, present := r.runtimeBlockEntityAt(position)
+	if !present {
+		return nil, false
+	}
+
+	barrel, valid := entity.(*runtimeBarrel)
+	return barrel, valid
 }
 
 func (r *Runtime) setBarrelOpenStateLocked(barrel *runtimeBarrel, open bool) {
@@ -271,92 +204,13 @@ func barrelFacingOffset(facing string) (float64, float64, float64) {
 	}
 }
 
-func (r *Runtime) tickOpenMenus() {
-	r.lifecycleMu.Lock()
-	defer r.lifecycleMu.Unlock()
-
-	for _, session := range r.snapshotSessions() {
-		current := session.activeMenu()
-		if current.barrel == nil || barrelMenuStillValid(r.World, session.snapshotPlayer(), current.barrel) {
-			continue
-		}
-
-		r.closeMenuLocked(session, true)
-	}
-}
-
-func barrelMenuStillValid(world *game.World, player game.Player, barrel *runtimeBarrel) bool {
-	entity, present := world.BlockEntityAt(barrel.position)
-	if !present || entity.Type != game.BlockEntityTypeBarrel {
-		return false
-	}
-
+func blockEntityMenuWithinRange(player game.Player, position game.BlockPosition, padding float64) bool {
 	eye := player.EyePosition()
 
-	distanceX := eye.X - math.Max(float64(barrel.position.X), math.Min(eye.X, float64(barrel.position.X+1)))
-	distanceY := eye.Y - math.Max(float64(barrel.position.Y), math.Min(eye.Y, float64(barrel.position.Y+1)))
-	distanceZ := eye.Z - math.Max(float64(barrel.position.Z), math.Min(eye.Z, float64(barrel.position.Z+1)))
+	distanceX := eye.X - math.Max(float64(position.X), math.Min(eye.X, float64(position.X+1)))
+	distanceY := eye.Y - math.Max(float64(position.Y), math.Min(eye.Y, float64(position.Y+1)))
+	distanceZ := eye.Z - math.Max(float64(position.Z), math.Min(eye.Z, float64(position.Z+1)))
 
-	maximumDistance := blockInteractionRange + barrelValidityPadding
-
+	maximumDistance := blockInteractionRange + padding
 	return distanceX*distanceX+distanceY*distanceY+distanceZ*distanceZ < maximumDistance*maximumDistance
-}
-
-func (r *Runtime) reconcileRuntimeBlockEntities(records []blockMutationRecord) {
-	for _, record := range records {
-		previousType := game.BlockEntityTypeForBlock(record.previous)
-
-		nextType := game.BlockEntityTypeForBlock(record.change.Replacement)
-		if previousType == nextType {
-			continue
-		}
-
-		chunkPosition := LoadedChunk{X: chunkCoordinate(float64(record.change.Position.X)), Z: chunkCoordinate(float64(record.change.Position.Z))}
-
-		chunk, active := r.ActiveChunk(chunkPosition)
-		if !active {
-			continue
-		}
-
-		if nextType == game.BlockEntityTypeNone {
-			chunk.RemoveBlockEntity(record.change.Position)
-			continue
-		}
-
-		entity, present := r.World.BlockEntityAt(record.change.Position)
-		if present && entity.Type == game.BlockEntityTypeBarrel {
-			chunk.SetBlockEntity(record.change.Position, &runtimeBarrel{position: record.change.Position, entity: entity.Clone()})
-		}
-	}
-}
-
-func (r *Runtime) closeRemovedBlockEntityMenus(records []blockMutationRecord) {
-	removed := make(map[game.BlockPosition]struct{})
-
-	for _, record := range records {
-		previousType := game.BlockEntityTypeForBlock(record.previous)
-		nextType := game.BlockEntityTypeForBlock(record.change.Replacement)
-
-		if previousType != game.BlockEntityTypeNone && previousType != nextType {
-			removed[record.change.Position] = struct{}{}
-		}
-	}
-
-	if len(removed) == 0 {
-		return
-	}
-
-	r.lifecycleMu.Lock()
-	defer r.lifecycleMu.Unlock()
-
-	for _, session := range r.snapshotSessions() {
-		current := session.activeMenu()
-		if current.barrel == nil {
-			continue
-		}
-
-		if _, wasRemoved := removed[current.barrel.position]; wasRemoved {
-			r.closeMenuLocked(session, true)
-		}
-	}
 }

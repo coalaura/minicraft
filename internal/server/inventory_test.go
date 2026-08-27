@@ -835,7 +835,7 @@ func TestNineByThreeMenuSlotsAndQuickMoveRouting(t *testing.T) {
 	inventory.Main[26] = game.ItemStack{Item: game.ItemDirt, Count: 3}
 	inventory.Hotbar[8] = game.ItemStack{Item: game.ItemOakLog, Count: 2}
 
-	menu := newNineByThreeMenu(7, &container, &inventory)
+	menu := newGenericContainerMenu(7, 3, container[:], &inventory)
 
 	if len(menu.slots) != 63 || menu.slots[0].stack != &container[0] || menu.slots[26].stack != &container[26] || menu.slots[27].stack != &inventory.Main[0] || menu.slots[53].stack != &inventory.Main[26] || menu.slots[54].stack != &inventory.Hotbar[0] || menu.slots[62].stack != &inventory.Hotbar[8] {
 		t.Fatal("nine by three menu slot ordering is incorrect")
@@ -852,6 +852,77 @@ func TestNineByThreeMenuSlotsAndQuickMoveRouting(t *testing.T) {
 	}
 }
 
+func TestGenericContainerMenuLayoutsOneThroughSixRows(t *testing.T) {
+	for rows := 1; rows <= 6; rows++ {
+		container := make([]game.ItemStack, rows*9)
+
+		inventory := game.PlayerInventory{}
+
+		menu := newGenericContainerMenu(7, rows, container, &inventory)
+		if menu == nil {
+			t.Fatalf("%d-row menu is nil", rows)
+		}
+
+		containerSlots := rows * 9
+		if len(menu.slots) != containerSlots+36 || menu.containerSlots != containerSlots {
+			t.Fatalf("%d-row menu slots = %d, container slots %d", rows, len(menu.slots), menu.containerSlots)
+		}
+
+		if menu.protocolMenuType != int32(rows-1) {
+			t.Fatalf("%d-row protocol menu type = %d", rows, menu.protocolMenuType)
+		}
+
+		if menu.slots[0].stack != &container[0] || menu.slots[containerSlots-1].stack != &container[containerSlots-1] || menu.slots[containerSlots].stack != &inventory.Main[0] || menu.slots[len(menu.slots)-1].stack != &inventory.Hotbar[8] {
+			t.Fatalf("%d-row menu slot ordering is incorrect", rows)
+		}
+	}
+
+	inventory := game.PlayerInventory{}
+	if newGenericContainerMenu(1, 0, nil, &inventory) != nil || newGenericContainerMenu(1, 7, make([]game.ItemStack, 63), &inventory) != nil || newGenericContainerMenu(1, 2, make([]game.ItemStack, 17), &inventory) != nil {
+		t.Fatal("invalid generic container layout was accepted")
+	}
+}
+
+func TestPreservedCarriedStackDrainsWhenSpaceBecomesAvailable(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	fullStack := game.ItemStack{Item: game.ItemDirt, Count: 64}
+
+	for slot := 9; slot <= 44; slot++ {
+		*session.Player.Inventory.Slot(slot) = fullStack
+	}
+
+	session.activeMenu().carried = game.ItemStack{Item: game.ItemOakLog, Count: 1}
+
+	container := make([]game.ItemStack, 9)
+
+	containerMenu := newGenericContainerMenu(1, 1, container, &session.Player.Inventory)
+
+	containerMenu.carried = game.ItemStack{Item: game.ItemStone, Count: 1}
+
+	session.containerMenu = containerMenu
+
+	runtime.closeMenu(session, false)
+	if len(session.preservedCarried) != 1 {
+		t.Fatalf("preserved carried stacks = %d, want 1", len(session.preservedCarried))
+	}
+
+	before := session.Player.Inventory.Clone()
+
+	session.Player.Inventory.Main[0] = game.ItemStack{}
+
+	err := session.synchronizePlayerInventoryMutation(before)
+	if err != nil {
+		t.Fatalf("synchronize freed inventory slot: %v", err)
+	}
+
+	if !session.Player.Inventory.Main[0].Equal(game.ItemStack{Item: game.ItemStone, Count: 1}) || len(session.preservedCarried) != 0 {
+		t.Fatalf("recovered stack = %+v, preserved = %+v", session.Player.Inventory.Main[0], session.preservedCarried)
+	}
+}
+
 func TestNineByThreeMenuOffhandSwapIsHiddenAndPredicted(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
@@ -865,7 +936,7 @@ func TestNineByThreeMenuOffhandSwapIsHiddenAndPredicted(t *testing.T) {
 
 	session.Player.Inventory.Offhand = game.ItemStack{Item: game.ItemDirt, Count: 3}
 
-	menu := newNineByThreeMenu(7, &container, &session.Player.Inventory)
+	menu := newGenericContainerMenu(7, 3, container[:], &session.Player.Inventory)
 	session.containerMenu = menu
 
 	err := session.handleContainerClick(protocol.ContainerClick{

@@ -11,13 +11,6 @@ type RuntimeEntity interface {
 	Tick(*Runtime, *ActiveChunk)
 }
 
-type RuntimeBlockEntity interface {
-}
-
-type RuntimeBlockEntityTicker interface {
-	Tick(*Runtime, *ActiveChunk)
-}
-
 type ActiveChunk struct {
 	Position LoadedChunk
 

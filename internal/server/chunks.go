@@ -871,7 +871,9 @@ func protocolChunkBlockEntities(entities game.ChunkBlockEntities) []protocol.Lev
 
 	for _, position := range positions {
 		entity := entities[position]
-		if entity.Type != game.BlockEntityTypeBarrel || position.Y < -32768 || position.Y > 32767 {
+
+		definition, supported := entity.Type.Definition()
+		if !supported || position.Y < -32768 || position.Y > 32767 {
 			continue
 		}
 
@@ -879,7 +881,7 @@ func protocolChunkBlockEntities(entities game.ChunkBlockEntities) []protocol.Lev
 			X:    byte(position.X),
 			Z:    byte(position.Z),
 			Y:    int16(position.Y),
-			Type: barrelBlockEntityRegistryID,
+			Type: definition.ProtocolRegistryID12111,
 		})
 	}
 

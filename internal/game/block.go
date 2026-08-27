@@ -62,18 +62,19 @@ type BlockPropertyValue struct {
 }
 
 type BlockDefinition struct {
-	ID           BlockID
-	Name         string
-	DefaultState Block
-	MinState     Block
-	MaxState     Block
-	Behavior     BlockBehavior
-	Collision    BlockCollision
-	Emission     uint8
-	LightFilter  uint8
-	Sound        BlockSoundType
-	Replaceable  bool
-	Properties   []BlockProperty
+	ID              BlockID
+	Name            string
+	DefaultState    Block
+	MinState        Block
+	MaxState        Block
+	Behavior        BlockBehavior
+	Collision       BlockCollision
+	Emission        uint8
+	LightFilter     uint8
+	Sound           BlockSoundType
+	Replaceable     bool
+	BlockEntityType BlockEntityType
+	Properties      []BlockProperty
 }
 
 type BlockPosition struct {

@@ -2,6 +2,16 @@ package game
 
 import "testing"
 
+type testBlockEntityData struct {
+	value int
+}
+
+type pointBlockEntityGenerator struct {
+	position   BlockPosition
+	pointCalls int
+	chunkCalls int
+}
+
 type barrelEntityGenerator struct {
 	position BlockPosition
 }
@@ -20,13 +30,112 @@ func (g barrelEntityGenerator) GenerateBlockEntities(seed int64, chunk ChunkPosi
 		return nil
 	}
 
-	return ChunkBlockEntities{
-		local: {
-			Type: BlockEntityTypeBarrel,
-			Items: [BarrelSlotCount]ItemStack{
-				{Item: ItemStone, Count: int32(seed%64 + 1)},
-			},
-		},
+	entity := NewBlockEntity(BlockEntityTypeBarrel)
+
+	items, _ := entity.Inventory()
+
+	items[0] = ItemStack{Item: ItemStone, Count: int32(seed%64 + 1)}
+
+	return ChunkBlockEntities{local: entity}
+}
+
+func (data *testBlockEntityData) CloneBlockEntityData() BlockEntityData {
+	clone := *data
+	return &clone
+}
+
+func (data *testBlockEntityData) EqualBlockEntityData(other BlockEntityData) bool {
+	otherData, valid := other.(*testBlockEntityData)
+	return valid && data.value == otherData.value
+}
+
+func (g *pointBlockEntityGenerator) BlockAt(_ int64, position BlockPosition) Block {
+	if position == g.position {
+		return Barrel
+	}
+
+	return Air
+}
+
+func (g *pointBlockEntityGenerator) GenerateBlockEntity(_ int64, position BlockPosition) (BlockEntity, bool) {
+	g.pointCalls++
+	if position != g.position {
+		return BlockEntity{}, false
+	}
+
+	return NewBlockEntity(BlockEntityTypeBarrel), true
+}
+
+func (g *pointBlockEntityGenerator) GenerateBlockEntities(_ int64, chunk ChunkPosition) ChunkBlockEntities {
+	g.chunkCalls++
+
+	positionChunk, local := blockIndex(g.position)
+	if chunk != positionChunk {
+		return nil
+	}
+
+	return ChunkBlockEntities{local: NewBlockEntity(BlockEntityTypeBarrel)}
+}
+
+func TestBlockEntityDataSupportsDifferentShapes(t *testing.T) {
+	inventory := NewInventoryBlockEntity(BlockEntityTypeBarrel, 5)
+
+	items, valid := inventory.Inventory()
+	if !valid || len(items) != 5 {
+		t.Fatalf("arbitrary inventory shape = %d, %v; want 5, true", len(items), valid)
+	}
+
+	withoutInventory := BlockEntity{Type: BlockEntityType(2)}
+	if _, valid = withoutInventory.Inventory(); valid {
+		t.Fatal("data-less block entity unexpectedly exposes inventory")
+	}
+
+	typed := BlockEntity{Type: BlockEntityType(3), Data: &testBlockEntityData{value: 7}}
+
+	clone := typed.Clone()
+
+	clone.Data.(*testBlockEntityData).value = 8
+
+	if typed.Equal(clone) || typed.Data.(*testBlockEntityData).value != 7 {
+		t.Fatal("type-specific block entity data did not clone independently")
+	}
+}
+
+func TestBlockEntityMetadataDefinesIdentityAndProtocolValues(t *testing.T) {
+	barrelDefinition, valid := Barrel.Definition()
+	if !valid || barrelDefinition.BlockEntityType != BlockEntityTypeBarrel {
+		t.Fatalf("barrel block entity type = %d, %v", barrelDefinition.BlockEntityType, valid)
+	}
+
+	if BlockEntityTypeForBlock(Stone) != BlockEntityTypeNone {
+		t.Fatal("ordinary block unexpectedly hosts a block entity")
+	}
+
+	entityDefinition, valid := BlockEntityTypeBarrel.Definition()
+	if !valid || entityDefinition.Name != "barrel" || entityDefinition.ProtocolRegistryID12111 != 27 || entityDefinition.InventorySlots != BarrelSlotCount {
+		t.Fatalf("barrel block entity definition = %+v, %v", entityDefinition, valid)
+	}
+}
+
+func TestBlockEntityPointLookupAvoidsChunkEnumeration(t *testing.T) {
+	position := BlockPosition{X: 3, Y: 70, Z: 4}
+
+	generator := &pointBlockEntityGenerator{position: position}
+
+	world := &World{Generator: generator}
+
+	entity, present := world.BlockEntityAt(position)
+	if !present || entity.Type != BlockEntityTypeBarrel {
+		t.Fatalf("point block entity = %+v, %v", entity, present)
+	}
+
+	if generator.pointCalls != 1 || generator.chunkCalls != 0 {
+		t.Fatalf("generator calls = point %d, chunk %d; want 1, 0", generator.pointCalls, generator.chunkCalls)
+	}
+
+	world.SnapshotChunkBlockEntities(ChunkPosition{})
+	if generator.chunkCalls != 1 {
+		t.Fatalf("chunk snapshot calls = %d, want 1", generator.chunkCalls)
 	}
 }
 
@@ -75,7 +184,10 @@ func TestGeneratedBarrelMutationUsesCopyOnWriteAndCollapsesWhenRestored(t *testi
 	}
 
 	mutated := original.Clone()
-	mutated.Items[0].Count++
+
+	items, _ := mutated.Inventory()
+
+	items[0].Count++
 
 	if !world.SetBlockEntity(position, mutated) {
 		t.Fatal("mutating generated barrel entity failed")
@@ -130,7 +242,7 @@ func TestGeneratedBarrelBreakCreatesTombstoneAndReplacementIsEmpty(t *testing.T)
 		t.Fatal("replacement barrel entity is absent")
 	}
 
-	if !entity.Equal(BlockEntity{Type: BlockEntityTypeBarrel}) {
+	if !entity.Equal(NewBlockEntity(BlockEntityTypeBarrel)) {
 		t.Fatalf("replacement barrel entity = %+v, want empty barrel", entity)
 	}
 

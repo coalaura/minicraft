@@ -220,14 +220,23 @@ func (s *Session) handlePickItemFromBlock(pick protocol.PickItemFromBlock) {
 }
 
 func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
+	s.Runtime.worldMutationMu.Lock()
+	defer s.Runtime.worldMutationMu.Unlock()
+
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
 
 	currentMenu := s.activeMenu()
+	if currentMenu.backing != nil && !currentMenu.backing.StillValid(s.Runtime, s) {
+		s.Runtime.closeMenuLocked(s, true)
+
+		return nil
+	}
 
 	var (
-		equipment []byte
-		valid     bool
+		backingChanged bool
+		equipment      []byte
+		valid          bool
 	)
 
 	player, changed := s.updatePlayerState(func(player *game.Player) bool {
@@ -254,7 +263,9 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 			return false
 		}
 
+		backingChanged = candidate.backingChanged()
 		currentMenu.commit(candidate)
+		s.drainPreservedCarriedLocked(player)
 
 		currentMenu.incrementStateID()
 
@@ -270,8 +281,8 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	}
 
 	if changed {
-		if currentMenu.barrel != nil {
-			s.Runtime.persistAndSynchronizeBarrelLocked(s, currentMenu.barrel)
+		if backingChanged && currentMenu.backing != nil {
+			currentMenu.backing.Changed(s.Runtime, s)
 		}
 
 		err := s.sendMenuSnapshot(currentMenu.snapshot())
@@ -822,6 +833,10 @@ func (s *Session) synchronizePlayerInventoryMutation(before game.PlayerInventory
 }
 
 func (s *Session) synchronizePlayerInventoryMutationSlot(before game.PlayerInventory, preferredPlayerSlot *int) error {
+	s.updatePlayerState(func(player *game.Player) bool {
+		return s.drainPreservedCarriedLocked(player)
+	})
+
 	player := s.snapshotPlayer()
 
 	changedSlots := inventoryChanges(before, player.Inventory)
