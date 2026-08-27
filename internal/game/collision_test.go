@@ -192,10 +192,11 @@ func TestNewPlacementFamilyCollisionShapes(t *testing.T) {
 
 func TestChestCollisionBoxes(t *testing.T) {
 	position := BlockPosition{X: 4, Y: 5, Z: 6}
+	singleChestBox := AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}
 
 	tests := []chestCollisionTestCase{
-		{name: "single chest", block: Chest, want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
-		{name: "single trapped chest", block: TrappedChest, want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
+		{name: "single chest", block: Chest, want: singleChestBox},
+		{name: "single trapped chest", block: TrappedChest, want: singleChestBox},
 		{name: "north left", block: chestStateForCollisionTest(t, Chest, "north", "left"), want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 5, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
 		{name: "north right", block: chestStateForCollisionTest(t, Chest, "north", "right"), want: AABB{MinX: 4, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
 		{name: "south left", block: chestStateForCollisionTest(t, Chest, "south", "left"), want: AABB{MinX: 4, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
@@ -204,6 +205,10 @@ func TestChestCollisionBoxes(t *testing.T) {
 		{name: "west right", block: chestStateForCollisionTest(t, Chest, "west", "right"), want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 7}},
 		{name: "east left", block: chestStateForCollisionTest(t, Chest, "east", "left"), want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 7}},
 		{name: "east right", block: chestStateForCollisionTest(t, Chest, "east", "right"), want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
+	}
+
+	for _, chest := range copperChestBlocksForTest() {
+		tests = append(tests, chestCollisionTestCase{name: "single " + chest.name + " copper chest", block: chest.block, want: singleChestBox})
 	}
 
 	for _, test := range tests {

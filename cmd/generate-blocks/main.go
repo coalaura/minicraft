@@ -203,6 +203,10 @@ func blockEntityType(name string) string {
 		return "BlockEntityTypeBarrel"
 	}
 
+	if isCopperChest(name) {
+		return "BlockEntityTypeChest"
+	}
+
 	return "BlockEntityTypeNone"
 }
 
@@ -220,6 +224,8 @@ func blockSoundType(block BlockDefinition) string {
 		return "BlockSoundSnow"
 	case name == "gold_block":
 		return "BlockSoundMetal"
+	case isCopperChest(name):
+		return "BlockSoundCopper"
 	case name == "candle" || strings.HasSuffix(name, "_candle"):
 		return "BlockSoundCandle"
 	case isSimpleCarpet(name):
@@ -375,7 +381,7 @@ func blockBehavior(block BlockDefinition) string {
 	}
 
 	switch {
-	case block.Name == "chest" || block.Name == "trapped_chest":
+	case block.Name == "chest" || block.Name == "trapped_chest" || isCopperChest(block.Name):
 		return "BlockBehaviorChest"
 	case strings.HasSuffix(block.Name, "_slab"):
 		return "BlockBehaviorSlab"
@@ -416,7 +422,7 @@ func blockCollision(block BlockDefinition) string {
 	}
 
 	switch {
-	case block.Name == "chest" || block.Name == "trapped_chest":
+	case block.Name == "chest" || block.Name == "trapped_chest" || isCopperChest(block.Name):
 		return "BlockCollisionChest"
 	case strings.HasSuffix(block.Name, "_slab"):
 		return "BlockCollisionSlab"
@@ -449,6 +455,10 @@ func blockCollision(block BlockDefinition) string {
 	default:
 		return "BlockCollisionNone"
 	}
+}
+
+func isCopperChest(name string) bool {
+	return name == "copper_chest" || strings.HasSuffix(name, "_copper_chest")
 }
 
 func isSimplePlant(name string) bool {

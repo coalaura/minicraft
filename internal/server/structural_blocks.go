@@ -367,16 +367,22 @@ func recalculateChest(blockAt func(game.BlockPosition) game.Block, position game
 		connected := chestConnectedDirection(facing, chestType)
 
 		neighbor := blockInDirection(blockAt, position, connected)
-		if sameBlockType(block, neighbor) {
-			return block
+		if !chestBlocksCanConnect(block, neighbor) {
+			return withBlockProperties(block, game.BlockPropertyValue{Name: "type", Value: "single"})
 		}
 
-		return withBlockProperties(block, game.BlockPropertyValue{Name: "type", Value: "single"})
+		if _, _, copper := copperChestProperties(block); copper {
+			normalized, _ := normalizedCopperChestBlock(block, neighbor)
+
+			return copyChestProperties(normalized, block)
+		}
+
+		return block
 	}
 
 	for _, direction := range horizontalDirections {
 		neighbor := blockInDirection(blockAt, position, direction)
-		if !sameBlockType(block, neighbor) || blockProperty(neighbor, "type") == "single" || blockProperty(neighbor, "facing") != facing.name() {
+		if !chestBlocksCanConnect(block, neighbor) || blockProperty(neighbor, "type") == "single" || blockProperty(neighbor, "facing") != facing.name() {
 			continue
 		}
 
@@ -387,7 +393,14 @@ func recalculateChest(blockAt func(game.BlockPosition) game.Block, position game
 			continue
 		}
 
-		return withBlockProperties(block, game.BlockPropertyValue{Name: "type", Value: oppositeChestType(neighborType)})
+		replacement := withBlockProperties(block, game.BlockPropertyValue{Name: "type", Value: oppositeChestType(neighborType)})
+		if _, _, copper := copperChestProperties(block); copper {
+			normalized, _ := normalizedCopperChestBlock(block, neighbor)
+
+			return copyChestProperties(normalized, replacement)
+		}
+
+		return replacement
 	}
 
 	return block

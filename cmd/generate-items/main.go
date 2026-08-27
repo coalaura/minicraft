@@ -181,7 +181,7 @@ func blockPlacementRule(block BlockDefinition) string {
 	switch {
 	case block.Name == "barrel":
 		return "ItemPlacementDirectionalFacing"
-	case block.Name == "chest" || block.Name == "trapped_chest":
+	case block.Name == "chest" || block.Name == "trapped_chest" || isCopperChest(block.Name):
 		return "ItemPlacementChest"
 	case isExcludedPlacementBlock(block.Name):
 		return ""
@@ -274,6 +274,10 @@ func isExcludedPlacementBlock(name string) bool {
 
 func isCopperGrate(name string) bool {
 	return name == "copper_grate" || strings.HasSuffix(name, "_copper_grate")
+}
+
+func isCopperChest(name string) bool {
+	return name == "copper_chest" || strings.HasSuffix(name, "_copper_chest")
 }
 
 func isSimplePlant(name string) bool {

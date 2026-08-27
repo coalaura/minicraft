@@ -21,6 +21,21 @@ type chestFacingTestCase struct {
 	right  game.BlockPosition
 }
 
+type copperChestBlockTestCase struct {
+	name      string
+	block     game.Block
+	item      game.Item
+	oxidation int
+	waxed     bool
+}
+
+type chestPairingTestCase struct {
+	name    string
+	block   game.Block
+	item    game.Item
+	partner game.Block
+}
+
 func TestChestPlacementUsesPlayerFacing(t *testing.T) {
 	tests := []chestFacingTestCase{
 		{name: "north", yaw: 0, facing: "north"},
@@ -126,6 +141,79 @@ func TestNormalAndTrappedChestsDoNotPair(t *testing.T) {
 			runtime := NewRuntime(world)
 
 			actor := newChestPlacementSession(t, runtime, target, partnerPosition)
+
+			placeChestForTest(t, runtime, actor, support, test.item)
+
+			assertBlockProperty(t, world.BlockAt(target), "type", "single")
+			assertBlockProperty(t, world.BlockAt(partnerPosition), "type", "single")
+		})
+	}
+}
+
+func TestCopperChestPairingNormalizesOxidationAndWax(t *testing.T) {
+	for _, placed := range copperChestBlocksForTest() {
+		for _, partner := range copperChestBlocksForTest() {
+			t.Run(placed.name+"_with_"+partner.name, func(t *testing.T) {
+				support := game.BlockPosition{Y: 69}
+				target := game.BlockPosition{Y: 70}
+				partnerPosition := game.BlockPosition{X: -1, Y: 70}
+
+				expected := normalizedCopperChestBlockForTest(placed, partner)
+
+				world := &game.World{}
+
+				world.SetBlock(support, game.Stone)
+				world.SetBlock(partnerPosition, mustBlockState(t, partner.block,
+					game.BlockPropertyValue{Name: "facing", Value: "south"},
+					game.BlockPropertyValue{Name: "type", Value: "single"},
+				))
+
+				runtime := NewRuntime(world)
+
+				actor := newChestPlacementSession(t, runtime, target, partnerPosition)
+
+				actor.Player.Rotation.Yaw = 180
+
+				placeChestForTest(t, runtime, actor, support, placed.item)
+
+				if !sameBlockType(world.BlockAt(target), expected.block) || !sameBlockType(world.BlockAt(partnerPosition), expected.block) {
+					t.Fatalf("normalized blocks = %d, %d; want %d", world.BlockAt(target), world.BlockAt(partnerPosition), expected.block)
+				}
+
+				assertBlockProperty(t, world.BlockAt(target), "type", "left")
+				assertBlockProperty(t, world.BlockAt(partnerPosition), "type", "right")
+			})
+		}
+	}
+}
+
+func TestNormalAndTrappedChestsDoNotPairWithCopper(t *testing.T) {
+	tests := []chestPairingTestCase{
+		{name: "normal_next_to_copper", block: game.Chest, item: game.ItemChest, partner: game.CopperChest},
+		{name: "trapped_next_to_copper", block: game.TrappedChest, item: game.ItemTrappedChest, partner: game.CopperChest},
+		{name: "copper_next_to_normal", block: game.CopperChest, item: game.ItemCopperChest, partner: game.Chest},
+		{name: "copper_next_to_trapped", block: game.CopperChest, item: game.ItemCopperChest, partner: game.TrappedChest},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			support := game.BlockPosition{Y: 69}
+			target := game.BlockPosition{Y: 70}
+			partnerPosition := game.BlockPosition{X: -1, Y: 70}
+
+			world := &game.World{}
+
+			world.SetBlock(support, game.Stone)
+			world.SetBlock(partnerPosition, mustBlockState(t, test.partner,
+				game.BlockPropertyValue{Name: "facing", Value: "south"},
+				game.BlockPropertyValue{Name: "type", Value: "single"},
+			))
+
+			runtime := NewRuntime(world)
+
+			actor := newChestPlacementSession(t, runtime, target, partnerPosition)
+
+			actor.Player.Rotation.Yaw = 180
 
 			placeChestForTest(t, runtime, actor, support, test.item)
 
@@ -308,6 +396,28 @@ func TestChestMenusUseExpectedSizesAndDoubleStorageOrder(t *testing.T) {
 		if !valid || backing.chests[0].position != right || backing.chests[1].position != left {
 			t.Fatalf("double chest backing order = %+v; want right then left", backing)
 		}
+	}
+}
+
+func TestCopperChestMenusUse27Slots(t *testing.T) {
+	position := game.BlockPosition{Y: 70}
+
+	for _, chest := range copperChestBlocksForTest() {
+		t.Run(chest.name, func(t *testing.T) {
+			runtime, session, connection := newChestTestRuntimeForBlock(t, chest.block, position)
+
+			openChestForTest(t, runtime, session, position)
+
+			menu := session.activeMenu()
+			visibleSlots := game.ChestSlotCount + game.MainInventorySlotCount + game.HotbarSlotCount
+
+			if menu.containerSlots != game.ChestSlotCount || len(menu.slots) != visibleSlots {
+				t.Fatalf("chest menu = %d container slots and %d total slots; want 27 and 63", menu.containerSlots, len(menu.slots))
+			}
+
+			assertChestOpenScreen(t, chestPacket(t, connection.packets(t), protocol.ClientboundOpenScreenID), protocol.MenuGeneric9x3)
+			assertMenuSnapshotHeader(t, chestPacket(t, connection.packets(t), protocol.ClientboundContainerSetContentID), menu.windowID, 0, 63)
+		})
 	}
 }
 
@@ -527,6 +637,26 @@ func TestSingleChestSoundsAndViewerSynchronization(t *testing.T) {
 	assertChestSoundInPackets(t, firstConnection.packets(t), game.SoundBlockChestClose, position, "")
 }
 
+func TestCopperChestOpenCloseSoundsUseOxidationFamily(t *testing.T) {
+	position := game.BlockPosition{Y: 70}
+
+	for _, chest := range copperChestBlocksForTest() {
+		t.Run(chest.name, func(t *testing.T) {
+			runtime, session, connection := newChestTestRuntimeForBlock(t, chest.block, position)
+
+			openChestForTest(t, runtime, session, position)
+
+			assertChestSoundInPackets(t, connection.packets(t), copperChestSoundForTest(chest, "open"), position, "")
+
+			connection.reset()
+
+			runtime.closeMenu(session, false)
+
+			assertChestSoundInPackets(t, connection.packets(t), copperChestSoundForTest(chest, "close"), position, "")
+		})
+	}
+}
+
 func TestChestMenuClosesWhenEitherDoubleHalfIsRemoved(t *testing.T) {
 	for _, removed := range []game.BlockPosition{{Y: 70}, {X: -1, Y: 70}} {
 		t.Run("removed", func(t *testing.T) {
@@ -568,6 +698,45 @@ func chestBlocksForTest() []chestBlockTestCase {
 	}
 }
 
+func copperChestBlocksForTest() []copperChestBlockTestCase {
+	return []copperChestBlockTestCase{
+		{name: "copper", block: game.CopperChest, item: game.ItemCopperChest},
+		{name: "exposed", block: game.ExposedCopperChest, item: game.ItemExposedCopperChest, oxidation: 1},
+		{name: "weathered", block: game.WeatheredCopperChest, item: game.ItemWeatheredCopperChest, oxidation: 2},
+		{name: "oxidized", block: game.OxidizedCopperChest, item: game.ItemOxidizedCopperChest, oxidation: 3},
+		{name: "waxed_copper", block: game.WaxedCopperChest, item: game.ItemWaxedCopperChest, waxed: true},
+		{name: "waxed_exposed", block: game.WaxedExposedCopperChest, item: game.ItemWaxedExposedCopperChest, oxidation: 1, waxed: true},
+		{name: "waxed_weathered", block: game.WaxedWeatheredCopperChest, item: game.ItemWaxedWeatheredCopperChest, oxidation: 2, waxed: true},
+		{name: "waxed_oxidized", block: game.WaxedOxidizedCopperChest, item: game.ItemWaxedOxidizedCopperChest, oxidation: 3, waxed: true},
+	}
+}
+
+func normalizedCopperChestBlockForTest(first, second copperChestBlockTestCase) copperChestBlockTestCase {
+	oxidation := min(first.oxidation, second.oxidation)
+	waxed := first.waxed && second.waxed
+
+	for _, chest := range copperChestBlocksForTest() {
+		if chest.oxidation == oxidation && chest.waxed == waxed {
+			return chest
+		}
+	}
+
+	panic("missing copper chest test fixture")
+}
+
+func copperChestSoundForTest(chest copperChestBlockTestCase, action string) game.SoundEvent {
+	family := "copper_chest"
+	if chest.oxidation == 2 {
+		family = "copper_chest_weathered"
+	}
+
+	if chest.oxidation == 3 {
+		family = "copper_chest_oxidized"
+	}
+
+	return game.SoundEvent("minecraft:block." + family + "." + action)
+}
+
 func newChestPlacementSession(t *testing.T, runtime *Runtime, positions ...game.BlockPosition) *Session {
 	t.Helper()
 
@@ -590,6 +759,10 @@ func placeChestForTest(t *testing.T, runtime *Runtime, actor *Session, support g
 }
 
 func newChestTestRuntime(t *testing.T, positions ...game.BlockPosition) (*Runtime, *Session, *recordingConnection) {
+	return newChestTestRuntimeForBlock(t, game.Chest, positions...)
+}
+
+func newChestTestRuntimeForBlock(t *testing.T, block game.Block, positions ...game.BlockPosition) (*Runtime, *Session, *recordingConnection) {
 	t.Helper()
 
 	world := &game.World{}
@@ -603,7 +776,7 @@ func newChestTestRuntime(t *testing.T, positions ...game.BlockPosition) (*Runtim
 			}
 		}
 
-		world.SetBlock(position, mustBlockState(t, game.Chest,
+		world.SetBlock(position, mustBlockState(t, block,
 			game.BlockPropertyValue{Name: "facing", Value: "south"},
 			game.BlockPropertyValue{Name: "type", Value: chestType},
 		))

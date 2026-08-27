@@ -136,7 +136,7 @@ func (chest *runtimeChest) attach(runtime *Runtime, session *Session) {
 	chest.sendOpenersEvent(runtime)
 
 	if firstViewer {
-		chest.sendSound(runtime, game.SoundBlockChestOpen)
+		chest.sendSound(runtime, chestSound(runtime.World.BlockAt(chest.position), true))
 	}
 }
 
@@ -150,7 +150,7 @@ func (chest *runtimeChest) detach(runtime *Runtime, session *Session) {
 	chest.sendOpenersEvent(runtime)
 
 	if len(chest.viewers) == 0 {
-		chest.sendSound(runtime, game.SoundBlockChestClose)
+		chest.sendSound(runtime, chestSound(runtime.World.BlockAt(chest.position), false))
 	}
 }
 
@@ -350,4 +350,115 @@ func chestBlockConnectedDirection(block game.Block) (horizontalDirection, bool) 
 	}
 
 	return chestConnectedDirection(facing, blockProperty(block, "type")), true
+}
+
+func chestBlocksCanConnect(first, second game.Block) bool {
+	if sameBlockType(first, second) {
+		return true
+	}
+
+	_, _, firstCopper := copperChestProperties(first)
+	_, _, secondCopper := copperChestProperties(second)
+
+	return firstCopper && secondCopper
+}
+
+func copperChestProperties(block game.Block) (weathering int, waxed, valid bool) {
+	definition, defined := block.Definition()
+	if !defined {
+		return 0, false, false
+	}
+
+	switch definition.ID {
+	case game.CopperChestID:
+		return 0, false, true
+	case game.ExposedCopperChestID:
+		return 1, false, true
+	case game.WeatheredCopperChestID:
+		return 2, false, true
+	case game.OxidizedCopperChestID:
+		return 3, false, true
+	case game.WaxedCopperChestID:
+		return 0, true, true
+	case game.WaxedExposedCopperChestID:
+		return 1, true, true
+	case game.WaxedWeatheredCopperChestID:
+		return 2, true, true
+	case game.WaxedOxidizedCopperChestID:
+		return 3, true, true
+	default:
+		return 0, false, false
+	}
+}
+
+func normalizedCopperChestBlock(first, second game.Block) (game.Block, bool) {
+	firstWeathering, firstWaxed, firstCopper := copperChestProperties(first)
+	secondWeathering, secondWaxed, secondCopper := copperChestProperties(second)
+
+	if !firstCopper || !secondCopper {
+		return first, false
+	}
+
+	weathering := min(firstWeathering, secondWeathering)
+	waxed := firstWaxed && secondWaxed
+
+	switch {
+	case waxed && weathering == 0:
+		return game.WaxedCopperChest, true
+	case waxed && weathering == 1:
+		return game.WaxedExposedCopperChest, true
+	case waxed && weathering == 2:
+		return game.WaxedWeatheredCopperChest, true
+	case waxed:
+		return game.WaxedOxidizedCopperChest, true
+	case weathering == 0:
+		return game.CopperChest, true
+	case weathering == 1:
+		return game.ExposedCopperChest, true
+	case weathering == 2:
+		return game.WeatheredCopperChest, true
+	default:
+		return game.OxidizedCopperChest, true
+	}
+}
+
+func copyChestProperties(destination, source game.Block) game.Block {
+	return withBlockProperties(destination,
+		game.BlockPropertyValue{Name: "facing", Value: blockProperty(source, "facing")},
+		game.BlockPropertyValue{Name: "type", Value: blockProperty(source, "type")},
+		game.BlockPropertyValue{Name: "waterlogged", Value: blockProperty(source, "waterlogged")},
+	)
+}
+
+func chestSound(block game.Block, open bool) game.SoundEvent {
+	weathering, _, copper := copperChestProperties(block)
+	if !copper {
+		if open {
+			return game.SoundBlockChestOpen
+		}
+
+		return game.SoundBlockChestClose
+	}
+
+	if weathering >= 3 {
+		if open {
+			return game.SoundBlockCopperChestOxidizedOpen
+		}
+
+		return game.SoundBlockCopperChestOxidizedClose
+	}
+
+	if weathering == 2 {
+		if open {
+			return game.SoundBlockCopperChestWeatheredOpen
+		}
+
+		return game.SoundBlockCopperChestWeatheredClose
+	}
+
+	if open {
+		return game.SoundBlockCopperChestOpen
+	}
+
+	return game.SoundBlockCopperChestClose
 }

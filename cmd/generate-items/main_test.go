@@ -27,6 +27,14 @@ func TestBlockPlacementRuleFamilies(t *testing.T) {
 		{name: "mushroom_stem", properties: properties("down", "east", "north", "south", "up", "west"), box: "block", rule: "ItemPlacementDefault"},
 		{name: "barrel", properties: properties("facing", "open"), box: "block", rule: "ItemPlacementDirectionalFacing"},
 		{name: "chest", properties: properties("facing", "type", "waterlogged"), box: "block", rule: "ItemPlacementChest"},
+		{name: "copper_chest", properties: properties("facing", "type", "waterlogged"), box: "block", rule: "ItemPlacementChest"},
+		{name: "exposed_copper_chest", properties: properties("facing", "type", "waterlogged"), box: "block", rule: "ItemPlacementChest"},
+		{name: "weathered_copper_chest", properties: properties("facing", "type", "waterlogged"), box: "block", rule: "ItemPlacementChest"},
+		{name: "oxidized_copper_chest", properties: properties("facing", "type", "waterlogged"), box: "block", rule: "ItemPlacementChest"},
+		{name: "waxed_copper_chest", properties: properties("facing", "type", "waterlogged"), box: "block", rule: "ItemPlacementChest"},
+		{name: "waxed_exposed_copper_chest", properties: properties("facing", "type", "waterlogged"), box: "block", rule: "ItemPlacementChest"},
+		{name: "waxed_weathered_copper_chest", properties: properties("facing", "type", "waterlogged"), box: "block", rule: "ItemPlacementChest"},
+		{name: "waxed_oxidized_copper_chest", properties: properties("facing", "type", "waterlogged"), box: "block", rule: "ItemPlacementChest"},
 	}
 
 	for _, test := range tests {

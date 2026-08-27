@@ -7,6 +7,14 @@ type itemPlacementBlockMappingTestCase struct {
 	block Block
 }
 
+type copperChestTestCase struct {
+	name      string
+	block     Block
+	item      Item
+	oxidation int
+	waxed     bool
+}
+
 func TestGeneratedItemCatalogueCoversVanillaItems(t *testing.T) {
 	if MaxItemID != 1504 {
 		t.Fatalf("max item ID = %d, want 1504", MaxItemID)
@@ -47,33 +55,61 @@ func TestItemPlacementBlockMapping(t *testing.T) {
 		t.Fatalf("oak log placement rule = %d, want axis", rule)
 	}
 
+	for _, test := range copperChestBlocksForTest() {
+		block, ok := test.item.PlacementBlock()
+		if !ok || block != test.block {
+			t.Errorf("%s placement block = %d, %v; want %d, true", test.name, block, ok, test.block)
+		}
+	}
+
 	for item, rule := range map[Item]ItemPlacementRule{
-		ItemOakSlab:          ItemPlacementSlab,
-		ItemOakStairs:        ItemPlacementStairs,
-		ItemOakDoor:          ItemPlacementDoor,
-		ItemOakTrapdoor:      ItemPlacementTrapdoor,
-		ItemOakFenceGate:     ItemPlacementFenceGate,
-		ItemOakFence:         ItemPlacementFence,
-		ItemGlassPane:        ItemPlacementPane,
-		ItemIronBars:         ItemPlacementPane,
-		ItemCobblestoneWall:  ItemPlacementWall,
-		ItemIronDoor:         ItemPlacementDoor,
-		ItemIronTrapdoor:     ItemPlacementTrapdoor,
-		ItemOakLeaves:        ItemPlacementLeaves,
-		ItemIronChain:        ItemPlacementChain,
-		ItemStoneButton:      ItemPlacementButton,
-		ItemSnow:             ItemPlacementSnow,
-		ItemCandle:           ItemPlacementCandle,
-		ItemPointedDripstone: ItemPlacementPointedDripstone,
-		ItemFern:             ItemPlacementPlant,
-		ItemPoppy:            ItemPlacementPlant,
-		ItemCopperBars:       ItemPlacementPane,
-		ItemCobweb:           ItemPlacementDefault,
-		ItemChest:            ItemPlacementChest,
+		ItemOakSlab:                   ItemPlacementSlab,
+		ItemOakStairs:                 ItemPlacementStairs,
+		ItemOakDoor:                   ItemPlacementDoor,
+		ItemOakTrapdoor:               ItemPlacementTrapdoor,
+		ItemOakFenceGate:              ItemPlacementFenceGate,
+		ItemOakFence:                  ItemPlacementFence,
+		ItemGlassPane:                 ItemPlacementPane,
+		ItemIronBars:                  ItemPlacementPane,
+		ItemCobblestoneWall:           ItemPlacementWall,
+		ItemIronDoor:                  ItemPlacementDoor,
+		ItemIronTrapdoor:              ItemPlacementTrapdoor,
+		ItemOakLeaves:                 ItemPlacementLeaves,
+		ItemIronChain:                 ItemPlacementChain,
+		ItemStoneButton:               ItemPlacementButton,
+		ItemSnow:                      ItemPlacementSnow,
+		ItemCandle:                    ItemPlacementCandle,
+		ItemPointedDripstone:          ItemPlacementPointedDripstone,
+		ItemFern:                      ItemPlacementPlant,
+		ItemPoppy:                     ItemPlacementPlant,
+		ItemCopperBars:                ItemPlacementPane,
+		ItemCobweb:                    ItemPlacementDefault,
+		ItemChest:                     ItemPlacementChest,
+		ItemCopperChest:               ItemPlacementChest,
+		ItemExposedCopperChest:        ItemPlacementChest,
+		ItemWeatheredCopperChest:      ItemPlacementChest,
+		ItemOxidizedCopperChest:       ItemPlacementChest,
+		ItemWaxedCopperChest:          ItemPlacementChest,
+		ItemWaxedExposedCopperChest:   ItemPlacementChest,
+		ItemWaxedWeatheredCopperChest: ItemPlacementChest,
+		ItemWaxedOxidizedCopperChest:  ItemPlacementChest,
 	} {
 		if actual := item.PlacementRule(); actual != rule {
 			t.Errorf("item %d placement rule = %d, want %d", item, actual, rule)
 		}
+	}
+}
+
+func copperChestBlocksForTest() []copperChestTestCase {
+	return []copperChestTestCase{
+		{name: "copper", block: CopperChest, item: ItemCopperChest},
+		{name: "exposed", block: ExposedCopperChest, item: ItemExposedCopperChest, oxidation: 1},
+		{name: "weathered", block: WeatheredCopperChest, item: ItemWeatheredCopperChest, oxidation: 2},
+		{name: "oxidized", block: OxidizedCopperChest, item: ItemOxidizedCopperChest, oxidation: 3},
+		{name: "waxed_copper", block: WaxedCopperChest, item: ItemWaxedCopperChest, waxed: true},
+		{name: "waxed_exposed", block: WaxedExposedCopperChest, item: ItemWaxedExposedCopperChest, oxidation: 1, waxed: true},
+		{name: "waxed_weathered", block: WaxedWeatheredCopperChest, item: ItemWaxedWeatheredCopperChest, oxidation: 2, waxed: true},
+		{name: "waxed_oxidized", block: WaxedOxidizedCopperChest, item: ItemWaxedOxidizedCopperChest, oxidation: 3, waxed: true},
 	}
 }
 

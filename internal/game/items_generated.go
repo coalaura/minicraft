@@ -3748,6 +3748,14 @@ var itemPlacementBlocks = [MaxItemID + 1]Block{
 	ItemWaxedExposedCopperGrate:         WaxedExposedCopperGrate,
 	ItemWaxedWeatheredCopperGrate:       WaxedWeatheredCopperGrate,
 	ItemWaxedOxidizedCopperGrate:        WaxedOxidizedCopperGrate,
+	ItemCopperChest:                     CopperChest,
+	ItemExposedCopperChest:              ExposedCopperChest,
+	ItemWeatheredCopperChest:            WeatheredCopperChest,
+	ItemOxidizedCopperChest:             OxidizedCopperChest,
+	ItemWaxedCopperChest:                WaxedCopperChest,
+	ItemWaxedExposedCopperChest:         WaxedExposedCopperChest,
+	ItemWaxedWeatheredCopperChest:       WaxedWeatheredCopperChest,
+	ItemWaxedOxidizedCopperChest:        WaxedOxidizedCopperChest,
 }
 
 var itemPlacementRules = [MaxItemID + 1]ItemPlacementRule{
@@ -4478,4 +4486,12 @@ var itemPlacementRules = [MaxItemID + 1]ItemPlacementRule{
 	ItemWaxedExposedCopperGrate:         ItemPlacementDefault,
 	ItemWaxedWeatheredCopperGrate:       ItemPlacementDefault,
 	ItemWaxedOxidizedCopperGrate:        ItemPlacementDefault,
+	ItemCopperChest:                     ItemPlacementChest,
+	ItemExposedCopperChest:              ItemPlacementChest,
+	ItemWeatheredCopperChest:            ItemPlacementChest,
+	ItemOxidizedCopperChest:             ItemPlacementChest,
+	ItemWaxedCopperChest:                ItemPlacementChest,
+	ItemWaxedExposedCopperChest:         ItemPlacementChest,
+	ItemWaxedWeatheredCopperChest:       ItemPlacementChest,
+	ItemWaxedOxidizedCopperChest:        ItemPlacementChest,
 }

@@ -444,6 +444,7 @@ func chestPlacementState(blockAt func(game.BlockPosition) game.Block, position g
 	facing := horizontalFacing(player.Rotation.Yaw).opposite()
 	chestType := "single"
 	secondaryUse := secondaryUseActive(player)
+	connectedPartner := game.Air
 
 	if secondaryUse {
 		clickedDirection, horizontal := blockFaceDirection(interaction.Face)
@@ -454,6 +455,7 @@ func chestPlacementState(blockAt func(game.BlockPosition) game.Block, position g
 			partnerFacing, compatible := chestPlacementPartner(base, partner)
 			if compatible && horizontalDirectionAxis(partnerFacing) != horizontalDirectionAxis(clickedDirection) {
 				facing = partnerFacing
+				connectedPartner = partner
 
 				chestType = "left"
 				if facing.left() == partnerDirection {
@@ -467,25 +469,37 @@ func chestPlacementState(blockAt func(game.BlockPosition) game.Block, position g
 		partnerFacing, compatible := chestPlacementPartner(base, partner)
 		if compatible && partnerFacing == facing {
 			chestType = "left"
+			connectedPartner = partner
 		} else {
 			partner = blockInDirection(blockAt, position, facing.left())
 
 			partnerFacing, compatible = chestPlacementPartner(base, partner)
 			if compatible && partnerFacing == facing {
 				chestType = "right"
+				connectedPartner = partner
 			}
 		}
 	}
 
-	return base.WithProperties(
+	state, valid := base.WithProperties(
 		game.BlockPropertyValue{Name: "facing", Value: facing.name()},
 		game.BlockPropertyValue{Name: "type", Value: chestType},
 		game.BlockPropertyValue{Name: "waterlogged", Value: "false"},
 	)
+	if !valid || chestType == "single" {
+		return state, valid
+	}
+
+	normalized, copperPair := normalizedCopperChestBlock(base, connectedPartner)
+	if !copperPair {
+		return state, true
+	}
+
+	return copyChestProperties(normalized, state), true
 }
 
 func chestPlacementPartner(base, candidate game.Block) (horizontalDirection, bool) {
-	if !sameBlockType(base, candidate) || blockProperty(candidate, "type") != "single" {
+	if !chestBlocksCanConnect(base, candidate) || blockProperty(candidate, "type") != "single" {
 		return 0, false
 	}
 

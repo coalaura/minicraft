@@ -185,6 +185,15 @@ func TestBlockEntityMetadataDefinesIdentityAndProtocolValues(t *testing.T) {
 			t.Fatalf("%s block/entity definitions = %+v, %+v", test.name, blockDefinition, entityDefinition)
 		}
 	}
+
+	for _, test := range copperChestBlocksForTest() {
+		blockDefinition, blockValid := test.block.Definition()
+		entityDefinition, entityValid := BlockEntityTypeChest.Definition()
+
+		if !blockValid || blockDefinition.Behavior != BlockBehaviorChest || blockDefinition.Collision != BlockCollisionChest || blockDefinition.BlockEntityType != BlockEntityTypeChest || !entityValid || entityDefinition.ProtocolRegistryID12111 != 1 || entityDefinition.InventorySlots != ChestSlotCount {
+			t.Errorf("%s block/entity definitions = %+v, %+v", test.name, blockDefinition, entityDefinition)
+		}
+	}
 }
 
 func TestGeneratedChestHalvesUseIndependentCopyOnWriteAndTombstones(t *testing.T) {

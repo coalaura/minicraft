@@ -12,13 +12,20 @@ const (
 	BlockSoundSnow
 	BlockSoundMetal
 	BlockSoundCandle
+	BlockSoundCopper
 )
 
 const (
-	SoundBlockBarrelClose SoundEvent = "minecraft:block.barrel.close"
-	SoundBlockBarrelOpen  SoundEvent = "minecraft:block.barrel.open"
-	SoundBlockChestClose  SoundEvent = "minecraft:block.chest.close"
-	SoundBlockChestOpen   SoundEvent = "minecraft:block.chest.open"
+	SoundBlockBarrelClose               SoundEvent = "minecraft:block.barrel.close"
+	SoundBlockBarrelOpen                SoundEvent = "minecraft:block.barrel.open"
+	SoundBlockChestClose                SoundEvent = "minecraft:block.chest.close"
+	SoundBlockChestOpen                 SoundEvent = "minecraft:block.chest.open"
+	SoundBlockCopperChestClose          SoundEvent = "minecraft:block.copper_chest.close"
+	SoundBlockCopperChestOpen           SoundEvent = "minecraft:block.copper_chest.open"
+	SoundBlockCopperChestWeatheredClose SoundEvent = "minecraft:block.copper_chest_weathered.close"
+	SoundBlockCopperChestWeatheredOpen  SoundEvent = "minecraft:block.copper_chest_weathered.open"
+	SoundBlockCopperChestOxidizedClose  SoundEvent = "minecraft:block.copper_chest_oxidized.close"
+	SoundBlockCopperChestOxidizedOpen   SoundEvent = "minecraft:block.copper_chest_oxidized.open"
 
 	SoundBlockBambooWoodDoorClose      SoundEvent = "minecraft:block.bamboo_wood_door.close"
 	SoundBlockBambooWoodDoorOpen       SoundEvent = "minecraft:block.bamboo_wood_door.open"
@@ -34,6 +41,12 @@ const (
 	SoundBlockCandleHit   SoundEvent = "minecraft:block.candle.hit"
 	SoundBlockCandlePlace SoundEvent = "minecraft:block.candle.place"
 	SoundBlockCandleStep  SoundEvent = "minecraft:block.candle.step"
+
+	SoundBlockCopperBreak SoundEvent = "minecraft:block.copper.break"
+	SoundBlockCopperFall  SoundEvent = "minecraft:block.copper.fall"
+	SoundBlockCopperHit   SoundEvent = "minecraft:block.copper.hit"
+	SoundBlockCopperPlace SoundEvent = "minecraft:block.copper.place"
+	SoundBlockCopperStep  SoundEvent = "minecraft:block.copper.step"
 
 	SoundBlockCherryWoodDoorClose      SoundEvent = "minecraft:block.cherry_wood_door.close"
 	SoundBlockCherryWoodDoorOpen       SoundEvent = "minecraft:block.cherry_wood_door.open"
@@ -128,4 +141,5 @@ var blockSounds = [...]BlockSound{
 	BlockSoundSnow:   {Volume: 1, Pitch: 1, Break: SoundBlockSnowBreak, Step: SoundBlockSnowStep, Place: SoundBlockSnowPlace, Hit: SoundBlockSnowHit, Fall: SoundBlockSnowFall},
 	BlockSoundMetal:  {Volume: 1, Pitch: 1.5, Break: SoundBlockMetalBreak, Step: SoundBlockMetalStep, Place: SoundBlockMetalPlace, Hit: SoundBlockMetalHit, Fall: SoundBlockMetalFall},
 	BlockSoundCandle: {Volume: 1, Pitch: 1, Break: SoundBlockCandleBreak, Step: SoundBlockCandleStep, Place: SoundBlockCandlePlace, Hit: SoundBlockCandleHit, Fall: SoundBlockCandleFall},
+	BlockSoundCopper: {Volume: 1, Pitch: 1, Break: SoundBlockCopperBreak, Step: SoundBlockCopperStep, Place: SoundBlockCopperPlace, Hit: SoundBlockCopperHit, Fall: SoundBlockCopperFall},
 }
