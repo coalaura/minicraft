@@ -17,11 +17,12 @@ const (
 )
 
 type menuSlot struct {
-	stack      *game.ItemStack
-	role       menuSlotRole
-	armorIndex int
-	limit      int32
-	playerSlot int
+	stack         *game.ItemStack
+	role          menuSlotRole
+	armorIndex    int
+	limit         int32
+	playerSlot    int
+	hasPlayerSlot bool
 }
 
 type menuQuickMove func(*menuCandidate, int)
@@ -33,15 +34,20 @@ type menu struct {
 	drag     inventoryDragState
 	slots    []menuSlot
 
-	hotbarSlots []int
-	offhandSlot int
-	quickMove   menuQuickMove
+	hotbarSlots    [game.HotbarSlotCount]int
+	hasHotbarSlots [game.HotbarSlotCount]bool
+	offhandSlot    int
+	hasOffhandSlot bool
+	hiddenOffhand  *game.ItemStack
+	quickMove      menuQuickMove
+	barrel         *runtimeBarrel
 }
 
 type menuCandidate struct {
-	menu    *menu
-	slots   []game.ItemStack
-	carried game.ItemStack
+	menu          *menu
+	slots         []game.ItemStack
+	carried       game.ItemStack
+	hiddenOffhand game.ItemStack
 }
 
 type menuSnapshot struct {
@@ -56,9 +62,10 @@ func newPlayerInventoryMenu(inventory *game.PlayerInventory) *menu {
 
 	for slot := range slots {
 		slots[slot] = menuSlot{
-			stack:      inventory.Slot(slot),
-			limit:      64,
-			playerSlot: slot,
+			stack:         inventory.Slot(slot),
+			limit:         64,
+			playerSlot:    slot,
+			hasPlayerSlot: true,
 		}
 	}
 
@@ -71,18 +78,50 @@ func newPlayerInventoryMenu(inventory *game.PlayerInventory) *menu {
 	}
 
 	playerMenu := &menu{
-		windowID:    playerInventoryWindowID,
-		slots:       slots,
-		hotbarSlots: make([]int, game.HotbarSlotCount),
-		offhandSlot: 45,
-		quickMove:   quickMovePlayerInventory,
+		windowID:       playerInventoryWindowID,
+		slots:          slots,
+		offhandSlot:    45,
+		hasOffhandSlot: true,
+		quickMove:      quickMovePlayerInventory,
 	}
 
 	for hotbar := range game.HotbarSlotCount {
 		playerMenu.hotbarSlots[hotbar] = 36 + hotbar
+		playerMenu.hasHotbarSlots[hotbar] = true
 	}
 
 	return playerMenu
+}
+
+func newNineByThreeMenu(windowID int32, container *[27]game.ItemStack, inventory *game.PlayerInventory) *menu {
+	slots := make([]menuSlot, 0, 63)
+
+	for slot := range container {
+		slots = append(slots, menuSlot{stack: &container[slot], limit: 64})
+	}
+
+	for playerSlot := 9; playerSlot <= 44; playerSlot++ {
+		slots = append(slots, menuSlot{
+			stack:         inventory.Slot(playerSlot),
+			limit:         64,
+			playerSlot:    playerSlot,
+			hasPlayerSlot: true,
+		})
+	}
+
+	containerMenu := &menu{
+		windowID:      windowID,
+		slots:         slots,
+		hiddenOffhand: inventory.Slot(45),
+		quickMove:     quickMoveNineByThree,
+	}
+
+	for hotbar := range game.HotbarSlotCount {
+		containerMenu.hotbarSlots[hotbar] = 54 + hotbar
+		containerMenu.hasHotbarSlots[hotbar] = true
+	}
+
+	return containerMenu
 }
 
 func (current *menu) candidate() *menuCandidate {
@@ -94,6 +133,10 @@ func (current *menu) candidate() *menuCandidate {
 
 	for slot := range current.slots {
 		candidate.slots[slot] = current.slots[slot].stack.Clone()
+	}
+
+	if current.hiddenOffhand != nil {
+		candidate.hiddenOffhand = current.hiddenOffhand.Clone()
 	}
 
 	return candidate
@@ -115,6 +158,10 @@ func (current *menu) commit(candidate *menuCandidate) {
 		*current.slots[slot].stack = candidate.slots[slot].Clone()
 	}
 
+	if current.hiddenOffhand != nil {
+		*current.hiddenOffhand = candidate.hiddenOffhand.Clone()
+	}
+
 	current.carried = candidate.carried.Clone()
 }
 
@@ -124,7 +171,7 @@ func (current *menu) incrementStateID() {
 
 func (current *menu) exposesPlayerSlots(changed []int) bool {
 	for _, menuSlot := range current.slots {
-		if slices.Contains(changed, menuSlot.playerSlot) {
+		if menuSlot.hasPlayerSlot && slices.Contains(changed, menuSlot.playerSlot) {
 			return true
 		}
 	}
@@ -204,6 +251,20 @@ func quickMovePlayerInventory(candidate *menuCandidate, slot int) {
 		moveIntoSlots(candidate, &remaining, slotRange(9, 35))
 	default:
 		moveIntoSlots(candidate, &remaining, slotRange(9, 44))
+	}
+
+	candidate.slots[slot] = remaining
+
+	normalizeStack(&candidate.slots[slot])
+}
+
+func quickMoveNineByThree(candidate *menuCandidate, slot int) {
+	remaining := candidate.slots[slot].Clone()
+
+	if slot < 27 {
+		moveIntoSlots(candidate, &remaining, reverseSlotRange(27, 62))
+	} else {
+		moveIntoSlots(candidate, &remaining, slotRange(0, 26))
 	}
 
 	candidate.slots[slot] = remaining

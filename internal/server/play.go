@@ -175,6 +175,13 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		}
 
 		return s.handleContainerClick(click)
+	case protocol.ServerboundCloseContainerID:
+		_, err := protocol.DecodeCloseContainer(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		s.Runtime.closeMenu(s, false)
 	case protocol.ServerboundPlayKeepAliveID:
 		keepAlive, err := protocol.DecodePlayKeepAliveResponse(packet.Data)
 		if err != nil {

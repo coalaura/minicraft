@@ -260,6 +260,19 @@ func DecodeChunkBatchReceived(data []byte) (ChunkBatchReceived, error) {
 	return ChunkBatchReceived{ChunksPerTick: chunksPerTick}, nil
 }
 
+func DecodeCloseContainer(data []byte) (CloseContainer, error) {
+	rd := NewPacketReader(data)
+
+	containerID := rd.VarInt()
+
+	err := rd.Done("close container")
+	if err != nil {
+		return CloseContainer{}, err
+	}
+
+	return CloseContainer{ContainerID: containerID}, nil
+}
+
 func DecodeChatMessage(data []byte) (ChatMessage, error) {
 	rd := NewPacketReader(data)
 

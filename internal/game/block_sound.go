@@ -15,6 +15,9 @@ const (
 )
 
 const (
+	SoundBlockBarrelClose SoundEvent = "minecraft:block.barrel.close"
+	SoundBlockBarrelOpen  SoundEvent = "minecraft:block.barrel.open"
+
 	SoundBlockBambooWoodDoorClose      SoundEvent = "minecraft:block.bamboo_wood_door.close"
 	SoundBlockBambooWoodDoorOpen       SoundEvent = "minecraft:block.bamboo_wood_door.open"
 	SoundBlockBambooWoodTrapdoorClose  SoundEvent = "minecraft:block.bamboo_wood_trapdoor.close"

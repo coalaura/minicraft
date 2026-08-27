@@ -25,15 +25,17 @@ type Session struct {
 	Log     Logger
 	Runtime *Runtime
 
-	Player        *game.Player
-	playerMx      sync.RWMutex
-	writeMx       sync.Mutex
-	chatMx        sync.Mutex
-	chatState     *sessionChatState
-	inventoryMenu *menu
-	containerMenu *menu
-	protocolState int32
-	shuttingDown  bool
+	Player           *game.Player
+	playerMx         sync.RWMutex
+	writeMx          sync.Mutex
+	chatMx           sync.Mutex
+	chatState        *sessionChatState
+	inventoryMenu    *menu
+	containerMenu    *menu
+	nextWindowID     int32
+	preservedCarried []game.ItemStack
+	protocolState    int32
+	shuttingDown     bool
 
 	chunkMx               sync.Mutex
 	centerChunk           LoadedChunk
@@ -71,6 +73,15 @@ func (s *Session) returnToInventoryMenu() {
 	}
 
 	s.containerMenu = s.inventoryMenu
+}
+
+func (s *Session) allocateWindowID() int32 {
+	s.nextWindowID++
+	if s.nextWindowID > 100 {
+		s.nextWindowID = 1
+	}
+
+	return s.nextWindowID
 }
 
 func NewSession(conn *protocol.Connection, cfg *config.Config, runtime *Runtime, log Logger) *Session {

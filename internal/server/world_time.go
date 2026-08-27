@@ -41,6 +41,7 @@ func (r *Runtime) Tick() game.TimeState {
 	state := r.World.AdvanceTime()
 
 	r.tickActiveChunks()
+	r.tickOpenMenus()
 
 	return state
 }

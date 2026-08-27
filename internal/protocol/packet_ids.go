@@ -69,6 +69,7 @@ const (
 	ServerboundPlayClientInformationID      = 0x0D
 	ServerboundCommandSuggestionsID         = 0x0E
 	ServerboundContainerClickID             = 0x11
+	ServerboundCloseContainerID             = 0x12
 	ServerboundPlayKeepAliveID              = 0x1B
 	ServerboundMovePlayerPositionID         = 0x1D
 	ServerboundMovePlayerPositionRotationID = 0x1E
@@ -92,6 +93,7 @@ const (
 	ClientboundChunkBatchBeginID              = 0x0C
 	ClientboundContainerSetContentID          = 0x12
 	ClientboundContainerSetSlotID             = 0x14
+	ClientboundCloseContainerID               = 0x11
 	ClientboundCommandSuggestionsID           = 0x0F
 	ClientboundDeclareCommandsID              = 0x10
 	ClientboundPlayDisconnectID               = 0x20
@@ -107,6 +109,7 @@ const (
 	ClientboundUpdateEntityPositionID         = 0x33
 	ClientboundUpdateEntityPositionRotationID = 0x34
 	ClientboundUpdateEntityRotationID         = 0x36
+	ClientboundOpenScreenID                   = 0x39
 	ClientboundPlayerChatID                   = 0x3F
 	ClientboundPlayerInfoRemoveID             = 0x43
 	ClientboundPlayerInfoUpdateID             = 0x44

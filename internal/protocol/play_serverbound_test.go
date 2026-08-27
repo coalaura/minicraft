@@ -450,6 +450,7 @@ func TestFixedPlayDecodersRejectTrailingData(t *testing.T) {
 func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 	packetIDs := map[string]packetIDTest{
 		"container click": {actual: ServerboundContainerClickID, expected: 0x11},
+		"close container": {actual: ServerboundCloseContainerID, expected: 0x12},
 		"chat command":    {actual: ServerboundChatCommandID, expected: 0x06},
 		"signed command":  {actual: ServerboundSignedChatCommandID, expected: 0x07},
 		"suggestions":     {actual: ServerboundCommandSuggestionsID, expected: 0x0E},
@@ -474,6 +475,24 @@ func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 				t.Fatalf("packet id = %#x, want %#x", packetID.actual, packetID.expected)
 			}
 		})
+	}
+}
+
+func TestDecodeCloseContainer(t *testing.T) {
+	close, err := DecodeCloseContainer([]byte{0xAC, 0x02})
+	if err != nil {
+		t.Fatalf("decode close container: %v", err)
+	}
+
+	if close.ContainerID != 300 {
+		t.Fatalf("container id = %d, want 300", close.ContainerID)
+	}
+
+	assertTrailingRejected(t, "close container", []byte{0x01}, DecodeCloseContainer)
+
+	_, err = DecodeCloseContainer([]byte{0x80})
+	if err == nil {
+		t.Fatal("decode truncated close container succeeded")
 	}
 }
 

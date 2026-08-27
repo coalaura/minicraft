@@ -733,6 +733,8 @@ func buildFullbrightLevelChunk(world *game.World, chunkX, chunkZ int32) (protoco
 
 	chunkPosition := game.ChunkPosition{X: chunkX, Z: chunkZ}
 
+	chunk.BlockEntities = protocolChunkBlockEntities(world.SnapshotChunkBlockEntities(chunkPosition))
+
 	prepared := prepareChunkGeneration(world, chunkPosition)
 
 	overrides := world.SnapshotChunkOverrides(chunkPosition)
@@ -844,6 +846,44 @@ func buildFullbrightLevelChunk(world *game.World, chunkX, chunkZ int32) (protoco
 	}
 
 	return chunk, nil
+}
+
+func protocolChunkBlockEntities(entities game.ChunkBlockEntities) []protocol.LevelChunkBlockEntity {
+	positions := make([]game.LocalBlockPosition, 0, len(entities))
+
+	for position := range entities {
+		positions = append(positions, position)
+	}
+
+	sort.Slice(positions, func(first, second int) bool {
+		if positions[first].Y != positions[second].Y {
+			return positions[first].Y < positions[second].Y
+		}
+
+		if positions[first].Z != positions[second].Z {
+			return positions[first].Z < positions[second].Z
+		}
+
+		return positions[first].X < positions[second].X
+	})
+
+	encoded := make([]protocol.LevelChunkBlockEntity, 0, len(positions))
+
+	for _, position := range positions {
+		entity := entities[position]
+		if entity.Type != game.BlockEntityTypeBarrel || position.Y < -32768 || position.Y > 32767 {
+			continue
+		}
+
+		encoded = append(encoded, protocol.LevelChunkBlockEntity{
+			X:    byte(position.X),
+			Z:    byte(position.Z),
+			Y:    int16(position.Y),
+			Type: barrelBlockEntityRegistryID,
+		})
+	}
+
+	return encoded
 }
 
 func protocolBlockState(block game.Block) (int32, error) {

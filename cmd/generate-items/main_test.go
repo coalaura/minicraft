@@ -25,6 +25,7 @@ func TestBlockPlacementRuleFamilies(t *testing.T) {
 		{name: "copper_bars", properties: properties("east", "north", "south", "waterlogged", "west"), box: "block", rule: "ItemPlacementPane"},
 		{name: "cobweb", box: "empty", rule: "ItemPlacementDefault"},
 		{name: "mushroom_stem", properties: properties("down", "east", "north", "south", "up", "west"), box: "block", rule: "ItemPlacementDefault"},
+		{name: "barrel", properties: properties("facing", "open"), box: "block", rule: "ItemPlacementBarrel"},
 	}
 
 	for _, test := range tests {
@@ -39,8 +40,8 @@ func TestBlockPlacementRuleFamilies(t *testing.T) {
 	}
 }
 
-func TestBlockEntityPlacementFamiliesRemainExcluded(t *testing.T) {
-	for _, name := range []string{"chest", "barrel", "white_bed", "oak_sign", "white_banner", "white_shulker_box", "decorated_pot", "oak_shelf", "suspicious_sand"} {
+func TestUnsupportedBlockEntityPlacementFamiliesRemainExcluded(t *testing.T) {
+	for _, name := range []string{"chest", "white_bed", "oak_sign", "white_banner", "white_shulker_box", "decorated_pot", "oak_shelf", "suspicious_sand"} {
 		block := BlockDefinition{Name: name, DefaultState: 1, BoundingBox: "block"}
 
 		rule := blockPlacementRule(block)

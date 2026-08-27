@@ -12,6 +12,9 @@ type RuntimeEntity interface {
 }
 
 type RuntimeBlockEntity interface {
+}
+
+type RuntimeBlockEntityTicker interface {
 	Tick(*Runtime, *ActiveChunk)
 }
 
@@ -35,7 +38,7 @@ type runtimeEntitySnapshot struct {
 
 type runtimeBlockEntitySnapshot struct {
 	position game.BlockPosition
-	entity   RuntimeBlockEntity
+	entity   RuntimeBlockEntityTicker
 }
 
 func (c *ActiveChunk) SetEntity(id uint64, entity RuntimeEntity) {
@@ -94,6 +97,14 @@ func (c *ActiveChunk) BlockEntityCount() int {
 	return len(c.blockEntities)
 }
 
+func (c *ActiveChunk) BlockEntity(position game.BlockPosition) (RuntimeBlockEntity, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	entity, present := c.blockEntities[position]
+	return entity, present
+}
+
 func (c *ActiveChunk) tick(runtime *Runtime) {
 	entities, blockEntities := c.snapshotTickers()
 
@@ -123,7 +134,10 @@ func (c *ActiveChunk) snapshotTickers() ([]runtimeEntitySnapshot, []runtimeBlock
 	blockEntities := make([]runtimeBlockEntitySnapshot, 0, len(c.blockEntities))
 
 	for position, entity := range c.blockEntities {
-		blockEntities = append(blockEntities, runtimeBlockEntitySnapshot{position: position, entity: entity})
+		ticker, ticks := entity.(RuntimeBlockEntityTicker)
+		if ticks {
+			blockEntities = append(blockEntities, runtimeBlockEntitySnapshot{position: position, entity: ticker})
+		}
 	}
 
 	sort.Slice(blockEntities, func(first, second int) bool {
@@ -182,9 +196,7 @@ func (r *Runtime) setSessionActiveChunks(session *Session, chunks []LoadedChunk)
 
 		reference := r.activeChunks[position]
 		if reference == nil {
-			reference = &activeChunkReference{
-				chunk: &ActiveChunk{Position: position},
-			}
+			reference = &activeChunkReference{chunk: r.newActiveChunk(position)}
 
 			r.activeChunks[position] = reference
 		}

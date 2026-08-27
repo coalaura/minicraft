@@ -31,6 +31,7 @@ const (
 	ItemPlacementSnow
 	ItemPlacementCandle
 	ItemPlacementPointedDripstone
+	ItemPlacementBarrel
 )
 
 type Item uint16

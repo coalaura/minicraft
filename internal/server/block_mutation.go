@@ -321,6 +321,10 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	}
 
 	r.World.SetBlocks(committed)
+
+	r.reconcileRuntimeBlockEntities(records)
+	r.closeRemovedBlockEntityMenus(records)
+
 	poseChanges := r.recalculateActivePlayerPoses()
 
 	result.Block = committed[0].Replacement

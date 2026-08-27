@@ -141,6 +141,16 @@ type ContainerSetSlot struct {
 	Item     game.ItemStack
 }
 
+type CloseContainer struct {
+	ContainerID int32
+}
+
+type OpenScreen struct {
+	ContainerID int32
+	MenuType    int32
+	Title       game.TextComponent
+}
+
 type SetHeldSlot struct {
 	Slot int32
 }
@@ -561,6 +571,16 @@ func (p ContainerSetSlot) Encode(wr *PacketWriter) {
 	wr.VarInt(p.StateID)
 	wr.Short(p.Slot)
 	encodeItemStack(wr, p.Item)
+}
+
+func (p CloseContainer) Encode(wr *PacketWriter) {
+	wr.VarInt(p.ContainerID)
+}
+
+func (p OpenScreen) Encode(wr *PacketWriter) {
+	wr.VarInt(p.ContainerID)
+	wr.VarInt(p.MenuType)
+	wr.AnonymousNBTText(p.Title)
 }
 
 func (p SetHeldSlot) Encode(wr *PacketWriter) {

@@ -270,6 +270,10 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	}
 
 	if changed {
+		if currentMenu.barrel != nil {
+			s.Runtime.persistAndSynchronizeBarrelLocked(s, currentMenu.barrel)
+		}
+
 		err := s.sendMenuSnapshot(currentMenu.snapshot())
 		if err != nil {
 			return err
@@ -334,6 +338,9 @@ func applyPickup(candidate *menuCandidate, slot int, button int8) bool {
 			candidate.carried.Count--
 		}
 
+		return true
+	}
+	if slot < 0 {
 		return true
 	}
 
@@ -468,27 +475,34 @@ func applySwap(candidate *menuCandidate, slot int, button int8) bool {
 		return false
 	}
 
-	var swapSlot int
+	swapSlot := noMenuSlot
+
+	var other *game.ItemStack
 
 	switch {
-	case button >= 0 && int(button) < len(candidate.menu.hotbarSlots):
+	case button >= 0 && int(button) < len(candidate.menu.hotbarSlots) && candidate.menu.hasHotbarSlots[button]:
 		swapSlot = candidate.menu.hotbarSlots[button]
+		other = candidate.slot(candidate.menu.hotbarSlots[button])
 	case button == 40:
-		swapSlot = candidate.menu.offhandSlot
+		if candidate.menu.hasOffhandSlot {
+			swapSlot = candidate.menu.offhandSlot
+			other = candidate.slot(candidate.menu.offhandSlot)
+		} else if candidate.menu.hiddenOffhand != nil {
+			other = &candidate.hiddenOffhand
+		}
 	default:
 		return false
 	}
 
-	other := candidate.slot(swapSlot)
 	if other == nil {
 		return false
 	}
 
-	if slot == swapSlot {
+	if target == other {
 		return true
 	}
 
-	if !target.Empty() && !candidate.accepts(swapSlot, *target) || !other.Empty() && !candidate.accepts(slot, *other) {
+	if !target.Empty() && swapSlot != noMenuSlot && !candidate.accepts(swapSlot, *target) || !other.Empty() && !candidate.accepts(slot, *other) {
 		return true
 	}
 
@@ -497,9 +511,12 @@ func applySwap(candidate *menuCandidate, slot int, button int8) bool {
 	return true
 }
 
-func applyClone(candidate *menuCandidate, mode game.GameMode, slot int, button int8) bool {
-	if mode != game.GameModeCreative || button != 2 {
+func applyClone(candidate *menuCandidate, mode game.GameMode, slot int, _ int8) bool {
+	if mode != game.GameModeCreative {
 		return false
+	}
+	if slot < 0 {
+		return true
 	}
 
 	target := candidate.slot(slot)
@@ -507,7 +524,7 @@ func applyClone(candidate *menuCandidate, mode game.GameMode, slot int, button i
 		return false
 	}
 
-	if !target.Empty() {
+	if candidate.carried.Empty() && !target.Empty() {
 		candidate.carried = target.Clone()
 
 		candidate.carried.Count = stackLimit(candidate.carried)
@@ -521,12 +538,16 @@ func applyThrow(candidate *menuCandidate, slot int, button int8) bool {
 		return false
 	}
 
+	if slot < 0 {
+		return true
+	}
+
 	target := candidate.slot(slot)
 	if target == nil {
 		return false
 	}
 
-	if target.Empty() {
+	if !candidate.carried.Empty() || target.Empty() {
 		return true
 	}
 
@@ -566,7 +587,7 @@ func applyQuickCraft(candidate *menuCandidate, mode game.GameMode, slot int, but
 		}
 
 		target := candidate.slot(slot)
-		if candidate.accepts(slot, candidate.carried) && (target.Empty() || target.SameItem(candidate.carried)) && target.Count < candidate.stackLimit(slot, candidate.carried) && !containsSlot(candidate.menu.drag.slots, slot) {
+		if candidate.accepts(slot, candidate.carried) && (target.Empty() || target.SameItem(candidate.carried)) && (dragButton == 2 || candidate.carried.Count > int32(len(candidate.menu.drag.slots))) && !containsSlot(candidate.menu.drag.slots, slot) {
 			candidate.menu.drag.slots = append(candidate.menu.drag.slots, slot)
 		}
 
@@ -581,6 +602,13 @@ func applyQuickCraft(candidate *menuCandidate, mode game.GameMode, slot int, but
 		slots := append([]int(nil), candidate.menu.drag.slots...)
 
 		candidate.menu.resetDrag()
+		if len(slots) == 1 {
+			if dragButton == 0 || dragButton == 1 {
+				return applyPickup(candidate, slots[0], dragButton)
+			}
+
+			return true
+		}
 
 		applyDragDistribution(candidate, slots, dragButton)
 
@@ -633,46 +661,46 @@ func applyDragDistribution(candidate *menuCandidate, slots []int, button int8) {
 			target.Count += amount
 		}
 
-		if button != 2 {
-			remaining -= amount
-		}
+		remaining -= amount
 	}
 
-	if button == 2 {
-		candidate.carried = original
-	} else {
-		candidate.carried.Count = remaining
+	candidate.carried.Count = remaining
 
-		normalizeStack(&candidate.carried)
-	}
+	normalizeStack(&candidate.carried)
 }
 
 func applyPickupAll(candidate *menuCandidate, slot int, button int8) bool {
-	if button != 0 || candidate.slot(slot) == nil {
+	if button != 0 && button != 1 || candidate.slot(slot) == nil {
 		return false
 	}
 
-	if candidate.carried.Empty() {
+	if candidate.carried.Empty() || !candidate.slots[slot].Empty() {
 		return true
 	}
 
 	limit := stackLimit(candidate.carried)
+	first := 0
+	last := len(candidate.slots)
+	step := 1
+	if button == 1 {
+		first = len(candidate.slots) - 1
+		last = -1
+		step = -1
+	}
 
-	for current := range candidate.slots {
-		stack := candidate.slot(current)
-		if stack.Empty() || !stack.SameItem(candidate.carried) {
-			continue
-		}
+	for pass := 0; pass < 2 && candidate.carried.Count < limit; pass++ {
+		for current := first; current != last && candidate.carried.Count < limit; current += step {
+			stack := candidate.slot(current)
+			if stack.Empty() || !stack.SameItem(candidate.carried) || pass == 0 && stack.Count == candidate.stackLimit(current, *stack) {
+				continue
+			}
 
-		moved := min(stack.Count, limit-candidate.carried.Count)
+			moved := min(stack.Count, limit-candidate.carried.Count)
 
-		candidate.carried.Count += moved
-		stack.Count -= moved
+			candidate.carried.Count += moved
+			stack.Count -= moved
 
-		normalizeStack(stack)
-
-		if candidate.carried.Count == limit {
-			break
+			normalizeStack(stack)
 		}
 	}
 
@@ -817,7 +845,7 @@ func (s *Session) synchronizePlayerInventoryMutationSlot(before game.PlayerInven
 	if preferredPlayerSlot != nil && len(changedSlots) == 1 {
 		menuSlot := noMenuSlot
 		for slot, definition := range currentMenu.slots {
-			if definition.playerSlot == *preferredPlayerSlot {
+			if definition.hasPlayerSlot && definition.playerSlot == *preferredPlayerSlot {
 				menuSlot = slot
 
 				break
@@ -1068,6 +1096,16 @@ func slotRange(first, last int) []int {
 	slots := make([]int, 0, last-first+1)
 
 	for slot := first; slot <= last; slot++ {
+		slots = append(slots, slot)
+	}
+
+	return slots
+}
+
+func reverseSlotRange(first, last int) []int {
+	slots := make([]int, 0, last-first+1)
+
+	for slot := last; slot >= first; slot-- {
 		slots = append(slots, slot)
 	}
 

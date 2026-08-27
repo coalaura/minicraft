@@ -569,7 +569,7 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 		candidate.carried = game.ItemStack{Item: game.ItemStone, Count: 60}
 		candidate.slots[36] = game.ItemStack{Item: game.ItemStone, Count: 8}
 
-		if !applyPickupAll(candidate, 9, 0) || candidate.carried.Count != 64 || !candidate.slots[9].Empty() || candidate.slots[36].Count != 6 {
+		if !applyPickupAll(candidate, 10, 0) || candidate.carried.Count != 64 || !candidate.slots[9].Empty() || candidate.slots[36].Count != 6 {
 			t.Fatalf("candidate after pickup all = %+v", candidate)
 		}
 	})
@@ -585,13 +585,18 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 			t.Fatalf("candidate after clone = %+v", candidate)
 		}
 
+		candidate.carried = game.ItemStack{}
+		if !applyClone(candidate, game.GameModeCreative, 9, 0) || candidate.carried.Count != 64 {
+			t.Fatalf("candidate after keybound clone = %+v", candidate)
+		}
+
 		if applyClone(candidate, game.GameModeSurvival, 9, 2) {
 			t.Fatal("survival clone was accepted")
 		}
 	})
 }
 
-func TestQuickCraftRequiresStartAndIgnoresFullSlots(t *testing.T) {
+func TestQuickCraftRequiresStartAndCountsFullSlots(t *testing.T) {
 	var inventory game.PlayerInventory
 
 	inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 64}
@@ -614,11 +619,11 @@ func TestQuickCraftRequiresStartAndIgnoresFullSlots(t *testing.T) {
 		t.Fatal("quick craft slot selection was rejected")
 	}
 
-	if len(playerMenu.drag.slots) != 1 || playerMenu.drag.slots[0] != 37 {
-		t.Fatalf("quick craft slots = %v, want [37]", playerMenu.drag.slots)
+	if len(playerMenu.drag.slots) != 2 || playerMenu.drag.slots[0] != 36 || playerMenu.drag.slots[1] != 37 {
+		t.Fatalf("quick craft slots = %v, want [36 37]", playerMenu.drag.slots)
 	}
 
-	if !applyQuickCraft(candidate, game.GameModeSurvival, outsideInventorySlot, 2) || candidate.slots[37].Count != 8 || !candidate.carried.Empty() {
+	if !applyQuickCraft(candidate, game.GameModeSurvival, outsideInventorySlot, 2) || candidate.slots[37].Count != 4 || candidate.carried.Count != 4 {
 		t.Fatalf("candidate after quick craft = %+v", candidate)
 	}
 }
@@ -820,6 +825,96 @@ func TestGenericMenuQuickMoveCommitsMultipleBackings(t *testing.T) {
 	}
 }
 
+func TestNineByThreeMenuSlotsAndQuickMoveRouting(t *testing.T) {
+	var (
+		container [27]game.ItemStack
+		inventory game.PlayerInventory
+	)
+
+	container[0] = game.ItemStack{Item: game.ItemStone, Count: 5}
+	inventory.Main[26] = game.ItemStack{Item: game.ItemDirt, Count: 3}
+	inventory.Hotbar[8] = game.ItemStack{Item: game.ItemOakLog, Count: 2}
+
+	menu := newNineByThreeMenu(7, &container, &inventory)
+
+	if len(menu.slots) != 63 || menu.slots[0].stack != &container[0] || menu.slots[26].stack != &container[26] || menu.slots[27].stack != &inventory.Main[0] || menu.slots[53].stack != &inventory.Main[26] || menu.slots[54].stack != &inventory.Hotbar[0] || menu.slots[62].stack != &inventory.Hotbar[8] {
+		t.Fatal("nine by three menu slot ordering is incorrect")
+	}
+
+	candidate := menu.candidate()
+	if !applyQuickMove(candidate, 0, 0) || !candidate.slots[0].Empty() || candidate.slots[61].Count != 5 {
+		t.Fatalf("container quick move = %+v", candidate)
+	}
+
+	candidate = menu.candidate()
+	if !applyQuickMove(candidate, 53, 0) || !candidate.slots[53].Empty() || candidate.slots[1].Item != game.ItemDirt || candidate.slots[1].Count != 3 {
+		t.Fatalf("player quick move = %+v", candidate)
+	}
+}
+
+func TestNineByThreeMenuOffhandSwapIsHiddenAndPredicted(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	session, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	session.activeMenu()
+
+	var container [27]game.ItemStack
+
+	container[0] = game.ItemStack{Item: game.ItemStone, Count: 2}
+
+	session.Player.Inventory.Offhand = game.ItemStack{Item: game.ItemDirt, Count: 3}
+
+	menu := newNineByThreeMenu(7, &container, &session.Player.Inventory)
+	session.containerMenu = menu
+
+	err := session.handleContainerClick(protocol.ContainerClick{
+		WindowID:    menu.windowID,
+		Slot:        0,
+		MouseButton: 40,
+		Mode:        clickModeSwap,
+		ChangedSlots: []protocol.ChangedSlot{{
+			Location: 0,
+			Item:     hashedStack(game.ItemStack{Item: game.ItemDirt, Count: 3}),
+		}},
+	})
+
+	if err != nil {
+		t.Fatalf("handle hidden offhand swap: %v", err)
+	}
+
+	if !container[0].Equal(game.ItemStack{Item: game.ItemDirt, Count: 3}) || !session.Player.Inventory.Offhand.Equal(game.ItemStack{Item: game.ItemStone, Count: 2}) || menu.stateID != 1 {
+		t.Fatalf("hidden offhand swap = container %+v, offhand %+v, state %d", container[0], session.Player.Inventory.Offhand, menu.stateID)
+	}
+
+	packet := connection.packets(t)[0]
+
+	reader := protocol.NewPacketReader(packet.Data)
+
+	if reader.VarInt() != menu.windowID || reader.VarInt() != 1 || reader.VarInt() != 63 {
+		t.Fatal("hidden offhand swap exposed the offhand as a wire slot")
+	}
+}
+
+func TestMenuMappingsDefaultToUnmapped(t *testing.T) {
+	var slots [2]game.ItemStack
+
+	slots[0] = game.ItemStack{Item: game.ItemStone, Count: 1}
+	slots[1] = game.ItemStack{Item: game.ItemDirt, Count: 1}
+
+	menu := &menu{slots: []menuSlot{{stack: &slots[0]}, {stack: &slots[1]}}}
+
+	candidate := menu.candidate()
+
+	if applySwap(candidate, 1, 0) || !candidate.slots[0].Equal(slots[0]) || !candidate.slots[1].Equal(slots[1]) {
+		t.Fatal("zero-value hotbar mapping swapped slot zero")
+	}
+
+	if menu.exposesPlayerSlots([]int{0}) {
+		t.Fatal("zero-value player mapping exposed player slot zero")
+	}
+}
+
 func TestExternalPlayerMutationSynchronizesActiveCombinedMenu(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
@@ -830,6 +925,7 @@ func TestExternalPlayerMutationSynchronizesActiveCombinedMenu(t *testing.T) {
 	var container game.ItemStack
 
 	combinedMenu := testCombinedMenu(&container, &session.Player.Inventory.Hotbar[0])
+
 	session.containerMenu = combinedMenu
 
 	connection.reset()
@@ -878,12 +974,13 @@ func testCombinedMenu(containerSlot, playerHotbarSlot *game.ItemStack) *menu {
 	combinedMenu := &menu{
 		windowID: 7,
 		slots: []menuSlot{
-			{stack: containerSlot, limit: 64, playerSlot: noMenuSlot},
-			{stack: playerHotbarSlot, limit: 64, playerSlot: 36},
+			{stack: containerSlot, limit: 64},
+			{stack: playerHotbarSlot, limit: 64, playerSlot: 36, hasPlayerSlot: true},
 		},
-		hotbarSlots: []int{1},
-		offhandSlot: noMenuSlot,
 	}
+
+	combinedMenu.hotbarSlots[0] = 1
+	combinedMenu.hasHotbarSlots[0] = true
 
 	combinedMenu.quickMove = func(candidate *menuCandidate, slot int) {
 		remaining := candidate.slots[slot].Clone()

@@ -179,6 +179,8 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 
 func blockPlacementRule(block BlockDefinition) string {
 	switch {
+	case block.Name == "barrel":
+		return "ItemPlacementBarrel"
 	case isExcludedPlacementBlock(block.Name):
 		return ""
 	case strings.HasSuffix(block.Name, "_slab"):
@@ -255,7 +257,7 @@ func blockPlacementRule(block BlockDefinition) string {
 
 func isExcludedPlacementBlock(name string) bool {
 	switch name {
-	case "barrel", "beacon", "beehive", "bee_nest", "blast_furnace", "brewing_stand",
+	case "beacon", "beehive", "bee_nest", "blast_furnace", "brewing_stand",
 		"campfire", "soul_campfire", "suspicious_gravel", "suspicious_sand",
 		"chest", "chiseled_bookshelf", "crafter", "decorated_pot", "dispenser", "dropper",
 		"enchanting_table", "ender_chest", "furnace", "hopper", "jukebox", "lectern",

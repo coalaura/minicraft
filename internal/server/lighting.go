@@ -116,6 +116,7 @@ func buildNormalLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.Le
 	chunk.EmptyBlockLightMask = light.EmptyBlockLightMask
 	chunk.SkyLight = light.SkyLight
 	chunk.BlockLight = light.BlockLight
+	chunk.BlockEntities = protocolChunkBlockEntities(world.SnapshotChunkBlockEntities(game.ChunkPosition{X: chunkX, Z: chunkZ}))
 
 	return chunk, nil
 }

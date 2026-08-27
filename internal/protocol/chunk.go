@@ -13,9 +13,18 @@ type ChunkPosition struct {
 	Z int32
 }
 
+type LevelChunkBlockEntity struct {
+	X    byte
+	Z    byte
+	Y    int16
+	Type int32
+	Data []byte
+}
+
 type LevelChunkWithLight struct {
-	Position ChunkPosition
-	Sections []ChunkSection
+	Position      ChunkPosition
+	Sections      []ChunkSection
+	BlockEntities []LevelChunkBlockEntity
 
 	SkyLightMask        []int64
 	BlockLightMask      []int64
@@ -102,10 +111,28 @@ func (p LevelChunkWithLight) Encode(wr *PacketWriter) {
 	// Chunk data: one length-prefixed byte array holding all sections.
 	wr.Bytes(sections.Buffer.Bytes())
 
-	// Block entities: none.
-	wr.VarInt(0)
+	wr.VarInt(int32(len(p.BlockEntities)))
+
+	for _, entity := range p.BlockEntities {
+		entity.Encode(wr)
+	}
 
 	encodeLightData(wr, p.SkyLightMask, p.BlockLightMask, p.EmptySkyLightMask, p.EmptyBlockLightMask, p.SkyLight, p.BlockLight)
+}
+
+func (p LevelChunkBlockEntity) Encode(wr *PacketWriter) {
+	wr.Byte(p.X<<4 | p.Z)
+	wr.Short(p.Y)
+	wr.VarInt(p.Type)
+
+	if len(p.Data) == 0 {
+		// Optional anonymous NBT is absent when its root tag is TAG_End.
+		wr.Byte(0)
+
+		return
+	}
+
+	wr.Raw(p.Data)
 }
 
 func (p UpdateLight) Encode(wr *PacketWriter) {

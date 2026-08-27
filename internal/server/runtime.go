@@ -267,6 +267,8 @@ func (r *Runtime) LeaveSession(session *Session) {
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
 
+	r.closeMenuLocked(session, false)
+
 	r.releaseSessionActiveChunks(session)
 
 	r.mu.Lock()

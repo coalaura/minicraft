@@ -72,6 +72,27 @@ func TestContainerInventoryPacketsEncode(t *testing.T) {
 	})
 }
 
+func TestContainerOpenClosePacketsEncode(t *testing.T) {
+	if ClientboundOpenScreenID != 0x39 {
+		t.Fatalf("open screen packet id = %#x, want 0x39", ClientboundOpenScreenID)
+	}
+
+	if ClientboundCloseContainerID != 0x11 {
+		t.Fatalf("close container packet id = %#x, want 0x11", ClientboundCloseContainerID)
+	}
+
+	assertPacketEncoding(t, OpenScreen{
+		ContainerID: 300,
+		MenuType:    6,
+		Title:       game.TextComponent{Text: "Chest"},
+	}, []byte{
+		0xAC, 0x02, 0x06,
+		0x0A, 0x08, 0x00, 0x04, 't', 'e', 'x', 't', 0x00, 0x05, 'C', 'h', 'e', 's', 't', 0x00,
+	})
+
+	assertPacketEncoding(t, CloseContainer{ContainerID: 300}, []byte{0xAC, 0x02})
+}
+
 func TestChunkPacketProtocol774(t *testing.T) {
 	if ClientboundForgetLevelChunkID != 0x25 {
 		t.Fatalf("forget level chunk packet id = %#x, want 0x25", ClientboundForgetLevelChunkID)

@@ -64,6 +64,23 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 			return false, BlockMutationResult{}, nil, blockMutationDelivery{}, nil
 		}
 
+		entity, hasEntity := r.World.BlockEntityAt(position)
+		if hasEntity && entity.Type == game.BlockEntityTypeBarrel {
+			if !session.hasLoadedBlock(position) || !blockWithinInteractionRange(player, position) {
+				return true, BlockMutationResult{Block: block}, []game.BlockPosition{position}, blockMutationDelivery{}, nil
+			}
+
+			if _, active := r.runtimeBarrelAt(position); !active {
+				return true, BlockMutationResult{Block: block}, []game.BlockPosition{position}, blockMutationDelivery{}, nil
+			}
+
+			r.lifecycleMu.Lock()
+			err := r.openBarrelLocked(session, position)
+			r.lifecycleMu.Unlock()
+
+			return true, BlockMutationResult{Block: block, Allowed: true, Changed: true}, []game.BlockPosition{position}, blockMutationDelivery{}, err
+		}
+
 		changes := make([]game.BlockChange, 0, 2)
 
 		affected := []game.BlockPosition{position}
@@ -119,7 +136,10 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 		return true, result, affected, delivery, err
 	}()
 
-	result, err = r.completeBlockMutation(result, delivery, err)
+	if delivery.waitForDelivery != nil {
+		result, err = r.completeBlockMutation(result, delivery, err)
+	}
+
 	return handled, result, affected, err
 }
 
@@ -199,7 +219,7 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 
 		player := session.snapshotPlayer()
 
-		state, valid := placementState(base, rule, interaction, player.Rotation.Yaw)
+		state, valid := placementStateWithRotation(base, rule, interaction, player.Rotation)
 		if !valid {
 			return BlockMutationResult{Block: game.Air}, []game.BlockPosition{target}, blockMutationDelivery{}, nil
 		}
@@ -271,7 +291,11 @@ func blockReplaceableBy(existing, replacement game.Block) bool {
 }
 
 func placementState(base game.Block, rule game.ItemPlacementRule, interaction protocol.UseItemOn, yaw float32) (game.Block, bool) {
-	facing := horizontalFacing(yaw)
+	return placementStateWithRotation(base, rule, interaction, game.Rotation{Yaw: yaw})
+}
+
+func placementStateWithRotation(base game.Block, rule game.ItemPlacementRule, interaction protocol.UseItemOn, rotation game.Rotation) (game.Block, bool) {
+	facing := horizontalFacing(rotation.Yaw)
 
 	switch rule {
 	case game.ItemPlacementDefault:
@@ -285,6 +309,11 @@ func placementState(base game.Block, rule game.ItemPlacementRule, interaction pr
 		return base.WithProperties(game.BlockPropertyValue{Name: "axis", Value: axis})
 	case game.ItemPlacementHorizontalFacing:
 		return base.WithProperties(game.BlockPropertyValue{Name: "facing", Value: facing.name()})
+	case game.ItemPlacementBarrel:
+		return base.WithProperties(
+			game.BlockPropertyValue{Name: "facing", Value: barrelPlacementFacing(rotation)},
+			game.BlockPropertyValue{Name: "open", Value: "false"},
+		)
 	case game.ItemPlacementSlab:
 		half := placementHalf(interaction.Face, interaction.CursorY)
 		return base.WithProperties(game.BlockPropertyValue{Name: "type", Value: half})
@@ -395,6 +424,41 @@ func placementState(base game.Block, rule game.ItemPlacementRule, interaction pr
 	default:
 		return 0, false
 	}
+}
+
+func barrelPlacementFacing(rotation game.Rotation) string {
+	yaw := float64(rotation.Yaw) * math.Pi / 180
+	pitch := float64(rotation.Pitch) * math.Pi / 180
+
+	lookX := -math.Sin(yaw) * math.Cos(pitch)
+	lookY := -math.Sin(pitch)
+	lookZ := math.Cos(yaw) * math.Cos(pitch)
+
+	absX := math.Abs(lookX)
+	absY := math.Abs(lookY)
+	absZ := math.Abs(lookZ)
+
+	if absY >= absX && absY >= absZ {
+		if lookY > 0 {
+			return "down"
+		}
+
+		return "up"
+	}
+
+	if absX >= absZ {
+		if lookX > 0 {
+			return "west"
+		}
+
+		return "east"
+	}
+
+	if lookZ > 0 {
+		return "north"
+	}
+
+	return "south"
 }
 
 func placementAxis(face int32) (string, bool) {
