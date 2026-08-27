@@ -324,7 +324,7 @@ func placementStateWithRotation(base game.Block, rule game.ItemPlacementRule, in
 		)
 	case game.ItemPlacementChest:
 		return base.WithProperties(
-			game.BlockPropertyValue{Name: "facing", Value: facing.name()},
+			game.BlockPropertyValue{Name: "facing", Value: facing.opposite().name()},
 			game.BlockPropertyValue{Name: "type", Value: "single"},
 			game.BlockPropertyValue{Name: "waterlogged", Value: "false"},
 		)
@@ -441,7 +441,7 @@ func placementStateWithRotation(base game.Block, rule game.ItemPlacementRule, in
 }
 
 func chestPlacementState(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, base game.Block, interaction protocol.UseItemOn, player game.Player) (game.Block, bool) {
-	facing := horizontalFacing(player.Rotation.Yaw)
+	facing := horizontalFacing(player.Rotation.Yaw).opposite()
 	chestType := "single"
 	secondaryUse := secondaryUseActive(player)
 

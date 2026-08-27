@@ -23,10 +23,10 @@ type chestFacingTestCase struct {
 
 func TestChestPlacementUsesPlayerFacing(t *testing.T) {
 	tests := []chestFacingTestCase{
-		{name: "south", yaw: 0, facing: "south"},
-		{name: "west", yaw: 90, facing: "west"},
-		{name: "north", yaw: 180, facing: "north"},
-		{name: "east", yaw: 270, facing: "east"},
+		{name: "north", yaw: 0, facing: "north"},
+		{name: "east", yaw: 90, facing: "east"},
+		{name: "south", yaw: 180, facing: "south"},
+		{name: "west", yaw: 270, facing: "west"},
 	}
 
 	for _, chest := range chestBlocksForTest() {
@@ -60,10 +60,10 @@ func TestChestPlacementUsesPlayerFacing(t *testing.T) {
 
 func TestChestPlacementPairsAllOrientations(t *testing.T) {
 	tests := []chestFacingTestCase{
-		{name: "south", yaw: 0, facing: "south", left: game.BlockPosition{Y: 70}, right: game.BlockPosition{X: -1, Y: 70}},
-		{name: "west", yaw: 90, facing: "west", left: game.BlockPosition{Y: 70}, right: game.BlockPosition{Y: 70, Z: -1}},
-		{name: "north", yaw: 180, facing: "north", left: game.BlockPosition{Y: 70}, right: game.BlockPosition{X: 1, Y: 70}},
-		{name: "east", yaw: 270, facing: "east", left: game.BlockPosition{Y: 70}, right: game.BlockPosition{Y: 70, Z: 1}},
+		{name: "north", yaw: 0, facing: "north", left: game.BlockPosition{Y: 70}, right: game.BlockPosition{X: 1, Y: 70}},
+		{name: "east", yaw: 90, facing: "east", left: game.BlockPosition{Y: 70}, right: game.BlockPosition{Y: 70, Z: 1}},
+		{name: "south", yaw: 180, facing: "south", left: game.BlockPosition{Y: 70}, right: game.BlockPosition{X: -1, Y: 70}},
+		{name: "west", yaw: 270, facing: "west", left: game.BlockPosition{Y: 70}, right: game.BlockPosition{Y: 70, Z: -1}},
 	}
 
 	for _, chest := range chestBlocksForTest() {
