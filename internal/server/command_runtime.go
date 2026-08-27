@@ -10,14 +10,6 @@ import (
 
 const gameEventChangeGameMode = 3
 
-var errInventoryFull = errors.New("inventory does not have enough space")
-
-type commandInventoryChange struct {
-	session *Session
-	before  game.PlayerInventory
-	after   game.PlayerInventory
-}
-
 func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) (bool, error) {
 	r.lifecycleMu.Lock()
 
@@ -73,58 +65,66 @@ func (r *Runtime) GiveItems(sessions []*Session, item game.Item, count int32) er
 		return errors.New("invalid item or count")
 	}
 
+	definition, valid := item.Definition()
+	if !valid || definition.StackSize <= 0 || count > definition.StackSize*100 {
+		return errors.New("invalid item or count")
+	}
+
+	r.worldMutationMu.Lock()
+	defer r.worldMutationMu.Unlock()
+
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
 
-	changes := make([]commandInventoryChange, 0, len(sessions))
-
 	for _, session := range sessions {
-		before := session.snapshotPlayer().Inventory
-		after := before.Clone()
+		remainingCount := count
 
-		err := giveItemToInventory(&after, item, count)
-		if err != nil {
-			return fmt.Errorf("give to %s: %w", session.snapshotPlayer().Name, err)
+		for remainingCount > 0 {
+			chunkCount := min(definition.StackSize, remainingCount)
+			stack := game.ItemStack{Item: item, Count: chunkCount}
+
+			remainingCount -= chunkCount
+
+			before := session.snapshotPlayer().Inventory
+
+			player, changed := session.updatePlayerState(func(player *game.Player) bool {
+				playerMenu := newPlayerInventoryMenu(&player.Inventory)
+				candidate := playerMenu.candidate()
+
+				moveIntoSlots(candidate, &stack, slotRange(36, 44))
+				moveIntoSlots(candidate, &stack, slotRange(9, 35))
+
+				if stack.Count == chunkCount {
+					return false
+				}
+
+				playerMenu.commit(candidate)
+
+				return true
+			})
+
+			if changed {
+				err := session.synchronizePlayerInventoryMutation(before)
+				if err != nil {
+					return fmt.Errorf("synchronize inventory: %w", err)
+				}
+			}
+
+			if stack.Empty() {
+				display := r.spawnPlayerDroppedItem(player, game.ItemStack{Item: item, Count: 1}, false)
+
+				display.PickupDelay = 32767
+				display.Age = 5999
+
+				continue
+			}
+
+			overflow := r.spawnPlayerDroppedItem(player, stack, false)
+
+			overflow.PickupDelay = 0
+			overflow.TargetUUID = player.UUID
 		}
-
-		changes = append(changes, commandInventoryChange{session: session, before: before, after: after})
 	}
-
-	for index := range changes {
-		change := &changes[index]
-
-		change.session.updatePlayerState(func(player *game.Player) bool {
-			player.Inventory = change.after
-
-			return true
-		})
-	}
-
-	for _, change := range changes {
-		err := change.session.synchronizePlayerInventoryMutation(change.before)
-		if err != nil {
-			return fmt.Errorf("synchronize inventory: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func giveItemToInventory(inventory *game.PlayerInventory, item game.Item, count int32) error {
-	stack := game.ItemStack{Item: item, Count: count}
-
-	playerMenu := newPlayerInventoryMenu(inventory)
-
-	candidate := playerMenu.candidate()
-
-	moveIntoSlots(candidate, &stack, slotRange(36, 44))
-	moveIntoSlots(candidate, &stack, slotRange(9, 35))
-
-	if !stack.Empty() {
-		return errInventoryFull
-	}
-
-	playerMenu.commit(candidate)
 
 	return nil
 }

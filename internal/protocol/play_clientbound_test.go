@@ -26,7 +26,9 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 		"update position and rotation": {actual: ClientboundUpdateEntityPositionRotationID, expected: 0x34},
 		"update entity rotation":       {actual: ClientboundUpdateEntityRotationID, expected: 0x36},
 		"set head rotation":            {actual: ClientboundSetHeadRotationID, expected: 0x51},
+		"set entity motion":            {actual: ClientboundSetEntityMotionID, expected: 0x63},
 		"entity equipment":             {actual: ClientboundEntityEquipmentID, expected: 0x64},
+		"take item entity":             {actual: ClientboundTakeItemEntityID, expected: 0x7A},
 	}
 
 	for name, packetID := range packetIDs {
@@ -564,10 +566,49 @@ func TestEntityMetadataEncode(t *testing.T) {
 	}
 }
 
+func TestItemEntityMetadataEncode(t *testing.T) {
+	if ItemEntityType != 71 {
+		t.Fatalf("item entity type = %d, want 71", ItemEntityType)
+	}
+
+	metadata := EntityMetadata{
+		EntityID: 300,
+		Entries: []EntityMetadataEntry{{
+			Index: ItemEntityItemMetadataIndex,
+			Type:  MetadataTypeItemStack,
+			Value: MetadataItemStack{Stack: game.ItemStack{Item: game.ItemStone, Count: 2}},
+		}},
+	}
+
+	assertPacketEncoding(t, metadata, []byte{
+		0xAC, 0x02,
+		0x0A, 0x07,
+		0x02, byte(game.ItemStone), 0x00, 0x00,
+		0xFF,
+	})
+}
+
 func TestEntityAnimationEncode(t *testing.T) {
 	animation := EntityAnimation{EntityID: 300, Animation: EntityAnimationSwingOffHand}
 
 	assertPacketEncoding(t, animation, []byte{0xAC, 0x02, 0x03})
+}
+
+func TestSetEntityMotionEncode(t *testing.T) {
+	motion := SetEntityMotion{
+		EntityID:  300,
+		VelocityX: 1,
+		VelocityY: -2,
+		VelocityZ: 3,
+	}
+
+	assertPacketEncoding(t, motion, []byte{0xAC, 0x02, 0xA3, 0xAA, 0xFF, 0xFC, 0x55, 0x56})
+}
+
+func TestTakeItemEntityEncode(t *testing.T) {
+	pickup := TakeItemEntity{ItemEntityID: 300, PlayerEntityID: 301, Amount: 2}
+
+	assertPacketEncoding(t, pickup, []byte{0xAC, 0x02, 0xAD, 0x02, 0x02})
 }
 
 func TestEntityEquipmentEncode(t *testing.T) {

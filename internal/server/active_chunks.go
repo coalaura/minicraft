@@ -8,6 +8,10 @@ import (
 )
 
 type RuntimeEntity interface {
+	RuntimeEntityState() *RuntimeEntityState
+}
+
+type RuntimeEntityTicker interface {
 	Tick(*Runtime, *ActiveChunk)
 }
 
@@ -15,7 +19,7 @@ type ActiveChunk struct {
 	Position LoadedChunk
 
 	mu            sync.RWMutex
-	entities      map[uint64]RuntimeEntity
+	entities      map[int32]RuntimeEntity
 	blockEntities map[game.BlockPosition]RuntimeBlockEntity
 }
 
@@ -25,8 +29,8 @@ type activeChunkReference struct {
 }
 
 type runtimeEntitySnapshot struct {
-	id     uint64
-	entity RuntimeEntity
+	id     int32
+	entity RuntimeEntityTicker
 }
 
 type runtimeBlockEntitySnapshot struct {
@@ -34,7 +38,13 @@ type runtimeBlockEntitySnapshot struct {
 	entity   RuntimeBlockEntityTicker
 }
 
-func (c *ActiveChunk) SetEntity(id uint64, entity RuntimeEntity) {
+type activeChunkTickSnapshot struct {
+	chunk         *ActiveChunk
+	entities      []runtimeEntitySnapshot
+	blockEntities []runtimeBlockEntitySnapshot
+}
+
+func (c *ActiveChunk) SetEntity(id int32, entity RuntimeEntity) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -45,13 +55,13 @@ func (c *ActiveChunk) SetEntity(id uint64, entity RuntimeEntity) {
 	}
 
 	if c.entities == nil {
-		c.entities = make(map[uint64]RuntimeEntity)
+		c.entities = make(map[int32]RuntimeEntity)
 	}
 
 	c.entities[id] = entity
 }
 
-func (c *ActiveChunk) RemoveEntity(id uint64) {
+func (c *ActiveChunk) RemoveEntity(id int32) {
 	c.SetEntity(id, nil)
 }
 
@@ -98,18 +108,6 @@ func (c *ActiveChunk) BlockEntity(position game.BlockPosition) (RuntimeBlockEnti
 	return entity, present
 }
 
-func (c *ActiveChunk) tick(runtime *Runtime) {
-	entities, blockEntities := c.snapshotTickers()
-
-	for _, snapshot := range entities {
-		snapshot.entity.Tick(runtime, c)
-	}
-
-	for _, snapshot := range blockEntities {
-		snapshot.entity.Tick(runtime, c)
-	}
-}
-
 func (c *ActiveChunk) snapshotTickers() ([]runtimeEntitySnapshot, []runtimeBlockEntitySnapshot) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -117,7 +115,10 @@ func (c *ActiveChunk) snapshotTickers() ([]runtimeEntitySnapshot, []runtimeBlock
 	entities := make([]runtimeEntitySnapshot, 0, len(c.entities))
 
 	for id, entity := range c.entities {
-		entities = append(entities, runtimeEntitySnapshot{id: id, entity: entity})
+		ticker, ticks := entity.(RuntimeEntityTicker)
+		if ticks {
+			entities = append(entities, runtimeEntitySnapshot{id: id, entity: ticker})
+		}
 	}
 
 	sort.Slice(entities, func(first, second int) bool {
@@ -238,8 +239,24 @@ func (r *Runtime) tickActiveChunks() {
 	// callbacks finishes that snapshot but cannot appear in the next tick.
 	chunks := r.snapshotActiveChunks()
 
-	for _, chunk := range chunks {
-		chunk.tick(r)
+	snapshots := make([]activeChunkTickSnapshot, len(chunks))
+
+	// Snapshot every chunk before ticking so an entity crossing into a later
+	// chunk cannot be observed and ticked twice in the same game tick.
+	for index, chunk := range chunks {
+		entities, blockEntities := chunk.snapshotTickers()
+
+		snapshots[index] = activeChunkTickSnapshot{chunk: chunk, entities: entities, blockEntities: blockEntities}
+	}
+
+	for _, snapshot := range snapshots {
+		for _, entity := range snapshot.entities {
+			entity.entity.Tick(r, snapshot.chunk)
+		}
+
+		for _, blockEntity := range snapshot.blockEntities {
+			blockEntity.entity.Tick(r, snapshot.chunk)
+		}
 	}
 }
 

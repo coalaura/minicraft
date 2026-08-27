@@ -16,6 +16,7 @@ type recordingRuntimeTicker struct {
 	label    string
 	log      *runtimeTickLog
 	position game.BlockPosition
+	state    RuntimeEntityState
 }
 
 type recordingBlockEntityInteraction struct {
@@ -36,6 +37,10 @@ func (t *recordingRuntimeTicker) Tick(_ *Runtime, _ *ActiveChunk) {
 	defer t.log.mu.Unlock()
 
 	t.log.entries = append(t.log.entries, t.label)
+}
+
+func (t *recordingRuntimeTicker) RuntimeEntityState() *RuntimeEntityState {
+	return &t.state
 }
 
 func (interaction *recordingBlockEntityInteraction) BlockEntityType() game.BlockEntityType {

@@ -38,6 +38,11 @@ type Runtime struct {
 	activeChunksMu            sync.RWMutex
 	activeChunks              map[LoadedChunk]*activeChunkReference
 	sessionActiveChunks       map[*Session]map[LoadedChunk]struct{}
+	entityMu                  sync.RWMutex
+	entities                  map[int32]RuntimeEntity
+	entitiesByChunk           map[LoadedChunk]map[int32]RuntimeEntity
+	entityRandomMu            sync.Mutex
+	entityRandom              func() float32
 	mu                        sync.RWMutex
 	nextEntityID              int32
 	reserved                  int
@@ -81,6 +86,9 @@ func NewRuntime(world *game.World) *Runtime {
 		commandRandom:             rand.IntN,
 		activeChunks:              make(map[LoadedChunk]*activeChunkReference),
 		sessionActiveChunks:       make(map[*Session]map[LoadedChunk]struct{}),
+		entities:                  make(map[int32]RuntimeEntity),
+		entitiesByChunk:           make(map[LoadedChunk]map[int32]RuntimeEntity),
+		entityRandom:              rand.Float32,
 		sessions:                  make(map[*Session]*game.Player),
 		connectedSessions:         make(map[*Session]struct{}),
 	}
@@ -182,10 +190,21 @@ func (r *Runtime) AssignEntityID(session *Session) int32 {
 		return session.Player.EntityID
 	}
 
-	r.nextEntityID++
-	session.Player.EntityID = r.nextEntityID
+	session.Player.EntityID = r.allocateEntityIDLocked()
 
 	return session.Player.EntityID
+}
+
+func (r *Runtime) allocateEntityID() int32 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.allocateEntityIDLocked()
+}
+
+func (r *Runtime) allocateEntityIDLocked() int32 {
+	r.nextEntityID++
+	return r.nextEntityID
 }
 
 func (r *Runtime) JoinSession(session *Session) error {
@@ -241,6 +260,8 @@ func (r *Runtime) JoinSession(session *Session) error {
 	r.sessions[session] = session.Player
 	r.mu.Unlock()
 
+	r.trackLoadedEntities(session)
+
 	for _, other := range existing {
 		err = other.sendPlayerInfo([]playerInfoSnapshot{session.playerInfoSnapshot()})
 		if err != nil {
@@ -270,7 +291,7 @@ func (r *Runtime) LeaveSession(session *Session) {
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
 
-	r.closeMenuLocked(session, false)
+	r.closeMenuWithRemovalStateLocked(session, false, true)
 
 	deliveries := r.takeRuntimeBlockMutationsLocked()
 
@@ -279,6 +300,8 @@ func (r *Runtime) LeaveSession(session *Session) {
 	r.completeRuntimeBlockMutations(deliveries)
 
 	r.releaseSessionActiveChunks(session)
+
+	session.clearTrackedEntities()
 
 	r.mu.Lock()
 	_, active := r.sessions[session]
@@ -615,6 +638,14 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 			if err != nil {
 				session.Log.Warnf("[play] failed to hide player: %v\n", err)
 			}
+		}
+	}
+
+	for _, entity := range r.snapshotRuntimeEntities() {
+		if session.shouldTrackRuntimeEntity(entity) {
+			session.trackRuntimeEntity(entity)
+		} else {
+			session.untrackRuntimeEntity(entity.RuntimeEntityState().ID)
 		}
 	}
 }

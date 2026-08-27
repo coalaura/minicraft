@@ -727,9 +727,11 @@ func TestCommandGiveUpdatesTargetInventory(t *testing.T) {
 
 	executeCommand(t, bob, "give Bob stone 100")
 
-	stateID, items, _ = decodeInventorySnapshot(t, bobConnection.packets(t)[0])
-	if stateID != 4 {
-		t.Fatalf("inventory state id after four gives = %d, want 4", stateID)
+	inventoryPackets := packetsByID(t, bobConnection, protocol.ClientboundContainerSetContentID)
+
+	stateID, items, _ = decodeInventorySnapshot(t, inventoryPackets[len(inventoryPackets)-1])
+	if stateID != 5 {
+		t.Fatalf("inventory state id after four gives = %d, want 5", stateID)
 	}
 
 	if !items[36].Equal(game.ItemStack{Item: game.ItemStone, Count: 64}) {
@@ -811,7 +813,7 @@ func TestCommandGiveRejectsInvalidArguments(t *testing.T) {
 	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundSystemChatID})
 }
 
-func TestCommandGiveFailsWhenInventoryIsFull(t *testing.T) {
+func TestCommandGiveDropsOverflowWhenInventoryIsFull(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
 	bob, bobConnection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
@@ -830,7 +832,7 @@ func TestCommandGiveFailsWhenInventoryIsFull(t *testing.T) {
 
 	executeCommand(t, bob, "give Bob stone")
 
-	assertSystemMessages(t, bobConnection, "give to Bob: inventory does not have enough space")
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.give.success.single", game.LiteralText("1"), game.TranslatableText("block.minecraft.stone"), game.LiteralText("Bob")))
 
 	player := bob.snapshotPlayer()
 	if bob.activeMenu().stateID != 0 {
@@ -842,6 +844,16 @@ func TestCommandGiveFailsWhenInventoryIsFull(t *testing.T) {
 		if !player.Inventory.Slot(slot).Equal(expected) {
 			t.Fatalf("slot %d = %+v after failed give, want a full dirt stack", slot, *player.Inventory.Slot(slot))
 		}
+	}
+
+	entities := runtime.snapshotRuntimeEntities()
+	if len(entities) != 1 {
+		t.Fatalf("overflow entities = %d, want 1", len(entities))
+	}
+
+	overflow := entities[0].(*runtimeItemEntity)
+	if !overflow.Stack.Equal(game.ItemStack{Item: game.ItemStone, Count: 1}) || overflow.PickupDelay != 0 || overflow.TargetUUID != bob.Player.UUID {
+		t.Fatalf("overflow entity = %+v", overflow)
 	}
 
 	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundSystemChatID})
@@ -879,7 +891,7 @@ func TestCommandGiveSynchronizesHeldEquipment(t *testing.T) {
 	assertEquipmentUpdate(t, observerConnection.packets(t)[0], bob.Player.EntityID, protocol.EquipmentSlotMainHand, game.ItemStone, 1)
 }
 
-func TestCommandGiveMultipleTargetsCommitsAtomically(t *testing.T) {
+func TestCommandGiveProcessesMultipleTargetsIndependently(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		runtime := NewRuntime(&game.World{})
 
@@ -916,7 +928,7 @@ func TestCommandGiveMultipleTargetsCommitsAtomically(t *testing.T) {
 		assertEquipmentUpdate(t, aliceEquipment[0], alice.Player.EntityID, protocol.EquipmentSlotMainHand, game.ItemStone, 3)
 	})
 
-	t.Run("rollback", func(t *testing.T) {
+	t.Run("overflow", func(t *testing.T) {
 		runtime := NewRuntime(&game.World{})
 
 		bob, bobConnection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
@@ -941,19 +953,32 @@ func TestCommandGiveMultipleTargetsCommitsAtomically(t *testing.T) {
 		bobInventory := bob.snapshotPlayer().Inventory
 		aliceInventory := alice.snapshotPlayer().Inventory
 
-		if bob.activeMenu().stateID != 0 || !bobInventory.Hotbar[0].Empty() {
-			t.Fatalf("bob inventory changed during rollback: %+v", bobInventory)
+		if bob.activeMenu().stateID != 1 || !bobInventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemStone, Count: 1}) {
+			t.Fatalf("bob inventory after give: %+v", bobInventory)
 		}
 
 		if alice.activeMenu().stateID != 0 || !aliceInventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemDirt, Count: 64}) {
 			t.Fatalf("alice inventory changed during rollback: %+v", aliceInventory)
 		}
 
-		if len(packetsByID(t, bobConnection, protocol.ClientboundContainerSetContentID)) != 0 || len(packetsByID(t, aliceConnection, protocol.ClientboundContainerSetContentID)) != 0 {
-			t.Fatal("failed multi-target give synchronized an inventory")
+		if len(packetsByID(t, bobConnection, protocol.ClientboundContainerSetContentID)) != 1 || len(packetsByID(t, aliceConnection, protocol.ClientboundContainerSetContentID)) != 0 {
+			t.Fatal("multi-target give did not synchronize each changed inventory")
 		}
 
-		assertSystemMessages(t, bobConnection, "give to Alice: inventory does not have enough space")
+		var aliceOverflow *runtimeItemEntity
+
+		for _, entity := range runtime.snapshotRuntimeEntities() {
+			itemEntity := entity.(*runtimeItemEntity)
+			if itemEntity.TargetUUID == alice.Player.UUID {
+				aliceOverflow = itemEntity
+			}
+		}
+
+		if aliceOverflow == nil || !aliceOverflow.Stack.Equal(game.ItemStack{Item: game.ItemStone, Count: 1}) || aliceOverflow.PickupDelay != 0 {
+			t.Fatalf("alice overflow entity = %+v", aliceOverflow)
+		}
+
+		assertSystemComponents(t, bobConnection, game.TranslatableText("commands.give.success.multiple", game.LiteralText("1"), game.TranslatableText("block.minecraft.stone"), game.LiteralText("2")))
 	})
 }
 

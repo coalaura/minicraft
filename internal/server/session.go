@@ -25,18 +25,17 @@ type Session struct {
 	Log     Logger
 	Runtime *Runtime
 
-	Player           *game.Player
-	offlineProfiles  *offlineProfileResolver
-	playerMx         sync.RWMutex
-	writeMx          sync.Mutex
-	chatMx           sync.Mutex
-	chatState        *sessionChatState
-	inventoryMenu    *menu
-	containerMenu    *menu
-	nextWindowID     int32
-	preservedCarried []game.ItemStack
-	protocolState    int32
-	shuttingDown     bool
+	Player          *game.Player
+	offlineProfiles *offlineProfileResolver
+	playerMx        sync.RWMutex
+	writeMx         sync.Mutex
+	chatMx          sync.Mutex
+	chatState       *sessionChatState
+	inventoryMenu   *menu
+	containerMenu   *menu
+	nextWindowID    int32
+	protocolState   int32
+	shuttingDown    bool
 
 	chunkMx               sync.Mutex
 	centerChunk           LoadedChunk
@@ -51,6 +50,8 @@ type Session struct {
 	chunkStreamNotify     chan struct{}
 	chunkStreamStarted    bool
 	runtimeChunksReleased bool
+	entityTrackMu         sync.Mutex
+	trackedEntities       map[int32]struct{}
 
 	nextTeleportID int32
 	chunksPerTick  float32

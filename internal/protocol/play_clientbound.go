@@ -14,13 +14,16 @@ const (
 	PlayerInfoActionUpdateListed   = 1 << 3
 
 	PlayerEntityType = 155
+	ItemEntityType   = 71
 
 	EntityFlagsMetadataIndex     = 0
 	EntityPoseMetadataIndex      = 6
+	ItemEntityItemMetadataIndex  = 10
 	PlayerSkinPartsMetadataIndex = 16
 
-	MetadataTypeByte = 0
-	MetadataTypePose = 20
+	MetadataTypeByte      = 0
+	MetadataTypeItemStack = 7
+	MetadataTypePose      = 20
 
 	MetadataTerminator = 0xFF
 
@@ -101,6 +104,10 @@ type MetadataByte byte
 
 type MetadataVarInt int32
 
+type MetadataItemStack struct {
+	Stack game.ItemStack
+}
+
 type EntityMetadataEntry struct {
 	Index byte
 	Type  int32
@@ -115,6 +122,20 @@ type EntityMetadata struct {
 type EntityAnimation struct {
 	EntityID  int32
 	Animation byte
+}
+
+type SetEntityMotion struct {
+	EntityID int32
+
+	VelocityX float64
+	VelocityY float64
+	VelocityZ float64
+}
+
+type TakeItemEntity struct {
+	ItemEntityID   int32
+	PlayerEntityID int32
+	Amount         int32
 }
 
 type EquipmentEntry struct {
@@ -530,6 +551,10 @@ func (p MetadataVarInt) EncodeMetadata(wr *PacketWriter) {
 	wr.VarInt(int32(p))
 }
 
+func (p MetadataItemStack) EncodeMetadata(wr *PacketWriter) {
+	encodeItemStack(wr, p.Stack)
+}
+
 func (p EntityMetadata) Encode(wr *PacketWriter) {
 	wr.VarInt(p.EntityID)
 
@@ -545,6 +570,17 @@ func (p EntityMetadata) Encode(wr *PacketWriter) {
 func (p EntityAnimation) Encode(wr *PacketWriter) {
 	wr.VarInt(p.EntityID)
 	wr.Byte(p.Animation)
+}
+
+func (p SetEntityMotion) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+	wr.LowPrecisionVector(p.VelocityX, p.VelocityY, p.VelocityZ)
+}
+
+func (p TakeItemEntity) Encode(wr *PacketWriter) {
+	wr.VarInt(p.ItemEntityID)
+	wr.VarInt(p.PlayerEntityID)
+	wr.VarInt(p.Amount)
 }
 
 func (p EntityEquipment) Encode(wr *PacketWriter) {

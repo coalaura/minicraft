@@ -1,5 +1,7 @@
 package game
 
+import "strings"
+
 const (
 	ChunkWidth    = 16
 	SectionVolume = ChunkWidth * ChunkWidth * ChunkWidth
@@ -132,6 +134,47 @@ func (block Block) Definition() (BlockDefinition, bool) {
 	}
 
 	return blockDefinitions[stateBlockIDs[block]], true
+}
+
+func (block Block) IsRedstoneConductor() bool {
+	definition, valid := block.Definition()
+	if !valid {
+		return false
+	}
+
+	name := definition.Name
+	if name == "soul_sand" || name == "mud" {
+		return true
+	}
+
+	if redstoneConductorNever(name) {
+		return false
+	}
+
+	boxes := block.CollisionBoxes(BlockPosition{})
+	if len(boxes) != 1 {
+		return false
+	}
+
+	box := boxes[0]
+	return box.MinX == 0 && box.MinY == 0 && box.MinZ == 0 && box.MaxX == 1 && box.MaxY == 1 && box.MaxZ == 1
+}
+
+func redstoneConductorNever(name string) bool {
+	if strings.HasSuffix(name, "_leaves") || strings.HasSuffix(name, "_stained_glass") {
+		return true
+	}
+
+	if strings.HasSuffix(name, "copper_grate") || strings.HasSuffix(name, "copper_bulb") {
+		return true
+	}
+
+	switch name {
+	case "glass", "sticky_piston", "piston", "moving_piston", "tnt", "ice", "glowstone", "beacon", "redstone_block", "sea_lantern", "chorus_flower", "frosted_ice", "observer", "bamboo", "scaffolding", "tinted_glass", "powder_snow", "pointed_dripstone":
+		return true
+	default:
+		return false
+	}
 }
 
 func (block Block) Behavior() BlockBehavior {

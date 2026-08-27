@@ -321,8 +321,7 @@ func (r *Runtime) chestBackingBlocked(backing *runtimeChestBacking) bool {
 
 		block := r.World.BlockAt(above)
 
-		definition, valid := block.Definition()
-		if valid && definition.Collision == game.BlockCollisionFull && definition.LightFilter == 15 {
+		if block.IsRedstoneConductor() {
 			return true
 		}
 	}

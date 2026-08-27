@@ -531,6 +531,22 @@ func TestChestOpeningIsBlockedAboveEitherHalf(t *testing.T) {
 	}
 }
 
+func TestChestOpeningIsNotBlockedByNonConductor(t *testing.T) {
+	position := game.BlockPosition{Y: 70}
+	runtime, session, _ := newChestTestRuntime(t, position)
+
+	above := position
+
+	above.Y++
+
+	runtime.World.SetBlock(above, game.RedstoneBlock)
+
+	openChestForTest(t, runtime, session, position)
+	if session.activeMenu() == session.inventoryMenu {
+		t.Fatal("redstone block incorrectly blocked chest opening")
+	}
+}
+
 func TestChestLidEventsAndSoundsTrackViewers(t *testing.T) {
 	left := game.BlockPosition{X: 4, Y: 70, Z: -3}
 	right := game.BlockPosition{X: 3, Y: 70, Z: -3}

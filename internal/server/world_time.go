@@ -40,7 +40,14 @@ func (r *Runtime) RunGameLoop(ctx context.Context) {
 func (r *Runtime) Tick() game.TimeState {
 	state := r.World.AdvanceTime()
 
+	r.worldMutationMu.Lock()
+	r.lifecycleMu.Lock()
+
 	r.tickActiveChunks()
+
+	r.lifecycleMu.Unlock()
+	r.worldMutationMu.Unlock()
+
 	r.tickOpenMenus()
 
 	return state

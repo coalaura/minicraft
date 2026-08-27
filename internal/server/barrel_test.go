@@ -380,7 +380,7 @@ func TestBarrelMenuClosesWhenPlayerMovesOutOfRange(t *testing.T) {
 func TestBarrelValidityUsesStrictEyeToBlockBoundsDistance(t *testing.T) {
 	position := game.BlockPosition{}
 
-	player := game.Player{Position: game.Position{X: 11, Y: 0.5 - 1.62, Z: 0.5}}
+	player := game.Player{Position: game.Position{X: 9.5, Y: 0.5 - 1.62, Z: 0.5}}
 
 	if containerWithinRange(player, position) {
 		t.Fatal("barrel menu remained valid at the exact maximum distance")

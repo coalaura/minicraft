@@ -29,6 +29,10 @@ var runtimeBlockEntityFactories = map[game.BlockEntityType]runtimeBlockEntityFac
 func (r *Runtime) newActiveChunk(position LoadedChunk) *ActiveChunk {
 	chunk := &ActiveChunk{Position: position}
 
+	for id, entity := range r.snapshotEntitiesInChunk(position) {
+		chunk.SetEntity(id, entity)
+	}
+
 	entities := r.World.SnapshotChunkBlockEntities(game.ChunkPosition{X: position.X, Z: position.Z})
 
 	for local, entity := range entities {
@@ -101,6 +105,10 @@ func (r *Runtime) closeMenu(session *Session, notify bool) {
 }
 
 func (r *Runtime) closeMenuLocked(session *Session, notify bool) {
+	r.closeMenuWithRemovalStateLocked(session, notify, false)
+}
+
+func (r *Runtime) closeMenuWithRemovalStateLocked(session *Session, notify, disconnected bool) {
 	if session.Player == nil {
 		return
 	}
@@ -112,8 +120,7 @@ func (r *Runtime) closeMenuLocked(session *Session, notify bool) {
 	}
 
 	windowID := current.windowID
-
-	r.preserveCarriedLocked(session, current.carried)
+	carried := current.carried.Clone()
 
 	current.carried = game.ItemStack{}
 
@@ -125,66 +132,39 @@ func (r *Runtime) closeMenuLocked(session *Session, notify bool) {
 
 	session.returnToInventoryMenu()
 
+	before := session.snapshotPlayer().Inventory
+
+	inventoryChanged := false
+
+	if !carried.Empty() {
+		player := session.snapshotPlayer()
+
+		if !disconnected {
+			_, inventoryChanged = session.updatePlayerState(func(currentPlayer *game.Player) bool {
+				return moveStackIntoPlayerInventory(session.inventoryMenu, &carried)
+			})
+
+			player = session.snapshotPlayer()
+		}
+
+		if !carried.Empty() {
+			r.spawnPlayerDroppedItem(player, carried, false)
+		}
+	}
+
 	if notify {
 		err := session.writePacket(protocol.ClientboundCloseContainerID, protocol.CloseContainer{ContainerID: windowID})
 		if err != nil && session.Log != nil {
 			session.Log.Warnf("[play] failed to close container: %v\n", err)
 		}
 	}
-}
 
-func (r *Runtime) preserveCarriedLocked(session *Session, carried game.ItemStack) {
-	if carried.Empty() {
-		return
-	}
-
-	remaining := carried.Clone()
-
-	session.updatePlayerState(func(player *game.Player) bool {
-		if session.inventoryMenu == nil {
-			session.inventoryMenu = newPlayerInventoryMenu(&player.Inventory)
-		}
-
-		return moveStackIntoPlayerInventory(session.inventoryMenu, &remaining)
-	})
-
-	if remaining.Empty() {
-		return
-	}
-
-	if session.inventoryMenu.carried.Empty() {
-		session.inventoryMenu.carried = remaining
-		return
-	}
-
-	session.preservedCarried = append(session.preservedCarried, remaining)
-}
-
-func (s *Session) drainPreservedCarriedLocked(player *game.Player) bool {
-	if len(s.preservedCarried) == 0 {
-		return false
-	}
-
-	if s.inventoryMenu == nil {
-		s.inventoryMenu = newPlayerInventoryMenu(&player.Inventory)
-	}
-
-	changed := false
-	remaining := s.preservedCarried[:0]
-
-	for _, preserved := range s.preservedCarried {
-		stack := preserved.Clone()
-		if moveStackIntoPlayerInventory(s.inventoryMenu, &stack) {
-			changed = true
-		}
-
-		if !stack.Empty() {
-			remaining = append(remaining, stack)
+	if !disconnected && inventoryChanged {
+		err := session.synchronizePlayerInventoryMutation(before)
+		if err != nil && session.Log != nil {
+			session.Log.Warnf("[play] failed to synchronize returned carried item: %v\n", err)
 		}
 	}
-
-	s.preservedCarried = remaining
-	return changed
 }
 
 func moveStackIntoPlayerInventory(playerMenu *menu, stack *game.ItemStack) bool {

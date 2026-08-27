@@ -120,9 +120,11 @@ const (
 	ClientboundSectionBlocksUpdateID          = 0x52
 	ClientboundSetCenterChunkID               = 0x5C
 	ClientboundEntityMetadataID               = 0x61
+	ClientboundSetEntityMotionID              = 0x63
 	ClientboundEntityEquipmentID              = 0x64
 	ClientboundSetHeldSlotID                  = 0x67
 	ClientboundUpdateTimeID                   = 0x6F
 	ClientboundSoundID                        = 0x73
 	ClientboundSystemChatID                   = 0x77
+	ClientboundTakeItemEntityID               = 0x7A
 )

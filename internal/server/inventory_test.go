@@ -883,7 +883,7 @@ func TestGenericContainerMenuLayoutsOneThroughSixRows(t *testing.T) {
 	}
 }
 
-func TestPreservedCarriedStackDrainsWhenSpaceBecomesAvailable(t *testing.T) {
+func TestClosingMenuDropsCarriedStackWhenInventoryIsFull(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
 	session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
@@ -894,8 +894,6 @@ func TestPreservedCarriedStackDrainsWhenSpaceBecomesAvailable(t *testing.T) {
 		*session.Player.Inventory.Slot(slot) = fullStack
 	}
 
-	session.activeMenu().carried = game.ItemStack{Item: game.ItemOakLog, Count: 1}
-
 	container := make([]game.ItemStack, 9)
 
 	containerMenu := newGenericContainerMenu(1, 1, container, &session.Player.Inventory)
@@ -905,21 +903,15 @@ func TestPreservedCarriedStackDrainsWhenSpaceBecomesAvailable(t *testing.T) {
 	session.containerMenu = containerMenu
 
 	runtime.closeMenu(session, false)
-	if len(session.preservedCarried) != 1 {
-		t.Fatalf("preserved carried stacks = %d, want 1", len(session.preservedCarried))
+
+	entities := runtime.snapshotRuntimeEntities()
+	if len(entities) != 1 {
+		t.Fatalf("dropped entities = %d, want 1", len(entities))
 	}
 
-	before := session.Player.Inventory.Clone()
-
-	session.Player.Inventory.Main[0] = game.ItemStack{}
-
-	err := session.synchronizePlayerInventoryMutation(before)
-	if err != nil {
-		t.Fatalf("synchronize freed inventory slot: %v", err)
-	}
-
-	if !session.Player.Inventory.Main[0].Equal(game.ItemStack{Item: game.ItemStone, Count: 1}) || len(session.preservedCarried) != 0 {
-		t.Fatalf("recovered stack = %+v, preserved = %+v", session.Player.Inventory.Main[0], session.preservedCarried)
+	item, valid := entities[0].(*runtimeItemEntity)
+	if !valid || !item.Stack.Equal(game.ItemStack{Item: game.ItemStone, Count: 1}) {
+		t.Fatalf("dropped entity = %#v", entities[0])
 	}
 }
 

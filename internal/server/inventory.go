@@ -70,6 +70,20 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 	}
 
 	if update.Slot == creativeDropSlot {
+		s.Runtime.worldMutationMu.Lock()
+		defer s.Runtime.worldMutationMu.Unlock()
+
+		s.Runtime.lifecycleMu.Lock()
+		defer s.Runtime.lifecycleMu.Unlock()
+
+		player := s.snapshotPlayer()
+		if player.GameMode != game.GameModeCreative {
+			s.resynchronizePlayerInventory()
+
+			return
+		}
+
+		s.Runtime.spawnPlayerDroppedItem(player, stack, true)
 		return
 	}
 
@@ -235,6 +249,7 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 
 	var (
 		changedBackings []int
+		dropped         game.ItemStack
 		equipment       []byte
 		valid           bool
 	)
@@ -266,8 +281,7 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 		changedBackings = candidate.changedBackings()
 
 		currentMenu.commit(candidate)
-
-		s.drainPreservedCarriedLocked(player)
+		dropped = candidate.dropped.Clone()
 
 		currentMenu.incrementStateID()
 
@@ -283,6 +297,10 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	}
 
 	if changed {
+		if !dropped.Empty() {
+			s.Runtime.spawnPlayerDroppedItem(player, dropped, false)
+		}
+
 		if len(changedBackings) != 0 && currentMenu.backing != nil {
 			currentMenu.backing.Changed(s.Runtime, s, changedBackings)
 		}
@@ -346,8 +364,11 @@ func applyPickup(candidate *menuCandidate, slot int, button int8) bool {
 		}
 
 		if button == 0 || candidate.carried.Count == 1 {
+			candidate.dropped = candidate.carried.Clone()
 			candidate.carried = game.ItemStack{}
 		} else {
+			candidate.dropped = candidate.carried.Clone()
+			candidate.dropped.Count = 1
 			candidate.carried.Count--
 		}
 
@@ -565,8 +586,13 @@ func applyThrow(candidate *menuCandidate, slot int, button int8) bool {
 	}
 
 	if button == 1 || target.Count == 1 {
+		candidate.dropped = target.Clone()
+
 		*target = game.ItemStack{}
 	} else {
+		candidate.dropped = target.Clone()
+		candidate.dropped.Count = 1
+
 		target.Count--
 	}
 
@@ -759,12 +785,18 @@ func moveIntoSlots(candidate *menuCandidate, stack *game.ItemStack, slots []int)
 }
 
 func (s *Session) handleDropHeldItem(dropAll bool) {
+	s.Runtime.worldMutationMu.Lock()
+	defer s.Runtime.worldMutationMu.Unlock()
+
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
 
-	var before game.PlayerInventory
+	var (
+		before  game.PlayerInventory
+		dropped game.ItemStack
+	)
 
-	_, changed := s.updatePlayerState(func(player *game.Player) bool {
+	player, changed := s.updatePlayerState(func(player *game.Player) bool {
 		stack := player.Inventory.Held(player.SelectedHotbarSlot)
 		if stack == nil || stack.Empty() {
 			return false
@@ -773,8 +805,14 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 		before = player.Inventory.Clone()
 
 		if dropAll || stack.Count == 1 {
+			dropped = stack.Clone()
+
 			*stack = game.ItemStack{}
 		} else {
+			dropped = stack.Clone()
+
+			dropped.Count = 1
+
 			stack.Count--
 		}
 
@@ -782,6 +820,8 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 	})
 
 	if changed {
+		s.Runtime.spawnPlayerDroppedItem(player, dropped, false)
+
 		err := s.synchronizePlayerInventoryMutation(before)
 		if err != nil {
 			s.Log.Warnf("[play] failed to synchronize dropped held item: %v\n", err)
@@ -835,10 +875,6 @@ func (s *Session) synchronizePlayerInventoryMutation(before game.PlayerInventory
 }
 
 func (s *Session) synchronizePlayerInventoryMutationSlot(before game.PlayerInventory, preferredPlayerSlot *int) error {
-	s.updatePlayerState(func(player *game.Player) bool {
-		return s.drainPreservedCarriedLocked(player)
-	})
-
 	player := s.snapshotPlayer()
 
 	changedSlots := inventoryChanges(before, player.Inventory)

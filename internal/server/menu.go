@@ -74,6 +74,7 @@ type menuCandidate struct {
 	slots         []game.ItemStack
 	carried       game.ItemStack
 	hiddenOffhand game.ItemStack
+	dropped       game.ItemStack
 }
 
 type menuSnapshot struct {

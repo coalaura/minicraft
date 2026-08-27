@@ -405,6 +405,10 @@ func (s *Session) updateVisibleChunks(center LoadedChunk) error {
 
 	s.chunkMx.Unlock()
 
+	for _, chunk := range chunksToUnload {
+		s.untrackEntitiesInChunk(chunk)
+	}
+
 	err := s.sendCenterChunk(center.X, center.Z)
 	if err != nil {
 		return err
@@ -511,9 +515,10 @@ func (s *Session) sendQueuedChunksSynchronously() error {
 	}
 
 	s.chunkMx.Lock()
-	defer s.chunkMx.Unlock()
 
 	if revision != s.chunkRevision {
+		s.chunkMx.Unlock()
+
 		return nil
 	}
 
@@ -521,6 +526,12 @@ func (s *Session) sendQueuedChunksSynchronously() error {
 
 	for _, chunk := range chunks[:sent] {
 		s.loadedChunks[chunk] = struct{}{}
+	}
+
+	s.chunkMx.Unlock()
+
+	for _, chunk := range chunks[:sent] {
+		s.trackEntitiesInChunk(chunk)
 	}
 
 	return err
@@ -612,6 +623,10 @@ func (s *Session) chunkStreamLoop(ctx context.Context) error {
 		s.chunkBatchAwaiting = true
 		s.chunkBatchSentAt = time.Now()
 		s.chunkMx.Unlock()
+
+		for _, chunk := range chunks[:sent] {
+			s.trackEntitiesInChunk(chunk)
+		}
 	}
 }
 
