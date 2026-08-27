@@ -229,7 +229,7 @@ func TestItemEntityGravityCollisionAndDespawn(t *testing.T) {
 
 	runtime.Tick()
 
-	if !item.OnGround || item.State.Position.Y != 1 || item.Velocity.Y <= 0 {
+	if !item.OnGround || item.State.Position.Y != 1 || item.Velocity.Y != 0 {
 		t.Fatalf("grounded item state = position %+v, velocity %+v, onGround %v", item.State.Position, item.Velocity, item.OnGround)
 	}
 

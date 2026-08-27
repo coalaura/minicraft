@@ -645,7 +645,13 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 		if session.shouldTrackRuntimeEntity(entity) {
 			session.trackRuntimeEntity(entity)
 		} else {
-			session.untrackRuntimeEntity(entity.RuntimeEntityState().ID)
+			state := entity.RuntimeEntityState()
+
+			state.mu.RLock()
+			entityID := state.ID
+			state.mu.RUnlock()
+
+			session.untrackRuntimeEntity(entityID)
 		}
 	}
 }

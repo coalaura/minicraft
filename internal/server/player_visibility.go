@@ -1,8 +1,6 @@
 package server
 
 import (
-	"math"
-
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
@@ -311,14 +309,4 @@ func (s *Session) writePacket(packetID int32, encoder PacketEncoder) error {
 
 func protocolAngle(angle float32) byte {
 	return byte(int32(angle * 256 / 360))
-}
-
-func protocolPositionDelta(previous, current float64) (int16, bool) {
-	delta := math.Round((current - previous) * entityPositionScale)
-
-	if math.IsNaN(delta) || math.IsInf(delta, 0) || delta < math.MinInt16 || delta > math.MaxInt16 {
-		return 0, false
-	}
-
-	return int16(delta), true
 }
