@@ -571,6 +571,10 @@ func TestItemEntityMetadataEncode(t *testing.T) {
 		t.Fatalf("item entity type = %d, want 71", ItemEntityType)
 	}
 
+	if ItemEntityItemMetadataIndex != 8 {
+		t.Fatalf("item entity item metadata index = %d, want 8", ItemEntityItemMetadataIndex)
+	}
+
 	metadata := EntityMetadata{
 		EntityID: 300,
 		Entries: []EntityMetadataEntry{{
@@ -582,7 +586,7 @@ func TestItemEntityMetadataEncode(t *testing.T) {
 
 	assertPacketEncoding(t, metadata, []byte{
 		0xAC, 0x02,
-		0x0A, 0x07,
+		0x08, 0x07,
 		0x02, byte(game.ItemStone), 0x00, 0x00,
 		0xFF,
 	})

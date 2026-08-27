@@ -18,7 +18,7 @@ const (
 
 	EntityFlagsMetadataIndex     = 0
 	EntityPoseMetadataIndex      = 6
-	ItemEntityItemMetadataIndex  = 10
+	ItemEntityItemMetadataIndex  = 8
 	PlayerSkinPartsMetadataIndex = 16
 
 	MetadataTypeByte      = 0
