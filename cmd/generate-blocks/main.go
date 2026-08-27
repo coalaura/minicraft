@@ -194,7 +194,12 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 }
 
 func blockEntityType(name string) string {
-	if name == "barrel" {
+	switch name {
+	case "chest":
+		return "BlockEntityTypeChest"
+	case "trapped_chest":
+		return "BlockEntityTypeTrappedChest"
+	case "barrel":
 		return "BlockEntityTypeBarrel"
 	}
 
@@ -370,6 +375,8 @@ func blockBehavior(block BlockDefinition) string {
 	}
 
 	switch {
+	case block.Name == "chest" || block.Name == "trapped_chest":
+		return "BlockBehaviorChest"
 	case strings.HasSuffix(block.Name, "_slab"):
 		return "BlockBehaviorSlab"
 	case strings.HasSuffix(block.Name, "_stairs"):
@@ -409,6 +416,8 @@ func blockCollision(block BlockDefinition) string {
 	}
 
 	switch {
+	case block.Name == "chest" || block.Name == "trapped_chest":
+		return "BlockCollisionChest"
 	case strings.HasSuffix(block.Name, "_slab"):
 		return "BlockCollisionSlab"
 	case strings.HasSuffix(block.Name, "_stairs"):

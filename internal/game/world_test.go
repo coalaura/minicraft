@@ -35,6 +35,14 @@ type metadataGenerator struct {
 	metadataSeed int64
 }
 
+type countingOrdinaryBlockEntityGenerator struct {
+	entityCalls int
+}
+
+type countingRemovalBlockEntityGenerator struct {
+	entityCalls int
+}
+
 func (g *spawningGenerator) BlockAt(_ int64, _ BlockPosition) Block {
 	return Air
 }
@@ -57,6 +65,29 @@ func (g *metadataGenerator) WorldMetadata(seed int64) WorldMetadata {
 	g.metadataSeed = seed
 
 	return WorldMetadata{SeaLevel: 27}
+}
+
+func (g *countingOrdinaryBlockEntityGenerator) BlockAt(_ int64, _ BlockPosition) Block {
+	return Stone
+}
+
+func (g *countingOrdinaryBlockEntityGenerator) GenerateBlockEntities(_ int64, _ ChunkPosition) ChunkBlockEntities {
+	g.entityCalls++
+
+	return nil
+}
+
+func (g *countingRemovalBlockEntityGenerator) BlockAt(_ int64, _ BlockPosition) Block {
+	return Barrel
+}
+
+func (g *countingRemovalBlockEntityGenerator) GenerateBlockEntities(_ int64, _ ChunkPosition) ChunkBlockEntities {
+	g.entityCalls++
+
+	return ChunkBlockEntities{
+		{X: 1, Y: 70, Z: 1}: NewBlockEntity(BlockEntityTypeBarrel),
+		{X: 2, Y: 70, Z: 1}: NewBlockEntity(BlockEntityTypeBarrel),
+	}
 }
 
 func TestNewOverworldUsesSeedAndGeneratorSpawn(t *testing.T) {
@@ -212,6 +243,45 @@ func TestSetBlocksAppliesSparseBatch(t *testing.T) {
 
 	if len(world.overrides) != 0 {
 		t.Fatalf("generator-equivalent batch left overrides: %#v", world.overrides)
+	}
+}
+
+func TestSetBlocksSkipsBlockEntityGenerationForOrdinaryBulkChanges(t *testing.T) {
+	generator := &countingOrdinaryBlockEntityGenerator{}
+	world := &World{Generator: generator}
+
+	changes := make([]BlockChange, 0, 512)
+
+	for index := range 512 {
+		coordinate := int32(index)
+		changes = append(changes, BlockChange{
+			Position:    BlockPosition{X: coordinate, Y: 70, Z: coordinate % 16},
+			Replacement: Dirt,
+		})
+	}
+
+	world.SetBlocks(changes)
+
+	if generator.entityCalls != 0 {
+		t.Fatalf("ordinary bulk mutation generated block entities %d times, want 0", generator.entityCalls)
+	}
+}
+
+func TestSetBlocksCachesChunkEntityGenerationForMultipleRemovals(t *testing.T) {
+	generator := &countingRemovalBlockEntityGenerator{}
+	world := &World{Generator: generator}
+
+	world.SetBlocks([]BlockChange{
+		{Position: BlockPosition{X: 1, Y: 70, Z: 1}, Replacement: Air},
+		{Position: BlockPosition{X: 2, Y: 70, Z: 1}, Replacement: Air},
+	})
+
+	if generator.entityCalls != 1 {
+		t.Fatalf("same-chunk removals generated block entities %d times, want 1", generator.entityCalls)
+	}
+
+	if count := world.BlockEntityOverrideCount(); count != 2 {
+		t.Fatalf("same-chunk removal tombstones = %d, want 2", count)
 	}
 }
 

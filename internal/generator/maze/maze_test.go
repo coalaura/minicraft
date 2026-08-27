@@ -100,8 +100,8 @@ func TestMazeWallsAreFourBlocksHigh(t *testing.T) {
 
 	wall := findClosedWall(seed)
 
-	for offset := int32(0); offset < wallHeight; offset++ {
-		wall.Y = wallMinY + offset
+	for offset := range wallHeight {
+		wall.Y = wallMinY + int32(offset)
 		if block := generated.BlockAt(seed, wall); block != game.StoneBricks {
 			t.Fatalf("wall at y=%d = %d, want stone bricks", wall.Y, block)
 		}

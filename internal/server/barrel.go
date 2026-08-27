@@ -1,14 +1,11 @@
 package server
 
 import (
-	"math"
 	"math/rand/v2"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
-
-const barrelValidityPadding = 4.0
 
 type runtimeBarrel struct {
 	position game.BlockPosition
@@ -28,8 +25,8 @@ func (barrel *runtimeBarrel) BlockPosition() game.BlockPosition {
 	return barrel.position
 }
 
-func (barrel *runtimeBarrel) Position() game.BlockPosition {
-	return barrel.position
+func (barrel *runtimeBarrel) ContainsPosition(position game.BlockPosition) bool {
+	return barrel.position == position
 }
 
 func (barrel *runtimeBarrel) InteractBlock(runtime *Runtime, session *Session) error {
@@ -57,7 +54,7 @@ func (barrel *runtimeBarrel) Detach(runtime *Runtime, session *Session) {
 	}
 }
 
-func (barrel *runtimeBarrel) Changed(runtime *Runtime, actor *Session) {
+func (barrel *runtimeBarrel) Changed(runtime *Runtime, actor *Session, _ []int) {
 	runtime.World.SetBlockEntity(barrel.position, barrel.entity)
 
 	for viewer := range barrel.viewers {
@@ -80,16 +77,7 @@ func (barrel *runtimeBarrel) Changed(runtime *Runtime, actor *Session) {
 }
 
 func (barrel *runtimeBarrel) StillValid(runtime *Runtime, session *Session) bool {
-	block := runtime.World.BlockAt(barrel.position)
-
-	entity, present := runtime.authoritativeRuntimeBlockEntityAt(barrel.position, block)
-
-	activeBarrel, barrelActive := entity.(*runtimeBarrel)
-	if !present || !barrelActive || activeBarrel != barrel {
-		return false
-	}
-
-	return blockEntityMenuWithinRange(session.snapshotPlayer(), barrel.position, barrelValidityPadding)
+	return containerBlockEntityStillValid(runtime, session, barrel)
 }
 
 func (r *Runtime) openBarrelLocked(session *Session, barrel *runtimeBarrel) error {
@@ -143,15 +131,6 @@ func (r *Runtime) setBarrelOpenStateLocked(barrel *runtimeBarrel, open bool) {
 		return
 	}
 
-	if !r.World.CompareAndSetBlock(barrel.position, block, replacement) {
-		return
-	}
-
-	state, err := protocolBlockState(replacement)
-	if err != nil {
-		return
-	}
-
 	event := game.SoundBlockBarrelClose
 	if open {
 		event = game.SoundBlockBarrelOpen
@@ -159,17 +138,24 @@ func (r *Runtime) setBarrelOpenStateLocked(barrel *runtimeBarrel, open bool) {
 
 	sound := barrelSound(replacement, barrel.position, event)
 
-	for _, viewer := range r.snapshotSessions() {
-		err = viewer.sendBlockUpdateIfLoaded(barrel.position, state)
-		if err != nil && viewer.Log != nil {
-			viewer.Log.Warnf("[play] failed to update barrel state: %v\n", err)
+	change := game.BlockChange{Position: barrel.position, Replacement: replacement}
+
+	result, delivery, err := r.mutateBlocksLocked(nil, BlockMutationInteract, []game.BlockChange{change}, 1, true, false, true, false)
+	if err != nil || !result.Changed {
+		if err != nil {
+			for _, session := range r.snapshotSessions() {
+				if session.Log != nil {
+					session.Log.Warnf("[play] failed to mutate barrel state: %v\n", err)
+				}
+			}
 		}
 
-		err = viewer.sendSoundIfLoaded(sound, barrel.position)
-		if err != nil && viewer.Log != nil {
-			viewer.Log.Warnf("[play] failed to play barrel sound: %v\n", err)
-		}
+		return
 	}
+
+	delivery.runtimeSounds = []positionalBlockSound{{position: barrel.position, sound: sound}}
+
+	r.runtimeBlockMutations = append(r.runtimeBlockMutations, queuedBlockMutation{result: result, delivery: delivery})
 }
 
 func barrelSound(block game.Block, position game.BlockPosition, event game.SoundEvent) protocol.Sound {
@@ -202,15 +188,4 @@ func barrelFacingOffset(facing string) (float64, float64, float64) {
 	default:
 		return 0, 0, -1
 	}
-}
-
-func blockEntityMenuWithinRange(player game.Player, position game.BlockPosition, padding float64) bool {
-	eye := player.EyePosition()
-
-	distanceX := eye.X - math.Max(float64(position.X), math.Min(eye.X, float64(position.X+1)))
-	distanceY := eye.Y - math.Max(float64(position.Y), math.Min(eye.Y, float64(position.Y+1)))
-	distanceZ := eye.Z - math.Max(float64(position.Z), math.Min(eye.Z, float64(position.Z+1)))
-
-	maximumDistance := blockInteractionRange + padding
-	return distanceX*distanceX+distanceY*distanceY+distanceZ*distanceZ < maximumDistance*maximumDistance
 }

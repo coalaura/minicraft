@@ -26,11 +26,16 @@ const (
 )
 
 type menuBacking interface {
-	Position() game.BlockPosition
+	ContainsPosition(game.BlockPosition) bool
 	Attach(*Runtime, *Session)
 	Detach(*Runtime, *Session)
-	Changed(*Runtime, *Session)
+	Changed(*Runtime, *Session, []int)
 	StillValid(*Runtime, *Session) bool
+}
+
+type menuInventoryBacking struct {
+	items []game.ItemStack
+	index int
 }
 
 type menuSlot struct {
@@ -41,6 +46,7 @@ type menuSlot struct {
 	playerSlot    int
 	hasPlayerSlot bool
 	storage       menuStorage
+	backingIndex  int
 }
 
 type menuQuickMove func(*menuCandidate, int)
@@ -115,17 +121,32 @@ func newPlayerInventoryMenu(inventory *game.PlayerInventory) *menu {
 }
 
 func newGenericContainerMenu(windowID int32, rows int, container []game.ItemStack, inventory *game.PlayerInventory) *menu {
+	return newComposedGenericContainerMenu(windowID, rows, []menuInventoryBacking{{items: container}}, inventory)
+}
+
+func newComposedGenericContainerMenu(windowID int32, rows int, backings []menuInventoryBacking, inventory *game.PlayerInventory) *menu {
 	containerSlots := rows * 9
 
 	menuType, validMenuType := protocol.Generic9xMenuType(rows)
-	if !validMenuType || len(container) != containerSlots {
+	if !validMenuType {
 		return nil
 	}
 
 	slots := make([]menuSlot, 0, containerSlots+36)
 
-	for slot := range container {
-		slots = append(slots, menuSlot{stack: &container[slot], limit: 64, storage: menuStorageBacking})
+	for _, backing := range backings {
+		for slot := range backing.items {
+			slots = append(slots, menuSlot{
+				stack:        &backing.items[slot],
+				limit:        64,
+				storage:      menuStorageBacking,
+				backingIndex: backing.index,
+			})
+		}
+	}
+
+	if len(slots) != containerSlots {
+		return nil
 	}
 
 	for playerSlot := 9; playerSlot <= 44; playerSlot++ {
@@ -155,15 +176,26 @@ func newGenericContainerMenu(windowID int32, rows int, container []game.ItemStac
 	return containerMenu
 }
 
-func (candidate *menuCandidate) backingChanged() bool {
+func (candidate *menuCandidate) changedBackings() []int {
+	seen := make(map[int]struct{})
+
+	var changed []int
+
 	for slot := range candidate.slots {
 		definition := candidate.menu.slots[slot]
-		if definition.storage == menuStorageBacking && !definition.stack.Equal(candidate.slots[slot]) {
-			return true
+		if definition.storage != menuStorageBacking || definition.stack.Equal(candidate.slots[slot]) {
+			continue
 		}
+
+		if _, present := seen[definition.backingIndex]; present {
+			continue
+		}
+
+		seen[definition.backingIndex] = struct{}{}
+		changed = append(changed, definition.backingIndex)
 	}
 
-	return false
+	return changed
 }
 
 func (current *menu) candidate() *menuCandidate {

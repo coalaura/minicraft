@@ -21,7 +21,9 @@ type RuntimeBlockEntityInteraction interface {
 type runtimeBlockEntityFactory func(game.BlockPosition, game.BlockEntity) RuntimeBlockEntity
 
 var runtimeBlockEntityFactories = map[game.BlockEntityType]runtimeBlockEntityFactory{
-	game.BlockEntityTypeBarrel: newRuntimeBarrel,
+	game.BlockEntityTypeChest:        newRuntimeChest,
+	game.BlockEntityTypeTrappedChest: newRuntimeChest,
+	game.BlockEntityTypeBarrel:       newRuntimeBarrel,
 }
 
 func (r *Runtime) newActiveChunk(position LoadedChunk) *ActiveChunk {
@@ -85,10 +87,17 @@ func (r *Runtime) authoritativeRuntimeBlockEntityAt(position game.BlockPosition,
 }
 
 func (r *Runtime) closeMenu(session *Session, notify bool) {
+	r.worldMutationMu.Lock()
 	r.lifecycleMu.Lock()
-	defer r.lifecycleMu.Unlock()
 
 	r.closeMenuLocked(session, notify)
+
+	deliveries := r.takeRuntimeBlockMutationsLocked()
+
+	r.lifecycleMu.Unlock()
+	r.worldMutationMu.Unlock()
+
+	r.completeRuntimeBlockMutations(deliveries)
 }
 
 func (r *Runtime) closeMenuLocked(session *Session, notify bool) {
@@ -247,15 +256,19 @@ func (r *Runtime) closeRemovedBlockEntityMenus(records []blockMutationRecord) {
 			continue
 		}
 
-		if _, wasRemoved := removed[current.backing.Position()]; wasRemoved {
-			r.closeMenuLocked(session, true)
+		for position := range removed {
+			if current.backing.ContainsPosition(position) {
+				r.closeMenuLocked(session, true)
+
+				break
+			}
 		}
 	}
 }
 
 func (r *Runtime) tickOpenMenus() {
+	r.worldMutationMu.Lock()
 	r.lifecycleMu.Lock()
-	defer r.lifecycleMu.Unlock()
 
 	for _, session := range r.snapshotSessions() {
 		current := session.activeMenu()
@@ -265,4 +278,11 @@ func (r *Runtime) tickOpenMenus() {
 
 		r.closeMenuLocked(session, true)
 	}
+
+	deliveries := r.takeRuntimeBlockMutationsLocked()
+
+	r.lifecycleMu.Unlock()
+	r.worldMutationMu.Unlock()
+
+	r.completeRuntimeBlockMutations(deliveries)
 }

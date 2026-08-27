@@ -1,11 +1,16 @@
 package game
 
-const BarrelSlotCount = 27
+const (
+	BarrelSlotCount = 27
+	ChestSlotCount  = 27
+)
 
 type BlockEntityType uint8
 
 const (
 	BlockEntityTypeNone BlockEntityType = iota
+	BlockEntityTypeChest
+	BlockEntityTypeTrappedChest
 	BlockEntityTypeBarrel
 )
 
@@ -44,7 +49,13 @@ type BlockEntityPointGenerator interface {
 }
 
 var blockEntityTypeDefinitions = [...]BlockEntityTypeDefinition{
-	BlockEntityTypeNone:   {},
+	BlockEntityTypeNone:  {},
+	BlockEntityTypeChest: {Name: "chest", ProtocolRegistryID12111: 1, InventorySlots: ChestSlotCount},
+	BlockEntityTypeTrappedChest: {
+		Name:                    "trapped_chest",
+		ProtocolRegistryID12111: 2,
+		InventorySlots:          ChestSlotCount,
+	},
 	BlockEntityTypeBarrel: {Name: "barrel", ProtocolRegistryID12111: 27, InventorySlots: BarrelSlotCount},
 }
 

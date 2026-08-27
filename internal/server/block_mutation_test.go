@@ -319,7 +319,7 @@ func TestBlockMutationBroadcastsFollowCommitOrder(t *testing.T) {
 
 		changes := []game.BlockChange{{Position: position, Replacement: replacement}}
 
-		return runtime.mutateBlocksLocked(actor, action, changes, 1, true, false, false)
+		return runtime.mutateBlocksLocked(actor, action, changes, 1, true, false, false, true)
 	}
 
 	firstResult, firstDelivery, err := commit(BlockMutationPlace, game.Stone)

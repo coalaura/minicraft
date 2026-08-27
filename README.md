@@ -87,12 +87,12 @@ Minicraft is not intended to be a drop-in replacement for a full vanilla server.
 
 There are still gameplay systems and protocol features that are intentionally incomplete or outside that scope.
 
-Generic block entities support procedural copy-on-write state and optional runtime capabilities. Generic 9x1 through 9x6 storage menus are available, with barrels implemented as the first container-backed block entity.
+Generic block entities support procedural copy-on-write state and optional runtime capabilities. Generic 9x1 through 9x6 storage menus are available, including barrels and single/double normal and trapped chests.
 
 ## Todo
 
 - Broader block placement and interaction support
-- Chests and other inventory blocks
+- Other inventory blocks
 - Crafting
 - Generic entity system
 - Dropped items and item pickup

@@ -200,6 +200,29 @@ func (s *Session) sendBlockUpdateIfLoaded(position game.BlockPosition, state int
 	return s.sendBlockUpdate(position, state)
 }
 
+func (s *Session) sendBlockEventIfLoaded(event protocol.BlockEvent) error {
+	s.chunkMx.Lock()
+	defer s.chunkMx.Unlock()
+
+	if _, loaded := s.loadedChunks[blockLoadedChunk(event.Position)]; !loaded {
+		return nil
+	}
+
+	var wr protocol.PacketWriter
+
+	event.Encode(&wr)
+
+	err := wr.Err()
+	if err != nil {
+		return err
+	}
+
+	return s.writeRawPacket(protocol.Packet{
+		ID:   protocol.ClientboundBlockEventID,
+		Data: wr.Buffer.Bytes(),
+	})
+}
+
 func (s *Session) sendSectionBlocksUpdateIfLoaded(update protocol.SectionBlocksUpdate) error {
 	s.chunkMx.Lock()
 	defer s.chunkMx.Unlock()

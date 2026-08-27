@@ -57,6 +57,12 @@ type BlockChange struct {
 	Replacement Block
 }
 
+type preparedBlockChange struct {
+	change                 BlockChange
+	generatedBlock         Block
+	generatedEntityPresent bool
+}
+
 type SpawnGenerator interface {
 	Spawn(seed int64) Position
 }
@@ -94,38 +100,47 @@ func (w *World) SetBlock(position BlockPosition, block Block) {
 
 // CompareAndSetBlock changes a block only when it still has the expected state.
 func (w *World) CompareAndSetBlock(position BlockPosition, expected, replacement Block) bool {
-	_, generatedEntity := w.generatedBlockEntityAt(position)
+	generatedBlock := w.generatedBlockAt(position)
+	generatedEntityPresent := false
+
+	if blockEntityRemovalNeedsGeneratedEntity(expected, replacement) {
+		generatedEntity, present := w.generatedBlockEntityAt(position)
+		generatedEntityPresent = present && blockEntityMatchesBlock(generatedEntity, expected)
+	}
 
 	w.overrideMx.Lock()
 	defer w.overrideMx.Unlock()
 
-	current := w.blockAtLocked(position)
+	current := w.blockAtLocked(position, generatedBlock)
 	if current != expected {
 		return false
 	}
 
-	w.updateBlockEntityForBlockChange(position, current, replacement, generatedEntity)
-	w.setBlock(position, replacement)
+	w.updateBlockEntityForBlockChange(position, current, replacement, generatedEntityPresent)
+	w.setBlock(position, replacement, generatedBlock)
 
 	return true
 }
 
 // SetBlocks applies a prevalidated group while holding the sparse override lock.
 func (w *World) SetBlocks(changes []BlockChange) {
-	generatedEntities := make([]bool, len(changes))
+	prepared := make([]preparedBlockChange, len(changes))
 
 	for index, change := range changes {
-		_, generatedEntities[index] = w.generatedBlockEntityAt(change.Position)
+		prepared[index] = preparedBlockChange{change: change, generatedBlock: w.generatedBlockAt(change.Position)}
 	}
+
+	w.prepareBlockEntityRemovals(prepared)
 
 	w.overrideMx.Lock()
 	defer w.overrideMx.Unlock()
 
-	for index, change := range changes {
-		current := w.blockAtLocked(change.Position)
+	for _, preparedChange := range prepared {
+		change := preparedChange.change
+		current := w.blockAtLocked(change.Position, preparedChange.generatedBlock)
 
-		w.updateBlockEntityForBlockChange(change.Position, current, change.Replacement, generatedEntities[index])
-		w.setBlock(change.Position, change.Replacement)
+		w.updateBlockEntityForBlockChange(change.Position, current, change.Replacement, preparedChange.generatedEntityPresent)
+		w.setBlock(change.Position, change.Replacement, preparedChange.generatedBlock)
 	}
 }
 
@@ -151,6 +166,10 @@ func (w *World) BlockEntityAt(position BlockPosition) (BlockEntity, bool) {
 		return resolvedBlockEntityOverride(override)
 	}
 
+	if !present || !blockEntityMatchesBlock(generated, w.BlockAt(position)) {
+		return BlockEntity{}, false
+	}
+
 	return generated, present
 }
 
@@ -160,11 +179,12 @@ func (w *World) SetBlockEntity(position BlockPosition, entity BlockEntity) bool 
 	chunk, local := blockIndex(position)
 
 	generated, generatedPresent := w.generatedBlockEntityAt(position)
+	generatedBlock := w.generatedBlockAt(position)
 
 	w.overrideMx.Lock()
 	defer w.overrideMx.Unlock()
 
-	if BlockEntityTypeForBlock(w.blockAtLocked(position)) != entity.Type || entity.Type == BlockEntityTypeNone {
+	if BlockEntityTypeForBlock(w.blockAtLocked(position, generatedBlock)) != entity.Type || entity.Type == BlockEntityTypeNone {
 		return false
 	}
 
@@ -193,9 +213,11 @@ func (w *World) SnapshotChunkBlockEntities(chunk ChunkPosition) ChunkBlockEntiti
 	entities := w.generatedBlockEntities(chunk)
 
 	w.overrideMx.RLock()
-	defer w.overrideMx.RUnlock()
+	blocks := maps.Clone(w.overrides[chunk])
+	entityOverrides := maps.Clone(w.blockEntities[chunk])
+	w.overrideMx.RUnlock()
 
-	for position, override := range w.blockEntities[chunk] {
+	for position, override := range entityOverrides {
 		if override.suppressed {
 			delete(entities, position)
 
@@ -207,6 +229,25 @@ func (w *World) SnapshotChunkBlockEntities(chunk ChunkPosition) ChunkBlockEntiti
 		}
 
 		entities[position] = override.entity.Clone()
+	}
+
+	for position, entity := range entities {
+		if position.X < 0 || position.X >= ChunkWidth || position.Z < 0 || position.Z >= ChunkWidth {
+			delete(entities, position)
+
+			continue
+		}
+
+		block, overridden := blocks[position]
+		if !overridden {
+			worldPosition := BlockPosition{X: chunk.X*ChunkWidth + position.X, Y: position.Y, Z: chunk.Z*ChunkWidth + position.Z}
+
+			block = w.generatedBlockAt(worldPosition)
+		}
+
+		if !blockEntityMatchesBlock(entity, block) {
+			delete(entities, position)
+		}
 	}
 
 	if len(entities) == 0 {
@@ -297,7 +338,7 @@ func (w *World) generatedBlockAt(position BlockPosition) Block {
 	return w.Generator.BlockAt(w.Seed, position)
 }
 
-func (w *World) blockAtLocked(position BlockPosition) Block {
+func (w *World) blockAtLocked(position BlockPosition, generated Block) Block {
 	chunk, local := blockIndex(position)
 
 	blocks := w.overrides[chunk]
@@ -307,7 +348,54 @@ func (w *World) blockAtLocked(position BlockPosition) Block {
 		return block
 	}
 
-	return w.generatedBlockAt(position)
+	return generated
+}
+
+func (w *World) prepareBlockEntityRemovals(prepared []preparedBlockChange) {
+	currentBlocks := make([]Block, len(prepared))
+
+	w.overrideMx.RLock()
+
+	for index, preparedChange := range prepared {
+		currentBlocks[index] = w.blockAtLocked(preparedChange.change.Position, preparedChange.generatedBlock)
+	}
+
+	w.overrideMx.RUnlock()
+
+	pointGenerator, hasPointGenerator := w.Generator.(BlockEntityPointGenerator)
+	chunkGenerator, hasChunkGenerator := w.Generator.(BlockEntityGenerator)
+
+	generatedChunks := make(map[ChunkPosition]ChunkBlockEntities)
+
+	for index := range prepared {
+		change := prepared[index].change
+		current := currentBlocks[index]
+
+		if !blockEntityRemovalNeedsGeneratedEntity(current, change.Replacement) {
+			continue
+		}
+
+		var (
+			entity  BlockEntity
+			present bool
+		)
+
+		if hasPointGenerator {
+			entity, present = pointGenerator.GenerateBlockEntity(w.Seed, change.Position)
+		} else if hasChunkGenerator {
+			chunk, local := blockIndex(change.Position)
+
+			entities, generated := generatedChunks[chunk]
+			if !generated {
+				entities = chunkGenerator.GenerateBlockEntities(w.Seed, chunk)
+				generatedChunks[chunk] = entities
+			}
+
+			entity, present = entities[local]
+		}
+
+		prepared[index].generatedEntityPresent = present && blockEntityMatchesBlock(entity, current)
+	}
 }
 
 func (w *World) generatedBlockEntities(chunk ChunkPosition) ChunkBlockEntities {
@@ -400,10 +488,10 @@ func (w *World) clearBlockEntityOverride(chunk ChunkPosition, local LocalBlockPo
 	}
 }
 
-func (w *World) setBlock(position BlockPosition, block Block) {
+func (w *World) setBlock(position BlockPosition, block, generated Block) {
 	chunk, local := blockIndex(position)
 
-	if block == w.generatedBlockAt(position) {
+	if block == generated {
 		w.clearBlockOverride(chunk, local)
 
 		return
@@ -420,6 +508,14 @@ func (w *World) setBlock(position BlockPosition, block Block) {
 	}
 
 	blocks[local] = block
+}
+
+func blockEntityRemovalNeedsGeneratedEntity(current, replacement Block) bool {
+	return BlockEntityTypeForBlock(current) != BlockEntityTypeNone && BlockEntityTypeForBlock(replacement) == BlockEntityTypeNone
+}
+
+func blockEntityMatchesBlock(entity BlockEntity, block Block) bool {
+	return entity.Type != BlockEntityTypeNone && entity.Type == BlockEntityTypeForBlock(block)
 }
 
 func (w *World) clearBlockOverride(chunk ChunkPosition, local LocalBlockPosition) {

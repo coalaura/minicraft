@@ -371,6 +371,13 @@ type BlockUpdate struct {
 	State    int32
 }
 
+type BlockEvent struct {
+	Position game.BlockPosition
+	Event    byte
+	Param    byte
+	Block    int32
+}
+
 type SectionBlockUpdateRecord struct {
 	X     byte
 	Y     byte
@@ -897,6 +904,13 @@ func (p BlockChangedAck) Encode(wr *PacketWriter) {
 func (p BlockUpdate) Encode(wr *PacketWriter) {
 	wr.BlockPosition(p.Position)
 	wr.VarInt(p.State)
+}
+
+func (p BlockEvent) Encode(wr *PacketWriter) {
+	wr.BlockPosition(p.Position)
+	wr.Byte(p.Event)
+	wr.Byte(p.Param)
+	wr.VarInt(p.Block)
 }
 
 func (p SectionBlocksUpdate) Encode(wr *PacketWriter) {

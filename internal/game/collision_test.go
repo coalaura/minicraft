@@ -16,6 +16,12 @@ type playerEyePositionTestCase struct {
 	eyeHeight float64
 }
 
+type chestCollisionTestCase struct {
+	name  string
+	block Block
+	want  AABB
+}
+
 func TestBlockCollisionFamilies(t *testing.T) {
 	openGate, valid := OakFenceGate.WithProperties(BlockPropertyValue{Name: "open", Value: "true"})
 	if !valid {
@@ -182,4 +188,45 @@ func TestNewPlacementFamilyCollisionShapes(t *testing.T) {
 	if cakeBox.MinX != 1.0/16.0 || cakeBox.MaxY != 0.5 {
 		t.Fatalf("cake collision box = %+v", cakeBox)
 	}
+}
+
+func TestChestCollisionBoxes(t *testing.T) {
+	position := BlockPosition{X: 4, Y: 5, Z: 6}
+
+	tests := []chestCollisionTestCase{
+		{name: "single chest", block: Chest, want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
+		{name: "single trapped chest", block: TrappedChest, want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
+		{name: "north left", block: chestStateForCollisionTest(t, Chest, "north", "left"), want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 5, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
+		{name: "north right", block: chestStateForCollisionTest(t, Chest, "north", "right"), want: AABB{MinX: 4, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
+		{name: "south left", block: chestStateForCollisionTest(t, Chest, "south", "left"), want: AABB{MinX: 4, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
+		{name: "south right", block: chestStateForCollisionTest(t, Chest, "south", "right"), want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 5, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
+		{name: "west left", block: chestStateForCollisionTest(t, Chest, "west", "left"), want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
+		{name: "west right", block: chestStateForCollisionTest(t, Chest, "west", "right"), want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 7}},
+		{name: "east left", block: chestStateForCollisionTest(t, Chest, "east", "left"), want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6 + 1.0/16.0, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 7}},
+		{name: "east right", block: chestStateForCollisionTest(t, Chest, "east", "right"), want: AABB{MinX: 4 + 1.0/16.0, MinY: 5, MinZ: 6, MaxX: 4 + 15.0/16.0, MaxY: 5 + 14.0/16.0, MaxZ: 6 + 15.0/16.0}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			boxes := test.block.CollisionBoxes(position)
+			if len(boxes) != 1 || boxes[0] != test.want {
+				t.Fatalf("collision boxes = %+v, want [%+v]", boxes, test.want)
+			}
+		})
+	}
+}
+
+func chestStateForCollisionTest(t *testing.T, block Block, facing, chestType string) Block {
+	t.Helper()
+
+	state, valid := block.WithProperties(
+		BlockPropertyValue{Name: "facing", Value: facing},
+		BlockPropertyValue{Name: "type", Value: chestType},
+	)
+
+	if !valid {
+		t.Fatalf("resolve %s %s chest", facing, chestType)
+	}
+
+	return state
 }

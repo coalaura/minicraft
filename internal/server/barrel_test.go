@@ -88,7 +88,8 @@ func TestBarrelOpenAllocatesWindowIDsThroughVanillaCycle(t *testing.T) {
 			want = 1
 		}
 
-		assertBarrelOpenScreen(t, connection.packets(t)[2], want)
+		assertBarrelOpenScreen(t, connection.packets(t)[0], want)
+
 		runtime.closeMenu(session, false)
 	}
 }
@@ -331,7 +332,7 @@ func TestBarrelFirstAndLastViewerToggleStateAndSound(t *testing.T) {
 	openBarrelForTest(t, runtime, first, position)
 
 	assertBlockProperty(t, runtime.World.BlockAt(position), "open", "true")
-	assertBarrelSound(t, firstConnection.packets(t)[1], game.SoundBlockBarrelOpen, position, "north")
+	assertBarrelSound(t, firstConnection.packets(t)[3], game.SoundBlockBarrelOpen, position, "north")
 	assertBarrelSound(t, secondConnection.packets(t)[1], game.SoundBlockBarrelOpen, position, "north")
 
 	firstConnection.reset()
@@ -373,7 +374,7 @@ func TestBarrelMenuClosesWhenPlayerMovesOutOfRange(t *testing.T) {
 		t.Fatal("distant player retained barrel menu")
 	}
 
-	assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID, protocol.ClientboundCloseContainerID})
+	assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundCloseContainerID, protocol.ClientboundBlockUpdateID, protocol.ClientboundSoundID})
 }
 
 func TestBarrelValidityUsesStrictEyeToBlockBoundsDistance(t *testing.T) {
@@ -381,12 +382,12 @@ func TestBarrelValidityUsesStrictEyeToBlockBoundsDistance(t *testing.T) {
 
 	player := game.Player{Position: game.Position{X: 11, Y: 0.5 - 1.62, Z: 0.5}}
 
-	if blockEntityMenuWithinRange(player, position, barrelValidityPadding) {
+	if containerWithinRange(player, position) {
 		t.Fatal("barrel menu remained valid at the exact maximum distance")
 	}
 
 	player.Position.X -= 0.0001
-	if !blockEntityMenuWithinRange(player, position, barrelValidityPadding) {
+	if !containerWithinRange(player, position) {
 		t.Fatal("barrel menu was invalid just inside the maximum distance")
 	}
 }
@@ -546,9 +547,17 @@ func openBarrelForTest(t *testing.T, runtime *Runtime, session *Session, positio
 		t.Fatal("barrel is not active")
 	}
 
+	runtime.worldMutationMu.Lock()
 	runtime.lifecycleMu.Lock()
+
 	err := runtime.openBarrelLocked(session, barrel)
+
+	deliveries := runtime.takeRuntimeBlockMutationsLocked()
+
 	runtime.lifecycleMu.Unlock()
+	runtime.worldMutationMu.Unlock()
+
+	runtime.completeRuntimeBlockMutations(deliveries)
 
 	if err != nil {
 		t.Fatalf("open barrel: %v", err)

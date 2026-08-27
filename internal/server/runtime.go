@@ -34,6 +34,7 @@ type Runtime struct {
 	commandRandom             func(int) int
 	commands                  *commandRegistry
 	blockMutationDeliveryTail chan struct{}
+	runtimeBlockMutations     []queuedBlockMutation
 	activeChunksMu            sync.RWMutex
 	activeChunks              map[LoadedChunk]*activeChunkReference
 	sessionActiveChunks       map[*Session]map[LoadedChunk]struct{}
@@ -264,10 +265,18 @@ func (r *Runtime) JoinSession(session *Session) error {
 }
 
 func (r *Runtime) LeaveSession(session *Session) {
+	r.worldMutationMu.Lock()
+
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
 
 	r.closeMenuLocked(session, false)
+
+	deliveries := r.takeRuntimeBlockMutationsLocked()
+
+	r.worldMutationMu.Unlock()
+
+	r.completeRuntimeBlockMutations(deliveries)
 
 	r.releaseSessionActiveChunks(session)
 

@@ -349,9 +349,64 @@ func recalculateStructuralBlock(blockAt func(game.BlockPosition) game.Block, pos
 		return game.Air
 	case game.BlockBehaviorPointedDripstone:
 		return recalculatePointedDripstone(blockAt, position, block)
+	case game.BlockBehaviorChest:
+		return recalculateChest(blockAt, position, block)
 	default:
 		return block
 	}
+}
+
+func recalculateChest(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) game.Block {
+	facing, valid := directionFromName(blockProperty(block, "facing"))
+	if !valid {
+		return block
+	}
+
+	chestType := blockProperty(block, "type")
+	if chestType != "single" {
+		connected := chestConnectedDirection(facing, chestType)
+
+		neighbor := blockInDirection(blockAt, position, connected)
+		if sameBlockType(block, neighbor) {
+			return block
+		}
+
+		return withBlockProperties(block, game.BlockPropertyValue{Name: "type", Value: "single"})
+	}
+
+	for _, direction := range horizontalDirections {
+		neighbor := blockInDirection(blockAt, position, direction)
+		if !sameBlockType(block, neighbor) || blockProperty(neighbor, "type") == "single" || blockProperty(neighbor, "facing") != facing.name() {
+			continue
+		}
+
+		neighborType := blockProperty(neighbor, "type")
+
+		neighborConnected := chestConnectedDirection(facing, neighborType)
+		if neighborConnected != direction.opposite() {
+			continue
+		}
+
+		return withBlockProperties(block, game.BlockPropertyValue{Name: "type", Value: oppositeChestType(neighborType)})
+	}
+
+	return block
+}
+
+func chestConnectedDirection(facing horizontalDirection, chestType string) horizontalDirection {
+	if chestType == "left" {
+		return facing.right()
+	}
+
+	return facing.left()
+}
+
+func oppositeChestType(chestType string) string {
+	if chestType == "left" {
+		return "right"
+	}
+
+	return "left"
 }
 
 func validPlacementSupport(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block, rule game.ItemPlacementRule) bool {

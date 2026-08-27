@@ -51,6 +51,8 @@ func (s *Session) handleUseItemOn(interaction protocol.UseItemOn) error {
 func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (bool, BlockMutationResult, []game.BlockPosition, error) {
 	r.worldMutationMu.Lock()
 
+	var runtimeMutations []queuedBlockMutation
+
 	handled, result, affected, delivery, err := func() (bool, BlockMutationResult, []game.BlockPosition, blockMutationDelivery, error) {
 		defer r.worldMutationMu.Unlock()
 
@@ -75,6 +77,8 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 			r.lifecycleMu.Lock()
 			err := interaction.InteractBlock(r, session)
 			r.lifecycleMu.Unlock()
+
+			runtimeMutations = r.takeRuntimeBlockMutationsLocked()
 
 			return true, BlockMutationResult{Block: block, Allowed: true, Changed: true}, []game.BlockPosition{position}, blockMutationDelivery{}, err
 		}
@@ -130,13 +134,15 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 
 		changes = r.withStructuralNeighborChanges(changes)
 
-		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationInteract, changes, len(affected), true, false, false)
+		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationInteract, changes, len(affected), true, false, false, true)
 		return true, result, affected, delivery, err
 	}()
 
 	if delivery.waitForDelivery != nil {
 		result, err = r.completeBlockMutation(result, delivery, err)
 	}
+
+	r.completeRuntimeBlockMutations(runtimeMutations)
 
 	return handled, result, affected, err
 }
@@ -179,14 +185,14 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 			if replacement, merge := slabMerge(base, clicked, interaction.Face, interaction.CursorY); merge {
 				changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
-				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
+				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
 				return result, []game.BlockPosition{interaction.Position}, delivery, err
 			}
 
 			if replacement, merge := slabMerge(base, r.World.BlockAt(adjacent), oppositeBlockFace(interaction.Face), interaction.CursorY); merge {
 				changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: adjacent, Replacement: replacement}})
 
-				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
+				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
 				return result, []game.BlockPosition{adjacent}, delivery, err
 			}
 		}
@@ -194,7 +200,7 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 		if replacement, convert := candleCakePlacement(base, rule, clicked, interaction.Face); convert {
 			changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
-			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
+			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
 			return result, []game.BlockPosition{interaction.Position}, delivery, err
 		}
 
@@ -202,7 +208,7 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 		if replacement, stack := stackedPlacement(base, rule, clicked, interaction.Face); canStack && stack {
 			changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
-			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
+			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
 			return result, []game.BlockPosition{interaction.Position}, delivery, err
 		}
 
@@ -218,6 +224,10 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 		player := session.snapshotPlayer()
 
 		state, valid := placementStateWithRotation(base, rule, interaction, player.Rotation)
+		if rule == game.ItemPlacementChest {
+			state, valid = chestPlacementState(r.World.BlockAt, target, base, interaction, player)
+		}
+
 		if !valid {
 			return BlockMutationResult{Block: game.Air}, []game.BlockPosition{target}, blockMutationDelivery{}, nil
 		}
@@ -267,7 +277,7 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 
 		changes = r.withStructuralNeighborChanges(changes)
 
-		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, requiredChanges, true, true, false)
+		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, requiredChanges, true, true, false, true)
 		return result, affected, delivery, err
 	}()
 
@@ -311,6 +321,12 @@ func placementStateWithRotation(base game.Block, rule game.ItemPlacementRule, in
 		return base.WithProperties(
 			game.BlockPropertyValue{Name: "facing", Value: directionalPlacementFacing(rotation)},
 			game.BlockPropertyValue{Name: "open", Value: "false"},
+		)
+	case game.ItemPlacementChest:
+		return base.WithProperties(
+			game.BlockPropertyValue{Name: "facing", Value: facing.name()},
+			game.BlockPropertyValue{Name: "type", Value: "single"},
+			game.BlockPropertyValue{Name: "waterlogged", Value: "false"},
 		)
 	case game.ItemPlacementSlab:
 		half := placementHalf(interaction.Face, interaction.CursorY)
@@ -422,6 +438,66 @@ func placementStateWithRotation(base game.Block, rule game.ItemPlacementRule, in
 	default:
 		return 0, false
 	}
+}
+
+func chestPlacementState(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, base game.Block, interaction protocol.UseItemOn, player game.Player) (game.Block, bool) {
+	facing := horizontalFacing(player.Rotation.Yaw)
+	chestType := "single"
+	secondaryUse := secondaryUseActive(player)
+
+	if secondaryUse {
+		clickedDirection, horizontal := blockFaceDirection(interaction.Face)
+		if horizontal {
+			partnerDirection := clickedDirection.opposite()
+			partner := blockInDirection(blockAt, position, partnerDirection)
+
+			partnerFacing, compatible := chestPlacementPartner(base, partner)
+			if compatible && horizontalDirectionAxis(partnerFacing) != horizontalDirectionAxis(clickedDirection) {
+				facing = partnerFacing
+
+				chestType = "left"
+				if facing.left() == partnerDirection {
+					chestType = "right"
+				}
+			}
+		}
+	} else {
+		partner := blockInDirection(blockAt, position, facing.right())
+
+		partnerFacing, compatible := chestPlacementPartner(base, partner)
+		if compatible && partnerFacing == facing {
+			chestType = "left"
+		} else {
+			partner = blockInDirection(blockAt, position, facing.left())
+
+			partnerFacing, compatible = chestPlacementPartner(base, partner)
+			if compatible && partnerFacing == facing {
+				chestType = "right"
+			}
+		}
+	}
+
+	return base.WithProperties(
+		game.BlockPropertyValue{Name: "facing", Value: facing.name()},
+		game.BlockPropertyValue{Name: "type", Value: chestType},
+		game.BlockPropertyValue{Name: "waterlogged", Value: "false"},
+	)
+}
+
+func chestPlacementPartner(base, candidate game.Block) (horizontalDirection, bool) {
+	if !sameBlockType(base, candidate) || blockProperty(candidate, "type") != "single" {
+		return 0, false
+	}
+
+	return directionFromName(blockProperty(candidate, "facing"))
+}
+
+func horizontalDirectionAxis(direction horizontalDirection) byte {
+	if direction == directionWest || direction == directionEast {
+		return 'x'
+	}
+
+	return 'z'
 }
 
 func directionalPlacementFacing(rotation game.Rotation) string {

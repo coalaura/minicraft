@@ -113,6 +113,26 @@ func TestBlockUpdateEncode(t *testing.T) {
 	assertPacketEncoding(t, update, expected)
 }
 
+func TestBlockEventEncode(t *testing.T) {
+	if ClientboundBlockEventID != 0x07 {
+		t.Fatalf("block event packet id = %#x, want 0x07", ClientboundBlockEventID)
+	}
+
+	event := BlockEvent{
+		Position: game.BlockPosition{X: 1, Y: 2, Z: 3},
+		Event:    1,
+		Param:    2,
+		Block:    468,
+	}
+
+	assertPacketEncoding(t, event, []byte{
+		0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x30, 0x02,
+		0x01,
+		0x02,
+		0xD4, 0x03,
+	})
+}
+
 func TestSectionBlocksUpdateEncode(t *testing.T) {
 	if ClientboundSectionBlocksUpdateID != 0x52 {
 		t.Fatalf("section blocks update packet id = %#x, want 0x52", ClientboundSectionBlocksUpdateID)

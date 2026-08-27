@@ -16,6 +16,22 @@ type barrelEntityGenerator struct {
 	position BlockPosition
 }
 
+type chestEntityGenerator struct {
+	first  BlockPosition
+	second BlockPosition
+}
+
+type staleBlockEntityGenerator struct {
+	chunkCalls int
+}
+
+type blockEntityMetadataTestCase struct {
+	block      Block
+	entityType BlockEntityType
+	name       string
+	registryID int32
+}
+
 func (g barrelEntityGenerator) BlockAt(_ int64, position BlockPosition) Block {
 	if position == g.position {
 		return Barrel
@@ -37,6 +53,48 @@ func (g barrelEntityGenerator) GenerateBlockEntities(seed int64, chunk ChunkPosi
 	items[0] = ItemStack{Item: ItemStone, Count: int32(seed%64 + 1)}
 
 	return ChunkBlockEntities{local: entity}
+}
+
+func (g chestEntityGenerator) BlockAt(_ int64, position BlockPosition) Block {
+	if position == g.first || position == g.second {
+		return Chest
+	}
+
+	return Stone
+}
+
+func (g chestEntityGenerator) GenerateBlockEntities(_ int64, chunk ChunkPosition) ChunkBlockEntities {
+	entities := make(ChunkBlockEntities)
+
+	for index, position := range []BlockPosition{g.first, g.second} {
+		positionChunk, local := blockIndex(position)
+		if positionChunk != chunk {
+			continue
+		}
+
+		entity := NewBlockEntity(BlockEntityTypeChest)
+
+		items, _ := entity.Inventory()
+
+		items[0] = ItemStack{Item: ItemStone, Count: int32(index + 1)}
+
+		entities[local] = entity
+	}
+
+	return entities
+}
+
+func (g *staleBlockEntityGenerator) BlockAt(_ int64, _ BlockPosition) Block {
+	return Stone
+}
+
+func (g *staleBlockEntityGenerator) GenerateBlockEntities(_ int64, _ ChunkPosition) ChunkBlockEntities {
+	g.chunkCalls++
+
+	return ChunkBlockEntities{
+		{X: 1, Y: 70, Z: 1}:  NewBlockEntity(BlockEntityTypeChest),
+		{X: -1, Y: 70, Z: 1}: NewBlockEntity(BlockEntityTypeChest),
+	}
 }
 
 func (data *testBlockEntityData) CloneBlockEntityData() BlockEntityData {
@@ -114,6 +172,75 @@ func TestBlockEntityMetadataDefinesIdentityAndProtocolValues(t *testing.T) {
 	entityDefinition, valid := BlockEntityTypeBarrel.Definition()
 	if !valid || entityDefinition.Name != "barrel" || entityDefinition.ProtocolRegistryID12111 != 27 || entityDefinition.InventorySlots != BarrelSlotCount {
 		t.Fatalf("barrel block entity definition = %+v, %v", entityDefinition, valid)
+	}
+
+	for _, test := range []blockEntityMetadataTestCase{
+		{block: Chest, entityType: BlockEntityTypeChest, name: "chest", registryID: 1},
+		{block: TrappedChest, entityType: BlockEntityTypeTrappedChest, name: "trapped_chest", registryID: 2},
+	} {
+		blockDefinition, blockValid := test.block.Definition()
+		entityDefinition, entityValid := test.entityType.Definition()
+
+		if !blockValid || blockDefinition.BlockEntityType != test.entityType || !entityValid || entityDefinition.Name != test.name || entityDefinition.ProtocolRegistryID12111 != test.registryID || entityDefinition.InventorySlots != ChestSlotCount {
+			t.Fatalf("%s block/entity definitions = %+v, %+v", test.name, blockDefinition, entityDefinition)
+		}
+	}
+}
+
+func TestGeneratedChestHalvesUseIndependentCopyOnWriteAndTombstones(t *testing.T) {
+	first := BlockPosition{X: 3, Y: 70, Z: 4}
+	second := BlockPosition{X: 4, Y: 70, Z: 4}
+
+	world := &World{Generator: chestEntityGenerator{first: first, second: second}}
+
+	firstEntity, firstPresent := world.BlockEntityAt(first)
+	secondEntity, secondPresent := world.BlockEntityAt(second)
+
+	if !firstPresent || !secondPresent {
+		t.Fatal("generated chest halves are absent")
+	}
+
+	mutated := firstEntity.Clone()
+	items, _ := mutated.Inventory()
+
+	items[0].Count++
+
+	if !world.SetBlockEntity(first, mutated) {
+		t.Fatal("mutating first generated chest half failed")
+	}
+
+	if count := world.BlockEntityOverrideCount(); count != 1 {
+		t.Fatalf("block entity overrides after one-half mutation = %d, want 1", count)
+	}
+
+	unchanged, present := world.BlockEntityAt(second)
+	if !present || !unchanged.Equal(secondEntity) {
+		t.Fatalf("untouched generated chest half = %+v, %v; want %+v, true", unchanged, present, secondEntity)
+	}
+
+	world.SetBlock(first, Air)
+	world.SetBlock(first, Chest)
+
+	replacement, present := world.BlockEntityAt(first)
+	if !present || !replacement.Equal(NewBlockEntity(BlockEntityTypeChest)) {
+		t.Fatalf("replacement chest half = %+v, %v; want empty chest", replacement, present)
+	}
+
+	if replacement.Equal(firstEntity) {
+		t.Fatal("replacement chest resurrected generated contents")
+	}
+}
+
+func TestGeneratedBlockEntitiesAreFilteredAgainstHostAndChunkLocality(t *testing.T) {
+	generator := &staleBlockEntityGenerator{}
+	world := &World{Generator: generator}
+
+	if entity, present := world.BlockEntityAt(BlockPosition{X: 1, Y: 70, Z: 1}); present {
+		t.Fatalf("stale point block entity = %+v, true; want absent", entity)
+	}
+
+	if entities := world.SnapshotChunkBlockEntities(ChunkPosition{}); len(entities) != 0 {
+		t.Fatalf("filtered chunk block entities = %+v, want none", entities)
 	}
 }
 

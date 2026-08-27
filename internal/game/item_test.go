@@ -69,6 +69,7 @@ func TestItemPlacementBlockMapping(t *testing.T) {
 		ItemPoppy:            ItemPlacementPlant,
 		ItemCopperBars:       ItemPlacementPane,
 		ItemCobweb:           ItemPlacementDefault,
+		ItemChest:            ItemPlacementChest,
 	} {
 		if actual := item.PlacementRule(); actual != rule {
 			t.Errorf("item %d placement rule = %d, want %d", item, actual, rule)
@@ -80,7 +81,6 @@ func TestUnsupportedItemsAreNotMappedToPlacementStates(t *testing.T) {
 	items := []Item{
 		ItemWhiteBed,
 		ItemTorch,
-		ItemChest,
 		ItemRedstone,
 		ItemWaterBucket,
 	}

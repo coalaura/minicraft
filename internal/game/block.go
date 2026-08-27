@@ -31,6 +31,7 @@ const (
 	BlockBehaviorButton
 	BlockBehaviorPlant
 	BlockBehaviorPointedDripstone
+	BlockBehaviorChest
 )
 
 const (
@@ -49,6 +50,7 @@ const (
 	BlockCollisionPointedDripstone
 	BlockCollisionChain
 	BlockCollisionCake
+	BlockCollisionChest
 )
 
 type BlockProperty struct {

@@ -234,9 +234,9 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	}
 
 	var (
-		backingChanged bool
-		equipment      []byte
-		valid          bool
+		changedBackings []int
+		equipment       []byte
+		valid           bool
 	)
 
 	player, changed := s.updatePlayerState(func(player *game.Player) bool {
@@ -263,8 +263,10 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 			return false
 		}
 
-		backingChanged = candidate.backingChanged()
+		changedBackings = candidate.changedBackings()
+
 		currentMenu.commit(candidate)
+
 		s.drainPreservedCarriedLocked(player)
 
 		currentMenu.incrementStateID()
@@ -281,8 +283,8 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	}
 
 	if changed {
-		if backingChanged && currentMenu.backing != nil {
-			currentMenu.backing.Changed(s.Runtime, s)
+		if len(changedBackings) != 0 && currentMenu.backing != nil {
+			currentMenu.backing.Changed(s.Runtime, s, changedBackings)
 		}
 
 		err := s.sendMenuSnapshot(currentMenu.snapshot())

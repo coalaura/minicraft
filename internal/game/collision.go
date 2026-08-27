@@ -95,6 +95,8 @@ func (block Block) CollisionBoxes(position BlockPosition) []AABB {
 		boxes = chainCollisionBoxes(block)
 	case BlockCollisionCake:
 		boxes = cakeCollisionBoxes(block)
+	case BlockCollisionChest:
+		boxes = chestCollisionBoxes(block)
 	}
 
 	for index := range boxes {
@@ -102,6 +104,38 @@ func (block Block) CollisionBoxes(position BlockPosition) []AABB {
 	}
 
 	return boxes
+}
+
+func chestCollisionBoxes(block Block) []AABB {
+	if collisionProperty(block, "type") == "single" {
+		return []AABB{unitBox(1, 0, 1, 15, 14, 15)}
+	}
+
+	connected := chestCollisionConnectedDirection(block)
+
+	switch connected {
+	case "north":
+		return []AABB{unitBox(1, 0, 0, 15, 14, 15)}
+	case "south":
+		return []AABB{unitBox(1, 0, 1, 15, 14, 16)}
+	case "west":
+		return []AABB{unitBox(0, 0, 1, 15, 14, 15)}
+	case "east":
+		return []AABB{unitBox(1, 0, 1, 16, 14, 15)}
+	default:
+		return nil
+	}
+}
+
+func chestCollisionConnectedDirection(block Block) string {
+	facing := collisionProperty(block, "facing")
+	left := collisionProperty(block, "type") == "left"
+
+	if left {
+		return map[string]string{"north": "east", "east": "south", "south": "west", "west": "north"}[facing]
+	}
+
+	return map[string]string{"north": "west", "west": "south", "south": "east", "east": "north"}[facing]
 }
 
 func cakeCollisionBoxes(block Block) []AABB {

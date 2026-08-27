@@ -64,6 +64,12 @@ type blockMutationDelivery struct {
 	poseChanges      []game.Player
 	waitForDelivery  <-chan struct{}
 	deliveryComplete chan struct{}
+	runtimeSounds    []positionalBlockSound
+}
+
+type queuedBlockMutation struct {
+	result   BlockMutationResult
+	delivery blockMutationDelivery
 }
 
 type positionalBlockSound struct {
@@ -128,7 +134,7 @@ func (r *Runtime) MutateBlocks(session *Session, action BlockMutationAction, cha
 
 		changes = r.withStructuralNeighborChanges(changes)
 
-		return r.mutateBlocksLocked(session, action, changes, requiredChanges, true, false, false)
+		return r.mutateBlocksLocked(session, action, changes, requiredChanges, true, false, false, true)
 	}()
 
 	return r.completeBlockMutation(result, delivery, err)
@@ -172,7 +178,7 @@ func (r *Runtime) mutateWorldBlocks(changes []game.BlockChange, strict, emptyOnl
 			changes = r.withStructuralNeighborChanges(changes)
 		}
 
-		return r.mutateBlocksLocked(nil, BlockMutationPlace, changes, len(changes), true, false, true)
+		return r.mutateBlocksLocked(nil, BlockMutationPlace, changes, len(changes), true, false, true, true)
 	}()
 
 	return r.completeBlockMutation(result, delivery, err)
@@ -191,13 +197,13 @@ func (r *Runtime) PlaceBlock(session *Session, clicked, position game.BlockPosit
 
 		changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: position, Replacement: replacement}})
 
-		return r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false)
+		return r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
 	}()
 
 	return r.completeBlockMutation(result, delivery, err)
 }
 
-func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationAction, changes []game.BlockChange, requiredChanges int, allowOccupied, checkPlayerObstruction, authoritative bool) (BlockMutationResult, blockMutationDelivery, error) {
+func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationAction, changes []game.BlockChange, requiredChanges int, allowOccupied, checkPlayerObstruction, authoritative, recalculatePlayerPoses bool) (BlockMutationResult, blockMutationDelivery, error) {
 	r.mu.RLock()
 	_, active := r.sessions[session]
 	r.mu.RUnlock()
@@ -325,7 +331,11 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	r.reconcileRuntimeBlockEntities(records)
 	r.closeRemovedBlockEntityMenus(records)
 
-	poseChanges := r.recalculateActivePlayerPoses()
+	var poseChanges []game.Player
+
+	if recalculatePlayerPoses {
+		poseChanges = r.recalculateActivePlayerPoses()
+	}
 
 	result.Block = committed[0].Replacement
 	result.Changes = committed
@@ -428,6 +438,13 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 				other.Log.Warnf("[play] failed to send block interaction sound: %v\n", err)
 			}
 		}
+
+		for _, runtimeSound := range delivery.runtimeSounds {
+			err := other.sendSoundIfLoaded(runtimeSound.sound, runtimeSound.position)
+			if err != nil {
+				other.Log.Warnf("[play] failed to send runtime block sound: %v\n", err)
+			}
+		}
 	}
 
 	for _, player := range delivery.poseChanges {
@@ -444,6 +461,26 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 	}
 
 	return result, nil
+}
+
+func (r *Runtime) takeRuntimeBlockMutationsLocked() []queuedBlockMutation {
+	deliveries := r.runtimeBlockMutations
+	r.runtimeBlockMutations = nil
+
+	return deliveries
+}
+
+func (r *Runtime) completeRuntimeBlockMutations(mutations []queuedBlockMutation) {
+	for _, mutation := range mutations {
+		_, err := r.completeBlockMutation(mutation.result, mutation.delivery, nil)
+		if err != nil {
+			for _, session := range mutation.delivery.recipients {
+				if session.Log != nil {
+					session.Log.Warnf("[play] failed to complete runtime block mutation: %v\n", err)
+				}
+			}
+		}
+	}
 }
 
 func blockPlacementSound(records []blockMutationRecord) (positionalBlockSound, bool) {
