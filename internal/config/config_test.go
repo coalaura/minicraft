@@ -29,6 +29,10 @@ func TestConfigDefaults(t *testing.T) {
 		t.Fatal("block breaking is disabled by default")
 	}
 
+	if !cfg.ResolveOfflineSkinsEnabled() {
+		t.Fatal("offline skin resolution is disabled by default")
+	}
+
 	if !cfg.AllowBlockPlacing() {
 		t.Fatal("block placing is disabled by default")
 	}
@@ -82,6 +86,7 @@ func TestConfigDecodesSectionsAndOptionalSpawn(t *testing.T) {
 [server]
 max-players = 12
 render-distance = 18
+	resolve-offline-skins = false
 	default-game-mode = "spectator"
 	allow-block-breaking = false
 	allow-block-placing = false
@@ -107,6 +112,10 @@ spawn = { x = 12.5, y = 80.0, z = -7.5 }
 
 	if cfg.AllowBlockBreaking() {
 		t.Fatal("block breaking is enabled, want disabled")
+	}
+
+	if cfg.ResolveOfflineSkinsEnabled() {
+		t.Fatal("offline skin resolution is enabled, want disabled")
 	}
 
 	if cfg.AllowBlockPlacing() {

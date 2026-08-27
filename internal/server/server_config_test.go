@@ -28,7 +28,7 @@ func TestOfflinePlayerUsesDefaultGameMode(t *testing.T) {
 		Runtime: NewRuntime(&game.World{Spawn: game.Position{X: 1.5, Y: 80, Z: -2.5}}),
 	}
 
-	err := session.handleOfflineLogin(protocol.LoginStart{Name: "Laura"})
+	err := session.handleOfflineLogin(t.Context(), protocol.LoginStart{Name: "Bob"})
 	if err != nil {
 		t.Fatalf("offline login: %v", err)
 	}

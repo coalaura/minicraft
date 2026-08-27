@@ -47,7 +47,7 @@ func (s *Session) handleLogin(ctx context.Context) error {
 	if s.Config.Server.OnlineMode {
 		err = s.handleOnlineLogin(ctx, start)
 	} else {
-		err = s.handleOfflineLogin(start)
+		err = s.handleOfflineLogin(ctx, start)
 	}
 
 	if err != nil {
@@ -177,7 +177,7 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 
 	s.Log.Printf("[login] %s - verifying login\n", s.Conn.RemoteAddr())
 
-	player, err := authenticatePlayer(start.Name, serverHash, "")
+	player, err := authenticatePlayer(ctx, start.Name, serverHash, "")
 	if err != nil {
 		s.Log.Warnf("[login] %s - authentication failed: %v\n", s.Conn.RemoteAddr(), err)
 
@@ -211,7 +211,7 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 	return nil
 }
 
-func (s *Session) handleOfflineLogin(start protocol.LoginStart) error {
+func (s *Session) handleOfflineLogin(ctx context.Context, start protocol.LoginStart) error {
 	sum := md5.Sum([]byte("OfflinePlayer:" + start.Name))
 
 	sum[6] = (sum[6] & 0x0F) | 0x30
@@ -228,6 +228,11 @@ func (s *Session) handleOfflineLogin(start protocol.LoginStart) error {
 		Position: s.Runtime.World.Spawn,
 
 		GameMode: s.Config.GameMode(),
+	}
+
+	if s.offlineProfiles != nil && s.Config.ResolveOfflineSkinsEnabled() {
+		properties, _ := s.offlineProfiles.resolve(ctx, start.Name)
+		player.Properties = properties
 	}
 
 	s.Player = player
@@ -306,7 +311,7 @@ func (s *Session) sendLoginDisconnect(reason string) error {
 	return fmt.Errorf("disconnected client: %s", reason)
 }
 
-func authenticatePlayer(username, serverHash, ip string) (*game.Player, error) {
+func authenticatePlayer(ctx context.Context, username, serverHash, ip string) (*game.Player, error) {
 	url := fmt.Sprintf(
 		"https://sessionserver.mojang.com/session/minecraft/hasJoined?username=%s&serverId=%s",
 		username, serverHash,
@@ -316,7 +321,7 @@ func authenticatePlayer(username, serverHash, ip string) (*game.Player, error) {
 		url += "&ip=" + ip
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}

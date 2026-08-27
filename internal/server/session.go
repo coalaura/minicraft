@@ -26,6 +26,7 @@ type Session struct {
 	Runtime *Runtime
 
 	Player           *game.Player
+	offlineProfiles  *offlineProfileResolver
 	playerMx         sync.RWMutex
 	writeMx          sync.Mutex
 	chatMx           sync.Mutex
@@ -86,10 +87,11 @@ func (s *Session) allocateWindowID() int32 {
 
 func NewSession(conn *protocol.Connection, cfg *config.Config, runtime *Runtime, log Logger) *Session {
 	return &Session{
-		Conn:    conn,
-		Config:  cfg,
-		Log:     log,
-		Runtime: runtime,
+		Conn:            conn,
+		Config:          cfg,
+		Log:             log,
+		Runtime:         runtime,
+		offlineProfiles: defaultOfflineProfileResolver,
 	}
 }
 

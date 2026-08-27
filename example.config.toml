@@ -9,6 +9,9 @@ port = 25565
 # Whether players must authenticate with Mojang/Microsoft services.
 online-mode = false
 
+# Whether offline-mode players use signed Mojang skin and cape properties when available.
+resolve-offline-skins = true
+
 # Message displayed for the server in the multiplayer server list.
 motd = "Hello from minicraft!"
 

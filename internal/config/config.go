@@ -24,15 +24,16 @@ const (
 )
 
 type ServerConfig struct {
-	Hostname           string `toml:"hostname"`
-	Port               uint   `toml:"port"`
-	OnlineMode         bool   `toml:"online-mode"`
-	Motd               string `toml:"motd"`
-	MaxPlayers         *int   `toml:"max-players"`
-	RenderDistance     *int32 `toml:"render-distance"`
-	DefaultGameMode    string `toml:"default-game-mode"`
-	AllowBlockBreaking *bool  `toml:"allow-block-breaking"`
-	AllowBlockPlacing  *bool  `toml:"allow-block-placing"`
+	Hostname            string `toml:"hostname"`
+	Port                uint   `toml:"port"`
+	OnlineMode          bool   `toml:"online-mode"`
+	ResolveOfflineSkins *bool  `toml:"resolve-offline-skins"`
+	Motd                string `toml:"motd"`
+	MaxPlayers          *int   `toml:"max-players"`
+	RenderDistance      *int32 `toml:"render-distance"`
+	DefaultGameMode     string `toml:"default-game-mode"`
+	AllowBlockBreaking  *bool  `toml:"allow-block-breaking"`
+	AllowBlockPlacing   *bool  `toml:"allow-block-placing"`
 }
 
 type WorldConfig struct {
@@ -131,13 +132,11 @@ func (c *Config) SetDefaults() {
 	}
 
 	if c.Server.MaxPlayers == nil {
-		maxPlayers := 2
-		c.Server.MaxPlayers = &maxPlayers
+		c.Server.MaxPlayers = new(2)
 	}
 
 	if c.Server.RenderDistance == nil {
-		renderDistance := int32(DefaultRenderDistance)
-		c.Server.RenderDistance = &renderDistance
+		c.Server.RenderDistance = new(int32(DefaultRenderDistance))
 	}
 
 	*c.Server.RenderDistance = max(*c.Server.RenderDistance, int32(MinRenderDistance))
@@ -148,33 +147,31 @@ func (c *Config) SetDefaults() {
 	}
 
 	if c.Server.AllowBlockBreaking == nil {
-		blockBreaking := true
-		c.Server.AllowBlockBreaking = &blockBreaking
+		c.Server.AllowBlockBreaking = new(true)
+	}
+
+	if c.Server.ResolveOfflineSkins == nil {
+		c.Server.ResolveOfflineSkins = new(true)
 	}
 
 	if c.Server.AllowBlockPlacing == nil {
-		blockPlacing := true
-		c.Server.AllowBlockPlacing = &blockPlacing
+		c.Server.AllowBlockPlacing = new(true)
 	}
 
 	if c.Chat.Enabled == nil {
-		enabled := true
-		c.Chat.Enabled = &enabled
+		c.Chat.Enabled = new(true)
 	}
 
 	if c.Chat.Format == nil {
-		format := DefaultChatFormat
-		c.Chat.Format = &format
+		c.Chat.Format = new(DefaultChatFormat)
 	}
 
 	if c.Chat.JoinMessage == nil {
-		message := DefaultChatJoinMessage
-		c.Chat.JoinMessage = &message
+		c.Chat.JoinMessage = new(DefaultChatJoinMessage)
 	}
 
 	if c.Chat.LeaveMessage == nil {
-		message := DefaultChatLeaveMessage
-		c.Chat.LeaveMessage = &message
+		c.Chat.LeaveMessage = new(DefaultChatLeaveMessage)
 	}
 
 	if c.Network.CompressionThreshold < 32 {
@@ -190,13 +187,11 @@ func (c *Config) SetDefaults() {
 	}
 
 	if c.World.DayCycle == nil {
-		dayCycle := true
-		c.World.DayCycle = &dayCycle
+		c.World.DayCycle = new(true)
 	}
 
 	if c.World.Time == nil {
-		worldTime := int64(6000)
-		c.World.Time = &worldTime
+		c.World.Time = new(int64(6000))
 	}
 }
 
@@ -281,6 +276,14 @@ func (c *Config) AllowBlockBreaking() bool {
 	}
 
 	return *c.Server.AllowBlockBreaking
+}
+
+func (c *Config) ResolveOfflineSkinsEnabled() bool {
+	if c.Server.ResolveOfflineSkins == nil {
+		return true
+	}
+
+	return *c.Server.ResolveOfflineSkins
 }
 
 func (c *Config) AllowBlockPlacing() bool {
