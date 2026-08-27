@@ -798,8 +798,8 @@ func TestCommandGiveRejectsInvalidArguments(t *testing.T) {
 	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.give.failed.toomanyitems", game.LiteralText("6400"), game.TranslatableText("block.minecraft.stone")).WithColor(game.TextColorRed))
 
 	player := bob.snapshotPlayer()
-	if player.Inventory.StateID != 0 {
-		t.Fatalf("inventory state id after rejected gives = %d, want 0", player.Inventory.StateID)
+	if bob.activeMenu().stateID != 0 {
+		t.Fatalf("inventory state id after rejected gives = %d, want 0", bob.activeMenu().stateID)
 	}
 
 	for slot := 9; slot < game.PlayerInventorySlots; slot++ {
@@ -833,8 +833,8 @@ func TestCommandGiveFailsWhenInventoryIsFull(t *testing.T) {
 	assertSystemMessages(t, bobConnection, "give to Bob: inventory does not have enough space")
 
 	player := bob.snapshotPlayer()
-	if player.Inventory.StateID != 0 {
-		t.Fatalf("inventory state id after failed give = %d, want 0", player.Inventory.StateID)
+	if bob.activeMenu().stateID != 0 {
+		t.Fatalf("inventory state id after failed give = %d, want 0", bob.activeMenu().stateID)
 	}
 
 	for slot := 9; slot <= 44; slot++ {
@@ -896,7 +896,7 @@ func TestCommandGiveMultipleTargetsCommitsAtomically(t *testing.T) {
 
 		for _, session := range []*Session{bob, alice} {
 			inventory := session.snapshotPlayer().Inventory
-			if inventory.StateID != 1 || !inventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemStone, Count: 3}) {
+			if session.activeMenu().stateID != 1 || !inventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemStone, Count: 3}) {
 				t.Fatalf("%s inventory after give = %+v", session.snapshotPlayer().Name, inventory)
 			}
 		}
@@ -941,11 +941,11 @@ func TestCommandGiveMultipleTargetsCommitsAtomically(t *testing.T) {
 		bobInventory := bob.snapshotPlayer().Inventory
 		aliceInventory := alice.snapshotPlayer().Inventory
 
-		if bobInventory.StateID != 0 || !bobInventory.Hotbar[0].Empty() {
+		if bob.activeMenu().stateID != 0 || !bobInventory.Hotbar[0].Empty() {
 			t.Fatalf("bob inventory changed during rollback: %+v", bobInventory)
 		}
 
-		if aliceInventory.StateID != 0 || !aliceInventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemDirt, Count: 64}) {
+		if alice.activeMenu().stateID != 0 || !aliceInventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemDirt, Count: 64}) {
 			t.Fatalf("alice inventory changed during rollback: %+v", aliceInventory)
 		}
 
@@ -965,7 +965,7 @@ func TestCommandClearRemovesInventoryAndCursor(t *testing.T) {
 
 	bob.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 3}
 	bob.Player.Inventory.Main[0] = game.ItemStack{Item: game.ItemDirt, Count: 2}
-	bob.Player.Inventory.Carried = game.ItemStack{Item: game.ItemStone, Count: 4}
+	bob.activeMenu().carried = game.ItemStack{Item: game.ItemStone, Count: 4}
 
 	joinTestSession(t, runtime, observer)
 	joinTestSession(t, runtime, bob)
@@ -976,12 +976,12 @@ func TestCommandClearRemovesInventoryAndCursor(t *testing.T) {
 	executeCommand(t, bob, "clear")
 
 	player := bob.snapshotPlayer()
-	if !player.Inventory.Hotbar[0].Empty() || !player.Inventory.Main[0].Empty() || !player.Inventory.Carried.Empty() {
+	if !player.Inventory.Hotbar[0].Empty() || !player.Inventory.Main[0].Empty() || !bob.activeMenu().carried.Empty() {
 		t.Fatalf("inventory after clear = %+v, want every stack removed", player.Inventory)
 	}
 
-	if player.Inventory.StateID != 1 {
-		t.Fatalf("inventory state id after clear = %d, want 1", player.Inventory.StateID)
+	if bob.activeMenu().stateID != 1 {
+		t.Fatalf("inventory state id after clear = %d, want 1", bob.activeMenu().stateID)
 	}
 
 	stateID, items, carried := decodeInventorySnapshot(t, bobConnection.packets(t)[0])
@@ -1009,7 +1009,7 @@ func TestCommandClearFiltersByItem(t *testing.T) {
 	bob.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 3}
 	bob.Player.Inventory.Main[0] = game.ItemStack{Item: game.ItemDirt, Count: 2}
 	bob.Player.Inventory.Offhand = game.ItemStack{Item: game.ItemDirt, Count: 1}
-	bob.Player.Inventory.Carried = game.ItemStack{Item: game.ItemStone, Count: 5}
+	bob.activeMenu().carried = game.ItemStack{Item: game.ItemStone, Count: 5}
 
 	joinTestSession(t, runtime, bob)
 
@@ -1018,8 +1018,8 @@ func TestCommandClearFiltersByItem(t *testing.T) {
 	executeCommand(t, bob, "clear Bob stone")
 
 	player := bob.snapshotPlayer()
-	if !player.Inventory.Hotbar[0].Empty() || !player.Inventory.Carried.Empty() {
-		t.Fatalf("stone stacks after filtered clear = hotbar %+v carried %+v, want both empty", player.Inventory.Hotbar[0], player.Inventory.Carried)
+	if !player.Inventory.Hotbar[0].Empty() || !bob.activeMenu().carried.Empty() {
+		t.Fatalf("stone stacks after filtered clear = hotbar %+v carried %+v, want both empty", player.Inventory.Hotbar[0], bob.activeMenu().carried)
 	}
 
 	if !player.Inventory.Main[0].Equal(game.ItemStack{Item: game.ItemDirt, Count: 2}) {

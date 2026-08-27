@@ -133,7 +133,7 @@ func TestCreativePickBlockPlacesItemInSelectedHotbarSlot(t *testing.T) {
 
 	session.Player.GameMode = game.GameModeCreative
 	session.Player.SelectedHotbarSlot = 2
-	session.Player.Inventory.StateID = 7
+	session.activeMenu().stateID = 7
 	session.loadedChunks = map[LoadedChunk]struct{}{blockLoadedChunk(position): {}}
 
 	world.SetBlock(position, game.Stone)
@@ -145,7 +145,7 @@ func TestCreativePickBlockPlacesItemInSelectedHotbarSlot(t *testing.T) {
 		t.Fatalf("picked stack = %+v", player.Inventory.Hotbar[2])
 	}
 
-	if player.SelectedHotbarSlot != 2 || player.Inventory.StateID != 8 {
+	if player.SelectedHotbarSlot != 2 || session.activeMenu().stateID != 8 {
 		t.Fatalf("player after pick = %+v", player)
 	}
 
@@ -224,7 +224,7 @@ func TestCreativePickBlockSelectsExistingHotbarStack(t *testing.T) {
 	position := game.BlockPosition{X: 4, Y: 70, Z: -3}
 
 	session.Player.GameMode = game.GameModeCreative
-	session.Player.Inventory.StateID = 7
+	session.activeMenu().stateID = 7
 	session.Player.Inventory.Hotbar[5] = game.ItemStack{Item: game.ItemStone, Count: 3}
 	session.loadedChunks = map[LoadedChunk]struct{}{blockLoadedChunk(position): {}}
 
@@ -237,7 +237,7 @@ func TestCreativePickBlockSelectsExistingHotbarStack(t *testing.T) {
 		t.Fatalf("selected hotbar slot = %d, want 5", player.SelectedHotbarSlot)
 	}
 
-	if !player.Inventory.Hotbar[5].Equal(game.ItemStack{Item: game.ItemStone, Count: 3}) || player.Inventory.StateID != 7 {
+	if !player.Inventory.Hotbar[5].Equal(game.ItemStack{Item: game.ItemStone, Count: 3}) || session.activeMenu().stateID != 7 {
 		t.Fatalf("inventory changed while selecting existing stack: %+v", player.Inventory)
 	}
 
@@ -425,7 +425,7 @@ func TestContainerClickCommitsPredictedPickupAndSynchronizes(t *testing.T) {
 	session, connection := newMovementTestSession(NewRuntime(&game.World{}), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
 
 	session.Player.Inventory.Main[0] = game.ItemStack{Item: game.ItemStone, Count: 10}
-	session.Player.Inventory.StateID = 4
+	session.activeMenu().stateID = 4
 
 	err := session.handleContainerClick(protocol.ContainerClick{
 		WindowID:    playerInventoryWindowID,
@@ -444,7 +444,7 @@ func TestContainerClickCommitsPredictedPickupAndSynchronizes(t *testing.T) {
 	}
 
 	player := session.snapshotPlayer()
-	if !player.Inventory.Main[0].Empty() || !player.Inventory.Carried.Equal(game.ItemStack{Item: game.ItemStone, Count: 10}) || player.Inventory.StateID != 5 {
+	if !player.Inventory.Main[0].Empty() || !session.activeMenu().carried.Equal(game.ItemStack{Item: game.ItemStone, Count: 10}) || session.activeMenu().stateID != 5 {
 		t.Fatalf("inventory after pickup = %+v", player.Inventory)
 	}
 
@@ -456,7 +456,7 @@ func TestContainerClickRejectsStaleAndInconsistentPredictions(t *testing.T) {
 	session, connection := newMovementTestSession(NewRuntime(&game.World{}), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
 
 	session.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 8}
-	session.Player.Inventory.StateID = 7
+	session.activeMenu().stateID = 7
 
 	tests := map[string]protocol.ContainerClick{
 		"stale state": {
@@ -498,7 +498,7 @@ func TestContainerClickRejectsStaleAndInconsistentPredictions(t *testing.T) {
 			}
 
 			player := session.snapshotPlayer()
-			if !player.Inventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemStone, Count: 8}) || !player.Inventory.Carried.Empty() || player.Inventory.StateID != 7 {
+			if !player.Inventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemStone, Count: 8}) || !session.activeMenu().carried.Empty() || session.activeMenu().stateID != 7 {
 				t.Fatalf("invalid click changed inventory = %+v", player.Inventory)
 			}
 
@@ -514,12 +514,14 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 
 		inventory.Main[0] = game.ItemStack{Item: game.ItemStone, Count: 9}
 
-		if !applyPickup(&inventory, 9, 1) || inventory.Main[0].Count != 4 || inventory.Carried.Count != 5 {
-			t.Fatalf("inventory after split = %+v", inventory)
+		candidate := newPlayerInventoryMenu(&inventory).candidate()
+
+		if !applyPickup(candidate, 9, 1) || candidate.slots[9].Count != 4 || candidate.carried.Count != 5 {
+			t.Fatalf("candidate after split = %+v", candidate)
 		}
 
-		if !applyPickup(&inventory, 36, 1) || inventory.Hotbar[0].Count != 1 || inventory.Carried.Count != 4 {
-			t.Fatalf("inventory after place one = %+v", inventory)
+		if !applyPickup(candidate, 36, 1) || candidate.slots[36].Count != 1 || candidate.carried.Count != 4 {
+			t.Fatalf("candidate after place one = %+v", candidate)
 		}
 	})
 
@@ -528,8 +530,11 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 
 		inventory.Main[0] = game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
 
-		if !applyQuickMove(&inventory, 9, 0) || !inventory.Main[0].Empty() || inventory.Armor[0].Item != game.ItemIronHelmet {
-			t.Fatalf("inventory after armor quick move = %+v", inventory)
+		playerMenu := newPlayerInventoryMenu(&inventory)
+		candidate := playerMenu.candidate()
+
+		if !applyQuickMove(candidate, 9, 0) || !candidate.slots[9].Empty() || candidate.slots[5].Item != game.ItemIronHelmet {
+			t.Fatalf("candidate after armor quick move = %+v", candidate)
 		}
 	})
 
@@ -539,12 +544,14 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 		inventory.Main[0] = game.ItemStack{Item: game.ItemStone, Count: 2}
 		inventory.Hotbar[3] = game.ItemStack{Item: game.ItemDirt, Count: 3}
 
-		if !applySwap(&inventory, 9, 3) || inventory.Main[0].Item != game.ItemDirt || inventory.Hotbar[3].Item != game.ItemStone {
-			t.Fatalf("inventory after hotbar swap = %+v", inventory)
+		candidate := newPlayerInventoryMenu(&inventory).candidate()
+
+		if !applySwap(candidate, 9, 3) || candidate.slots[9].Item != game.ItemDirt || candidate.slots[39].Item != game.ItemStone {
+			t.Fatalf("candidate after hotbar swap = %+v", candidate)
 		}
 
-		if !applySwap(&inventory, 9, 40) || inventory.Main[0].Item != game.ItemAir || inventory.Offhand.Item != game.ItemDirt {
-			t.Fatalf("inventory after offhand swap = %+v", inventory)
+		if !applySwap(candidate, 9, 40) || candidate.slots[9].Item != game.ItemAir || candidate.slots[45].Item != game.ItemDirt {
+			t.Fatalf("candidate after offhand swap = %+v", candidate)
 		}
 	})
 
@@ -553,15 +560,17 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 
 		inventory.Main[0] = game.ItemStack{Item: game.ItemStone, Count: 3}
 
-		if !applyThrow(&inventory, 9, 0) || inventory.Main[0].Count != 2 {
-			t.Fatalf("inventory after throw one = %+v", inventory)
+		candidate := newPlayerInventoryMenu(&inventory).candidate()
+
+		if !applyThrow(candidate, 9, 0) || candidate.slots[9].Count != 2 {
+			t.Fatalf("candidate after throw one = %+v", candidate)
 		}
 
-		inventory.Carried = game.ItemStack{Item: game.ItemStone, Count: 60}
-		inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 8}
+		candidate.carried = game.ItemStack{Item: game.ItemStone, Count: 60}
+		candidate.slots[36] = game.ItemStack{Item: game.ItemStone, Count: 8}
 
-		if !applyPickupAll(&inventory, 9, 0) || inventory.Carried.Count != 64 || !inventory.Main[0].Empty() || inventory.Hotbar[0].Count != 6 {
-			t.Fatalf("inventory after pickup all = %+v", inventory)
+		if !applyPickupAll(candidate, 9, 0) || candidate.carried.Count != 64 || !candidate.slots[9].Empty() || candidate.slots[36].Count != 6 {
+			t.Fatalf("candidate after pickup all = %+v", candidate)
 		}
 	})
 
@@ -570,40 +579,47 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 
 		inventory.Main[0] = game.ItemStack{Item: game.ItemStone, Count: 1}
 
-		if !applyClone(&inventory, game.GameModeCreative, 9, 2) || inventory.Carried.Count != 64 {
-			t.Fatalf("inventory after clone = %+v", inventory)
+		candidate := newPlayerInventoryMenu(&inventory).candidate()
+
+		if !applyClone(candidate, game.GameModeCreative, 9, 2) || candidate.carried.Count != 64 {
+			t.Fatalf("candidate after clone = %+v", candidate)
 		}
 
-		if applyClone(&inventory, game.GameModeSurvival, 9, 2) {
+		if applyClone(candidate, game.GameModeSurvival, 9, 2) {
 			t.Fatal("survival clone was accepted")
 		}
 	})
 }
 
 func TestQuickCraftRequiresStartAndIgnoresFullSlots(t *testing.T) {
-	session, _ := newMovementTestSession(NewRuntime(&game.World{}), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+	var inventory game.PlayerInventory
 
-	inventory := game.PlayerInventory{Carried: game.ItemStack{Item: game.ItemStone, Count: 8}}
 	inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 64}
 
-	if session.applyQuickCraft(&inventory, game.GameModeSurvival, 37, 1) {
+	playerMenu := newPlayerInventoryMenu(&inventory)
+
+	playerMenu.carried = game.ItemStack{Item: game.ItemStone, Count: 8}
+
+	candidate := playerMenu.candidate()
+
+	if applyQuickCraft(candidate, game.GameModeSurvival, 37, 1) {
 		t.Fatal("quick craft slot was accepted without a start")
 	}
 
-	if !session.applyQuickCraft(&inventory, game.GameModeSurvival, outsideInventorySlot, 0) {
+	if !applyQuickCraft(candidate, game.GameModeSurvival, outsideInventorySlot, 0) {
 		t.Fatal("quick craft start was rejected")
 	}
 
-	if !session.applyQuickCraft(&inventory, game.GameModeSurvival, 36, 1) || !session.applyQuickCraft(&inventory, game.GameModeSurvival, 37, 1) {
+	if !applyQuickCraft(candidate, game.GameModeSurvival, 36, 1) || !applyQuickCraft(candidate, game.GameModeSurvival, 37, 1) {
 		t.Fatal("quick craft slot selection was rejected")
 	}
 
-	if len(session.inventoryDrag.slots) != 1 || session.inventoryDrag.slots[0] != 37 {
-		t.Fatalf("quick craft slots = %v, want [37]", session.inventoryDrag.slots)
+	if len(playerMenu.drag.slots) != 1 || playerMenu.drag.slots[0] != 37 {
+		t.Fatalf("quick craft slots = %v, want [37]", playerMenu.drag.slots)
 	}
 
-	if !session.applyQuickCraft(&inventory, game.GameModeSurvival, outsideInventorySlot, 2) || inventory.Hotbar[1].Count != 8 || !inventory.Carried.Empty() {
-		t.Fatalf("inventory after quick craft = %+v", inventory)
+	if !applyQuickCraft(candidate, game.GameModeSurvival, outsideInventorySlot, 2) || candidate.slots[37].Count != 8 || !candidate.carried.Empty() {
+		t.Fatalf("candidate after quick craft = %+v", candidate)
 	}
 }
 
@@ -671,11 +687,11 @@ func TestContainerClickArmorChangeBroadcastsVisibleEquipment(t *testing.T) {
 func TestPlayerInventorySynchronizationIncludesAllSlotsAndCarriedItem(t *testing.T) {
 	session, connection := newMovementTestSession(NewRuntime(&game.World{}), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
 
-	session.Player.Inventory.StateID = 12
+	session.activeMenu().stateID = 12
 	session.Player.Inventory.Crafting[0] = game.ItemStack{Item: game.ItemStone, Count: 1}
 	session.Player.Inventory.Main[26] = game.ItemStack{Item: game.ItemDirt, Count: 2}
 	session.Player.Inventory.Offhand = game.ItemStack{Item: game.ItemOakLog, Count: 3}
-	session.Player.Inventory.Carried = game.ItemStack{Item: game.ItemStone, Count: 4}
+	session.activeMenu().carried = game.ItemStack{Item: game.ItemStone, Count: 4}
 
 	err := session.sendPlayerInventory()
 	if err != nil {
@@ -710,9 +726,181 @@ func TestPlayerInventorySynchronizationIncludesAllSlotsAndCarriedItem(t *testing
 }
 
 func TestInventoryStateIDWrapsAtVanillaBoundary(t *testing.T) {
-	if nextInventoryStateID(32766) != 32767 || nextInventoryStateID(32767) != 0 {
-		t.Fatalf("inventory state rollover = %d, %d", nextInventoryStateID(32766), nextInventoryStateID(32767))
+	if nextMenuStateID(32766) != 32767 || nextMenuStateID(32767) != 0 {
+		t.Fatalf("inventory state rollover = %d, %d", nextMenuStateID(32766), nextMenuStateID(32767))
 	}
+}
+
+func TestWindowZeroUsesGenericMenuState(t *testing.T) {
+	session, _ := newMovementTestSession(NewRuntime(&game.World{}), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	playerMenu := session.activeMenu()
+
+	if playerMenu.windowID != playerInventoryWindowID || session.inventoryMenu != playerMenu || session.containerMenu != playerMenu {
+		t.Fatalf("player menu lifecycle = inventory %p, active %p, menu %p", session.inventoryMenu, session.containerMenu, playerMenu)
+	}
+
+	playerMenu.stateID = 9
+	playerMenu.carried = game.ItemStack{Item: game.ItemStone, Count: 3}
+	playerMenu.slots[36].stack.Count = 2
+
+	if session.Player.Inventory.Hotbar[0].Count != 2 {
+		t.Fatal("generic player menu slot is not backed by player inventory storage")
+	}
+
+	clone := session.Player.Inventory.Clone()
+	if clone.Hotbar[0].Count != 2 || playerMenu.stateID != 9 || playerMenu.carried.Count != 3 {
+		t.Fatal("menu state was not independent from cloned player storage")
+	}
+}
+
+func TestGenericMenuSlotRestrictions(t *testing.T) {
+	var inventory game.PlayerInventory
+
+	playerMenu := newPlayerInventoryMenu(&inventory)
+
+	playerMenu.carried = game.ItemStack{Item: game.ItemStone, Count: 2}
+
+	candidate := playerMenu.candidate()
+
+	if !applyPickup(candidate, 0, 0) || !candidate.slots[0].Empty() || candidate.carried.Count != 2 {
+		t.Fatal("result slot accepted a carried stack")
+	}
+
+	if !applyPickup(candidate, 5, 0) || !candidate.slots[5].Empty() || candidate.carried.Item != game.ItemStone {
+		t.Fatal("armor slot accepted an invalid item")
+	}
+
+	candidate.carried = game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
+	if !applyPickup(candidate, 5, 0) || candidate.slots[5].Item != game.ItemIronHelmet || !candidate.carried.Empty() {
+		t.Fatal("armor slot rejected matching armor")
+	}
+}
+
+func TestGenericMenuQuickMoveCommitsMultipleBackings(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	session, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	session.activeMenu()
+
+	container := [1]game.ItemStack{{Item: game.ItemStone, Count: 5}}
+
+	combinedMenu := testCombinedMenu(&container[0], &session.Player.Inventory.Hotbar[0])
+
+	session.containerMenu = combinedMenu
+
+	connection.reset()
+
+	err := session.handleContainerClick(protocol.ContainerClick{
+		WindowID:    combinedMenu.windowID,
+		Slot:        0,
+		MouseButton: 0,
+		Mode:        clickModeQuickMove,
+		ChangedSlots: []protocol.ChangedSlot{
+			{Location: 0},
+			{Location: 1, Item: hashedStack(game.ItemStack{Item: game.ItemStone, Count: 5})},
+		},
+	})
+
+	if err != nil {
+		t.Fatalf("handle combined menu quick move: %v", err)
+	}
+
+	if !container[0].Empty() || session.Player.Inventory.Hotbar[0].Count != 5 || combinedMenu.stateID != 1 {
+		t.Fatalf("combined menu commit = container %+v, hotbar %+v, state %d", container[0], session.Player.Inventory.Hotbar[0], combinedMenu.stateID)
+	}
+
+	packet := connection.packets(t)[0]
+
+	reader := protocol.NewPacketReader(packet.Data)
+
+	if reader.VarInt() != combinedMenu.windowID || reader.VarInt() != 1 || reader.VarInt() != 2 {
+		t.Fatal("combined menu snapshot had the wrong window, state, or slot count")
+	}
+}
+
+func TestExternalPlayerMutationSynchronizesActiveCombinedMenu(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	session, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	playerMenu := session.activeMenu()
+
+	var container game.ItemStack
+
+	combinedMenu := testCombinedMenu(&container, &session.Player.Inventory.Hotbar[0])
+	session.containerMenu = combinedMenu
+
+	connection.reset()
+
+	err := runtime.GiveItem(session, game.ItemStone, 3)
+	if err != nil {
+		t.Fatalf("give item with combined menu active: %v", err)
+	}
+
+	if session.Player.Inventory.Hotbar[0].Count != 3 || combinedMenu.stateID != 1 || playerMenu.stateID != 0 {
+		t.Fatalf("external mutation state = hotbar %+v, combined %d, inventory %d", session.Player.Inventory.Hotbar[0], combinedMenu.stateID, playerMenu.stateID)
+	}
+
+	packet := connection.packets(t)[0]
+
+	reader := protocol.NewPacketReader(packet.Data)
+
+	if reader.VarInt() != combinedMenu.windowID || reader.VarInt() != 1 || reader.VarInt() != 2 {
+		t.Fatal("external mutation did not synchronize the active combined menu")
+	}
+}
+
+func TestQuickCraftStateDoesNotLeakBetweenMenus(t *testing.T) {
+	var (
+		firstStorage  game.ItemStack
+		secondStorage game.ItemStack
+	)
+
+	firstMenu := testCombinedMenu(&firstStorage, &secondStorage)
+
+	firstMenu.carried = game.ItemStack{Item: game.ItemStone, Count: 4}
+
+	firstCandidate := firstMenu.candidate()
+
+	if !applyQuickCraft(firstCandidate, game.GameModeSurvival, outsideInventorySlot, 0) || !firstMenu.drag.active {
+		t.Fatal("first menu did not start quick craft")
+	}
+
+	secondMenu := testCombinedMenu(&secondStorage, &firstStorage)
+	if secondMenu.drag.active || len(secondMenu.drag.slots) != 0 {
+		t.Fatal("new menu inherited another menu's quick craft state")
+	}
+}
+
+func testCombinedMenu(containerSlot, playerHotbarSlot *game.ItemStack) *menu {
+	combinedMenu := &menu{
+		windowID: 7,
+		slots: []menuSlot{
+			{stack: containerSlot, limit: 64, playerSlot: noMenuSlot},
+			{stack: playerHotbarSlot, limit: 64, playerSlot: 36},
+		},
+		hotbarSlots: []int{1},
+		offhandSlot: noMenuSlot,
+	}
+
+	combinedMenu.quickMove = func(candidate *menuCandidate, slot int) {
+		remaining := candidate.slots[slot].Clone()
+
+		target := 1
+		if slot == 1 {
+			target = 0
+		}
+
+		moveIntoSlots(candidate, &remaining, []int{target})
+
+		candidate.slots[slot] = remaining
+
+		normalizeStack(&candidate.slots[slot])
+	}
+
+	return combinedMenu
 }
 
 func hashedStack(stack game.ItemStack) protocol.HashedSlot {

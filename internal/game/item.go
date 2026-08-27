@@ -62,8 +62,6 @@ type PlayerInventory struct {
 	Main           [MainInventorySlotCount]ItemStack
 	Hotbar         [HotbarSlotCount]ItemStack
 	Offhand        ItemStack
-	Carried        ItemStack
-	StateID        int32
 }
 
 func (item Item) Valid() bool {
@@ -172,8 +170,6 @@ func (inventory PlayerInventory) Clone() PlayerInventory {
 	for slot := range PlayerInventorySlots {
 		*clone.Slot(slot) = inventory.Slot(slot).Clone()
 	}
-
-	clone.Carried = inventory.Carried.Clone()
 
 	return clone
 }

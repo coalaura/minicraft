@@ -82,7 +82,7 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
 
-	var equipment []byte
+	var before game.PlayerInventory
 
 	player, changed := s.updatePlayerState(func(player *game.Player) bool {
 		if player.GameMode != game.GameModeCreative {
@@ -94,12 +94,8 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 			return false
 		}
 
-		before := player.Inventory.Clone()
+		before = player.Inventory.Clone()
 		*slot = stack.Clone()
-
-		player.Inventory.StateID = nextInventoryStateID(player.Inventory.StateID)
-
-		equipment = changedEquipmentSlots(before, player.Inventory, player.SelectedHotbarSlot)
 
 		return true
 	})
@@ -112,20 +108,14 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 		return
 	}
 
-	err := s.writePacket(protocol.ClientboundContainerSetSlotID, protocol.ContainerSetSlot{
-		WindowID: playerInventoryWindowID,
-		StateID:  player.Inventory.StateID,
-		Slot:     update.Slot,
-		Item:     stack,
-	})
+	playerSlot := int(update.Slot)
+
+	err := s.synchronizePlayerInventoryMutationSlot(before, &playerSlot)
 
 	if err != nil {
 		s.Log.Warnf("[play] failed to synchronize creative inventory slot: %v\n", err)
 	}
 
-	if len(equipment) > 0 {
-		s.Runtime.broadcastPlayerEquipment(s, player, equipment...)
-	}
 }
 
 func (s *Session) handlePickItemFromBlock(pick protocol.PickItemFromBlock) {
@@ -151,6 +141,7 @@ func (s *Session) handlePickItemFromBlock(pick protocol.PickItemFromBlock) {
 	defer s.Runtime.lifecycleMu.Unlock()
 
 	var (
+		before           game.PlayerInventory
 		inventoryChanged bool
 		selectionChanged bool
 	)
@@ -193,11 +184,11 @@ func (s *Session) handlePickItemFromBlock(pick protocol.PickItemFromBlock) {
 			return false
 		}
 
+		before = player.Inventory.Clone()
+
 		*held = pickedStack
 
 		player.SelectedHotbarSlot = targetSlot
-
-		player.Inventory.StateID = nextInventoryStateID(player.Inventory.StateID)
 
 		inventoryChanged = true
 		selectionChanged = targetSlot != selectedSlot
@@ -217,18 +208,22 @@ func (s *Session) handlePickItemFromBlock(pick protocol.PickItemFromBlock) {
 	}
 
 	if inventoryChanged {
-		err := s.sendPlayerInventorySnapshot(player.Inventory)
+		err := s.synchronizePlayerInventoryMutation(before)
 		if err != nil {
 			s.Log.Warnf("[play] failed to synchronize picked block item: %v\n", err)
 		}
 	}
 
-	s.Runtime.broadcastPlayerEquipment(s, player, protocol.EquipmentSlotMainHand)
+	if selectionChanged && !inventoryChanged {
+		s.Runtime.broadcastPlayerEquipment(s, player, protocol.EquipmentSlotMainHand)
+	}
 }
 
 func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
+
+	currentMenu := s.activeMenu()
 
 	var (
 		equipment []byte
@@ -236,44 +231,46 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	)
 
 	player, changed := s.updatePlayerState(func(player *game.Player) bool {
-		if click.WindowID != playerInventoryWindowID || click.StateID != player.Inventory.StateID {
+		if click.WindowID != currentMenu.windowID || click.StateID != currentMenu.stateID {
 			return false
 		}
 
-		before := player.Inventory.Clone()
-		candidate := before.Clone()
+		beforeInventory := player.Inventory.Clone()
 
-		if !s.applyInventoryClick(&candidate, player.GameMode, click) {
+		candidate := currentMenu.candidate()
+		beforeCarried := candidate.carried.Clone()
+
+		if !applyMenuClick(candidate, player.GameMode, click) {
 			return false
 		}
 
-		changedSlots := inventoryChanges(before, candidate)
-		if !validPredictedInventory(click, candidate, changedSlots) {
+		changedSlots := candidate.changedSlots()
+		if !validPredictedMenu(click, candidate, changedSlots) {
 			return false
 		}
 
 		valid = true
-		if len(changedSlots) == 0 && before.Carried.Equal(candidate.Carried) {
+		if len(changedSlots) == 0 && beforeCarried.Equal(candidate.carried) {
 			return false
 		}
 
-		candidate.StateID = nextInventoryStateID(before.StateID)
+		currentMenu.commit(candidate)
 
-		player.Inventory = candidate
+		currentMenu.incrementStateID()
 
-		equipment = changedEquipmentSlots(before, candidate, player.SelectedHotbarSlot)
+		equipment = changedEquipmentSlots(beforeInventory, player.Inventory, player.SelectedHotbarSlot)
 
 		return true
 	})
 
 	if !valid {
-		s.inventoryDrag = inventoryDragState{}
+		currentMenu.resetDrag()
 
-		return s.sendPlayerInventorySnapshot(player.Inventory)
+		return s.sendMenuSnapshot(currentMenu.snapshot())
 	}
 
 	if changed {
-		err := s.sendPlayerInventorySnapshot(player.Inventory)
+		err := s.sendMenuSnapshot(currentMenu.snapshot())
 		if err != nil {
 			return err
 		}
@@ -286,74 +283,74 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	return nil
 }
 
-func (s *Session) applyInventoryClick(inventory *game.PlayerInventory, mode game.GameMode, click protocol.ContainerClick) bool {
+func applyMenuClick(candidate *menuCandidate, mode game.GameMode, click protocol.ContainerClick) bool {
 	switch click.Mode {
 	case clickModePickup:
-		s.inventoryDrag = inventoryDragState{}
+		candidate.menu.resetDrag()
 
-		return applyPickup(inventory, int(click.Slot), click.MouseButton)
+		return applyPickup(candidate, int(click.Slot), click.MouseButton)
 	case clickModeQuickMove:
-		s.inventoryDrag = inventoryDragState{}
+		candidate.menu.resetDrag()
 
-		return applyQuickMove(inventory, int(click.Slot), click.MouseButton)
+		return applyQuickMove(candidate, int(click.Slot), click.MouseButton)
 	case clickModeSwap:
-		s.inventoryDrag = inventoryDragState{}
+		candidate.menu.resetDrag()
 
-		return applySwap(inventory, int(click.Slot), click.MouseButton)
+		return applySwap(candidate, int(click.Slot), click.MouseButton)
 	case clickModeClone:
-		s.inventoryDrag = inventoryDragState{}
+		candidate.menu.resetDrag()
 
-		return applyClone(inventory, mode, int(click.Slot), click.MouseButton)
+		return applyClone(candidate, mode, int(click.Slot), click.MouseButton)
 	case clickModeThrow:
-		s.inventoryDrag = inventoryDragState{}
+		candidate.menu.resetDrag()
 
-		return applyThrow(inventory, int(click.Slot), click.MouseButton)
+		return applyThrow(candidate, int(click.Slot), click.MouseButton)
 	case clickModeQuickCraft:
-		return s.applyQuickCraft(inventory, mode, int(click.Slot), click.MouseButton)
+		return applyQuickCraft(candidate, mode, int(click.Slot), click.MouseButton)
 	case clickModePickupAll:
-		s.inventoryDrag = inventoryDragState{}
+		candidate.menu.resetDrag()
 
-		return applyPickupAll(inventory, int(click.Slot), click.MouseButton)
+		return applyPickupAll(candidate, int(click.Slot), click.MouseButton)
 	default:
-		s.inventoryDrag = inventoryDragState{}
+		candidate.menu.resetDrag()
 
 		return false
 	}
 }
 
-func applyPickup(inventory *game.PlayerInventory, slot int, button int8) bool {
+func applyPickup(candidate *menuCandidate, slot int, button int8) bool {
 	if button != 0 && button != 1 {
 		return false
 	}
 
 	if slot == outsideInventorySlot {
-		if inventory.Carried.Empty() {
+		if candidate.carried.Empty() {
 			return true
 		}
 
-		if button == 0 || inventory.Carried.Count == 1 {
-			inventory.Carried = game.ItemStack{}
+		if button == 0 || candidate.carried.Count == 1 {
+			candidate.carried = game.ItemStack{}
 		} else {
-			inventory.Carried.Count--
+			candidate.carried.Count--
 		}
 
 		return true
 	}
 
-	target := inventory.Slot(slot)
+	target := candidate.slot(slot)
 	if target == nil {
 		return false
 	}
 
 	if button == 0 {
-		return applyLeftPickup(inventory, slot, target)
+		return applyLeftPickup(candidate, slot, target)
 	}
 
-	return applyRightPickup(inventory, slot, target)
+	return applyRightPickup(candidate, slot, target)
 }
 
-func applyLeftPickup(inventory *game.PlayerInventory, slot int, target *game.ItemStack) bool {
-	carried := &inventory.Carried
+func applyLeftPickup(candidate *menuCandidate, slot int, target *game.ItemStack) bool {
+	carried := &candidate.carried
 
 	if carried.Empty() {
 		*carried = target.Clone()
@@ -363,7 +360,7 @@ func applyLeftPickup(inventory *game.PlayerInventory, slot int, target *game.Ite
 	}
 
 	if target.Empty() {
-		if slotAcceptsItem(slot, *carried) {
+		if candidate.accepts(slot, *carried) {
 			*target = carried.Clone()
 			*carried = game.ItemStack{}
 		}
@@ -372,10 +369,10 @@ func applyLeftPickup(inventory *game.PlayerInventory, slot int, target *game.Ite
 	}
 
 	if target.SameItem(*carried) {
-		capacity := stackLimit(*target) - target.Count
+		capacity := candidate.stackLimit(slot, *target) - target.Count
 		moved := min(capacity, carried.Count)
 
-		if moved > 0 && slotAcceptsItem(slot, *carried) {
+		if moved > 0 && candidate.accepts(slot, *carried) {
 			target.Count += moved
 			carried.Count -= moved
 
@@ -385,15 +382,15 @@ func applyLeftPickup(inventory *game.PlayerInventory, slot int, target *game.Ite
 		return true
 	}
 
-	if slotAcceptsItem(slot, *carried) {
+	if candidate.accepts(slot, *carried) {
 		*target, *carried = carried.Clone(), target.Clone()
 	}
 
 	return true
 }
 
-func applyRightPickup(inventory *game.PlayerInventory, slot int, target *game.ItemStack) bool {
-	carried := &inventory.Carried
+func applyRightPickup(candidate *menuCandidate, slot int, target *game.ItemStack) bool {
+	carried := &candidate.carried
 
 	if carried.Empty() {
 		if target.Empty() {
@@ -412,7 +409,7 @@ func applyRightPickup(inventory *game.PlayerInventory, slot int, target *game.It
 	}
 
 	if target.Empty() {
-		if slotAcceptsItem(slot, *carried) {
+		if candidate.accepts(slot, *carried) {
 			*target = carried.Clone()
 
 			target.Count = 1
@@ -425,7 +422,7 @@ func applyRightPickup(inventory *game.PlayerInventory, slot int, target *game.It
 	}
 
 	if target.SameItem(*carried) {
-		if target.Count < stackLimit(*target) && slotAcceptsItem(slot, *carried) {
+		if target.Count < candidate.stackLimit(slot, *target) && candidate.accepts(slot, *carried) {
 			target.Count++
 			carried.Count--
 
@@ -435,19 +432,19 @@ func applyRightPickup(inventory *game.PlayerInventory, slot int, target *game.It
 		return true
 	}
 
-	if slotAcceptsItem(slot, *carried) {
+	if candidate.accepts(slot, *carried) {
 		*target, *carried = carried.Clone(), target.Clone()
 	}
 
 	return true
 }
 
-func applyQuickMove(inventory *game.PlayerInventory, slot int, button int8) bool {
+func applyQuickMove(candidate *menuCandidate, slot int, button int8) bool {
 	if button != 0 && button != 1 {
 		return false
 	}
 
-	source := inventory.Slot(slot)
+	source := candidate.slot(slot)
 	if source == nil {
 		return false
 	}
@@ -456,33 +453,17 @@ func applyQuickMove(inventory *game.PlayerInventory, slot int, button int8) bool
 		return true
 	}
 
-	remaining := source.Clone()
-
-	if slot >= 9 && slot <= 44 {
-		armorSlot := armorSlotForItem(remaining)
-		if armorSlot >= 0 && inventory.Slot(armorSlot).Empty() {
-			moveIntoSlots(inventory, &remaining, []int{armorSlot})
-		}
+	if candidate.menu.quickMove == nil {
+		return true
 	}
 
-	switch {
-	case slot >= 9 && slot <= 35:
-		moveIntoSlots(inventory, &remaining, slotRange(36, 44))
-	case slot >= 36 && slot <= 44:
-		moveIntoSlots(inventory, &remaining, slotRange(9, 35))
-	default:
-		moveIntoSlots(inventory, &remaining, slotRange(9, 44))
-	}
-
-	*source = remaining
-
-	normalizeStack(source)
+	candidate.menu.quickMove(candidate, slot)
 
 	return true
 }
 
-func applySwap(inventory *game.PlayerInventory, slot int, button int8) bool {
-	target := inventory.Slot(slot)
+func applySwap(candidate *menuCandidate, slot int, button int8) bool {
+	target := candidate.slot(slot)
 	if target == nil {
 		return false
 	}
@@ -490,20 +471,24 @@ func applySwap(inventory *game.PlayerInventory, slot int, button int8) bool {
 	var swapSlot int
 
 	switch {
-	case button >= 0 && button < game.HotbarSlotCount:
-		swapSlot = 36 + int(button)
+	case button >= 0 && int(button) < len(candidate.menu.hotbarSlots):
+		swapSlot = candidate.menu.hotbarSlots[button]
 	case button == 40:
-		swapSlot = 45
+		swapSlot = candidate.menu.offhandSlot
 	default:
 		return false
 	}
 
-	other := inventory.Slot(swapSlot)
+	other := candidate.slot(swapSlot)
+	if other == nil {
+		return false
+	}
+
 	if slot == swapSlot {
 		return true
 	}
 
-	if !target.Empty() && !slotAcceptsItem(swapSlot, *target) || !other.Empty() && !slotAcceptsItem(slot, *other) {
+	if !target.Empty() && !candidate.accepts(swapSlot, *target) || !other.Empty() && !candidate.accepts(slot, *other) {
 		return true
 	}
 
@@ -512,31 +497,31 @@ func applySwap(inventory *game.PlayerInventory, slot int, button int8) bool {
 	return true
 }
 
-func applyClone(inventory *game.PlayerInventory, mode game.GameMode, slot int, button int8) bool {
+func applyClone(candidate *menuCandidate, mode game.GameMode, slot int, button int8) bool {
 	if mode != game.GameModeCreative || button != 2 {
 		return false
 	}
 
-	target := inventory.Slot(slot)
+	target := candidate.slot(slot)
 	if target == nil {
 		return false
 	}
 
 	if !target.Empty() {
-		inventory.Carried = target.Clone()
+		candidate.carried = target.Clone()
 
-		inventory.Carried.Count = stackLimit(inventory.Carried)
+		candidate.carried.Count = stackLimit(candidate.carried)
 	}
 
 	return true
 }
 
-func applyThrow(inventory *game.PlayerInventory, slot int, button int8) bool {
+func applyThrow(candidate *menuCandidate, slot int, button int8) bool {
 	if button != 0 && button != 1 {
 		return false
 	}
 
-	target := inventory.Slot(slot)
+	target := candidate.slot(slot)
 	if target == nil {
 		return false
 	}
@@ -554,68 +539,68 @@ func applyThrow(inventory *game.PlayerInventory, slot int, button int8) bool {
 	return true
 }
 
-func (s *Session) applyQuickCraft(inventory *game.PlayerInventory, mode game.GameMode, slot int, button int8) bool {
+func applyQuickCraft(candidate *menuCandidate, mode game.GameMode, slot int, button int8) bool {
 	stage := button & 3
 	dragButton := button >> 2
 
 	if dragButton < 0 || dragButton > 2 || dragButton == 2 && mode != game.GameModeCreative {
-		s.inventoryDrag = inventoryDragState{}
+		candidate.menu.resetDrag()
 
 		return false
 	}
 
 	switch stage {
 	case 0:
-		if slot != outsideInventorySlot || inventory.Carried.Empty() {
-			s.inventoryDrag = inventoryDragState{}
+		if slot != outsideInventorySlot || candidate.carried.Empty() {
+			candidate.menu.resetDrag()
 
 			return false
 		}
 
-		s.inventoryDrag = inventoryDragState{active: true, button: dragButton}
+		candidate.menu.drag = inventoryDragState{active: true, button: dragButton}
 
 		return true
 	case 1:
-		if !s.inventoryDrag.active || s.inventoryDrag.button != dragButton || slot < 0 || slot >= game.PlayerInventorySlots {
+		if !candidate.menu.drag.active || candidate.menu.drag.button != dragButton || candidate.slot(slot) == nil {
 			return false
 		}
 
-		target := inventory.Slot(slot)
-		if slotAcceptsItem(slot, inventory.Carried) && (target.Empty() || target.SameItem(inventory.Carried)) && target.Count < stackLimit(inventory.Carried) && !containsSlot(s.inventoryDrag.slots, slot) {
-			s.inventoryDrag.slots = append(s.inventoryDrag.slots, slot)
+		target := candidate.slot(slot)
+		if candidate.accepts(slot, candidate.carried) && (target.Empty() || target.SameItem(candidate.carried)) && target.Count < candidate.stackLimit(slot, candidate.carried) && !containsSlot(candidate.menu.drag.slots, slot) {
+			candidate.menu.drag.slots = append(candidate.menu.drag.slots, slot)
 		}
 
 		return true
 	case 2:
-		if slot != outsideInventorySlot || !s.inventoryDrag.active || s.inventoryDrag.button != dragButton || len(s.inventoryDrag.slots) == 0 {
-			s.inventoryDrag = inventoryDragState{}
+		if slot != outsideInventorySlot || !candidate.menu.drag.active || candidate.menu.drag.button != dragButton || len(candidate.menu.drag.slots) == 0 {
+			candidate.menu.resetDrag()
 
 			return false
 		}
 
-		slots := append([]int(nil), s.inventoryDrag.slots...)
+		slots := append([]int(nil), candidate.menu.drag.slots...)
 
-		s.inventoryDrag = inventoryDragState{}
+		candidate.menu.resetDrag()
 
-		applyDragDistribution(inventory, slots, dragButton)
+		applyDragDistribution(candidate, slots, dragButton)
 
 		return true
 	default:
-		s.inventoryDrag = inventoryDragState{}
+		candidate.menu.resetDrag()
 
 		return false
 	}
 }
 
-func applyDragDistribution(inventory *game.PlayerInventory, slots []int, button int8) {
-	original := inventory.Carried.Clone()
+func applyDragDistribution(candidate *menuCandidate, slots []int, button int8) {
+	original := candidate.carried.Clone()
 
 	remaining := original.Count
 
 	for _, slot := range slots {
-		target := inventory.Slot(slot)
+		target := candidate.slot(slot)
 
-		capacity := stackLimit(original)
+		capacity := candidate.stackLimit(slot, original)
 		if !target.Empty() {
 			capacity -= target.Count
 		}
@@ -654,39 +639,39 @@ func applyDragDistribution(inventory *game.PlayerInventory, slots []int, button 
 	}
 
 	if button == 2 {
-		inventory.Carried = original
+		candidate.carried = original
 	} else {
-		inventory.Carried.Count = remaining
+		candidate.carried.Count = remaining
 
-		normalizeStack(&inventory.Carried)
+		normalizeStack(&candidate.carried)
 	}
 }
 
-func applyPickupAll(inventory *game.PlayerInventory, slot int, button int8) bool {
-	if button != 0 || slot < 0 || slot >= game.PlayerInventorySlots {
+func applyPickupAll(candidate *menuCandidate, slot int, button int8) bool {
+	if button != 0 || candidate.slot(slot) == nil {
 		return false
 	}
 
-	if inventory.Carried.Empty() {
+	if candidate.carried.Empty() {
 		return true
 	}
 
-	limit := stackLimit(inventory.Carried)
+	limit := stackLimit(candidate.carried)
 
-	for current := range game.PlayerInventorySlots {
-		stack := inventory.Slot(current)
-		if stack.Empty() || !stack.SameItem(inventory.Carried) {
+	for current := range candidate.slots {
+		stack := candidate.slot(current)
+		if stack.Empty() || !stack.SameItem(candidate.carried) {
 			continue
 		}
 
-		moved := min(stack.Count, limit-inventory.Carried.Count)
+		moved := min(stack.Count, limit-candidate.carried.Count)
 
-		inventory.Carried.Count += moved
+		candidate.carried.Count += moved
 		stack.Count -= moved
 
 		normalizeStack(stack)
 
-		if inventory.Carried.Count == limit {
+		if candidate.carried.Count == limit {
 			break
 		}
 	}
@@ -694,14 +679,14 @@ func applyPickupAll(inventory *game.PlayerInventory, slot int, button int8) bool
 	return true
 }
 
-func moveIntoSlots(inventory *game.PlayerInventory, stack *game.ItemStack, slots []int) {
+func moveIntoSlots(candidate *menuCandidate, stack *game.ItemStack, slots []int) {
 	for _, slot := range slots {
-		target := inventory.Slot(slot)
-		if target.Empty() || !target.SameItem(*stack) || !slotAcceptsItem(slot, *stack) {
+		target := candidate.slot(slot)
+		if target == nil || target.Empty() || !target.SameItem(*stack) || !candidate.accepts(slot, *stack) {
 			continue
 		}
 
-		moved := min(stackLimit(*target)-target.Count, stack.Count)
+		moved := min(candidate.stackLimit(slot, *target)-target.Count, stack.Count)
 		if moved <= 0 {
 			continue
 		}
@@ -715,12 +700,12 @@ func moveIntoSlots(inventory *game.PlayerInventory, stack *game.ItemStack, slots
 	}
 
 	for _, slot := range slots {
-		target := inventory.Slot(slot)
-		if !target.Empty() || !slotAcceptsItem(slot, *stack) {
+		target := candidate.slot(slot)
+		if target == nil || !target.Empty() || !candidate.accepts(slot, *stack) {
 			continue
 		}
 
-		moved := min(stackLimit(*stack), stack.Count)
+		moved := min(candidate.stackLimit(slot, *stack), stack.Count)
 		*target = stack.Clone()
 
 		target.Count = moved
@@ -736,11 +721,15 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
 
-	player, changed := s.updatePlayerState(func(player *game.Player) bool {
+	var before game.PlayerInventory
+
+	_, changed := s.updatePlayerState(func(player *game.Player) bool {
 		stack := player.Inventory.Held(player.SelectedHotbarSlot)
 		if stack == nil || stack.Empty() {
 			return false
 		}
+
+		before = player.Inventory.Clone()
 
 		if dropAll || stack.Count == 1 {
 			*stack = game.ItemStack{}
@@ -748,59 +737,116 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 			stack.Count--
 		}
 
-		player.Inventory.StateID = nextInventoryStateID(player.Inventory.StateID)
-
 		return true
 	})
 
 	if changed {
-		err := s.sendPlayerInventorySnapshot(player.Inventory)
+		err := s.synchronizePlayerInventoryMutation(before)
 		if err != nil {
 			s.Log.Warnf("[play] failed to synchronize dropped held item: %v\n", err)
 		}
-
-		s.Runtime.broadcastPlayerEquipment(s, player, protocol.EquipmentSlotMainHand)
 	}
+
 }
 
 func (s *Session) handleSwapWithOffhand() {
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
 
-	player, changed := s.updatePlayerState(func(player *game.Player) bool {
+	var before game.PlayerInventory
+
+	_, changed := s.updatePlayerState(func(player *game.Player) bool {
 		held := player.Inventory.Held(player.SelectedHotbarSlot)
 		if held == nil {
 			return false
 		}
 
+		before = player.Inventory.Clone()
 		*held, player.Inventory.Offhand = player.Inventory.Offhand.Clone(), held.Clone()
-
-		player.Inventory.StateID = nextInventoryStateID(player.Inventory.StateID)
 
 		return true
 	})
 
 	if changed {
-		err := s.sendPlayerInventorySnapshot(player.Inventory)
+		err := s.synchronizePlayerInventoryMutation(before)
 		if err != nil {
 			s.Log.Warnf("[play] failed to synchronize offhand swap: %v\n", err)
 		}
-
-		s.Runtime.broadcastPlayerEquipment(s, player, protocol.EquipmentSlotMainHand, protocol.EquipmentSlotOffHand)
 	}
+
 }
 
 func (s *Session) sendPlayerInventory() error {
-	return s.sendPlayerInventorySnapshot(s.snapshotPlayer().Inventory)
+	return s.sendMenuSnapshot(s.activeMenu().snapshot())
 }
 
-func (s *Session) sendPlayerInventorySnapshot(inventory game.PlayerInventory) error {
+func (s *Session) sendMenuSnapshot(snapshot menuSnapshot) error {
 	return s.writePacket(protocol.ClientboundContainerSetContentID, protocol.ContainerSetContent{
-		WindowID:    playerInventoryWindowID,
-		StateID:     inventory.StateID,
-		Items:       inventory.Contents(),
-		CarriedItem: inventory.Carried,
+		WindowID:    snapshot.windowID,
+		StateID:     snapshot.stateID,
+		Items:       snapshot.items,
+		CarriedItem: snapshot.carried,
 	})
+}
+
+func (s *Session) synchronizePlayerInventoryMutation(before game.PlayerInventory) error {
+	return s.synchronizePlayerInventoryMutationSlot(before, nil)
+}
+
+func (s *Session) synchronizePlayerInventoryMutationSlot(before game.PlayerInventory, preferredPlayerSlot *int) error {
+	player := s.snapshotPlayer()
+
+	changedSlots := inventoryChanges(before, player.Inventory)
+
+	currentMenu := s.activeMenu()
+
+	equipment := changedEquipmentSlots(before, player.Inventory, player.SelectedHotbarSlot)
+
+	if len(changedSlots) > 0 && !currentMenu.exposesPlayerSlots(changedSlots) {
+		if len(equipment) > 0 {
+			s.Runtime.broadcastPlayerEquipment(s, player, equipment...)
+		}
+
+		return nil
+	}
+
+	currentMenu.incrementStateID()
+
+	var err error
+
+	if preferredPlayerSlot != nil && len(changedSlots) == 1 {
+		menuSlot := noMenuSlot
+		for slot, definition := range currentMenu.slots {
+			if definition.playerSlot == *preferredPlayerSlot {
+				menuSlot = slot
+
+				break
+			}
+		}
+
+		if menuSlot != noMenuSlot {
+			err = s.writePacket(protocol.ClientboundContainerSetSlotID, protocol.ContainerSetSlot{
+				WindowID: currentMenu.windowID,
+				StateID:  currentMenu.stateID,
+				Slot:     int16(menuSlot),
+				Item:     currentMenu.slots[menuSlot].stack.Clone(),
+			})
+		} else {
+			err = s.sendMenuSnapshot(currentMenu.snapshot())
+		}
+	} else {
+		err = s.sendMenuSnapshot(currentMenu.snapshot())
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if len(equipment) > 0 {
+		s.Runtime.broadcastPlayerEquipment(s, player, equipment...)
+	}
+
+	return nil
 }
 
 func (s *Session) resynchronizePlayerInventory() {
@@ -889,8 +935,8 @@ func creativeItemStack(item protocol.UntrustedSlot) (game.ItemStack, bool) {
 	return stack, true
 }
 
-func validPredictedInventory(click protocol.ContainerClick, inventory game.PlayerInventory, changed []int) bool {
-	if len(click.ChangedSlots) != len(changed) || !hashedSlotMatches(click.CursorItem, inventory.Carried) {
+func validPredictedMenu(click protocol.ContainerClick, candidate *menuCandidate, changed []int) bool {
+	if len(click.ChangedSlots) != len(changed) || !hashedSlotMatches(click.CursorItem, candidate.carried) {
 		return false
 	}
 
@@ -913,7 +959,8 @@ func validPredictedInventory(click protocol.ContainerClick, inventory game.Playe
 		}
 
 		seen[slot] = struct{}{}
-		if !hashedSlotMatches(prediction.Item, *inventory.Slot(slot)) {
+		stack := candidate.slot(slot)
+		if stack == nil || !hashedSlotMatches(prediction.Item, *stack) {
 			return false
 		}
 	}
@@ -982,18 +1029,6 @@ func changedEquipmentSlots(before, after game.PlayerInventory, selected int) []b
 	return changed
 }
 
-func slotAcceptsItem(slot int, stack game.ItemStack) bool {
-	if stack.Empty() || slot == 0 {
-		return false
-	}
-
-	if slot >= 5 && slot <= 8 {
-		return armorSlotForItem(stack) == slot
-	}
-
-	return slot > 0 && slot < game.PlayerInventorySlots
-}
-
 func armorSlotForItem(stack game.ItemStack) int {
 	definition, valid := stack.Item.Definition()
 	if !valid {
@@ -1043,6 +1078,6 @@ func containsSlot(slots []int, target int) bool {
 	return slices.Contains(slots, target)
 }
 
-func nextInventoryStateID(stateID int32) int32 {
+func nextMenuStateID(stateID int32) int32 {
 	return (stateID + 1) & 32767
 }

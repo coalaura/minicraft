@@ -30,7 +30,8 @@ type Session struct {
 	writeMx       sync.Mutex
 	chatMx        sync.Mutex
 	chatState     *sessionChatState
-	inventoryDrag inventoryDragState
+	inventoryMenu *menu
+	containerMenu *menu
 	protocolState int32
 	shuttingDown  bool
 
@@ -50,6 +51,26 @@ type Session struct {
 
 	nextTeleportID int32
 	chunksPerTick  float32
+}
+
+func (s *Session) activeMenu() *menu {
+	if s.containerMenu == nil {
+		s.returnToInventoryMenu()
+	}
+
+	return s.containerMenu
+}
+
+func (s *Session) returnToInventoryMenu() {
+	if s.inventoryMenu == nil {
+		s.inventoryMenu = newPlayerInventoryMenu(&s.Player.Inventory)
+	}
+
+	if s.containerMenu != nil {
+		s.containerMenu.resetDrag()
+	}
+
+	s.containerMenu = s.inventoryMenu
 }
 
 func NewSession(conn *protocol.Connection, cfg *config.Config, runtime *Runtime, log Logger) *Session {
