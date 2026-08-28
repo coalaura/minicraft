@@ -402,6 +402,12 @@ type BlockChangedAck struct {
 	Sequence int32
 }
 
+type BlockDestruction struct {
+	EntityID int32
+	Position game.BlockPosition
+	Stage    int8
+}
+
 type BlockUpdate struct {
 	Position game.BlockPosition
 	State    int32
@@ -972,6 +978,12 @@ func (p UpdateTime) Encode(wr *PacketWriter) {
 
 func (p BlockChangedAck) Encode(wr *PacketWriter) {
 	wr.VarInt(p.Sequence)
+}
+
+func (p BlockDestruction) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+	wr.BlockPosition(p.Position)
+	wr.Byte(byte(p.Stage))
 }
 
 func (p BlockUpdate) Encode(wr *PacketWriter) {

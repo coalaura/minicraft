@@ -464,7 +464,7 @@ func TestConfiguredBlockBreakingDenialCorrectsActor(t *testing.T) {
 	assertBlockChangedAck(t, actorConnection.packets(t)[1], 43)
 }
 
-func TestNonCreativePlayerCannotBreakBlocks(t *testing.T) {
+func TestSurvivalPlayerStartsTimedBlockBreaking(t *testing.T) {
 	world := &game.World{Generator: blockMutationTestGenerator{block: game.Stone}}
 
 	runtime := NewRuntime(world)
@@ -496,8 +496,8 @@ func TestNonCreativePlayerCannotBreakBlocks(t *testing.T) {
 		t.Fatalf("block after survival break = %d, want stone", actualB)
 	}
 
-	assertBlockUpdate(t, actorConnection.packets(t)[0], position, protocol.StoneBlockState)
-	assertBlockChangedAck(t, actorConnection.packets(t)[1], 9)
+	assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockChangedAckID})
+	assertBlockChangedAck(t, actorConnection.packets(t)[0], 9)
 }
 
 func TestAbortBlockBreakingOnlyAcknowledgesSequence(t *testing.T) {

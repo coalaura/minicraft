@@ -15,7 +15,9 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Player properties, including skins
 - Chunk streaming with configurable render distance
 - Player movement and synchronization
-- Block breaking, placement and modification
+- Authoritative creative and timed survival block breaking with nearby crack animations
+- Generated 1.21.11 block hardness, tool speed, harvest-gating and baseline ordinary-drop metadata
+- Survival placement with exact main-hand/offhand item consumption and synchronized equipment
 - Stateful block placement for common structures such as slabs, stairs, doors, trapdoors, fences and walls
 - Full player inventory and creative inventory interactions
 - Manual 2x2 and crafting-table recipes, including shaped, shapeless and ordinary crafting remainders
@@ -93,12 +95,14 @@ There are still gameplay systems and protocol features that are intentionally in
 
 Generic block entities support procedural copy-on-write state, removal behavior and optional runtime interaction/ticking capabilities. Generic 9x1 through 9x6 storage menus are available, including barrels and single/double normal, trapped and copper chest variants. Furnace-family block entities process the generated 1.21.11 smelting, smoking and blasting catalogues with vanilla fuel durations, remainders, lit states and menu data. Manual crafting supports the generated ordinary shaped and shapeless recipe catalogue in the player inventory and at crafting tables. Recipe-book protocol, furnace XP payout, special/dynamic recipes and component-transforming recipes are not implemented yet.
 
+The survival block loop uses server-tick-authoritative START, STOP and ABORT handling, vanilla baseline hardness/tool progress, harvest gating, cause-specific ordinary loot, and exact-hand placement consumption. Fixed baseline drops are generated where they can be represented faithfully. Silk Touch, Fortune, Efficiency, tool durability, XP drops, potion/effect modifiers, underwater and airborne mining penalties, and conditional or random loot tables remain explicitly deferred.
+
 ## Todo
 
 - Broader block placement and interaction support
 - Other inventory blocks
 - Recipe-book and special crafting recipe parity
-- Basic survival mechanics
+- Broader survival mechanics such as health, hunger, effects and tool durability
 - Adventure map features
 
 

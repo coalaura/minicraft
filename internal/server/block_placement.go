@@ -36,7 +36,7 @@ func (s *Session) handleUseItemOn(interaction protocol.UseItemOn) error {
 		return s.resynchronizePlacement(target, interaction.Sequence)
 	}
 
-	result, affected, err = s.Runtime.PlaceItem(s, interaction, stack.Item)
+	result, affected, err = s.Runtime.PlaceHeldItem(s, interaction, stack.Item)
 	if err != nil {
 		return err
 	}
@@ -171,10 +171,33 @@ func secondaryUseActive(player game.Player) bool {
 }
 
 func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, item game.Item) (BlockMutationResult, []game.BlockPosition, error) {
+	return r.placeItem(session, interaction, item, false)
+}
+
+func (r *Runtime) PlaceHeldItem(session *Session, interaction protocol.UseItemOn, item game.Item) (BlockMutationResult, []game.BlockPosition, error) {
+	return r.placeItem(session, interaction, item, true)
+}
+
+func (r *Runtime) placeItem(session *Session, interaction protocol.UseItemOn, item game.Item, consumeHeldItem bool) (BlockMutationResult, []game.BlockPosition, error) {
 	r.worldMutationMu.Lock()
+
+	var (
+		inventoryBefore game.PlayerInventory
+		consumed        bool
+	)
 
 	result, affected, delivery, err := func() (BlockMutationResult, []game.BlockPosition, blockMutationDelivery, error) {
 		defer r.worldMutationMu.Unlock()
+
+		if consumeHeldItem {
+			player := session.snapshotPlayer()
+			inventoryBefore = player.Inventory
+
+			held, valid := heldItemFromPlayer(player, interaction.Hand)
+			if !valid || held.Empty() || held.Item != item {
+				return BlockMutationResult{}, []game.BlockPosition{interaction.Position}, blockMutationDelivery{}, nil
+			}
+		}
 
 		adjacent, validTarget := placementTarget(interaction.Position, interaction.Face)
 		if !validTarget {
@@ -198,6 +221,7 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 				changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
 				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
+				consumed = r.consumePlacedItemLocked(session, interaction.Hand, item, result, consumeHeldItem)
 				return result, []game.BlockPosition{interaction.Position}, delivery, err
 			}
 
@@ -205,6 +229,7 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 				changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: adjacent, Replacement: replacement}})
 
 				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
+				consumed = r.consumePlacedItemLocked(session, interaction.Hand, item, result, consumeHeldItem)
 				return result, []game.BlockPosition{adjacent}, delivery, err
 			}
 		}
@@ -213,6 +238,7 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 			changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
 			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
+			consumed = r.consumePlacedItemLocked(session, interaction.Hand, item, result, consumeHeldItem)
 			return result, []game.BlockPosition{interaction.Position}, delivery, err
 		}
 
@@ -221,6 +247,7 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 			changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
 			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
+			consumed = r.consumePlacedItemLocked(session, interaction.Hand, item, result, consumeHeldItem)
 			return result, []game.BlockPosition{interaction.Position}, delivery, err
 		}
 
@@ -290,11 +317,67 @@ func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, it
 		changes = r.withStructuralNeighborChanges(changes)
 
 		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, requiredChanges, true, true, false, true)
+		consumed = r.consumePlacedItemLocked(session, interaction.Hand, item, result, consumeHeldItem)
 		return result, affected, delivery, err
 	}()
 
 	result, err = r.completeBlockMutation(result, delivery, err)
+
+	if consumed {
+		syncErr := session.synchronizePlayerInventoryMutation(inventoryBefore)
+		if syncErr != nil && session.Log != nil {
+			session.Log.Warnf("[play] failed to synchronize placed item consumption: %v\n", syncErr)
+		}
+	}
+
 	return result, affected, err
+}
+
+func (r *Runtime) consumePlacedItemLocked(session *Session, hand int32, item game.Item, result BlockMutationResult, enabled bool) bool {
+	if !enabled || !result.Allowed || !result.Changed {
+		return false
+	}
+
+	_, changed := session.updatePlayerState(func(player *game.Player) bool {
+		if player.GameMode != game.GameModeSurvival {
+			return false
+		}
+
+		stack, valid := heldItemPointer(player, hand)
+		if !valid || stack.Empty() || stack.Item != item {
+			return false
+		}
+
+		stack.Count--
+		if stack.Count == 0 {
+			*stack = game.ItemStack{}
+		}
+
+		return true
+	})
+
+	return changed
+}
+
+func heldItemFromPlayer(player game.Player, hand int32) (game.ItemStack, bool) {
+	stack, valid := heldItemPointer(&player, hand)
+	if !valid {
+		return game.ItemStack{}, false
+	}
+
+	return stack.Clone(), true
+}
+
+func heldItemPointer(player *game.Player, hand int32) (*game.ItemStack, bool) {
+	switch hand {
+	case protocol.MainHand:
+		stack := player.Inventory.Held(player.SelectedHotbarSlot)
+		return stack, stack != nil
+	case protocol.OffHand:
+		return &player.Inventory.Offhand, true
+	default:
+		return nil, false
+	}
 }
 
 func blockReplaceableBy(existing, replacement game.Block) bool {

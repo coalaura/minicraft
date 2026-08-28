@@ -80,6 +80,82 @@ func TestCreativeBlockPlacementOnEachFace(t *testing.T) {
 	}
 }
 
+func TestSurvivalPlacementConsumesActualHand(t *testing.T) {
+	tests := map[string]int32{
+		"main hand": protocol.MainHand,
+		"offhand":   protocol.OffHand,
+	}
+
+	for name, hand := range tests {
+		t.Run(name, func(t *testing.T) {
+			clicked := game.BlockPosition{Y: 70}
+			target := game.BlockPosition{Y: 71}
+
+			world := &game.World{Generator: placementTestGenerator{clicked: clicked}}
+
+			runtime := NewRuntime(world)
+
+			actor, _ := newPlacementTestSession(runtime, clicked)
+
+			actor.Player.GameMode = game.GameModeSurvival
+			actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 3}
+			actor.Player.Inventory.Offhand = game.ItemStack{Item: game.ItemStone, Count: 4}
+
+			markPlacementChunksLoaded(actor, clicked, target)
+
+			joinTestSession(t, runtime, actor)
+
+			err := actor.handleUseItemOn(testUseItemOn(clicked, protocol.BlockFaceUp, hand, 200))
+			if err != nil {
+				t.Fatalf("handle use item on: %v", err)
+			}
+
+			player := actor.snapshotPlayer()
+
+			wantMain, wantOffhand := int32(3), int32(4)
+
+			if hand == protocol.MainHand {
+				wantMain--
+			} else {
+				wantOffhand--
+			}
+
+			if player.Inventory.Hotbar[0].Count != wantMain || player.Inventory.Offhand.Count != wantOffhand {
+				t.Fatalf("held counts = main %d, offhand %d; want %d, %d", player.Inventory.Hotbar[0].Count, player.Inventory.Offhand.Count, wantMain, wantOffhand)
+			}
+		})
+	}
+}
+
+func TestFailedPlacementDoesNotConsumeSurvivalItem(t *testing.T) {
+	clicked := game.BlockPosition{Y: 70}
+	target := game.BlockPosition{Y: 71}
+
+	world := &game.World{Generator: placementTestGenerator{clicked: clicked}}
+
+	world.SetBlock(target, game.Dirt)
+
+	runtime := NewRuntime(world)
+
+	actor, _ := newPlacementTestSession(runtime, clicked)
+
+	actor.Player.GameMode = game.GameModeSurvival
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 3}
+
+	markPlacementChunksLoaded(actor, clicked, target)
+
+	joinTestSession(t, runtime, actor)
+
+	err := actor.handleUseItemOn(testUseItemOn(clicked, protocol.BlockFaceUp, protocol.MainHand, 201))
+	if err != nil {
+		t.Fatalf("handle use item on: %v", err)
+	}
+
+	if count := actor.snapshotPlayer().Inventory.Hotbar[0].Count; count != 3 {
+		t.Fatalf("stack after failed placement = %d, want 3", count)
+	}
+}
+
 func TestSuccessfulPlacementSynchronizesLoadedPlayers(t *testing.T) {
 	clicked := game.BlockPosition{X: 15, Y: 70}
 	target := game.BlockPosition{X: 16, Y: 70}

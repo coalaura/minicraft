@@ -291,6 +291,8 @@ func (r *Runtime) LeaveSession(session *Session) {
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
 
+	r.cancelMiningLocked(session)
+
 	r.closeMenuWithRemovalStateLocked(session, false, true)
 
 	deliveries := r.takeRuntimeBlockMutationsLocked()
@@ -580,6 +582,12 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 
 	current := *session.Player
 	session.playerMx.Unlock()
+
+	if session.mining.active || session.mining.delayed {
+		if !r.validMiningState(session, current, session.mining) {
+			r.cancelMiningLocked(session)
+		}
+	}
 
 	r.mu.RLock()
 	_, active := r.sessions[session]

@@ -54,6 +54,7 @@ type blockMutationRecord struct {
 	previousEntity    game.BlockEntity
 	hadPreviousEntity bool
 	cause             blockMutationCause
+	ordinaryDrop      bool
 }
 
 type blockMutationDelivery struct {
@@ -91,7 +92,7 @@ type BlockMutationPolicy interface {
 type CreativeBlockMutationPolicy struct{}
 
 func (CreativeBlockMutationPolicy) AllowBlockMutation(mutation BlockMutation) bool {
-	return mutation.Player.GameMode == game.GameModeCreative
+	return mutation.Player.GameMode == game.GameModeSurvival || mutation.Player.GameMode == game.GameModeCreative
 }
 
 func blockWithinInteractionRange(player game.Player, position game.BlockPosition) bool {
@@ -111,6 +112,31 @@ func blockWithinInteractionRange(player game.Player, position game.BlockPosition
 
 func (r *Runtime) MutateBlock(session *Session, action BlockMutationAction, position game.BlockPosition, replacement game.Block) (BlockMutationResult, error) {
 	return r.MutateBlocks(session, action, []game.BlockChange{{Position: position, Replacement: replacement}})
+}
+
+func (r *Runtime) mutateMinedBlockLocked(session *Session, position game.BlockPosition, tool game.ItemStack) (BlockMutationResult, blockMutationDelivery, error) {
+	changes := r.breakChanges(position)
+	requiredChanges := len(changes)
+
+	changes = r.withStructuralNeighborChanges(changes)
+
+	result, delivery, err := r.mutateBlocksLocked(session, BlockMutationBreak, changes, requiredChanges, true, false, false, true)
+	if err != nil || !result.Changed {
+		return result, delivery, err
+	}
+
+	for index := range delivery.records {
+		record := &delivery.records[index]
+		if record.change.Position != position || record.cause != blockMutationDirectBreak {
+			continue
+		}
+
+		record.ordinaryDrop = tool.Item.IsCorrectToolForDrops(record.previous)
+
+		break
+	}
+
+	return result, delivery, nil
 }
 
 // MutateBlocks validates and applies a coordinated group atomically.
@@ -390,10 +416,6 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 	<-delivery.waitForDelivery
 	defer close(delivery.deliveryComplete)
 
-	if lightingErr != nil {
-		return result, fmt.Errorf("recalculate lighting: %w", lightingErr)
-	}
-
 	sections := blockMutationSections(delivery.changes, delivery.states)
 	placementSound, hasPlacementSound := blockPlacementSound(delivery.records)
 	interactionSound, hasInteractionSound := blockInteractionSound(delivery.records)
@@ -472,6 +494,11 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 	}
 
 	r.commitBlockEntityRemovalEffects(delivery.records)
+	r.commitOrdinaryBlockDrops(delivery.records)
+
+	if lightingErr != nil {
+		return result, fmt.Errorf("recalculate lighting: %w", lightingErr)
+	}
 
 	return result, nil
 }

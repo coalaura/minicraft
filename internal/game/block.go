@@ -17,6 +17,45 @@ type BlockCollision uint8
 
 type BlockSoundType uint8
 
+type ToolClass uint8
+
+const (
+	ToolNone ToolClass = iota
+	ToolPickaxe
+	ToolShovel
+	ToolAxe
+	ToolHoe
+)
+
+type HarvestTier uint8
+
+const (
+	HarvestTierNone HarvestTier = iota
+	HarvestTierStone
+	HarvestTierIron
+	HarvestTierDiamond
+)
+
+type BlockDropKind uint8
+
+const (
+	BlockDropNone BlockDropKind = iota
+	BlockDropExact
+	BlockDropDeferred
+)
+
+type BlockMining struct {
+	Hardness      float32
+	EffectiveTool ToolClass
+	RequiredTier  HarvestTier
+	DropKind      BlockDropKind
+	DropItem      Item
+	DropMin       int32
+	DropMax       int32
+	RequiresTool  bool
+	Destroyable   bool
+}
+
 const (
 	BlockBehaviorNone BlockBehavior = iota
 	BlockBehaviorSolid
@@ -78,6 +117,7 @@ type BlockDefinition struct {
 	Sound           BlockSoundType
 	Replaceable     bool
 	BlockEntityType BlockEntityType
+	Mining          BlockMining
 	Properties      []BlockProperty
 }
 
@@ -134,6 +174,15 @@ func (block Block) Definition() (BlockDefinition, bool) {
 	}
 
 	return blockDefinitions[stateBlockIDs[block]], true
+}
+
+func (block Block) MiningProperties() BlockMining {
+	definition, valid := block.Definition()
+	if !valid {
+		return BlockMining{}
+	}
+
+	return definition.Mining
 }
 
 func (block Block) IsRedstoneConductor() bool {
@@ -338,4 +387,4 @@ func (definition BlockDefinition) propertyIndices(block Block) []int {
 	return indices
 }
 
-//go:generate go run ../../cmd/generate-blocks -input ../../data/blocks.json -output blocks_generated.go
+//go:generate go run ../../cmd/generate-blocks -input ../../data/blocks.json -tags ../../data/block_tags -output blocks_generated.go

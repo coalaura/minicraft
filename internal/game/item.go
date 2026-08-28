@@ -40,10 +40,17 @@ type Item uint16
 
 type ItemPlacementRule uint8
 
+type ItemMining struct {
+	Tool  ToolClass
+	Tier  HarvestTier
+	Speed float32
+}
+
 type ItemDefinition struct {
 	ID        Item
 	Name      string
 	StackSize int32
+	Mining    ItemMining
 }
 
 type ItemStack struct {
@@ -95,6 +102,36 @@ func (item Item) PlacementRule() ItemPlacementRule {
 	}
 
 	return itemPlacementRules[item]
+}
+
+func (item Item) MiningProperties() ItemMining {
+	definition, valid := item.Definition()
+	if !valid {
+		return ItemMining{}
+	}
+
+	return definition.Mining
+}
+
+func (item Item) BaseDestroySpeed(block Block) float32 {
+	itemMining := item.MiningProperties()
+	blockMining := block.MiningProperties()
+
+	if itemMining.Tool == ToolNone || itemMining.Tool != blockMining.EffectiveTool {
+		return 1
+	}
+
+	return itemMining.Speed
+}
+
+func (item Item) IsCorrectToolForDrops(block Block) bool {
+	blockMining := block.MiningProperties()
+	if !blockMining.RequiresTool {
+		return true
+	}
+
+	itemMining := item.MiningProperties()
+	return itemMining.Tool == blockMining.EffectiveTool && itemMining.Tier >= blockMining.RequiredTier
 }
 
 func ItemForBlock(block Block) (Item, bool) {

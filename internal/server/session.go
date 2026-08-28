@@ -36,6 +36,7 @@ type Session struct {
 	nextWindowID    int32
 	protocolState   int32
 	shuttingDown    bool
+	mining          miningState
 
 	chunkMx               sync.Mutex
 	centerChunk           LoadedChunk

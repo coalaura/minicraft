@@ -27,10 +27,19 @@ const (
 	BlockEntityRemovalDropInventory
 )
 
+type BlockEntityDataKind uint8
+
+const (
+	BlockEntityDataNone BlockEntityDataKind = iota
+	BlockEntityDataInventory
+	BlockEntityDataFurnace
+)
+
 type BlockEntityTypeDefinition struct {
 	Name                    string
 	ProtocolRegistryID12111 int32
 	InventorySlots          int
+	DataKind                BlockEntityDataKind
 	RemovalBehavior         BlockEntityRemovalBehavior
 }
 
@@ -73,32 +82,37 @@ type BlockEntityPointGenerator interface {
 
 var blockEntityTypeDefinitions = [...]BlockEntityTypeDefinition{
 	BlockEntityTypeNone:  {},
-	BlockEntityTypeChest: {Name: "chest", ProtocolRegistryID12111: 1, InventorySlots: ChestSlotCount, RemovalBehavior: BlockEntityRemovalDropInventory},
+	BlockEntityTypeChest: {Name: "chest", ProtocolRegistryID12111: 1, InventorySlots: ChestSlotCount, DataKind: BlockEntityDataInventory, RemovalBehavior: BlockEntityRemovalDropInventory},
 	BlockEntityTypeTrappedChest: {
 		Name:                    "trapped_chest",
 		ProtocolRegistryID12111: 2,
 		InventorySlots:          ChestSlotCount,
+		DataKind:                BlockEntityDataInventory,
 		RemovalBehavior:         BlockEntityRemovalDropInventory,
 	},
-	BlockEntityTypeBarrel:       {Name: "barrel", ProtocolRegistryID12111: 27, InventorySlots: BarrelSlotCount, RemovalBehavior: BlockEntityRemovalDropInventory},
-	BlockEntityTypeFurnace:      {Name: "furnace", ProtocolRegistryID12111: 0, InventorySlots: FurnaceSlotCount, RemovalBehavior: BlockEntityRemovalDropInventory},
-	BlockEntityTypeSmoker:       {Name: "smoker", ProtocolRegistryID12111: 28, InventorySlots: FurnaceSlotCount, RemovalBehavior: BlockEntityRemovalDropInventory},
-	BlockEntityTypeBlastFurnace: {Name: "blast_furnace", ProtocolRegistryID12111: 29, InventorySlots: FurnaceSlotCount, RemovalBehavior: BlockEntityRemovalDropInventory},
+	BlockEntityTypeBarrel:       {Name: "barrel", ProtocolRegistryID12111: 27, InventorySlots: BarrelSlotCount, DataKind: BlockEntityDataInventory, RemovalBehavior: BlockEntityRemovalDropInventory},
+	BlockEntityTypeFurnace:      {Name: "furnace", ProtocolRegistryID12111: 0, InventorySlots: FurnaceSlotCount, DataKind: BlockEntityDataFurnace, RemovalBehavior: BlockEntityRemovalDropInventory},
+	BlockEntityTypeSmoker:       {Name: "smoker", ProtocolRegistryID12111: 28, InventorySlots: FurnaceSlotCount, DataKind: BlockEntityDataFurnace, RemovalBehavior: BlockEntityRemovalDropInventory},
+	BlockEntityTypeBlastFurnace: {Name: "blast_furnace", ProtocolRegistryID12111: 29, InventorySlots: FurnaceSlotCount, DataKind: BlockEntityDataFurnace, RemovalBehavior: BlockEntityRemovalDropInventory},
 }
 
 func NewBlockEntity(entityType BlockEntityType) BlockEntity {
 	definition, valid := entityType.Definition()
-	if !valid || definition.InventorySlots == 0 {
+	if !valid {
 		return BlockEntity{Type: entityType}
 	}
-	if entityType == BlockEntityTypeFurnace || entityType == BlockEntityTypeSmoker || entityType == BlockEntityTypeBlastFurnace {
+
+	switch definition.DataKind {
+	case BlockEntityDataInventory:
+		return NewInventoryBlockEntity(entityType, definition.InventorySlots)
+	case BlockEntityDataFurnace:
 		return BlockEntity{
 			Type: entityType,
-			Data: &FurnaceBlockEntityData{Items: make([]ItemStack, FurnaceSlotCount)},
+			Data: &FurnaceBlockEntityData{Items: make([]ItemStack, definition.InventorySlots)},
 		}
+	default:
+		return BlockEntity{Type: entityType}
 	}
-
-	return NewInventoryBlockEntity(entityType, definition.InventorySlots)
 }
 
 func NewInventoryBlockEntity(entityType BlockEntityType, slots int) BlockEntity {

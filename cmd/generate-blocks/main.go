@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/format"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode"
@@ -29,16 +30,39 @@ type BlockDefinition struct {
 	BoundingBox  string          `json:"boundingBox"`
 	EmitLight    uint8           `json:"emitLight"`
 	FilterLight  uint8           `json:"filterLight"`
+	Hardness     float32         `json:"hardness"`
+	Diggable     bool            `json:"diggable"`
+	HarvestTools map[string]bool `json:"harvestTools"`
+	Drops        []uint16        `json:"drops"`
+}
+
+type TagDefinition struct {
+	Values []json.RawMessage `json:"values"`
+}
+
+type TagEntry struct {
+	ID string `json:"id"`
+}
+
+type MiningTags struct {
+	Tools map[string]string
+	Tiers map[string]string
+}
+
+type MiningTagMapping struct {
+	Name  string
+	Value string
 }
 
 func main() {
 	input := flag.String("input", "", "path to blocks.json")
+	tagsPath := flag.String("tags", "", "path to canonical block tags")
 	output := flag.String("output", "", "generated Go output path")
 
 	flag.Parse()
 
-	if *input == "" || *output == "" {
-		fmt.Fprintln(os.Stderr, "input and output are required")
+	if *input == "" || *tagsPath == "" || *output == "" {
+		fmt.Fprintln(os.Stderr, "input, tags and output are required")
 
 		os.Exit(2)
 	}
@@ -55,7 +79,12 @@ func main() {
 		fail(err)
 	}
 
-	generated, err := generate(blocks)
+	miningTags, err := readMiningTags(*tagsPath)
+	if err != nil {
+		fail(err)
+	}
+
+	generated, err := generate(blocks, miningTags)
 	if err != nil {
 		fail(err)
 	}
@@ -66,7 +95,7 @@ func main() {
 	}
 }
 
-func generate(blocks []BlockDefinition) ([]byte, error) {
+func generate(blocks []BlockDefinition, miningTags MiningTags) ([]byte, error) {
 	if len(blocks) == 0 {
 		return nil, fmt.Errorf("block catalogue is empty")
 	}
@@ -113,7 +142,7 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	for _, block := range blocks {
 		fmt.Fprintf(
 			&output,
-			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Collision: %s, Emission: %d, LightFilter: %d, Sound: %s, Replaceable: %t, BlockEntityType: %s",
+			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Collision: %s, Emission: %d, LightFilter: %d, Sound: %s, Replaceable: %t, BlockEntityType: %s, Mining: %s",
 			goName(block.Name),
 			block.Name,
 			goName(block.Name),
@@ -126,6 +155,7 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 			blockSoundType(block),
 			blockReplaceable(block.Name),
 			blockEntityType(block.Name),
+			blockMining(block, miningTags),
 		)
 
 		if len(block.Properties) != 0 {
@@ -191,6 +221,142 @@ func generate(blocks []BlockDefinition) ([]byte, error) {
 	}
 
 	return formatted, nil
+}
+
+func readMiningTags(root string) (MiningTags, error) {
+	tools := make(map[string]string)
+	tiers := make(map[string]string)
+
+	toolTags := []MiningTagMapping{
+		{Name: "mineable/pickaxe", Value: "ToolPickaxe"},
+		{Name: "mineable/shovel", Value: "ToolShovel"},
+		{Name: "mineable/axe", Value: "ToolAxe"},
+		{Name: "mineable/hoe", Value: "ToolHoe"},
+	}
+
+	for _, tag := range toolTags {
+		values, err := expandTag(root, tag.Name, make(map[string]bool))
+		if err != nil {
+			return MiningTags{}, err
+		}
+
+		for name := range values {
+			tools[name] = tag.Value
+		}
+	}
+
+	tierTags := []MiningTagMapping{
+		{Name: "needs_stone_tool", Value: "HarvestTierStone"},
+		{Name: "needs_iron_tool", Value: "HarvestTierIron"},
+		{Name: "needs_diamond_tool", Value: "HarvestTierDiamond"},
+	}
+
+	for _, tag := range tierTags {
+		values, err := expandTag(root, tag.Name, make(map[string]bool))
+		if err != nil {
+			return MiningTags{}, err
+		}
+
+		for name := range values {
+			tiers[name] = tag.Value
+		}
+	}
+
+	return MiningTags{Tools: tools, Tiers: tiers}, nil
+}
+
+func expandTag(root, name string, visiting map[string]bool) (map[string]struct{}, error) {
+	name = strings.TrimPrefix(name, "minecraft:")
+	if visiting[name] {
+		return nil, fmt.Errorf("cyclic block tag %s", name)
+	}
+
+	visiting[name] = true
+	defer delete(visiting, name)
+
+	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)+".json"))
+	if err != nil {
+		return nil, fmt.Errorf("read block tag %s: %w", name, err)
+	}
+
+	var definition TagDefinition
+
+	err = json.Unmarshal(raw, &definition)
+	if err != nil {
+		return nil, fmt.Errorf("decode block tag %s: %w", name, err)
+	}
+
+	result := make(map[string]struct{})
+
+	for _, rawEntry := range definition.Values {
+		var entry string
+
+		err = json.Unmarshal(rawEntry, &entry)
+		if err != nil {
+			var object TagEntry
+			if objectErr := json.Unmarshal(rawEntry, &object); objectErr != nil {
+				return nil, fmt.Errorf("decode entry in block tag %s: %w", name, err)
+			}
+
+			entry = object.ID
+		}
+
+		if after, ok := strings.CutPrefix(entry, "#"); ok {
+			nested, err := expandTag(root, after, visiting)
+			if err != nil {
+				return nil, err
+			}
+
+			for nestedName := range nested {
+				result[nestedName] = struct{}{}
+			}
+
+			continue
+		}
+
+		result[strings.TrimPrefix(entry, "minecraft:")] = struct{}{}
+	}
+
+	return result, nil
+}
+
+func blockMining(block BlockDefinition, tags MiningTags) string {
+	tool := tags.Tools[block.Name]
+	if tool == "" {
+		tool = "ToolNone"
+	}
+
+	tier := tags.Tiers[block.Name]
+	if tier == "" {
+		tier = "HarvestTierNone"
+	}
+
+	dropKind, dropItem, dropMin, dropMax := blockDrop(block)
+	return fmt.Sprintf("BlockMining{Hardness: %g, EffectiveTool: %s, RequiredTier: %s, DropKind: %s, DropItem: %s, DropMin: %d, DropMax: %d, RequiresTool: %t, Destroyable: %t}", block.Hardness, tool, tier, dropKind, dropItem, dropMin, dropMax, len(block.HarvestTools) != 0, block.Diggable && block.Hardness >= 0)
+}
+
+func blockDrop(block BlockDefinition) (kind, item string, minCount, maxCount int32) {
+	if !block.Diggable || len(block.Drops) == 0 {
+		return "BlockDropNone", "0", 0, 0
+	}
+
+	if !exactBaselineDrop(block.Name) || len(block.Drops) != 1 {
+		return "BlockDropDeferred", "0", 0, 0
+	}
+
+	return "BlockDropExact", fmt.Sprintf("Item(%d)", block.Drops[0]), 1, 1
+}
+
+func exactBaselineDrop(name string) bool {
+	switch name {
+	case "stone", "dirt", "sand", "oak_log", "chest", "trapped_chest", "barrel", "furnace", "smoker", "blast_furnace",
+		"coal_ore", "deepslate_coal_ore", "iron_ore", "deepslate_iron_ore", "gold_ore", "deepslate_gold_ore",
+		"diamond_ore", "deepslate_diamond_ore", "emerald_ore", "deepslate_emerald_ore", "nether_quartz_ore",
+		"obsidian", "ancient_debris":
+		return true
+	default:
+		return false
+	}
 }
 
 func blockEntityType(name string) string {

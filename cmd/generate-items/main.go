@@ -134,10 +134,11 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 	for _, item := range items {
 		fmt.Fprintf(
 			&output,
-			"\t{ID: Item%s, Name: %q, StackSize: %d},\n",
+			"\t{ID: Item%s, Name: %q, StackSize: %d, Mining: %s},\n",
 			goName(item.Name),
 			item.Name,
 			item.StackSize,
+			itemMining(item.Name),
 		)
 	}
 
@@ -175,6 +176,51 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 	}
 
 	return formatted, nil
+}
+
+func itemMining(name string) string {
+	parts := strings.Split(name, "_")
+	if len(parts) != 2 {
+		return "ItemMining{}"
+	}
+
+	var tool string
+	switch parts[1] {
+	case "pickaxe":
+		tool = "ToolPickaxe"
+	case "shovel":
+		tool = "ToolShovel"
+	case "axe":
+		tool = "ToolAxe"
+	case "hoe":
+		tool = "ToolHoe"
+	default:
+		return "ItemMining{}"
+	}
+
+	tier := "HarvestTierNone"
+	var speed float32
+
+	switch parts[0] {
+	case "wooden":
+		speed = 2
+	case "golden":
+		speed = 12
+	case "copper":
+		tier, speed = "HarvestTierStone", 5
+	case "stone":
+		tier, speed = "HarvestTierStone", 4
+	case "iron":
+		tier, speed = "HarvestTierIron", 6
+	case "diamond":
+		tier, speed = "HarvestTierDiamond", 8
+	case "netherite":
+		tier, speed = "HarvestTierDiamond", 9
+	default:
+		return "ItemMining{}"
+	}
+
+	return fmt.Sprintf("ItemMining{Tool: %s, Tier: %s, Speed: %g}", tool, tier, speed)
 }
 
 func blockPlacementRule(block BlockDefinition) string {

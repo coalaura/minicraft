@@ -46,7 +46,16 @@ func (r *Runtime) Tick() game.TimeState {
 	r.tickActiveChunks()
 
 	r.lifecycleMu.Unlock()
+
+	miningMutations := r.tickMiningAttemptsLocked()
+
+	r.runtimeBlockMutations = append(r.runtimeBlockMutations, miningMutations...)
+
+	deliveries := r.takeRuntimeBlockMutationsLocked()
+
 	r.worldMutationMu.Unlock()
+
+	r.completeRuntimeBlockMutations(deliveries)
 
 	r.tickOpenMenus()
 

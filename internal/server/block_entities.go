@@ -45,17 +45,22 @@ func (r *Runtime) dropContainerContents(position game.BlockPosition, items []gam
 	for _, source := range items {
 		remaining := source.Clone()
 
+		spawnPosition := game.Position{
+			X: float64(position.X) + itemWidth/2 + float64(r.nextEntityRandom())*(1-itemWidth),
+			Y: float64(position.Y) + float64(r.nextEntityRandom())*(1-itemWidth),
+			Z: float64(position.Z) + itemWidth/2 + float64(r.nextEntityRandom())*(1-itemWidth),
+		}
+
 		for !remaining.Empty() {
 			count := min(remaining.Count, int32(10+int(r.nextEntityRandom()*21)))
 			dropped := remaining.Clone()
 			dropped.Count = count
 			remaining.Count -= count
 
-			position := game.Position{
-				X: float64(position.X) + itemWidth/2 + float64(r.nextEntityRandom())*(1-itemWidth),
-				Y: float64(position.Y) + float64(r.nextEntityRandom())*(1-itemWidth),
-				Z: float64(position.Z) + itemWidth/2 + float64(r.nextEntityRandom())*(1-itemWidth),
-			}
+			// ItemEntity's constructor consumes two random values for an initial
+			// velocity that Containers immediately replaces.
+			r.nextEntityRandom()
+			r.nextEntityRandom()
 
 			velocity := game.Velocity{
 				X: float64(r.nextEntityRandom()-r.nextEntityRandom()) * motionDeviation,
@@ -63,7 +68,7 @@ func (r *Runtime) dropContainerContents(position game.BlockPosition, items []gam
 				Z: float64(r.nextEntityRandom()-r.nextEntityRandom()) * motionDeviation,
 			}
 
-			r.SpawnItemEntity(dropped, position, velocity, 10)
+			r.SpawnItemEntity(dropped, spawnPosition, velocity, 0)
 		}
 	}
 }

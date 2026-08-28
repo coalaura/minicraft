@@ -11,6 +11,7 @@ import (
 const gameEventChangeGameMode = 3
 
 func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) (bool, error) {
+	r.worldMutationMu.Lock()
 	r.lifecycleMu.Lock()
 
 	player, changed := session.updatePlayerState(func(player *game.Player) bool {
@@ -23,7 +24,12 @@ func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) (bool, er
 		return true
 	})
 
+	if changed && mode != game.GameModeSurvival {
+		r.cancelMiningLocked(session)
+	}
+
 	r.lifecycleMu.Unlock()
+	r.worldMutationMu.Unlock()
 
 	if !changed {
 		return false, nil

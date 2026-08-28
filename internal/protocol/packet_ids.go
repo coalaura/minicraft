@@ -88,6 +88,7 @@ const (
 	ClientboundAddEntityID                    = 0x01
 	ClientboundEntityAnimationID              = 0x02
 	ClientboundBlockChangedAckID              = 0x04
+	ClientboundBlockDestructionID             = 0x05
 	ClientboundBlockEventID                   = 0x07
 	ClientboundBlockUpdateID                  = 0x08
 	ClientboundChunkBatchEndID                = 0x0B

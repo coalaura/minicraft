@@ -530,16 +530,26 @@ func (s *Session) handlePlayerCommand(command protocol.PlayerCommand) {
 
 func (s *Session) handlePlayerAction(action protocol.PlayerAction) error {
 	switch action.Status {
-	case protocol.PlayerActionStartDestroyBlock, protocol.PlayerActionStopDestroyBlock:
-		result, err := s.Runtime.MutateBlock(s, BlockMutationBreak, action.Position, game.Air)
+	case protocol.PlayerActionStartDestroyBlock:
+		result, err := s.Runtime.startDestroyingBlock(s, action.Position)
 		if err != nil {
 			return err
 		}
 
-		if !result.Allowed || !result.Changed {
+		if !result.Allowed {
+			return s.resynchronizeBlocks([]game.BlockPosition{action.Position}, action.Sequence)
+		}
+	case protocol.PlayerActionStopDestroyBlock:
+		result, err := s.Runtime.stopDestroyingBlock(s, action.Position)
+		if err != nil {
+			return err
+		}
+
+		if !result.Allowed {
 			return s.resynchronizeBlocks([]game.BlockPosition{action.Position}, action.Sequence)
 		}
 	case protocol.PlayerActionAbortDestroyBlock:
+		s.Runtime.abortDestroyingBlock(s)
 	case protocol.PlayerActionDropAllItems:
 		s.handleDropHeldItem(true)
 	case protocol.PlayerActionDropItem:

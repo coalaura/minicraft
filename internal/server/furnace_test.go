@@ -533,8 +533,8 @@ func TestBreakingFurnaceDropsItsInventory(t *testing.T) {
 
 		counts[item.Stack.Item] += item.Stack.Count
 
-		if item.PickupDelay != 10 {
-			t.Fatalf("drop pickup delay = %d, want 10", item.PickupDelay)
+		if item.PickupDelay != 0 {
+			t.Fatalf("drop pickup delay = %d, want 0", item.PickupDelay)
 		}
 	}
 
