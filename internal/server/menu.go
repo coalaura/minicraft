@@ -47,9 +47,16 @@ type menuSlot struct {
 	hasPlayerSlot bool
 	storage       menuStorage
 	backingIndex  int
+	onTake        menuResultTake
 }
 
 type menuQuickMove func(*menuCandidate, int)
+
+type menuResultTake func(*menuCandidate, int, game.ItemStack)
+
+type menuDerive func(*menuCandidate)
+
+type menuRemoved func(*menuCandidate, bool)
 
 type menu struct {
 	windowID         int32
@@ -65,6 +72,8 @@ type menu struct {
 	hasOffhandSlot bool
 	hiddenOffhand  *game.ItemStack
 	quickMove      menuQuickMove
+	derive         menuDerive
+	removed        menuRemoved
 	backing        menuBacking
 	containerSlots int
 }
@@ -74,7 +83,8 @@ type menuCandidate struct {
 	slots         []game.ItemStack
 	carried       game.ItemStack
 	hiddenOffhand game.ItemStack
-	dropped       game.ItemStack
+	selected      int
+	dropped       []game.ItemStack
 }
 
 type menuSnapshot struct {
@@ -98,6 +108,7 @@ func newPlayerInventoryMenu(inventory *game.PlayerInventory) *menu {
 	}
 
 	slots[0].role = menuSlotResult
+	slots[0].onTake = takeCraftingResult
 
 	for slot := 5; slot <= 8; slot++ {
 		slots[slot].role = menuSlotArmor
@@ -111,12 +122,19 @@ func newPlayerInventoryMenu(inventory *game.PlayerInventory) *menu {
 		offhandSlot:    45,
 		hasOffhandSlot: true,
 		quickMove:      quickMovePlayerInventory,
+		derive:         derivePlayerCraftingResult,
 	}
 
 	for hotbar := range game.HotbarSlotCount {
 		playerMenu.hotbarSlots[hotbar] = 36 + hotbar
 		playerMenu.hasHotbarSlots[hotbar] = true
 	}
+
+	candidate := playerMenu.candidate()
+
+	candidate.deriveSlots()
+
+	playerMenu.commit(candidate)
 
 	return playerMenu
 }
@@ -283,6 +301,41 @@ func (candidate *menuCandidate) accepts(slot int, stack game.ItemStack) bool {
 	}
 }
 
+func (candidate *menuCandidate) take(slot int, amount int32) game.ItemStack {
+	target := candidate.slot(slot)
+	if target == nil || target.Empty() || amount <= 0 {
+		return game.ItemStack{}
+	}
+
+	taken := target.Clone()
+
+	taken.Count = min(taken.Count, amount)
+	target.Count -= taken.Count
+
+	normalizeStack(target)
+
+	definition := candidate.menu.slots[slot]
+	if definition.onTake != nil {
+		definition.onTake(candidate, slot, taken)
+	}
+
+	return taken
+}
+
+func (candidate *menuCandidate) deriveSlots() {
+	if candidate.menu.derive != nil {
+		candidate.menu.derive(candidate)
+	}
+}
+
+func (candidate *menuCandidate) appendDrop(stack game.ItemStack) {
+	if stack.Empty() {
+		return
+	}
+
+	candidate.dropped = append(candidate.dropped, stack.Clone())
+}
+
 func (candidate *menuCandidate) stackLimit(slot int, stack game.ItemStack) int32 {
 	limit := stackLimit(stack)
 	if slot < 0 || slot >= len(candidate.menu.slots) {
@@ -347,4 +400,183 @@ func quickMoveGenericContainer(candidate *menuCandidate, slot int) {
 	candidate.slots[slot] = remaining
 
 	normalizeStack(&candidate.slots[slot])
+}
+
+func quickMoveCraftingTable(candidate *menuCandidate, slot int) {
+	remaining := candidate.slots[slot].Clone()
+
+	switch {
+	case slot == 0:
+		moveIntoSlots(candidate, &remaining, reverseSlotRange(10, 45))
+	case slot >= 1 && slot <= 9:
+		moveIntoSlots(candidate, &remaining, slotRange(10, 45))
+	case slot >= 10 && slot <= 45:
+		before := remaining.Clone()
+
+		moveIntoSlots(candidate, &remaining, slotRange(1, 9))
+
+		if remaining.Equal(before) {
+			if slot <= 36 {
+				moveIntoSlots(candidate, &remaining, slotRange(37, 45))
+			} else {
+				moveIntoSlots(candidate, &remaining, slotRange(10, 36))
+			}
+		}
+	}
+
+	candidate.slots[slot] = remaining
+
+	normalizeStack(&candidate.slots[slot])
+}
+
+func derivePlayerCraftingResult(candidate *menuCandidate) {
+	deriveCraftingResult(candidate, 2, 2, slotRange(1, 4), 0)
+}
+
+func deriveCraftingResult(candidate *menuCandidate, width, height int, inputSlots []int, resultSlot int) {
+	inputs := make([]game.ItemStack, len(inputSlots))
+
+	for index, slot := range inputSlots {
+		inputs[index] = candidate.slots[slot].Clone()
+	}
+
+	recipe, matched := game.MatchCrafting(width, height, inputs)
+	if !matched {
+		candidate.slots[resultSlot] = game.ItemStack{}
+
+		return
+	}
+
+	candidate.slots[resultSlot] = recipe.Result()
+}
+
+func takeCraftingResult(candidate *menuCandidate, _ int, _ game.ItemStack) {
+	takeCraftingInputs(candidate, slotRange(1, 4))
+
+	candidate.deriveSlots()
+}
+
+func deriveCraftingTableResult(candidate *menuCandidate) {
+	deriveCraftingResult(candidate, 3, 3, slotRange(1, 9), 0)
+}
+
+func takeCraftingTableResult(candidate *menuCandidate, _ int, _ game.ItemStack) {
+	takeCraftingInputs(candidate, slotRange(1, 9))
+
+	candidate.deriveSlots()
+}
+
+func removeCraftingTableItems(candidate *menuCandidate, disconnected bool) {
+	for slot := 1; slot <= 9; slot++ {
+		stack := &candidate.slots[slot]
+		if stack.Empty() {
+			continue
+		}
+
+		if !disconnected {
+			moveIntoPlayerInventory(candidate, stack)
+		}
+
+		candidate.appendDrop(*stack)
+
+		*stack = game.ItemStack{}
+	}
+
+	candidate.slots[0] = game.ItemStack{}
+}
+
+func takeCraftingInputs(candidate *menuCandidate, inputSlots []int) {
+	for _, slot := range inputSlots {
+		input := &candidate.slots[slot]
+		if input.Empty() {
+			continue
+		}
+
+		remainderItem, hasRemainder := game.CraftingRemainder(input.Item)
+
+		input.Count--
+
+		normalizeStack(input)
+
+		if !hasRemainder {
+			continue
+		}
+
+		remainder := game.ItemStack{Item: remainderItem, Count: 1}
+		if input.Empty() {
+			*input = remainder
+
+			continue
+		}
+
+		if input.SameItem(remainder) {
+			input.Count++
+
+			continue
+		}
+
+		moveIntoPlayerInventory(candidate, &remainder)
+		candidate.appendDrop(remainder)
+	}
+}
+
+func moveIntoPlayerInventory(candidate *menuCandidate, stack *game.ItemStack) {
+	mergeSlots := []int{36 + candidate.selected, 45}
+	mergeSlots = append(mergeSlots, slotRange(36, 44)...)
+	mergeSlots = append(mergeSlots, slotRange(9, 35)...)
+
+	for _, playerSlot := range mergeSlots {
+		target := candidate.playerStack(playerSlot)
+		if target == nil || target.Empty() || !target.SameItem(*stack) {
+			continue
+		}
+
+		capacity := stackLimit(*target) - target.Count
+		moved := min(capacity, stack.Count)
+
+		target.Count += moved
+		stack.Count -= moved
+
+		if stack.Count <= 0 {
+			*stack = game.ItemStack{}
+
+			return
+		}
+	}
+
+	emptySlots := append(slotRange(36, 44), slotRange(9, 35)...)
+
+	for _, playerSlot := range emptySlots {
+		target := candidate.playerStack(playerSlot)
+		if target == nil || !target.Empty() {
+			continue
+		}
+
+		moved := min(stackLimit(*stack), stack.Count)
+
+		*target = stack.Clone()
+
+		target.Count = moved
+		stack.Count -= moved
+
+		if stack.Count <= 0 {
+			*stack = game.ItemStack{}
+
+			return
+		}
+	}
+}
+
+func (candidate *menuCandidate) playerStack(playerSlot int) *game.ItemStack {
+	if playerSlot == 45 && candidate.menu.hiddenOffhand != nil {
+		return &candidate.hiddenOffhand
+	}
+
+	for slot, definition := range candidate.menu.slots {
+		if definition.hasPlayerSlot && definition.playerSlot == playerSlot {
+			return &candidate.slots[slot]
+		}
+	}
+
+	return nil
 }

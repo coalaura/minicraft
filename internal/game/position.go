@@ -7,8 +7,9 @@ type Position struct {
 }
 
 type Rotation struct {
-	Yaw   float32
-	Pitch float32
+	Yaw     float32
+	Pitch   float32
+	HeadYaw float32
 }
 
 type Velocity struct {

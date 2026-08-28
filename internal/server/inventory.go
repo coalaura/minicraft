@@ -250,7 +250,7 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 
 	var (
 		changedBackings []int
-		dropped         game.ItemStack
+		dropped         []game.ItemStack
 		equipment       []byte
 		valid           bool
 	)
@@ -263,6 +263,9 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 		beforeInventory := player.Inventory.Clone()
 
 		candidate := currentMenu.candidate()
+
+		candidate.selected = player.SelectedHotbarSlot
+
 		beforeCarried := candidate.carried.Clone()
 
 		if !applyMenuClick(candidate, player.GameMode, click) {
@@ -282,7 +285,7 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 		changedBackings = candidate.changedBackings()
 
 		currentMenu.commit(candidate)
-		dropped = candidate.dropped.Clone()
+		dropped = cloneItemStacks(candidate.dropped)
 
 		currentMenu.incrementStateID()
 
@@ -298,8 +301,8 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	}
 
 	if changed {
-		if !dropped.Empty() {
-			s.Runtime.spawnPlayerDroppedItem(player, dropped, false, true)
+		for _, stack := range dropped {
+			s.Runtime.spawnPlayerDroppedItem(player, stack, false, true)
 		}
 
 		if len(changedBackings) != 0 && currentMenu.backing != nil {
@@ -320,38 +323,46 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 }
 
 func applyMenuClick(candidate *menuCandidate, mode game.GameMode, click protocol.ContainerClick) bool {
+	var applied bool
+
 	switch click.Mode {
 	case clickModePickup:
 		candidate.menu.resetDrag()
 
-		return applyPickup(candidate, int(click.Slot), click.MouseButton)
+		applied = applyPickup(candidate, int(click.Slot), click.MouseButton)
 	case clickModeQuickMove:
 		candidate.menu.resetDrag()
 
-		return applyQuickMove(candidate, int(click.Slot), click.MouseButton)
+		applied = applyQuickMove(candidate, int(click.Slot), click.MouseButton)
 	case clickModeSwap:
 		candidate.menu.resetDrag()
 
-		return applySwap(candidate, int(click.Slot), click.MouseButton)
+		applied = applySwap(candidate, int(click.Slot), click.MouseButton)
 	case clickModeClone:
 		candidate.menu.resetDrag()
 
-		return applyClone(candidate, mode, int(click.Slot), click.MouseButton)
+		applied = applyClone(candidate, mode, int(click.Slot), click.MouseButton)
 	case clickModeThrow:
 		candidate.menu.resetDrag()
 
-		return applyThrow(candidate, int(click.Slot), click.MouseButton)
+		applied = applyThrow(candidate, int(click.Slot), click.MouseButton)
 	case clickModeQuickCraft:
-		return applyQuickCraft(candidate, mode, int(click.Slot), click.MouseButton)
+		applied = applyQuickCraft(candidate, mode, int(click.Slot), click.MouseButton)
 	case clickModePickupAll:
 		candidate.menu.resetDrag()
 
-		return applyPickupAll(candidate, int(click.Slot), click.MouseButton)
+		applied = applyPickupAll(candidate, int(click.Slot), click.MouseButton)
 	default:
 		candidate.menu.resetDrag()
 
 		return false
 	}
+
+	if applied {
+		candidate.deriveSlots()
+	}
+
+	return applied
 }
 
 func applyPickup(candidate *menuCandidate, slot int, button int8) bool {
@@ -365,11 +376,16 @@ func applyPickup(candidate *menuCandidate, slot int, button int8) bool {
 		}
 
 		if button == 0 || candidate.carried.Count == 1 {
-			candidate.dropped = candidate.carried.Clone()
+			candidate.appendDrop(candidate.carried)
+
 			candidate.carried = game.ItemStack{}
 		} else {
-			candidate.dropped = candidate.carried.Clone()
-			candidate.dropped.Count = 1
+			dropped := candidate.carried.Clone()
+
+			dropped.Count = 1
+
+			candidate.appendDrop(dropped)
+
 			candidate.carried.Count--
 		}
 
@@ -384,11 +400,43 @@ func applyPickup(candidate *menuCandidate, slot int, button int8) bool {
 		return false
 	}
 
+	if candidate.menu.slots[slot].onTake != nil {
+		return applyResultPickup(candidate, slot, button)
+	}
+
 	if button == 0 {
 		return applyLeftPickup(candidate, slot, target)
 	}
 
 	return applyRightPickup(candidate, slot, target)
+}
+
+func applyResultPickup(candidate *menuCandidate, slot int, button int8) bool {
+	target := candidate.slot(slot)
+	if target.Empty() {
+		return true
+	}
+
+	if candidate.carried.Empty() {
+		amount := target.Count
+		if button == 1 {
+			amount = (amount + 1) / 2
+		}
+
+		candidate.carried = candidate.take(slot, amount)
+
+		return true
+	}
+
+	if !target.SameItem(candidate.carried) {
+		return true
+	}
+
+	capacity := stackLimit(candidate.carried) - candidate.carried.Count
+	taken := candidate.take(slot, min(target.Count, capacity))
+	candidate.carried.Count += taken.Count
+
+	return true
 }
 
 func applyLeftPickup(candidate *menuCandidate, slot int, target *game.ItemStack) bool {
@@ -499,9 +547,40 @@ func applyQuickMove(candidate *menuCandidate, slot int, button int8) bool {
 		return true
 	}
 
+	if candidate.menu.slots[slot].onTake != nil {
+		return applyResultQuickMove(candidate, slot)
+	}
+
 	candidate.menu.quickMove(candidate, slot)
 
 	return true
+}
+
+func applyResultQuickMove(candidate *menuCandidate, slot int) bool {
+	for {
+		before := candidate.slots[slot].Clone()
+
+		candidate.menu.quickMove(candidate, slot)
+
+		remaining := candidate.slots[slot].Clone()
+
+		moved := before.Count - remaining.Count
+		if moved <= 0 {
+			return true
+		}
+
+		taken := before.Clone()
+
+		taken.Count = moved
+
+		candidate.menu.slots[slot].onTake(candidate, slot, taken)
+
+		candidate.appendDrop(remaining)
+
+		if candidate.slots[slot].Empty() || !candidate.slots[slot].SameItem(before) {
+			return true
+		}
+	}
 }
 
 func applySwap(candidate *menuCandidate, slot int, button int8) bool {
@@ -534,6 +613,19 @@ func applySwap(candidate *menuCandidate, slot int, button int8) bool {
 	}
 
 	if target == other {
+		return true
+	}
+
+	if candidate.menu.slots[slot].onTake != nil {
+		if !other.Empty() || target.Empty() {
+			return true
+		}
+
+		*other = target.Clone()
+		*target = game.ItemStack{}
+
+		candidate.menu.slots[slot].onTake(candidate, slot, *other)
+
 		return true
 	}
 
@@ -586,18 +678,44 @@ func applyThrow(candidate *menuCandidate, slot int, button int8) bool {
 		return true
 	}
 
+	if candidate.menu.slots[slot].onTake != nil {
+		return applyResultThrow(candidate, slot, button)
+	}
+
 	if button == 1 || target.Count == 1 {
-		candidate.dropped = target.Clone()
+		candidate.appendDrop(*target)
 
 		*target = game.ItemStack{}
 	} else {
-		candidate.dropped = target.Clone()
-		candidate.dropped.Count = 1
+		dropped := target.Clone()
+
+		dropped.Count = 1
+
+		candidate.appendDrop(dropped)
 
 		target.Count--
 	}
 
 	return true
+}
+
+func applyResultThrow(candidate *menuCandidate, slot int, button int8) bool {
+	amount := int32(1)
+	if button == 1 {
+		amount = candidate.slots[slot].Count
+	}
+
+	for {
+		before := candidate.slots[slot].Clone()
+
+		taken := candidate.take(slot, amount)
+
+		candidate.appendDrop(taken)
+
+		if button == 0 || taken.Empty() || candidate.slots[slot].Empty() || !candidate.slots[slot].SameItem(before) {
+			return true
+		}
+	}
 }
 
 func applyQuickCraft(candidate *menuCandidate, mode game.GameMode, slot int, button int8) bool {
@@ -731,7 +849,7 @@ func applyPickupAll(candidate *menuCandidate, slot int, button int8) bool {
 	for pass := 0; pass < 2 && candidate.carried.Count < limit; pass++ {
 		for current := first; current != last && candidate.carried.Count < limit; current += step {
 			stack := candidate.slot(current)
-			if stack.Empty() || !stack.SameItem(candidate.carried) || pass == 0 && stack.Count == candidate.stackLimit(current, *stack) {
+			if candidate.menu.slots[current].role == menuSlotResult || stack.Empty() || !stack.SameItem(candidate.carried) || pass == 0 && stack.Count == candidate.stackLimit(current, *stack) {
 				continue
 			}
 
@@ -745,6 +863,16 @@ func applyPickupAll(candidate *menuCandidate, slot int, button int8) bool {
 	}
 
 	return true
+}
+
+func cloneItemStacks(stacks []game.ItemStack) []game.ItemStack {
+	clones := make([]game.ItemStack, len(stacks))
+
+	for index, stack := range stacks {
+		clones[index] = stack.Clone()
+	}
+
+	return clones
 }
 
 func moveIntoSlots(candidate *menuCandidate, stack *game.ItemStack, slots []int) {

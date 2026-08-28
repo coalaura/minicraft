@@ -66,6 +66,18 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 			return false, BlockMutationResult{}, nil, blockMutationDelivery{}, nil
 		}
 
+		if block == game.CraftingTable {
+			if !session.hasLoadedBlock(position) || !blockWithinInteractionRange(player, position) {
+				return true, BlockMutationResult{Block: block}, []game.BlockPosition{position}, blockMutationDelivery{}, nil
+			}
+
+			r.lifecycleMu.Lock()
+			err := r.openCraftingTableLocked(session, position)
+			r.lifecycleMu.Unlock()
+
+			return true, BlockMutationResult{Block: block, Allowed: true, Changed: true}, []game.BlockPosition{position}, blockMutationDelivery{}, err
+		}
+
 		runtimeEntity, active := r.authoritativeRuntimeBlockEntityAt(position, block)
 		interaction, interactive := runtimeEntity.(RuntimeBlockEntityInteraction)
 

@@ -121,6 +121,29 @@ func (r *Runtime) closeMenuWithRemovalStateLocked(session *Session, notify, disc
 
 	windowID := current.windowID
 	carried := current.carried.Clone()
+	before := session.snapshotPlayer().Inventory
+
+	var removedDrops []game.ItemStack
+
+	removedInventoryChanged := false
+
+	if current.removed != nil {
+		_, removedInventoryChanged = session.updatePlayerState(func(player *game.Player) bool {
+			candidate := current.candidate()
+
+			candidate.selected = player.SelectedHotbarSlot
+
+			current.removed(candidate, disconnected)
+
+			changedSlots := candidate.changedSlots()
+
+			removedDrops = cloneItemStacks(candidate.dropped)
+
+			current.commit(candidate)
+
+			return current.exposesPlayerSlots(changedSlots)
+		})
+	}
 
 	current.carried = game.ItemStack{}
 
@@ -131,8 +154,6 @@ func (r *Runtime) closeMenuWithRemovalStateLocked(session *Session, notify, disc
 	}
 
 	session.returnToInventoryMenu()
-
-	before := session.snapshotPlayer().Inventory
 
 	inventoryChanged := false
 
@@ -152,6 +173,12 @@ func (r *Runtime) closeMenuWithRemovalStateLocked(session *Session, notify, disc
 		}
 	}
 
+	player := session.snapshotPlayer()
+
+	for _, stack := range removedDrops {
+		r.spawnPlayerDroppedItem(player, stack, false, false)
+	}
+
 	if notify {
 		err := session.writePacket(protocol.ClientboundCloseContainerID, protocol.CloseContainer{ContainerID: windowID})
 		if err != nil && session.Log != nil {
@@ -159,7 +186,7 @@ func (r *Runtime) closeMenuWithRemovalStateLocked(session *Session, notify, disc
 		}
 	}
 
-	if !disconnected && inventoryChanged {
+	if !disconnected && (removedInventoryChanged || inventoryChanged) {
 		err := session.synchronizePlayerInventoryMutation(before)
 		if err != nil && session.Log != nil {
 			session.Log.Warnf("[play] failed to synchronize returned carried item: %v\n", err)
@@ -212,18 +239,15 @@ func (r *Runtime) reconcileRuntimeBlockEntities(records []blockMutationRecord) {
 }
 
 func (r *Runtime) closeRemovedBlockEntityMenus(records []blockMutationRecord) {
-	removed := make(map[game.BlockPosition]struct{})
+	changed := make(map[game.BlockPosition]struct{})
 
 	for _, record := range records {
-		previousType := game.BlockEntityTypeForBlock(record.previous)
-		nextType := game.BlockEntityTypeForBlock(record.change.Replacement)
-
-		if previousType != game.BlockEntityTypeNone && previousType != nextType {
-			removed[record.change.Position] = struct{}{}
+		if !sameBlockType(record.previous, record.change.Replacement) {
+			changed[record.change.Position] = struct{}{}
 		}
 	}
 
-	if len(removed) == 0 {
+	if len(changed) == 0 {
 		return
 	}
 
@@ -236,8 +260,8 @@ func (r *Runtime) closeRemovedBlockEntityMenus(records []blockMutationRecord) {
 			continue
 		}
 
-		for position := range removed {
-			if current.backing.ContainsPosition(position) {
+		for position := range changed {
+			if current.backing.ContainsPosition(position) && !current.backing.StillValid(r, session) {
 				r.closeMenuLocked(session, true)
 
 				break

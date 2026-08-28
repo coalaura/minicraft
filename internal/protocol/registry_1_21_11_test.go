@@ -31,3 +31,9 @@ func TestGenericContainerMenuRegistryIDs12111(t *testing.T) {
 		t.Fatal("seven-row generic menu type is valid")
 	}
 }
+
+func TestCraftingMenuRegistryID12111(t *testing.T) {
+	if MenuCrafting != 12 {
+		t.Fatalf("crafting menu registry ID = %d, want 12", MenuCrafting)
+	}
+}

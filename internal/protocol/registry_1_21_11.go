@@ -9,6 +9,8 @@ const (
 	MenuGeneric9x6
 )
 
+const MenuCrafting int32 = 12
+
 func Generic9xMenuType(rows int) (int32, bool) {
 	if rows < 1 || rows > 6 {
 		return 0, false

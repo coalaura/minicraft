@@ -1,6 +1,7 @@
 package server
 
 import (
+	"io"
 	"math"
 	"testing"
 
@@ -64,6 +65,88 @@ func TestRuntimeEntityPacketsPositionAndGroundState(t *testing.T) {
 
 	packets = runtimeEntityPackets(view, &tracker, configuration, false)
 	assertRuntimeEntityPacketID(t, packets, protocol.ClientboundSynchronizeEntityPositionID)
+}
+
+func TestLateViewerItemSpawnUsesTransmittedTrackerBaseline(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	item := runtime.SpawnItemEntity(
+		game.ItemStack{Item: game.ItemStone, Count: 1},
+		game.Position{X: 1, Y: 64, Z: 2},
+		game.Velocity{X: 0.1},
+		32767,
+	)
+
+	item.State.mu.Lock()
+	item.State.Position.X = 1.25
+
+	item.Velocity.X = 0.2
+	item.State.mu.Unlock()
+
+	lateViewer, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "LateViewer")
+
+	lateViewer.loadedChunks = map[LoadedChunk]struct{}{{}: {}}
+
+	lateViewer.trackRuntimeEntity(item)
+
+	packets := connection.packets(t)
+	if len(packets) != 2 || packets[0].ID != protocol.ClientboundAddEntityID {
+		t.Fatalf("pairing packets = %+v", connection.packetIDs(t))
+	}
+
+	reader := protocol.NewPacketReader(packets[0].Data)
+
+	reader.VarInt()
+
+	_, err := reader.Seek(16, io.SeekCurrent)
+	if err != nil {
+		t.Fatalf("skip entity UUID: %v", err)
+	}
+
+	reader.VarInt()
+
+	spawnPosition := game.Position{X: reader.Double(), Y: reader.Double(), Z: reader.Double()}
+
+	err = reader.Err()
+	if err != nil {
+		t.Fatalf("decode add entity: %v", err)
+	}
+
+	if spawnPosition != (game.Position{X: 1, Y: 64, Z: 2}) {
+		t.Fatalf("late-viewer spawn position = %+v, want transmitted base", spawnPosition)
+	}
+
+	item.State.mu.Lock()
+	view := item.runtimeEntityViewLocked()
+
+	spawnSnapshot := runtimeEntitySpawnSnapshotLocked(view, item.State.tracker)
+
+	movementPackets := runtimeEntityPackets(view, &item.State.tracker, item.RuntimeEntityTrackingConfig(), false)
+	item.State.mu.Unlock()
+
+	spawnPacket := item.AddEntityPacket(spawnSnapshot)
+	if spawnPacket.VelocityX != 0.1 || spawnPacket.VelocityY != 0 || spawnPacket.VelocityZ != 0 {
+		t.Fatalf("late-viewer spawn velocity = (%v, %v, %v), want transmitted velocity", spawnPacket.VelocityX, spawnPacket.VelocityY, spawnPacket.VelocityZ)
+	}
+
+	var relative protocol.UpdateEntityPosition
+
+	for _, packet := range movementPackets {
+		position, positionPacket := packet.Encoder.(protocol.UpdateEntityPosition)
+		if positionPacket {
+			relative = position
+		}
+	}
+
+	clientPosition := spawnPosition
+
+	clientPosition.X += float64(relative.DeltaX) / entityPositionScale
+	clientPosition.Y += float64(relative.DeltaY) / entityPositionScale
+	clientPosition.Z += float64(relative.DeltaZ) / entityPositionScale
+
+	if clientPosition != view.Position {
+		t.Fatalf("position after next relative update = %+v, want %+v", clientPosition, view.Position)
+	}
 }
 
 func TestProtocolPositionDeltaUsesAbsoluteRounding(t *testing.T) {

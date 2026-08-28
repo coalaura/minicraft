@@ -53,6 +53,16 @@ type runtimeEntityView struct {
 	OnGround bool
 }
 
+type runtimeEntitySpawnSnapshot struct {
+	ID       int32
+	UUID     string
+	Position game.Position
+	Velocity game.Velocity
+	Yaw      byte
+	Pitch    byte
+	HeadYaw  byte
+}
+
 type RuntimeEntityMetadata interface {
 	EntityMetadata() []protocol.EntityMetadataEntry
 }
@@ -62,7 +72,7 @@ type RuntimeEntityVelocity interface {
 }
 
 type RuntimeEntitySpawner interface {
-	AddEntityPacket() protocol.AddEntity
+	AddEntityPacket(runtimeEntitySpawnSnapshot) protocol.AddEntity
 }
 
 type RuntimeEntityTracker interface {
@@ -149,20 +159,20 @@ func (entity *runtimeItemEntity) EntityVelocity() game.Velocity {
 	return entity.Velocity
 }
 
-func (entity *runtimeItemEntity) AddEntityPacket() protocol.AddEntity {
-	entity.State.mu.RLock()
-	defer entity.State.mu.RUnlock()
-
+func (entity *runtimeItemEntity) AddEntityPacket(snapshot runtimeEntitySpawnSnapshot) protocol.AddEntity {
 	return protocol.AddEntity{
-		EntityID:  entity.State.ID,
-		UUID:      entity.State.UUID,
+		EntityID:  snapshot.ID,
+		UUID:      snapshot.UUID,
 		Type:      protocol.ItemEntityType,
-		X:         entity.State.Position.X,
-		Y:         entity.State.Position.Y,
-		Z:         entity.State.Position.Z,
-		VelocityX: entity.Velocity.X,
-		VelocityY: entity.Velocity.Y,
-		VelocityZ: entity.Velocity.Z,
+		X:         snapshot.Position.X,
+		Y:         snapshot.Position.Y,
+		Z:         snapshot.Position.Z,
+		VelocityX: snapshot.Velocity.X,
+		VelocityY: snapshot.Velocity.Y,
+		VelocityZ: snapshot.Velocity.Z,
+		Yaw:       snapshot.Yaw,
+		Pitch:     snapshot.Pitch,
+		HeadYaw:   snapshot.HeadYaw,
 	}
 }
 
@@ -582,15 +592,24 @@ func (s *Session) shouldTrackRuntimeEntity(entity RuntimeEntity) bool {
 }
 
 func (s *Session) trackRuntimeEntity(entity RuntimeEntity) {
-	tracked, trackable := entity.(RuntimeEntityTracker)
-	if !trackable {
+	_, trackable := entity.(RuntimeEntityTracker)
+	lockedViewer, lockable := entity.(runtimeEntityLockedViewer)
+
+	if !trackable || !lockable {
 		return
 	}
 
 	s.entityTrackMu.Lock()
 	defer s.entityTrackMu.Unlock()
 
-	view := tracked.RuntimeEntityView()
+	state := entity.RuntimeEntityState()
+
+	state.mu.RLock()
+	view := lockedViewer.runtimeEntityViewLocked()
+
+	snapshot := runtimeEntitySpawnSnapshotLocked(view, state.tracker)
+	state.mu.RUnlock()
+
 	if view.Removed {
 		return
 	}
@@ -613,9 +632,11 @@ func (s *Session) trackRuntimeEntity(entity RuntimeEntity) {
 	}
 
 	addSent := false
-	err := s.writePacket(protocol.ClientboundAddEntityID, spawner.AddEntityPacket())
+
+	err := s.writePacket(protocol.ClientboundAddEntityID, spawner.AddEntityPacket(snapshot))
 	if err == nil {
 		addSent = true
+
 		metadata, present := entity.(RuntimeEntityMetadata)
 		if present {
 			err = s.writePacket(protocol.ClientboundEntityMetadataID, protocol.EntityMetadata{EntityID: view.ID, Entries: metadata.EntityMetadata()})

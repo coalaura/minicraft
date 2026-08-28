@@ -19,6 +19,7 @@ type runtimeEntityTracker struct {
 	LastVelocity  game.Velocity
 	LastYaw       byte
 	LastPitch     byte
+	LastHeadYaw   byte
 	WasOnGround   bool
 	UpdateTick    int32
 	TeleportDelay int32
@@ -39,7 +40,20 @@ func newRuntimeEntityTracker(view runtimeEntityView) runtimeEntityTracker {
 		LastVelocity: view.Velocity,
 		LastYaw:      protocolAngle(view.Rotation.Yaw),
 		LastPitch:    protocolAngle(view.Rotation.Pitch),
+		LastHeadYaw:  protocolAngle(view.Rotation.HeadYaw),
 		WasOnGround:  view.OnGround,
+	}
+}
+
+func runtimeEntitySpawnSnapshotLocked(view runtimeEntityView, tracker runtimeEntityTracker) runtimeEntitySpawnSnapshot {
+	return runtimeEntitySpawnSnapshot{
+		ID:       view.ID,
+		UUID:     view.UUID,
+		Position: tracker.PositionBase,
+		Velocity: tracker.LastVelocity,
+		Yaw:      tracker.LastYaw,
+		Pitch:    tracker.LastPitch,
+		HeadYaw:  tracker.LastHeadYaw,
 	}
 }
 
