@@ -1,6 +1,7 @@
 package server
 
 import (
+	"slices"
 	"strconv"
 	"testing"
 
@@ -177,6 +178,57 @@ func TestSnowAndCandleStacking(t *testing.T) {
 
 			assertBlockProperty(t, world.BlockAt(position), test.property, blockPropertyValue(test.maximum))
 		})
+	}
+}
+
+func TestSurvivalCandleStackingConsumesAndUpdatesState(t *testing.T) {
+	support := game.BlockPosition{Y: 69}
+	position := game.BlockPosition{Y: 70}
+	world := &game.World{}
+
+	world.SetBlock(support, game.Stone)
+
+	runtime := NewRuntime(world)
+	actor, connection := newPlacementTestSession(runtime, support)
+	actor.Player.GameMode = game.GameModeSurvival
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemCandle, Count: 3}
+
+	markPlacementChunksLoaded(actor, support, position)
+	joinTestSession(t, runtime, actor)
+
+	err := actor.handleUseItemOn(testUseItemOn(support, protocol.BlockFaceUp, protocol.MainHand, 1))
+	if err != nil {
+		t.Fatalf("initial candle placement: %v", err)
+	}
+
+	err = actor.handleUseItemOn(testUseItemOn(position, protocol.BlockFaceUp, protocol.MainHand, 2))
+	if err != nil {
+		t.Fatalf("second candle placement: %v", err)
+	}
+
+	assertBlockProperty(t, world.BlockAt(position), "candles", "2")
+
+	if count := actor.snapshotPlayer().Inventory.Hotbar[0].Count; count != 1 {
+		t.Fatalf("candle count = %d, want 1", count)
+	}
+
+	connection.reset()
+	actor.Player.Sneaking = true
+
+	err = actor.handleUseItemOn(testUseItemOn(position, protocol.BlockFaceUp, protocol.MainHand, 3))
+	if err != nil {
+		t.Fatalf("rejected candle stack: %v", err)
+	}
+
+	assertBlockProperty(t, world.BlockAt(position), "candles", "2")
+
+	if count := actor.snapshotPlayer().Inventory.Hotbar[0].Count; count != 1 {
+		t.Fatalf("candle count after rejected stack = %d, want 1", count)
+	}
+
+	packetIDs := connection.packetIDs(t)
+	if !slices.Contains(packetIDs, protocol.ClientboundContainerSetContentID) {
+		t.Fatalf("rejected stack packets = %v, want inventory correction", packetIDs)
 	}
 }
 

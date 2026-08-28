@@ -41,6 +41,7 @@ type BlockDropKind uint8
 const (
 	BlockDropNone BlockDropKind = iota
 	BlockDropExact
+	BlockDropStateExact
 	BlockDropDeferred
 )
 
@@ -52,6 +53,8 @@ type BlockMining struct {
 	DropItem      Item
 	DropMin       int32
 	DropMax       int32
+	DropProperty  string
+	DropValue     string
 	RequiresTool  bool
 	Destroyable   bool
 }
@@ -387,4 +390,4 @@ func (definition BlockDefinition) propertyIndices(block Block) []int {
 	return indices
 }
 
-//go:generate go run ../../cmd/generate-blocks -input ../../data/blocks.json -tags ../../data/block_tags -output blocks_generated.go
+//go:generate go run ../../cmd/generate-blocks -input ../../data/blocks.json -items ../../data/items.json -tags ../../data/block_tags -loot ../../data/block_loot -output blocks_generated.go -protocol-output ../protocol/block_tags_generated.go

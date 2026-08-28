@@ -9,6 +9,8 @@ import (
 )
 
 func (s *Session) handleUseItemOn(interaction protocol.UseItemOn) error {
+	inventoryBefore := s.snapshotPlayer().Inventory
+
 	if !validPlacementInteraction(interaction) {
 		return s.resynchronizePlacement(interaction.Position, interaction.Sequence)
 	}
@@ -42,10 +44,21 @@ func (s *Session) handleUseItemOn(interaction protocol.UseItemOn) error {
 	}
 
 	if !result.Allowed || !result.Changed {
-		return s.resynchronizeBlocks(affected, interaction.Sequence)
+		return s.resynchronizePlacementPrediction(affected, interaction.Sequence, inventoryBefore)
 	}
 
 	return s.sendBlockChangedAck(interaction.Sequence)
+}
+
+func (s *Session) resynchronizePlacementPrediction(positions []game.BlockPosition, sequence int32, inventoryBefore game.PlayerInventory) error {
+	blockErr := s.resynchronizeBlocks(positions, sequence)
+	inventoryErr := s.synchronizePlayerInventoryMutation(inventoryBefore)
+
+	if blockErr != nil {
+		return blockErr
+	}
+
+	return inventoryErr
 }
 
 func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (bool, BlockMutationResult, []game.BlockPosition, error) {

@@ -289,7 +289,18 @@ func (r *Runtime) commitOrdinaryBlockDrops(records []blockMutationRecord) {
 		}
 
 		mining := record.previous.MiningProperties()
-		if mining.DropKind != game.BlockDropExact || mining.DropItem == game.ItemAir || mining.DropMax <= 0 {
+		if mining.DropKind != game.BlockDropExact && mining.DropKind != game.BlockDropStateExact {
+			continue
+		}
+
+		if mining.DropKind == game.BlockDropStateExact {
+			value, valid := record.previous.Property(mining.DropProperty)
+			if !valid || value != mining.DropValue {
+				continue
+			}
+		}
+
+		if mining.DropItem == game.ItemAir || mining.DropMax <= 0 {
 			continue
 		}
 

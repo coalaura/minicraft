@@ -141,6 +141,10 @@ var ConfigurationRegistries = []Registry{
 
 var ConfigurationTags = []RegistryTags{
 	{
+		RegistryID: "minecraft:block",
+		Tags:       generatedBlockTags,
+	},
+	{
 		RegistryID: "minecraft:timeline",
 		Tags: []RegistryTag{
 			{

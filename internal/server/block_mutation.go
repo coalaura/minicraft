@@ -117,6 +117,11 @@ func (r *Runtime) MutateBlock(session *Session, action BlockMutationAction, posi
 func (r *Runtime) mutateMinedBlockLocked(session *Session, position game.BlockPosition, tool game.ItemStack) (BlockMutationResult, blockMutationDelivery, error) {
 	changes := r.breakChanges(position)
 	requiredChanges := len(changes)
+	physicalBreaks := make(map[game.BlockPosition]struct{}, requiredChanges)
+
+	for _, change := range changes {
+		physicalBreaks[change.Position] = struct{}{}
+	}
 
 	changes = r.withStructuralNeighborChanges(changes)
 
@@ -127,13 +132,11 @@ func (r *Runtime) mutateMinedBlockLocked(session *Session, position game.BlockPo
 
 	for index := range delivery.records {
 		record := &delivery.records[index]
-		if record.change.Position != position || record.cause != blockMutationDirectBreak {
+		if _, physicalBreak := physicalBreaks[record.change.Position]; !physicalBreak {
 			continue
 		}
 
 		record.ordinaryDrop = tool.Item.IsCorrectToolForDrops(record.previous)
-
-		break
 	}
 
 	return result, delivery, nil

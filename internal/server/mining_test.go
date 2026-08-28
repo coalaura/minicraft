@@ -13,6 +13,21 @@ type miningSpeedTestCase struct {
 	want float64
 }
 
+type baselineBlockDropTestCase struct {
+	block game.Block
+	item  game.Item
+	count int32
+}
+
+type doorDropTestCase struct {
+	block     game.Block
+	wantDrops int
+}
+
+type doorMiningTestCase struct {
+	target game.BlockPosition
+}
+
 func TestBaselineMiningSpeeds(t *testing.T) {
 	stone := game.Stone
 
@@ -190,6 +205,189 @@ func TestSurvivalMiningDropsOrdinaryLoot(t *testing.T) {
 	drop := entities[0].(*runtimeItemEntity)
 	if drop.Stack.Item != game.ItemDirt || drop.Stack.Count != 1 || drop.PickupDelay != 10 || drop.Velocity != (game.Velocity{}) {
 		t.Fatalf("ordinary drop = %+v", drop)
+	}
+}
+
+func TestGeneratedBaselineBlockDrops(t *testing.T) {
+	tests := map[string]baselineBlockDropTestCase{
+		"stone":        {block: game.Stone, item: game.ItemCobblestone, count: 1},
+		"deepslate":    {block: game.Deepslate, item: game.ItemCobbledDeepslate, count: 1},
+		"stone bricks": {block: game.StoneBricks, item: game.ItemStoneBricks, count: 1},
+		"spruce log":   {block: game.SpruceLog, item: game.ItemSpruceLog, count: 1},
+		"iron ore":     {block: game.IronOre, item: game.ItemRawIron, count: 1},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			runtime := NewRuntime(&game.World{})
+
+			record := blockMutationRecord{
+				change:       game.BlockChange{Position: game.BlockPosition{Y: 70}, Replacement: game.Air},
+				previous:     test.block,
+				ordinaryDrop: true,
+			}
+
+			runtime.commitOrdinaryBlockDrops([]blockMutationRecord{record})
+
+			entities := runtime.snapshotRuntimeEntities()
+			if len(entities) != 1 {
+				t.Fatalf("ordinary drops = %d, want 1", len(entities))
+			}
+
+			drop := entities[0].(*runtimeItemEntity)
+			if drop.Stack.Item != test.item || drop.Stack.Count != test.count {
+				t.Fatalf("ordinary drop = %+v, want item %d count %d", drop.Stack, test.item, test.count)
+			}
+		})
+	}
+}
+
+func TestDoorDropUsesMinedBlockState(t *testing.T) {
+	lower, valid := game.OakDoor.WithProperties(game.BlockPropertyValue{Name: "half", Value: "lower"})
+	if !valid {
+		t.Fatal("lower door state is invalid")
+	}
+
+	upper, valid := game.OakDoor.WithProperties(game.BlockPropertyValue{Name: "half", Value: "upper"})
+	if !valid {
+		t.Fatal("upper door state is invalid")
+	}
+
+	tests := map[string]doorDropTestCase{
+		"lower": {block: lower, wantDrops: 1},
+		"upper": {block: upper, wantDrops: 0},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			runtime := NewRuntime(&game.World{})
+
+			record := blockMutationRecord{
+				change:       game.BlockChange{Position: game.BlockPosition{Y: 70}, Replacement: game.Air},
+				previous:     test.block,
+				ordinaryDrop: true,
+			}
+
+			runtime.commitOrdinaryBlockDrops([]blockMutationRecord{record})
+
+			entities := runtime.snapshotRuntimeEntities()
+			if len(entities) != test.wantDrops {
+				t.Fatalf("ordinary drops = %d, want %d", len(entities), test.wantDrops)
+			}
+
+			if test.wantDrops == 1 {
+				drop := entities[0].(*runtimeItemEntity)
+				if drop.Stack.Item != game.ItemOakDoor || drop.Stack.Count != 1 {
+					t.Fatalf("ordinary drop = %+v, want one oak door", drop.Stack)
+				}
+			}
+		})
+	}
+}
+
+func TestMiningEitherDoorHalfDropsOneDoor(t *testing.T) {
+	lowerPosition := game.BlockPosition{Y: 70}
+	upperPosition := game.BlockPosition{Y: 71}
+
+	lower, valid := game.OakDoor.WithProperties(game.BlockPropertyValue{Name: "half", Value: "lower"})
+	if !valid {
+		t.Fatal("lower door state is invalid")
+	}
+
+	upper, valid := game.OakDoor.WithProperties(game.BlockPropertyValue{Name: "half", Value: "upper"})
+	if !valid {
+		t.Fatal("upper door state is invalid")
+	}
+
+	tests := map[string]doorMiningTestCase{
+		"lower": {target: lowerPosition},
+		"upper": {target: upperPosition},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			world := &game.World{}
+
+			world.SetBlock(game.BlockPosition{Y: 69}, game.Stone)
+			world.SetBlock(lowerPosition, lower)
+			world.SetBlock(upperPosition, upper)
+
+			runtime := NewRuntime(world)
+
+			actor, _ := newMiningTestSession(t, runtime, test.target, game.GameModeSurvival, game.ItemDiamondAxe)
+
+			startMining(t, actor, test.target, 1)
+
+			for range 10 {
+				runtime.Tick()
+			}
+
+			stopMining(t, actor, test.target, 2)
+
+			if world.BlockAt(lowerPosition) != game.Air || world.BlockAt(upperPosition) != game.Air {
+				t.Fatal("door remained after mining")
+			}
+
+			entities := runtime.snapshotRuntimeEntities()
+			if len(entities) != 1 {
+				t.Fatalf("ordinary drops = %d, want 1", len(entities))
+			}
+
+			drop := entities[0].(*runtimeItemEntity)
+			if drop.Stack.Item != game.ItemOakDoor || drop.Stack.Count != 1 {
+				t.Fatalf("ordinary drop = %+v, want one oak door", drop.Stack)
+			}
+		})
+	}
+}
+
+func TestNetheritePickaxeMinesAndDropsStoneBricks(t *testing.T) {
+	position := game.BlockPosition{Y: 70}
+
+	handWorld := &game.World{Generator: blockMutationTestGenerator{block: game.StoneBricks}}
+
+	handRuntime := NewRuntime(handWorld)
+
+	handActor, _ := newMiningTestSession(t, handRuntime, position, game.GameModeSurvival, game.ItemAir)
+
+	startMining(t, handActor, position, 1)
+
+	for range 3 {
+		handRuntime.Tick()
+	}
+
+	stopMining(t, handActor, position, 2)
+
+	if block := handWorld.BlockAt(position); block != game.StoneBricks {
+		t.Fatalf("hand mined stone bricks in four mining units")
+	}
+
+	world := &game.World{Generator: blockMutationTestGenerator{block: game.StoneBricks}}
+
+	runtime := NewRuntime(world)
+
+	actor, _ := newMiningTestSession(t, runtime, position, game.GameModeSurvival, game.ItemNetheritePickaxe)
+
+	startMining(t, actor, position, 3)
+
+	for range 3 {
+		runtime.Tick()
+	}
+
+	stopMining(t, actor, position, 4)
+
+	if block := world.BlockAt(position); block != game.Air {
+		t.Fatalf("block after four mining units = %d, want air", block)
+	}
+
+	entities := runtime.snapshotRuntimeEntities()
+	if len(entities) != 1 {
+		t.Fatalf("ordinary drops = %d, want 1", len(entities))
+	}
+
+	drop := entities[0].(*runtimeItemEntity)
+	if drop.Stack.Item != game.ItemStoneBricks || drop.Stack.Count != 1 {
+		t.Fatalf("ordinary drop = %+v, want one stone bricks", drop.Stack)
 	}
 }
 

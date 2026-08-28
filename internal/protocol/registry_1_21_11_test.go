@@ -1,6 +1,11 @@
 package protocol
 
-import "testing"
+import (
+	"slices"
+	"testing"
+
+	"github.com/coalaura/minicraft/internal/game"
+)
 
 func TestGenericContainerMenuRegistryIDs12111(t *testing.T) {
 	actual := [...]int32{
@@ -35,5 +40,47 @@ func TestGenericContainerMenuRegistryIDs12111(t *testing.T) {
 func TestCraftingMenuRegistryID12111(t *testing.T) {
 	if MenuCrafting != 12 {
 		t.Fatalf("crafting menu registry ID = %d, want 12", MenuCrafting)
+	}
+}
+
+func TestConfigurationBlockMiningTags12111(t *testing.T) {
+	var blockTags []RegistryTag
+
+	for _, registry := range ConfigurationTags {
+		if registry.RegistryID == "minecraft:block" {
+			blockTags = registry.Tags
+
+			break
+		}
+	}
+
+	if len(blockTags) == 0 {
+		t.Fatal("configuration block tags are missing")
+	}
+
+	var pickaxeEntries []int32
+
+	incorrectNetheriteFound := false
+
+	for _, tag := range blockTags {
+		switch tag.ID {
+		case "minecraft:mineable/pickaxe":
+			pickaxeEntries = tag.Entries
+		case "minecraft:incorrect_for_netherite_tool":
+			incorrectNetheriteFound = true
+
+			if len(tag.Entries) != 0 {
+				t.Fatalf("netherite incorrect-tool entries = %v, want none", tag.Entries)
+			}
+		}
+	}
+
+	stoneBricksID := int32(game.StoneBricksID)
+	if !slices.Contains(pickaxeEntries, stoneBricksID) {
+		t.Fatalf("pickaxe tag does not contain stone bricks block ID %d", stoneBricksID)
+	}
+
+	if !incorrectNetheriteFound {
+		t.Fatal("netherite incorrect-tool tag is missing")
 	}
 }

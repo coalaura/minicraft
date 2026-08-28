@@ -263,7 +263,11 @@ func TestDeniedPlacementResynchronizesAndAcknowledges(t *testing.T) {
 				t.Fatalf("denied placement changed block to %d", block)
 			}
 
-			assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockChangedAckID})
+			assertPacketIDs(t, actorConnection.packetIDs(t), []int32{
+				protocol.ClientboundBlockUpdateID,
+				protocol.ClientboundBlockChangedAckID,
+				protocol.ClientboundContainerSetContentID,
+			})
 			assertPacketIDs(t, observerConnection.packetIDs(t), nil)
 			assertBlockUpdate(t, actorConnection.packets(t)[0], target, protocol.AirBlockState)
 			assertBlockChangedAck(t, actorConnection.packets(t)[1], 102)
