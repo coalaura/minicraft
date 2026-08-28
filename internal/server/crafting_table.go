@@ -36,6 +36,7 @@ func newCraftingTableMenu(windowID int32, table *craftingTableBacking, inventory
 	slots = append(slots, menuSlot{
 		stack:        &table.result,
 		role:         menuSlotResult,
+		derived:      true,
 		limit:        64,
 		storage:      menuStorageBacking,
 		backingIndex: 0,

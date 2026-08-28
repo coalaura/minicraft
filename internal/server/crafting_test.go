@@ -328,6 +328,32 @@ func TestCraftingTableMenuLayoutRecipesAndValidity(t *testing.T) {
 	})
 }
 
+func TestCraftingTableAcceptsInputPredictionWithoutDerivedResult(t *testing.T) {
+	position := game.BlockPosition{Y: 70}
+
+	runtime, session, _ := newCraftingTableTestRuntime(t, position)
+
+	openCraftingTableForTest(t, runtime, session, position)
+
+	menu := session.activeMenu()
+
+	for _, slot := range []int{1, 2, 4, 6, 7, 8, 9} {
+		*menu.slots[slot].stack = game.ItemStack{Item: game.ItemCobblestone, Count: 1}
+	}
+
+	menu.carried = game.ItemStack{Item: game.ItemCobblestone, Count: 1}
+
+	craftingClick(t, session, protocol.ContainerClick{Slot: 3, MouseButton: 0, Mode: clickModePickup})
+
+	if !menu.slots[3].stack.Equal(game.ItemStack{Item: game.ItemCobblestone, Count: 1}) {
+		t.Fatalf("completed furnace input = %+v", *menu.slots[3].stack)
+	}
+
+	if !menu.slots[0].stack.Equal(game.ItemStack{Item: game.ItemFurnace, Count: 1}) || !menu.carried.Empty() {
+		t.Fatalf("completed furnace = result %+v carried %+v", *menu.slots[0].stack, menu.carried)
+	}
+}
+
 func newCraftingTableTestRuntime(t *testing.T, position game.BlockPosition) (*Runtime, *Session, *recordingConnection) {
 	t.Helper()
 
@@ -372,6 +398,10 @@ func craftingClick(t *testing.T, session *Session, click protocol.ContainerClick
 	click.CursorItem = hashedStack(candidate.carried)
 
 	for _, slot := range candidate.changedSlots() {
+		if menu.slots[slot].derived {
+			continue
+		}
+
 		click.ChangedSlots = append(click.ChangedSlots, protocol.ChangedSlot{Location: int16(slot), Item: hashedStack(candidate.slots[slot])})
 	}
 

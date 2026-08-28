@@ -1146,13 +1146,17 @@ func creativeItemStack(item protocol.UntrustedSlot) (game.ItemStack, bool) {
 }
 
 func validPredictedMenu(click protocol.ContainerClick, candidate *menuCandidate, changed []int) bool {
-	if len(click.ChangedSlots) != len(changed) || !hashedSlotMatches(click.CursorItem, candidate.carried) {
+	if !hashedSlotMatches(click.CursorItem, candidate.carried) {
 		return false
 	}
 
 	expected := make(map[int]struct{}, len(changed))
 
 	for _, slot := range changed {
+		if candidate.menu.slots[slot].derived {
+			continue
+		}
+
 		expected[slot] = struct{}{}
 	}
 
@@ -1160,7 +1164,7 @@ func validPredictedMenu(click protocol.ContainerClick, candidate *menuCandidate,
 
 	for _, prediction := range click.ChangedSlots {
 		slot := int(prediction.Location)
-		if _, ok := expected[slot]; !ok {
+		if slot < 0 || slot >= len(candidate.menu.slots) {
 			return false
 		}
 
@@ -1169,13 +1173,24 @@ func validPredictedMenu(click protocol.ContainerClick, candidate *menuCandidate,
 		}
 
 		seen[slot] = struct{}{}
+
+		if candidate.menu.slots[slot].derived {
+			continue
+		}
+
+		if _, ok := expected[slot]; !ok {
+			return false
+		}
+
 		stack := candidate.slot(slot)
 		if stack == nil || !hashedSlotMatches(prediction.Item, *stack) {
 			return false
 		}
+
+		delete(expected, slot)
 	}
 
-	return true
+	return len(expected) == 0
 }
 
 func hashedSlotMatches(hashed protocol.HashedSlot, stack game.ItemStack) bool {

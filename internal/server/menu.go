@@ -41,6 +41,7 @@ type menuInventoryBacking struct {
 type menuSlot struct {
 	stack         *game.ItemStack
 	role          menuSlotRole
+	derived       bool
 	armorIndex    int
 	limit         int32
 	playerSlot    int
@@ -108,6 +109,7 @@ func newPlayerInventoryMenu(inventory *game.PlayerInventory) *menu {
 	}
 
 	slots[0].role = menuSlotResult
+	slots[0].derived = true
 	slots[0].onTake = takeCraftingResult
 
 	for slot := 5; slot <= 8; slot++ {
