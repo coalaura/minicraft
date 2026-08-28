@@ -93,6 +93,7 @@ const (
 	ClientboundChunkBatchEndID                = 0x0B
 	ClientboundChunkBatchBeginID              = 0x0C
 	ClientboundContainerSetContentID          = 0x12
+	ClientboundContainerSetDataID             = 0x13
 	ClientboundContainerSetSlotID             = 0x14
 	ClientboundCloseContainerID               = 0x11
 	ClientboundCommandSuggestionsID           = 0x0F
@@ -127,4 +128,5 @@ const (
 	ClientboundSoundID                        = 0x73
 	ClientboundSystemChatID                   = 0x77
 	ClientboundTakeItemEntityID               = 0x7A
+	ClientboundUpdateRecipesID                = 0x83
 )

@@ -20,6 +20,7 @@ type packetIDTest struct {
 func TestMovementPacketIDsProtocol774(t *testing.T) {
 	packetIDs := map[string]packetIDTest{
 		"container set content":        {actual: ClientboundContainerSetContentID, expected: 0x12},
+		"container set data":           {actual: ClientboundContainerSetDataID, expected: 0x13},
 		"container set slot":           {actual: ClientboundContainerSetSlotID, expected: 0x14},
 		"synchronize entity position":  {actual: ClientboundSynchronizeEntityPositionID, expected: 0x23},
 		"update entity position":       {actual: ClientboundUpdateEntityPositionID, expected: 0x33},
@@ -29,6 +30,7 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 		"set entity motion":            {actual: ClientboundSetEntityMotionID, expected: 0x63},
 		"entity equipment":             {actual: ClientboundEntityEquipmentID, expected: 0x64},
 		"take item entity":             {actual: ClientboundTakeItemEntityID, expected: 0x7A},
+		"update recipes":               {actual: ClientboundUpdateRecipesID, expected: 0x83},
 	}
 
 	for name, packetID := range packetIDs {
@@ -72,6 +74,12 @@ func TestContainerInventoryPacketsEncode(t *testing.T) {
 		0x00, 0x01, 0x00, 0x2D,
 		0x02, byte(game.ItemStone), 0x01, 0x01, 0x01, 0x10, 0x08,
 	})
+
+	assertPacketEncoding(t, ContainerSetData{
+		ContainerID: 3,
+		ID:          2,
+		Value:       300,
+	}, []byte{0x03, 0x00, 0x02, 0x01, 0x2C})
 }
 
 func TestContainerOpenClosePacketsEncode(t *testing.T) {
@@ -93,6 +101,42 @@ func TestContainerOpenClosePacketsEncode(t *testing.T) {
 	})
 
 	assertPacketEncoding(t, CloseContainer{ContainerID: 300}, []byte{0xAC, 0x02})
+}
+
+func TestUpdateRecipesEncodesRecipePropertySets(t *testing.T) {
+	var writer PacketWriter
+
+	UpdateRecipes{PropertySets: []RecipePropertySet{
+		{Name: "minecraft:furnace_input", Items: []game.Item{game.ItemPotato, game.ItemRawIron}},
+	}}.Encode(&writer)
+
+	err := writer.Err()
+	if err != nil {
+		t.Fatalf("encode update recipes: %v", err)
+	}
+
+	reader := NewPacketReader(writer.Buffer.Bytes())
+
+	if reader.VarInt() != 1 {
+		t.Fatal("recipe property set count is not one")
+	}
+
+	if reader.String(32767) != "minecraft:furnace_input" {
+		t.Fatal("recipe property set name is incorrect")
+	}
+
+	if reader.VarInt() != 2 || reader.VarInt() != int32(game.ItemPotato) || reader.VarInt() != int32(game.ItemRawIron) {
+		t.Fatal("recipe property set items are incorrect")
+	}
+
+	if reader.VarInt() != 0 {
+		t.Fatal("stonecutter recipe set is not empty")
+	}
+
+	err = reader.Err()
+	if err != nil {
+		t.Fatalf("decode update recipes: %v", err)
+	}
 }
 
 func TestChunkPacketProtocol774(t *testing.T) {

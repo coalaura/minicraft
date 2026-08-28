@@ -201,6 +201,12 @@ func blockEntityType(name string) string {
 		return "BlockEntityTypeTrappedChest"
 	case "barrel":
 		return "BlockEntityTypeBarrel"
+	case "furnace":
+		return "BlockEntityTypeFurnace"
+	case "smoker":
+		return "BlockEntityTypeSmoker"
+	case "blast_furnace":
+		return "BlockEntityTypeBlastFurnace"
 	}
 
 	if isCopperChest(name) {

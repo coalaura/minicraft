@@ -9,7 +9,12 @@ const (
 	MenuGeneric9x6
 )
 
-const MenuCrafting int32 = 12
+const (
+	MenuBlastFurnace int32 = 10
+	MenuCrafting     int32 = 12
+	MenuFurnace      int32 = 14
+	MenuSmoker       int32 = 22
+)
 
 func Generic9xMenuType(rows int) (int32, bool) {
 	if rows < 1 || rows > 6 {

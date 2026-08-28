@@ -7,6 +7,14 @@ type craftingRemainderTestCase struct {
 	output Item
 }
 
+type cookingRecipeTestCase struct {
+	name       string
+	recipeType CookingRecipeType
+	input      Item
+	result     Item
+	time       int32
+}
+
 func TestMatchShapedSupportsOffsetAndMirror(t *testing.T) {
 	recipe := ShapedRecipe{
 		width:  2,
@@ -138,5 +146,39 @@ func TestCraftingRemainders(t *testing.T) {
 	_, found := CraftingRemainder(ItemStick)
 	if found {
 		t.Fatal("stick unexpectedly has a crafting remainder")
+	}
+}
+
+func TestGeneratedCookingRecipesAndFuelMetadata(t *testing.T) {
+	tests := []cookingRecipeTestCase{
+		{name: "smelting", recipeType: CookingRecipeSmelting, input: ItemPotato, result: ItemBakedPotato, time: 200},
+		{name: "smoking", recipeType: CookingRecipeSmoking, input: ItemPotato, result: ItemBakedPotato, time: 100},
+		{name: "blasting", recipeType: CookingRecipeBlasting, input: ItemRawIron, result: ItemIronIngot, time: 100},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recipe, valid := CookingRecipeFor(test.recipeType, ItemStack{Item: test.input, Count: 1})
+			if !valid || recipe.Result().Item != test.result || recipe.CookingTime() != test.time {
+				t.Fatalf("cooking recipe = %+v, %v", recipe, valid)
+			}
+		})
+	}
+
+	if _, valid := CookingRecipeFor(CookingRecipeBlasting, ItemStack{Item: ItemPotato, Count: 1}); valid {
+		t.Fatal("potato unexpectedly has a blasting recipe")
+	}
+
+	if FuelDuration(ItemLavaBucket) != 20000 || FuelDuration(ItemCoal) != 1600 || FuelDuration(ItemDriedKelpBlock) != 4001 {
+		t.Fatalf("fuel durations = lava %d, coal %d, kelp %d", FuelDuration(ItemLavaBucket), FuelDuration(ItemCoal), FuelDuration(ItemDriedKelpBlock))
+	}
+
+	if IsFuel(ItemCrimsonPlanks) || IsFuel(ItemWarpedStem) {
+		t.Fatal("non-flammable wood unexpectedly generated as fuel")
+	}
+
+	remainder, valid := CraftingRemainder(ItemLavaBucket)
+	if !valid || remainder != ItemBucket {
+		t.Fatalf("lava bucket remainder = %v, %v", remainder, valid)
 	}
 }

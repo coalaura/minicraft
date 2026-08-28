@@ -19,6 +19,8 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Stateful block placement for common structures such as slabs, stairs, doors, trapdoors, fences and walls
 - Full player inventory and creative inventory interactions
 - Manual 2x2 and crafting-table recipes, including shaped, shapeless and ordinary crafting remainders
+- Furnaces, smokers and blast furnaces with generated cooking recipes and fuel values, ticking, menus and synchronized progress
+- Stateful barrels and single/double normal, trapped and copper chest variants, including container contents drops on removal
 - Generic runtime entities, dropped items and item pickup
 - Basic commands with client-side declarations and suggestions
 - Biomes, lighting, world time and a day/night cycle
@@ -89,7 +91,7 @@ Minicraft is not intended to be a drop-in replacement for a full vanilla server.
 
 There are still gameplay systems and protocol features that are intentionally incomplete or outside that scope.
 
-Generic block entities support procedural copy-on-write state and optional runtime capabilities. Generic 9x1 through 9x6 storage menus are available, including barrels and single/double normal, trapped and copper chest variants. Manual crafting supports the generated ordinary shaped and shapeless 1.21.11 recipe catalogue in the player inventory and at crafting tables. Recipe-book protocol, special/dynamic recipes and component-transforming recipes are not implemented yet.
+Generic block entities support procedural copy-on-write state, removal behavior and optional runtime interaction/ticking capabilities. Generic 9x1 through 9x6 storage menus are available, including barrels and single/double normal, trapped and copper chest variants. Furnace-family block entities process the generated 1.21.11 smelting, smoking and blasting catalogues with vanilla fuel durations, remainders, lit states and menu data. Manual crafting supports the generated ordinary shaped and shapeless recipe catalogue in the player inventory and at crafting tables. Recipe-book protocol, furnace XP payout, special/dynamic recipes and component-transforming recipes are not implemented yet.
 
 ## Todo
 

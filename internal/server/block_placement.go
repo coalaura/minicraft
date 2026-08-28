@@ -340,6 +340,11 @@ func placementStateWithRotation(base game.Block, rule game.ItemPlacementRule, in
 			game.BlockPropertyValue{Name: "type", Value: "single"},
 			game.BlockPropertyValue{Name: "waterlogged", Value: "false"},
 		)
+	case game.ItemPlacementFurnace:
+		return base.WithProperties(
+			game.BlockPropertyValue{Name: "facing", Value: facing.opposite().name()},
+			game.BlockPropertyValue{Name: "lit", Value: "false"},
+		)
 	case game.ItemPlacementSlab:
 		half := placementHalf(interaction.Face, interaction.CursorY)
 		return base.WithProperties(game.BlockPropertyValue{Name: "type", Value: half})

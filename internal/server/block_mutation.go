@@ -48,10 +48,12 @@ const (
 )
 
 type blockMutationRecord struct {
-	change        game.BlockChange
-	previous      game.Block
-	previousState int32
-	cause         blockMutationCause
+	change            game.BlockChange
+	previous          game.Block
+	previousState     int32
+	previousEntity    game.BlockEntity
+	hadPreviousEntity bool
+	cause             blockMutationCause
 }
 
 type blockMutationDelivery struct {
@@ -312,7 +314,16 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 
 		committed = append(committed, change)
 		states = append(states, state)
-		records = append(records, blockMutationRecord{change: change, previous: current, previousState: previousState, cause: cause})
+
+		previousEntity, hadPreviousEntity := game.BlockEntity{}, false
+		if game.BlockEntityTypeForBlock(current) != game.BlockEntityTypeForBlock(change.Replacement) {
+			previousEntity, hadPreviousEntity = r.World.BlockEntityAt(change.Position)
+		}
+
+		records = append(records, blockMutationRecord{
+			change: change, previous: current, previousState: previousState,
+			previousEntity: previousEntity, hadPreviousEntity: hadPreviousEntity, cause: cause,
+		})
 	}
 
 	result.Allowed = true
@@ -459,6 +470,8 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 			}
 		}
 	}
+
+	r.commitBlockEntityRemovalEffects(delivery.records)
 
 	return result, nil
 }

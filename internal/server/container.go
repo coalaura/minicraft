@@ -1,15 +1,8 @@
 package server
 
-import (
-	"math"
+import "github.com/coalaura/minicraft/internal/game"
 
-	"github.com/coalaura/minicraft/internal/game"
-)
-
-const (
-	containerInteractionRange = 4.5
-	containerValidityPadding  = 4.0
-)
+const containerValidityPadding = 4.0
 
 func containerBlockEntityStillValid(runtime *Runtime, session *Session, expected RuntimeBlockEntity) bool {
 	position := expected.BlockPosition()
@@ -25,12 +18,5 @@ func containerBlockEntityStillValid(runtime *Runtime, session *Session, expected
 }
 
 func containerWithinRange(player game.Player, position game.BlockPosition) bool {
-	eye := player.EyePosition()
-
-	distanceX := eye.X - math.Max(float64(position.X), math.Min(eye.X, float64(position.X+1)))
-	distanceY := eye.Y - math.Max(float64(position.Y), math.Min(eye.Y, float64(position.Y+1)))
-	distanceZ := eye.Z - math.Max(float64(position.Z), math.Min(eye.Z, float64(position.Z+1)))
-
-	maximumDistance := containerInteractionRange + containerValidityPadding
-	return distanceX*distanceX+distanceY*distanceY+distanceZ*distanceZ < maximumDistance*maximumDistance
+	return player.IsWithinBlockInteractionRange(position, containerValidityPadding)
 }

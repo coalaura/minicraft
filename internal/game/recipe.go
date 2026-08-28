@@ -21,6 +21,21 @@ type Recipe struct {
 	shapeless []Ingredient
 }
 
+type CookingRecipeType uint8
+
+const (
+	CookingRecipeSmelting CookingRecipeType = iota
+	CookingRecipeSmoking
+	CookingRecipeBlasting
+)
+
+type CookingRecipe struct {
+	name        string
+	result      ItemStack
+	experience  float32
+	cookingTime int32
+}
+
 func (ingredient Ingredient) Alternatives() []Item {
 	return append([]Item(nil), ingredient.alternatives...)
 }
@@ -117,14 +132,66 @@ func MatchCrafting(width, height int, slots []ItemStack) (Recipe, bool) {
 
 // CraftingRemainder returns the item left after an ordinary crafting ingredient is consumed.
 func CraftingRemainder(item Item) (Item, bool) {
-	switch item {
-	case ItemWaterBucket, ItemLavaBucket, ItemMilkBucket:
-		return ItemBucket, true
-	case ItemDragonBreath, ItemHoneyBottle:
-		return ItemGlassBottle, true
-	default:
-		return 0, false
+	remainder, valid := generatedCraftingRemainders[item]
+	return remainder, valid
+}
+
+func CookingRecipeFor(recipeType CookingRecipeType, input ItemStack) (CookingRecipe, bool) {
+	if input.Empty() {
+		return CookingRecipe{}, false
 	}
+
+	recipes, valid := generatedCookingRecipes[recipeType]
+	if !valid {
+		return CookingRecipe{}, false
+	}
+
+	recipe, valid := recipes[input.Item]
+	if !valid {
+		return CookingRecipe{}, false
+	}
+
+	recipe.result = recipe.result.Clone()
+	return recipe, true
+}
+
+func CookingRecipeInputs(recipeType CookingRecipeType) []Item {
+	recipes := generatedCookingRecipes[recipeType]
+
+	inputs := make([]Item, 0, len(recipes))
+
+	for input := range recipes {
+		inputs = append(inputs, input)
+	}
+
+	slices.Sort(inputs)
+
+	return inputs
+}
+
+func (recipe CookingRecipe) Name() string {
+	return recipe.name
+}
+
+func (recipe CookingRecipe) Result() ItemStack {
+	return recipe.result.Clone()
+}
+
+func (recipe CookingRecipe) Experience() float32 {
+	return recipe.experience
+}
+
+func (recipe CookingRecipe) CookingTime() int32 {
+	return recipe.cookingTime
+}
+
+func FuelDuration(item Item) int32 {
+	return generatedFuelDurations[item]
+}
+
+func IsFuel(item Item) bool {
+	_, valid := generatedFuelDurations[item]
+	return valid
 }
 
 func matchShaped(recipe ShapedRecipe, gridWidth, gridHeight int, slots []ItemStack) bool {

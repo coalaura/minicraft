@@ -314,6 +314,11 @@ func (s *Session) sendInitialPlayState() error {
 		return err
 	}
 
+	err = s.sendCookingRecipeProperties()
+	if err != nil {
+		return err
+	}
+
 	err = s.sendInitialChunks()
 	if err != nil {
 		return err
@@ -330,6 +335,16 @@ func (s *Session) sendInitialPlayState() error {
 	}
 
 	return s.Runtime.JoinSession(s)
+}
+
+func (s *Session) sendCookingRecipeProperties() error {
+	return s.writePacket(protocol.ClientboundUpdateRecipesID, protocol.UpdateRecipes{
+		PropertySets: []protocol.RecipePropertySet{
+			{Name: "minecraft:furnace_input", Items: game.CookingRecipeInputs(game.CookingRecipeSmelting)},
+			{Name: "minecraft:blast_furnace_input", Items: game.CookingRecipeInputs(game.CookingRecipeBlasting)},
+			{Name: "minecraft:smoker_input", Items: game.CookingRecipeInputs(game.CookingRecipeSmoking)},
+		},
+	})
 }
 
 func (s *Session) sendPlayLogin() error {

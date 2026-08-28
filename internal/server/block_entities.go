@@ -18,12 +18,65 @@ type RuntimeBlockEntityInteraction interface {
 	InteractBlock(*Runtime, *Session) error
 }
 
+func (r *Runtime) commitBlockEntityRemovalEffects(records []blockMutationRecord) {
+	for _, record := range records {
+		if !record.hadPreviousEntity || record.previousEntity.Type == game.BlockEntityTypeForBlock(record.change.Replacement) {
+			continue
+		}
+
+		definition, valid := record.previousEntity.Type.Definition()
+		if !valid || definition.RemovalBehavior != game.BlockEntityRemovalDropInventory {
+			continue
+		}
+
+		items, inventory := record.previousEntity.Inventory()
+		if inventory {
+			r.dropContainerContents(record.change.Position, items)
+		}
+	}
+}
+
+func (r *Runtime) dropContainerContents(position game.BlockPosition, items []game.ItemStack) {
+	const (
+		itemWidth       = 0.25
+		motionDeviation = 0.11485000171139836
+	)
+
+	for _, source := range items {
+		remaining := source.Clone()
+
+		for !remaining.Empty() {
+			count := min(remaining.Count, int32(10+int(r.nextEntityRandom()*21)))
+			dropped := remaining.Clone()
+			dropped.Count = count
+			remaining.Count -= count
+
+			position := game.Position{
+				X: float64(position.X) + itemWidth/2 + float64(r.nextEntityRandom())*(1-itemWidth),
+				Y: float64(position.Y) + float64(r.nextEntityRandom())*(1-itemWidth),
+				Z: float64(position.Z) + itemWidth/2 + float64(r.nextEntityRandom())*(1-itemWidth),
+			}
+
+			velocity := game.Velocity{
+				X: float64(r.nextEntityRandom()-r.nextEntityRandom()) * motionDeviation,
+				Y: 0.2 + float64(r.nextEntityRandom()-r.nextEntityRandom())*motionDeviation,
+				Z: float64(r.nextEntityRandom()-r.nextEntityRandom()) * motionDeviation,
+			}
+
+			r.SpawnItemEntity(dropped, position, velocity, 10)
+		}
+	}
+}
+
 type runtimeBlockEntityFactory func(game.BlockPosition, game.BlockEntity) RuntimeBlockEntity
 
 var runtimeBlockEntityFactories = map[game.BlockEntityType]runtimeBlockEntityFactory{
 	game.BlockEntityTypeChest:        newRuntimeChest,
 	game.BlockEntityTypeTrappedChest: newRuntimeChest,
 	game.BlockEntityTypeBarrel:       newRuntimeBarrel,
+	game.BlockEntityTypeFurnace:      newRuntimeFurnace,
+	game.BlockEntityTypeSmoker:       newRuntimeFurnace,
+	game.BlockEntityTypeBlastFurnace: newRuntimeFurnace,
 }
 
 func (r *Runtime) newActiveChunk(position LoadedChunk) *ActiveChunk {
@@ -276,7 +329,16 @@ func (r *Runtime) tickOpenMenus() {
 
 	for _, session := range r.snapshotSessions() {
 		current := session.activeMenu()
-		if current.backing == nil || current.backing.StillValid(r, session) {
+		if current.backing == nil {
+			continue
+		}
+
+		if current.backing.StillValid(r, session) {
+			err := session.sendChangedMenuData(current, false)
+			if err != nil && session.Log != nil {
+				session.Log.Warnf("[play] failed to synchronize menu data: %v\n", err)
+			}
+
 			continue
 		}
 

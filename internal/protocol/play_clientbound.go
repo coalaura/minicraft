@@ -162,6 +162,21 @@ type ContainerSetSlot struct {
 	Item     game.ItemStack
 }
 
+type ContainerSetData struct {
+	ContainerID int32
+	ID          int16
+	Value       int16
+}
+
+type RecipePropertySet struct {
+	Name  string
+	Items []game.Item
+}
+
+type UpdateRecipes struct {
+	PropertySets []RecipePropertySet
+}
+
 type CloseContainer struct {
 	ContainerID int32
 }
@@ -614,6 +629,28 @@ func (p ContainerSetSlot) Encode(wr *PacketWriter) {
 	wr.VarInt(p.StateID)
 	wr.Short(p.Slot)
 	encodeItemStack(wr, p.Item)
+}
+
+func (p ContainerSetData) Encode(wr *PacketWriter) {
+	wr.Byte(byte(p.ContainerID))
+	wr.Short(p.ID)
+	wr.Short(p.Value)
+}
+
+func (p UpdateRecipes) Encode(wr *PacketWriter) {
+	wr.VarInt(int32(len(p.PropertySets)))
+
+	for _, propertySet := range p.PropertySets {
+		wr.String(propertySet.Name)
+		wr.VarInt(int32(len(propertySet.Items)))
+
+		for _, item := range propertySet.Items {
+			wr.VarInt(int32(item))
+		}
+	}
+
+	// Stonecutter recipes are not implemented yet.
+	wr.VarInt(0)
 }
 
 func (p CloseContainer) Encode(wr *PacketWriter) {

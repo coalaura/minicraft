@@ -1,8 +1,11 @@
 package game
 
+import "maps"
+
 const (
-	BarrelSlotCount = 27
-	ChestSlotCount  = 27
+	BarrelSlotCount  = 27
+	ChestSlotCount   = 27
+	FurnaceSlotCount = 3
 )
 
 type BlockEntityType uint8
@@ -12,12 +15,23 @@ const (
 	BlockEntityTypeChest
 	BlockEntityTypeTrappedChest
 	BlockEntityTypeBarrel
+	BlockEntityTypeFurnace
+	BlockEntityTypeSmoker
+	BlockEntityTypeBlastFurnace
+)
+
+type BlockEntityRemovalBehavior uint8
+
+const (
+	BlockEntityRemovalNone BlockEntityRemovalBehavior = iota
+	BlockEntityRemovalDropInventory
 )
 
 type BlockEntityTypeDefinition struct {
 	Name                    string
 	ProtocolRegistryID12111 int32
 	InventorySlots          int
+	RemovalBehavior         BlockEntityRemovalBehavior
 }
 
 type BlockEntityData interface {
@@ -27,6 +41,15 @@ type BlockEntityData interface {
 
 type InventoryBlockEntityData struct {
 	Items []ItemStack
+}
+
+type FurnaceBlockEntityData struct {
+	Items            []ItemStack
+	LitTimeRemaining int32
+	LitTotalTime     int32
+	CookingProgress  int32
+	CookingTotalTime int32
+	RecipesUsed      map[string]int32
 }
 
 type BlockEntity struct {
@@ -50,19 +73,29 @@ type BlockEntityPointGenerator interface {
 
 var blockEntityTypeDefinitions = [...]BlockEntityTypeDefinition{
 	BlockEntityTypeNone:  {},
-	BlockEntityTypeChest: {Name: "chest", ProtocolRegistryID12111: 1, InventorySlots: ChestSlotCount},
+	BlockEntityTypeChest: {Name: "chest", ProtocolRegistryID12111: 1, InventorySlots: ChestSlotCount, RemovalBehavior: BlockEntityRemovalDropInventory},
 	BlockEntityTypeTrappedChest: {
 		Name:                    "trapped_chest",
 		ProtocolRegistryID12111: 2,
 		InventorySlots:          ChestSlotCount,
+		RemovalBehavior:         BlockEntityRemovalDropInventory,
 	},
-	BlockEntityTypeBarrel: {Name: "barrel", ProtocolRegistryID12111: 27, InventorySlots: BarrelSlotCount},
+	BlockEntityTypeBarrel:       {Name: "barrel", ProtocolRegistryID12111: 27, InventorySlots: BarrelSlotCount, RemovalBehavior: BlockEntityRemovalDropInventory},
+	BlockEntityTypeFurnace:      {Name: "furnace", ProtocolRegistryID12111: 0, InventorySlots: FurnaceSlotCount, RemovalBehavior: BlockEntityRemovalDropInventory},
+	BlockEntityTypeSmoker:       {Name: "smoker", ProtocolRegistryID12111: 28, InventorySlots: FurnaceSlotCount, RemovalBehavior: BlockEntityRemovalDropInventory},
+	BlockEntityTypeBlastFurnace: {Name: "blast_furnace", ProtocolRegistryID12111: 29, InventorySlots: FurnaceSlotCount, RemovalBehavior: BlockEntityRemovalDropInventory},
 }
 
 func NewBlockEntity(entityType BlockEntityType) BlockEntity {
 	definition, valid := entityType.Definition()
 	if !valid || definition.InventorySlots == 0 {
 		return BlockEntity{Type: entityType}
+	}
+	if entityType == BlockEntityTypeFurnace || entityType == BlockEntityTypeSmoker || entityType == BlockEntityTypeBlastFurnace {
+		return BlockEntity{
+			Type: entityType,
+			Data: &FurnaceBlockEntityData{Items: make([]ItemStack, FurnaceSlotCount)},
+		}
 	}
 
 	return NewInventoryBlockEntity(entityType, definition.InventorySlots)
@@ -84,12 +117,14 @@ func (entityType BlockEntityType) Definition() (BlockEntityTypeDefinition, bool)
 }
 
 func (entity *BlockEntity) Inventory() ([]ItemStack, bool) {
-	data, valid := entity.Data.(*InventoryBlockEntityData)
-	if !valid {
+	switch data := entity.Data.(type) {
+	case *InventoryBlockEntityData:
+		return data.Items, true
+	case *FurnaceBlockEntityData:
+		return data.Items, true
+	default:
 		return nil, false
 	}
-
-	return data.Items, true
 }
 
 func (entity BlockEntity) Clone() BlockEntity {
@@ -140,6 +175,53 @@ func (data *InventoryBlockEntityData) EqualBlockEntityData(other BlockEntityData
 
 	for slot := range data.Items {
 		if !data.Items[slot].Equal(otherInventory.Items[slot]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (data *FurnaceBlockEntityData) CloneBlockEntityData() BlockEntityData {
+	clone := &FurnaceBlockEntityData{
+		Items:            make([]ItemStack, len(data.Items)),
+		LitTimeRemaining: data.LitTimeRemaining,
+		LitTotalTime:     data.LitTotalTime,
+		CookingProgress:  data.CookingProgress,
+		CookingTotalTime: data.CookingTotalTime,
+	}
+
+	for slot := range data.Items {
+		clone.Items[slot] = data.Items[slot].Clone()
+	}
+
+	if data.RecipesUsed != nil {
+		clone.RecipesUsed = make(map[string]int32, len(data.RecipesUsed))
+		maps.Copy(clone.RecipesUsed, data.RecipesUsed)
+	}
+
+	return clone
+}
+
+func (data *FurnaceBlockEntityData) EqualBlockEntityData(other BlockEntityData) bool {
+	otherFurnace, valid := other.(*FurnaceBlockEntityData)
+	if !valid || len(data.Items) != len(otherFurnace.Items) ||
+		data.LitTimeRemaining != otherFurnace.LitTimeRemaining ||
+		data.LitTotalTime != otherFurnace.LitTotalTime ||
+		data.CookingProgress != otherFurnace.CookingProgress ||
+		data.CookingTotalTime != otherFurnace.CookingTotalTime ||
+		len(data.RecipesUsed) != len(otherFurnace.RecipesUsed) {
+		return false
+	}
+
+	for slot := range data.Items {
+		if !data.Items[slot].Equal(otherFurnace.Items[slot]) {
+			return false
+		}
+	}
+
+	for name, uses := range data.RecipesUsed {
+		if otherFurnace.RecipesUsed[name] != uses {
 			return false
 		}
 	}

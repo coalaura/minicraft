@@ -49,11 +49,14 @@ type menuSlot struct {
 	storage       menuStorage
 	backingIndex  int
 	onTake        menuResultTake
+	accepts       menuSlotAccepts
 }
 
 type menuQuickMove func(*menuCandidate, int)
 
 type menuResultTake func(*menuCandidate, int, game.ItemStack)
+
+type menuSlotAccepts func(*menuCandidate, int, game.ItemStack) bool
 
 type menuDerive func(*menuCandidate)
 
@@ -67,16 +70,19 @@ type menu struct {
 	drag             inventoryDragState
 	slots            []menuSlot
 
-	hotbarSlots    [game.HotbarSlotCount]int
-	hasHotbarSlots [game.HotbarSlotCount]bool
-	offhandSlot    int
-	hasOffhandSlot bool
-	hiddenOffhand  *game.ItemStack
-	quickMove      menuQuickMove
-	derive         menuDerive
-	removed        menuRemoved
-	backing        menuBacking
-	containerSlots int
+	hotbarSlots     [game.HotbarSlotCount]int
+	hasHotbarSlots  [game.HotbarSlotCount]bool
+	offhandSlot     int
+	hasOffhandSlot  bool
+	hiddenOffhand   *game.ItemStack
+	quickMove       menuQuickMove
+	derive          menuDerive
+	removed         menuRemoved
+	backing         menuBacking
+	containerSlots  int
+	data            []*int32
+	lastData        []int32
+	dataInitialized bool
 }
 
 type menuCandidate struct {
@@ -292,6 +298,9 @@ func (candidate *menuCandidate) accepts(slot int, stack game.ItemStack) bool {
 	}
 
 	menuSlot := candidate.menu.slots[slot]
+	if menuSlot.accepts != nil {
+		return menuSlot.accepts(candidate, slot, stack)
+	}
 
 	switch menuSlot.role {
 	case menuSlotResult:

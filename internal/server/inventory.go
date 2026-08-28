@@ -317,6 +317,8 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 		if len(equipment) > 0 {
 			s.Runtime.broadcastPlayerEquipment(s, player, equipment...)
 		}
+
+		return s.sendChangedMenuData(currentMenu, false)
 	}
 
 	return nil
@@ -997,6 +999,44 @@ func (s *Session) sendMenuSnapshot(snapshot menuSnapshot) error {
 		Items:       snapshot.items,
 		CarriedItem: snapshot.carried,
 	})
+}
+
+func (s *Session) sendChangedMenuData(current *menu, all bool) error {
+	if len(current.data) == 0 {
+		return nil
+	}
+
+	if len(current.lastData) != len(current.data) {
+		current.lastData = make([]int32, len(current.data))
+		current.dataInitialized = false
+	}
+
+	for id, value := range current.data {
+		if value == nil {
+			continue
+		}
+
+		currentValue := *value
+		if !all && current.dataInitialized && current.lastData[id] == currentValue {
+			continue
+		}
+
+		err := s.writePacket(protocol.ClientboundContainerSetDataID, protocol.ContainerSetData{
+			ContainerID: current.windowID,
+			ID:          int16(id),
+			Value:       int16(currentValue),
+		})
+
+		if err != nil {
+			return err
+		}
+
+		current.lastData[id] = currentValue
+	}
+
+	current.dataInitialized = true
+
+	return nil
 }
 
 func (s *Session) synchronizePlayerInventoryMutation(before game.PlayerInventory) error {

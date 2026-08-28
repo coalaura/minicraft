@@ -1,5 +1,7 @@
 package game
 
+import "math"
+
 type PlayerPose uint8
 
 const (
@@ -9,9 +11,10 @@ const (
 )
 
 const (
-	standingPlayerEyeHeight  = 1.62
-	crouchingPlayerEyeHeight = 1.27
-	crawlingPlayerEyeHeight  = 0.4
+	standingPlayerEyeHeight      = 1.62
+	crouchingPlayerEyeHeight     = 1.27
+	crawlingPlayerEyeHeight      = 0.4
+	defaultBlockInteractionRange = 4.5
 )
 
 type ProfileProperty struct {
@@ -60,4 +63,16 @@ func (player Player) EyePosition() Position {
 	position.Y += player.EyeHeight()
 
 	return position
+}
+
+// IsWithinBlockInteractionRange matches Player's strict eye-to-block-AABB range test.
+func (player Player) IsWithinBlockInteractionRange(position BlockPosition, buffer float64) bool {
+	eye := player.EyePosition()
+
+	distanceX := eye.X - math.Max(float64(position.X), math.Min(eye.X, float64(position.X+1)))
+	distanceY := eye.Y - math.Max(float64(position.Y), math.Min(eye.Y, float64(position.Y+1)))
+	distanceZ := eye.Z - math.Max(float64(position.Z), math.Min(eye.Z, float64(position.Z+1)))
+
+	maximumDistance := defaultBlockInteractionRange + buffer
+	return distanceX*distanceX+distanceY*distanceY+distanceZ*distanceZ < maximumDistance*maximumDistance
 }
