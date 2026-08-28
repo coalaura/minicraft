@@ -13,12 +13,13 @@ import (
 )
 
 const (
-	itemEntityWidth       = 0.25
-	itemEntityHeight      = 0.25
-	itemEntityGravity     = 0.04
-	itemEntityDrag        = 0.98
-	itemEntityLifetime    = 6000
-	itemEntityMergeRadius = 0.5
+	itemEntityWidth         = 0.25
+	itemEntityHeight        = 0.25
+	itemEntityGravity       = 0.04
+	itemEntityVerticalDrag  = 0.98
+	itemEntityLifetime      = 6000
+	itemEntityMergeRadius   = 0.5
+	itemEntitySyncThreshold = 0.01
 )
 
 type RuntimeEntityState struct {
@@ -30,8 +31,9 @@ type RuntimeEntityState struct {
 	Chunk    LoadedChunk
 	Removed  bool
 
-	tracker       runtimeEntityTracker
-	metadataDirty bool
+	tracker           runtimeEntityTracker
+	movementSyncDirty bool
+	metadataDirty     bool
 }
 
 type RuntimeEntityTrackingConfig struct {
@@ -75,6 +77,7 @@ type runtimeItemEntity struct {
 	Age         int32
 	PickupDelay int32
 	TargetUUID  string
+	ThrowerUUID string
 	OnGround    bool
 	TickCount   int32
 }
@@ -177,6 +180,7 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	}
 
 	previous := entity.State.Position
+	previousVelocity := entity.Velocity
 
 	entity.Velocity.Y -= itemEntityGravity
 
@@ -217,14 +221,14 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 			}
 		}
 
-		horizontalDrag := itemEntityDrag
+		horizontalDrag := float32(0.98)
 		if entity.OnGround {
 			horizontalDrag *= runtime.blockFrictionBelow(entity.State.Position)
 		}
 
-		entity.Velocity.X *= horizontalDrag
-		entity.Velocity.Y *= itemEntityDrag
-		entity.Velocity.Z *= horizontalDrag
+		entity.Velocity.X *= float64(horizontalDrag)
+		entity.Velocity.Y *= itemEntityVerticalDrag
+		entity.Velocity.Z *= float64(horizontalDrag)
 
 		if entity.OnGround && entity.Velocity.Y < 0 {
 			entity.Velocity.Y *= -0.5
@@ -249,6 +253,10 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	entity.State.mu.Lock()
 	if entity.Age != -32768 {
 		entity.Age++
+	}
+
+	if velocityDistanceSquared(entity.Velocity, previousVelocity) > itemEntitySyncThreshold {
+		entity.State.movementSyncDirty = true
 	}
 
 	expired := entity.Age >= itemEntityLifetime
@@ -302,33 +310,56 @@ func (r *Runtime) SpawnItemEntity(stack game.ItemStack, position game.Position, 
 	return entity
 }
 
-func (r *Runtime) spawnPlayerDroppedItem(player game.Player, stack game.ItemStack, randomly bool) *runtimeItemEntity {
+func (r *Runtime) spawnPlayerDroppedItem(player game.Player, stack game.ItemStack, randomly, thrownFromHand bool) *runtimeItemEntity {
 	if stack.Empty() {
 		return nil
 	}
 
 	position := player.EyePosition()
 
-	position.Y -= 0.3
+	position.Y -= float64(float32(0.3))
 
 	var velocity game.Velocity
+
 	if randomly {
-		power := float64(r.nextEntityRandom()) * 0.5
-		direction := float64(r.nextEntityRandom()) * math.Pi * 2
+		power := r.nextEntityRandom() * float32(0.5)
+		direction := r.nextEntityRandom() * float32(math.Pi*2)
 
-		velocity = game.Velocity{X: -math.Sin(direction) * power, Y: 0.2, Z: math.Cos(direction) * power}
+		velocity = game.Velocity{X: float64(-minecraftSin(float64(direction)) * power), Y: float64(float32(0.2)), Z: float64(minecraftCos(float64(direction)) * power)}
 	} else {
-		yaw := float64(player.Rotation.Yaw) * math.Pi / 180
-		pitch := float64(player.Rotation.Pitch) * math.Pi / 180
-		direction := float64(r.nextEntityRandom()) * math.Pi * 2
-		power := float64(r.nextEntityRandom()) * 0.02
+		pitch := player.Rotation.Pitch * float32(math.Pi/180)
+		yaw := player.Rotation.Yaw * float32(math.Pi/180)
 
-		velocity.X = -math.Sin(yaw)*math.Cos(pitch)*0.3 + math.Cos(direction)*power
-		velocity.Y = -math.Sin(pitch)*0.3 + 0.1 + (float64(r.nextEntityRandom())-float64(r.nextEntityRandom()))*0.1
-		velocity.Z = math.Cos(yaw)*math.Cos(pitch)*0.3 + math.Sin(direction)*power
+		sinPitch := minecraftSin(float64(pitch))
+		cosPitch := minecraftCos(float64(pitch))
+
+		sinYaw := minecraftSin(float64(yaw))
+		cosYaw := minecraftCos(float64(yaw))
+
+		direction := r.nextEntityRandom() * float32(math.Pi*2)
+		randomPower := float32(0.02) * r.nextEntityRandom()
+
+		velocity.X = float64(-sinYaw*cosPitch*float32(0.3)) + math.Cos(float64(direction))*float64(randomPower)
+		velocity.Y = float64(-sinPitch*float32(0.3) + float32(0.1) + (r.nextEntityRandom()-r.nextEntityRandom())*float32(0.1))
+		velocity.Z = float64(cosYaw*cosPitch*float32(0.3)) + math.Sin(float64(direction))*float64(randomPower)
 	}
 
-	return r.SpawnItemEntity(stack, position, velocity, 40)
+	entity := r.SpawnItemEntity(stack, position, velocity, 40)
+	if thrownFromHand {
+		entity.ThrowerUUID = player.UUID
+	}
+
+	return entity
+}
+
+func minecraftSin(value float64) float32 {
+	index := int64(value*10430.378350470453) & 65535
+	return float32(math.Sin(float64(index) / 10430.378350470453))
+}
+
+func minecraftCos(value float64) float32 {
+	index := int64(value*10430.378350470453+16384) & 65535
+	return float32(math.Sin(float64(index) / 10430.378350470453))
 }
 
 func (r *Runtime) nextEntityRandom() float32 {
@@ -930,8 +961,6 @@ func (r *Runtime) itemVelocityTowardsClosestSpace(position game.Position, veloci
 
 	closest := math.MaxFloat64
 	closestDirection := directions[len(directions)-1]
-	found := false
-
 	for _, direction := range directions {
 		neighbor := game.BlockPosition{X: block.X + direction.X, Y: block.Y + direction.Y, Z: block.Z + direction.Z}
 		if blockCollisionShapeFull(r.World.BlockAt(neighbor), neighbor) {
@@ -946,19 +975,14 @@ func (r *Runtime) itemVelocityTowardsClosestSpace(position game.Position, veloci
 		if distance < closest {
 			closest = distance
 			closestDirection = direction
-			found = true
 		}
-	}
-
-	if !found {
-		return velocity
 	}
 
 	velocity.X *= 0.75
 	velocity.Y *= 0.75
 	velocity.Z *= 0.75
 
-	speed := float64(r.nextEntityRandom())*0.2 + 0.1
+	speed := float64(r.nextEntityRandom()*float32(0.2) + float32(0.1))
 	if !closestDirection.Positive {
 		speed = -speed
 	}
@@ -1004,13 +1028,10 @@ func (r *Runtime) moveItemEntity(position game.Position, velocity game.Velocity)
 
 	blocks := r.itemCollisionBoxes(box, velocity)
 
-	deltaY := collideY(box, blocks, velocity.Y)
-	box = box.Translate(0, deltaY, 0)
-
-	deltaX := collideX(box, blocks, velocity.X)
-	box = box.Translate(deltaX, 0, 0)
-
-	deltaZ := collideZ(box, blocks, velocity.Z)
+	resolved := collideAABBWithBlocks(box, blocks, velocity)
+	deltaX := resolved.X
+	deltaY := resolved.Y
+	deltaZ := resolved.Z
 
 	position.X += deltaX
 	position.Y += deltaY
@@ -1053,7 +1074,7 @@ func (r *Runtime) itemCollisionBoxes(box game.AABB, velocity game.Velocity) []ga
 	return boxes
 }
 
-func (r *Runtime) blockFrictionBelow(position game.Position) float64 {
+func (r *Runtime) blockFrictionBelow(position game.Position) float32 {
 	block := r.blockBelowItem(position)
 
 	definition, valid := block.Definition()
@@ -1071,6 +1092,25 @@ func (r *Runtime) blockFrictionBelow(position game.Position) float64 {
 	default:
 		return 0.6
 	}
+}
+
+func collideAABBWithBlocks(box game.AABB, blocks []game.AABB, movement game.Velocity) game.Velocity {
+	movement.Y = collideY(box, blocks, movement.Y)
+	box = box.Translate(0, movement.Y, 0)
+
+	if math.Abs(movement.X) < math.Abs(movement.Z) {
+		movement.Z = collideZ(box, blocks, movement.Z)
+		box = box.Translate(0, 0, movement.Z)
+		movement.X = collideX(box, blocks, movement.X)
+
+		return movement
+	}
+
+	movement.X = collideX(box, blocks, movement.X)
+	box = box.Translate(movement.X, 0, 0)
+	movement.Z = collideZ(box, blocks, movement.Z)
+
+	return movement
 }
 
 func (r *Runtime) blockBelowItem(position game.Position) game.Block {

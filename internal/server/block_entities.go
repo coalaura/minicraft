@@ -148,7 +148,7 @@ func (r *Runtime) closeMenuWithRemovalStateLocked(session *Session, notify, disc
 		}
 
 		if !carried.Empty() {
-			r.spawnPlayerDroppedItem(player, carried, false)
+			r.spawnPlayerDroppedItem(player, carried, false, false)
 		}
 	}
 

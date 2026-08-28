@@ -63,12 +63,14 @@ func (r *Runtime) synchronizeRuntimeEntity(entity RuntimeEntity) {
 
 	tracker := &state.tracker
 
-	eligible := tracker.UpdateTick%configuration.UpdateInterval == 0 || state.metadataDirty
+	forcedMovementSync := state.movementSyncDirty
+	eligible := tracker.UpdateTick%configuration.UpdateInterval == 0 || forcedMovementSync || state.metadataDirty
 
 	var packets []runtimeEntityPacket
 
 	if eligible && !view.Removed {
-		packets = runtimeEntityPackets(view, tracker, configuration)
+		packets = runtimeEntityPackets(view, tracker, configuration, forcedMovementSync)
+		state.movementSyncDirty = false
 	}
 
 	tracker.UpdateTick++
@@ -81,7 +83,7 @@ func (r *Runtime) synchronizeRuntimeEntity(entity RuntimeEntity) {
 	r.synchronizeDirtyRuntimeEntityMetadataIfPresent(entity)
 }
 
-func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker, configuration RuntimeEntityTrackingConfig) []runtimeEntityPacket {
+func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker, configuration RuntimeEntityTrackingConfig, forcedMovementSync bool) []runtimeEntityPacket {
 	tracker.TeleportDelay++
 
 	deltaX, xRelative := protocolPositionDelta(tracker.PositionBase.X, view.Position.X)
@@ -106,7 +108,8 @@ func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker,
 	sentRotation := false
 
 	packets := make([]runtimeEntityPacket, 0, 2)
-	if configuration.TrackDeltas {
+
+	if configuration.TrackDeltas || forcedMovementSync {
 		velocityDifference := velocityDistanceSquared(view.Velocity, tracker.LastVelocity)
 		velocityStopped := velocityDifference > 0 && velocityLengthSquared(view.Velocity) == 0
 

@@ -83,7 +83,8 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 			return
 		}
 
-		s.Runtime.spawnPlayerDroppedItem(player, stack, true)
+		s.Runtime.spawnPlayerDroppedItem(player, stack, false, true)
+
 		return
 	}
 
@@ -298,7 +299,7 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 
 	if changed {
 		if !dropped.Empty() {
-			s.Runtime.spawnPlayerDroppedItem(player, dropped, false)
+			s.Runtime.spawnPlayerDroppedItem(player, dropped, false, true)
 		}
 
 		if len(changedBackings) != 0 && currentMenu.backing != nil {
@@ -820,7 +821,7 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 	})
 
 	if changed {
-		s.Runtime.spawnPlayerDroppedItem(player, dropped, false)
+		s.Runtime.spawnPlayerDroppedItem(player, dropped, false, true)
 
 		err := s.synchronizePlayerInventoryMutation(before)
 		if err != nil {

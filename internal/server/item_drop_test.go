@@ -47,14 +47,18 @@ func TestDroppingHeldItemSpawnsRequestedStack(t *testing.T) {
 
 			expectedPosition := session.Player.EyePosition()
 
-			expectedPosition.Y -= 0.3
+			expectedPosition.Y -= float64(float32(0.3))
 
 			if item.State.Position != expectedPosition {
 				t.Fatalf("drop position = %+v, want %+v", item.State.Position, expectedPosition)
 			}
 
-			if math.Abs(item.Velocity.Z-0.3) > 1e-9 || math.Abs(item.Velocity.Y-0.1) > 1e-9 || math.Abs(item.Velocity.X) > 1e-9 {
+			if math.Abs(item.Velocity.Z-float64(float32(0.3))) > 1e-9 || math.Abs(item.Velocity.Y-float64(float32(0.1))) > 1e-9 || math.Abs(item.Velocity.X) > 1e-9 {
 				t.Fatalf("directional drop velocity = %+v", item.Velocity)
+			}
+
+			if item.ThrowerUUID != session.Player.UUID {
+				t.Fatalf("thrower UUID = %q, want %q", item.ThrowerUUID, session.Player.UUID)
 			}
 		})
 	}
@@ -130,7 +134,7 @@ func TestOutsideCursorDropSpawnsSplitStack(t *testing.T) {
 	}
 }
 
-func TestCreativeDropSlotUsesRandomScatter(t *testing.T) {
+func TestCreativeDropSlotUsesHandThrow(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
 	session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
@@ -151,8 +155,78 @@ func TestCreativeDropSlotUsesRandomScatter(t *testing.T) {
 		t.Fatalf("creative dropped item = %+v, delay %d", item.Stack, item.PickupDelay)
 	}
 
-	if math.Abs(item.Velocity.X+0.125) > 1e-9 || math.Abs(item.Velocity.Y-0.2) > 1e-9 || math.Abs(item.Velocity.Z) > 1e-9 {
-		t.Fatalf("creative scatter velocity = %+v", item.Velocity)
+	if math.Abs(item.Velocity.X) > 1e-6 || math.Abs(item.Velocity.Y-float64(float32(0.1))) > 1e-9 || math.Abs(item.Velocity.Z-0.3050000118093923) > 1e-9 {
+		t.Fatalf("creative hand throw velocity = %+v", item.Velocity)
+	}
+
+	if item.ThrowerUUID != session.Player.UUID {
+		t.Fatalf("thrower UUID = %q, want %q", item.ThrowerUUID, session.Player.UUID)
+	}
+}
+
+func TestRandomlyScatteredDropUsesVanillaFloatTrajectory(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	player := game.Player{UUID: "00010203-0405-0607-0809-0a0b0c0d0e0f"}
+
+	randomValues := []float32{0.25, 0.75}
+	randomIndex := 0
+
+	runtime.entityRandom = func() float32 {
+		value := randomValues[randomIndex]
+		randomIndex++
+
+		return value
+	}
+
+	item := runtime.spawnPlayerDroppedItem(player, game.ItemStack{Item: game.ItemStone, Count: 1}, true, false)
+
+	if randomIndex != len(randomValues) {
+		t.Fatalf("random calls = %d, want %d", randomIndex, len(randomValues))
+	}
+
+	if item.Velocity.X != 0.125 || item.Velocity.Y != float64(float32(0.2)) || item.Velocity.Z != 0 {
+		t.Fatalf("random scatter velocity = %+v", item.Velocity)
+	}
+
+	if item.ThrowerUUID != "" {
+		t.Fatalf("random scatter thrower UUID = %q", item.ThrowerUUID)
+	}
+}
+
+func TestHandThrowUsesVanillaRandomOrderAndFloatNumerics(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	player := game.Player{
+		UUID:     "00010203-0405-0607-0809-0a0b0c0d0e0f",
+		Position: game.Position{X: 2, Y: 64, Z: 3},
+		Rotation: game.Rotation{Yaw: 37.25, Pitch: -18.5},
+	}
+
+	randomValues := []float32{0.125, 0.25, 0.375, 0.5}
+	randomIndex := 0
+
+	runtime.entityRandom = func() float32 {
+		value := randomValues[randomIndex]
+		randomIndex++
+
+		return value
+	}
+
+	item := runtime.spawnPlayerDroppedItem(player, game.ItemStack{Item: game.ItemStone, Count: 1}, false, true)
+	if randomIndex != len(randomValues) {
+		t.Fatalf("random calls = %d, want %d", randomIndex, len(randomValues))
+	}
+
+	expectedVelocity := game.Velocity{X: -0.16866449037832437, Y: 0.18266896903514862, Z: 0.22999707853709062}
+
+	assertVelocityClose(t, item.Velocity, expectedVelocity, 1e-15)
+
+	expectedPosition := player.EyePosition()
+	expectedPosition.Y -= float64(float32(0.3))
+
+	if item.State.Position != expectedPosition || item.PickupDelay != 40 || item.ThrowerUUID != player.UUID {
+		t.Fatalf("hand throw = position %+v, delay %d, thrower %q", item.State.Position, item.PickupDelay, item.ThrowerUUID)
 	}
 }
 

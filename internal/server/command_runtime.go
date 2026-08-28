@@ -111,7 +111,7 @@ func (r *Runtime) GiveItems(sessions []*Session, item game.Item, count int32) er
 			}
 
 			if stack.Empty() {
-				display := r.spawnPlayerDroppedItem(player, game.ItemStack{Item: item, Count: 1}, false)
+				display := r.spawnPlayerDroppedItem(player, game.ItemStack{Item: item, Count: 1}, false, false)
 
 				display.PickupDelay = 32767
 				display.Age = 5999
@@ -119,7 +119,7 @@ func (r *Runtime) GiveItems(sessions []*Session, item game.Item, count int32) er
 				continue
 			}
 
-			overflow := r.spawnPlayerDroppedItem(player, stack, false)
+			overflow := r.spawnPlayerDroppedItem(player, stack, false, false)
 
 			overflow.PickupDelay = 0
 			overflow.TargetUUID = player.UUID
