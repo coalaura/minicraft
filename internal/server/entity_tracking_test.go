@@ -20,6 +20,12 @@ type collisionAxisOrderTestCase struct {
 	expected game.Velocity
 }
 
+type itemCollisionShapeTestCase struct {
+	name     string
+	block    game.Block
+	expected float64
+}
+
 func TestItemEntityTrackingConfig(t *testing.T) {
 	entity := &runtimeItemEntity{}
 
@@ -364,11 +370,7 @@ func TestItemCollisionUsesResolvedBlockShapes(t *testing.T) {
 		t.Fatal("resolve eight-layer snow")
 	}
 
-	tests := []struct {
-		name     string
-		block    game.Block
-		expected float64
-	}{
+	tests := []itemCollisionShapeTestCase{
 		{name: "full block", block: game.Stone, expected: 1},
 		{name: "bottom slab", block: bottomSlab, expected: 0.5},
 		{name: "stairs", block: game.OakStairs, expected: 1},
