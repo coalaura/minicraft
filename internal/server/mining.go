@@ -284,38 +284,66 @@ func selectedMiningTool(player game.Player) game.ItemStack {
 
 func (r *Runtime) commitOrdinaryBlockDrops(records []blockMutationRecord) {
 	for _, record := range records {
-		if !record.ordinaryDrop {
+		if record.lootContext == blockLootNone {
 			continue
 		}
 
 		mining := record.previous.MiningProperties()
-		if mining.DropKind != game.BlockDropExact && mining.DropKind != game.BlockDropStateExact {
+		if len(mining.DropRules) == 0 {
 			continue
 		}
 
-		if mining.DropKind == game.BlockDropStateExact {
-			value, valid := record.previous.Property(mining.DropProperty)
-			if !valid || value != mining.DropValue {
+		for _, rule := range mining.DropRules {
+			if rule.RequiresActor && record.lootContext != blockLootPlayer {
 				continue
 			}
+
+			if rule.GateProperty != "" {
+				value, valid := record.previous.Property(rule.GateProperty)
+				if !valid || value != rule.GateValue {
+					continue
+				}
+			}
+
+			count := rule.Count
+			if count <= 0 {
+				count = 1
+			}
+
+			if rule.CountProperty != "" {
+				value, valid := record.previous.Property(rule.CountProperty)
+				if !valid {
+					continue
+				}
+
+				for _, candidate := range rule.Counts {
+					if candidate.Value == value {
+						count = candidate.Count
+
+						break
+					}
+				}
+			}
+
+			if rule.Item != game.ItemAir && count > 0 {
+				r.popBlockResource(record.change.Position, game.ItemStack{Item: rule.Item, Count: count})
+			}
 		}
-
-		if mining.DropItem == game.ItemAir || mining.DropMax <= 0 {
-			continue
-		}
-
-		count := mining.DropMin
-
-		if mining.DropMax > mining.DropMin {
-			count += int32(r.nextEntityRandom() * float32(mining.DropMax-mining.DropMin+1))
-		}
-
-		position := game.Position{
-			X: float64(record.change.Position.X) + 0.25 + float64(r.nextEntityRandom())*0.5,
-			Y: float64(record.change.Position.Y) + 0.25 + float64(r.nextEntityRandom())*0.5 - 0.125,
-			Z: float64(record.change.Position.Z) + 0.25 + float64(r.nextEntityRandom())*0.5,
-		}
-
-		r.SpawnItemEntity(game.ItemStack{Item: mining.DropItem, Count: count}, position, game.Velocity{}, 10)
 	}
+}
+
+func (r *Runtime) popBlockResource(blockPosition game.BlockPosition, stack game.ItemStack) {
+	position := game.Position{
+		X: float64(blockPosition.X) + 0.25 + float64(r.nextEntityRandom())*0.5,
+		Y: float64(blockPosition.Y) + 0.125 + float64(r.nextEntityRandom())*0.5,
+		Z: float64(blockPosition.Z) + 0.25 + float64(r.nextEntityRandom())*0.5,
+	}
+
+	velocity := game.Velocity{
+		X: float64(r.nextEntityRandom())*0.2 - 0.1,
+		Y: 0.2,
+		Z: float64(r.nextEntityRandom())*0.2 - 0.1,
+	}
+
+	r.SpawnItemEntity(stack, position, velocity, 10)
 }

@@ -29,6 +29,13 @@ type stackingPlacementTestCase struct {
 	maximum  int
 }
 
+type supportLossTestCase struct {
+	name    string
+	support game.Block
+	block   game.Block
+	drops   bool
+}
+
 func TestButtonPlacementStateAndSupport(t *testing.T) {
 	tests := []buttonPlacementTestCase{
 		{name: "wall", face: protocol.BlockFaceEast, value: "wall", facing: "east"},
@@ -155,9 +162,9 @@ func TestSnowAndCandleStacking(t *testing.T) {
 			actorConnection.reset()
 			observerConnection.reset()
 
-			err = actor.handleUseItemOn(testUseItemOn(position, protocol.BlockFaceUp, protocol.MainHand, 2))
+			err = actor.handleUseItemOn(testUseItemOn(support, protocol.BlockFaceUp, protocol.MainHand, 2))
 			if err != nil {
-				t.Fatalf("stack 2: %v", err)
+				t.Fatalf("stack 2 through adjacent target: %v", err)
 			}
 
 			assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundBlockChangedAckID})
@@ -409,10 +416,10 @@ func TestSupportedPlantAndButtonBreakWithSupport(t *testing.T) {
 }
 
 func TestPlayerBreakEmitsSupportLossEffects(t *testing.T) {
-	tests := []structuralSupportTestCase{
+	tests := []supportLossTestCase{
 		{name: "short grass", support: game.Dirt, block: game.ShortGrass},
 		{name: "snow", support: game.Stone, block: game.Snow},
-		{name: "carpet", support: game.Stone, block: game.WhiteCarpet},
+		{name: "carpet", support: game.Stone, block: game.WhiteCarpet, drops: true},
 	}
 
 	for _, test := range tests {
@@ -453,20 +460,29 @@ func TestPlayerBreakEmitsSupportLossEffects(t *testing.T) {
 				t.Fatal("dependent block survived support loss")
 			}
 
-			assertPacketIDs(t, actorConnection.packetIDs(t), []int32{
+			actorPacketIDs := []int32{
 				protocol.ClientboundBlockUpdateID,
 				protocol.ClientboundBlockUpdateID,
 				protocol.ClientboundLevelEventID,
-			})
+			}
+
+			observerPacketIDs := []int32{
+				protocol.ClientboundBlockUpdateID,
+				protocol.ClientboundBlockUpdateID,
+				protocol.ClientboundLevelEventID,
+				protocol.ClientboundLevelEventID,
+			}
+
+			if test.drops {
+				actorPacketIDs = append(actorPacketIDs, protocol.ClientboundAddEntityID, protocol.ClientboundEntityMetadataID)
+				observerPacketIDs = append(observerPacketIDs, protocol.ClientboundAddEntityID, protocol.ClientboundEntityMetadataID)
+			}
+
+			assertPacketIDs(t, actorConnection.packetIDs(t), actorPacketIDs)
 
 			assertLevelEvent(t, actorConnection.packets(t)[2], protocol.LevelEventBlockBreak, dependentPosition, dependentState, false)
 
-			assertPacketIDs(t, observerConnection.packetIDs(t), []int32{
-				protocol.ClientboundBlockUpdateID,
-				protocol.ClientboundBlockUpdateID,
-				protocol.ClientboundLevelEventID,
-				protocol.ClientboundLevelEventID,
-			})
+			assertPacketIDs(t, observerConnection.packetIDs(t), observerPacketIDs)
 
 			assertLevelEvent(t, observerConnection.packets(t)[3], protocol.LevelEventBlockBreak, dependentPosition, dependentState, false)
 		})

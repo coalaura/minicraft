@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	blockInteractionRange       = 6.0
+	blockInteractionRange       = 4.5
+	blockInteractionBuffer      = 1.0
 	sectionBlockUpdateThreshold = 8
 )
 
@@ -54,8 +55,16 @@ type blockMutationRecord struct {
 	previousEntity    game.BlockEntity
 	hadPreviousEntity bool
 	cause             blockMutationCause
-	ordinaryDrop      bool
+	lootContext       blockLootContext
 }
+
+type blockLootContext uint8
+
+const (
+	blockLootNone blockLootContext = iota
+	blockLootPlayer
+	blockLootNoBreaker
+)
 
 type blockMutationDelivery struct {
 	session          *Session
@@ -96,18 +105,28 @@ func (CreativeBlockMutationPolicy) AllowBlockMutation(mutation BlockMutation) bo
 }
 
 func blockWithinInteractionRange(player game.Player, position game.BlockPosition) bool {
-	blockX := float64(position.X) + 0.5
-	blockY := float64(position.Y) + 0.5
-	blockZ := float64(position.Z) + 0.5
-
 	eyePosition := player.EyePosition()
 
-	distanceX := blockX - eyePosition.X
-	distanceY := blockY - eyePosition.Y
-	distanceZ := blockZ - eyePosition.Z
+	distanceX := distanceToInterval(eyePosition.X, float64(position.X), float64(position.X)+1)
+	distanceY := distanceToInterval(eyePosition.Y, float64(position.Y), float64(position.Y)+1)
+	distanceZ := distanceToInterval(eyePosition.Z, float64(position.Z), float64(position.Z)+1)
 
 	distanceSquared := distanceX*distanceX + distanceY*distanceY + distanceZ*distanceZ
-	return distanceSquared <= blockInteractionRange*blockInteractionRange
+	maximum := blockInteractionRange + blockInteractionBuffer
+
+	return distanceSquared < maximum*maximum
+}
+
+func distanceToInterval(value, minimum, maximum float64) float64 {
+	if value < minimum {
+		return minimum - value
+	}
+
+	if value > maximum {
+		return value - maximum
+	}
+
+	return 0
 }
 
 func (r *Runtime) MutateBlock(session *Session, action BlockMutationAction, position game.BlockPosition, replacement game.Block) (BlockMutationResult, error) {
@@ -136,7 +155,9 @@ func (r *Runtime) mutateMinedBlockLocked(session *Session, position game.BlockPo
 			continue
 		}
 
-		record.ordinaryDrop = tool.Item.IsCorrectToolForDrops(record.previous)
+		if tool.Item.IsCorrectToolForDrops(record.previous) {
+			record.lootContext = blockLootPlayer
+		}
 	}
 
 	return result, delivery, nil
@@ -206,7 +227,10 @@ func (r *Runtime) mutateWorldBlocks(changes []game.BlockChange, strict, emptyOnl
 
 		if !strict {
 			changes = r.withAuthoritativeDoorChanges(changes)
+			requiredChanges := len(changes)
 			changes = r.withStructuralNeighborChanges(changes)
+
+			return r.mutateBlocksLocked(nil, BlockMutationPlace, changes, requiredChanges, true, false, true, true)
 		}
 
 		return r.mutateBlocksLocked(nil, BlockMutationPlace, changes, len(changes), true, false, true, true)
@@ -338,7 +362,7 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 			case BlockMutationInteract:
 				cause = blockMutationInteract
 			}
-		} else if !authoritative && current != game.Air && change.Replacement == game.Air {
+		} else if index >= requiredChanges && current != game.Air && change.Replacement == game.Air {
 			cause = blockMutationSupportLoss
 		}
 
@@ -353,10 +377,16 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 			previousEntity, hadPreviousEntity = r.World.BlockEntityAt(change.Position)
 		}
 
-		records = append(records, blockMutationRecord{
+		record := blockMutationRecord{
 			change: change, previous: current, previousState: previousState,
 			previousEntity: previousEntity, hadPreviousEntity: hadPreviousEntity, cause: cause,
-		})
+		}
+
+		if cause == blockMutationSupportLoss {
+			record.lootContext = blockLootNoBreaker
+		}
+
+		records = append(records, record)
 	}
 
 	result.Allowed = true

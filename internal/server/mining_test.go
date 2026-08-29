@@ -13,6 +13,12 @@ type miningSpeedTestCase struct {
 	want float64
 }
 
+type miningRuleTestCase struct {
+	item  game.Item
+	block game.Block
+	speed float32
+}
+
 type baselineBlockDropTestCase struct {
 	block game.Block
 	item  game.Item
@@ -210,7 +216,7 @@ func TestSurvivalMiningDropsOrdinaryLoot(t *testing.T) {
 	}
 
 	drop := entities[0].(*runtimeItemEntity)
-	if drop.Stack.Item != game.ItemDirt || drop.Stack.Count != 1 || drop.PickupDelay != 10 || drop.Velocity != (game.Velocity{}) {
+	if drop.Stack.Item != game.ItemDirt || drop.Stack.Count != 1 || drop.PickupDelay != 10 || drop.Velocity.Y != 0.2 || drop.Velocity.X < -0.1 || drop.Velocity.X >= 0.1 || drop.Velocity.Z < -0.1 || drop.Velocity.Z >= 0.1 {
 		t.Fatalf("ordinary drop = %+v", drop)
 	}
 }
@@ -229,9 +235,9 @@ func TestGeneratedBaselineBlockDrops(t *testing.T) {
 			runtime := NewRuntime(&game.World{})
 
 			record := blockMutationRecord{
-				change:       game.BlockChange{Position: game.BlockPosition{Y: 70}, Replacement: game.Air},
-				previous:     test.block,
-				ordinaryDrop: true,
+				change:      game.BlockChange{Position: game.BlockPosition{Y: 70}, Replacement: game.Air},
+				previous:    test.block,
+				lootContext: blockLootPlayer,
 			}
 
 			runtime.commitOrdinaryBlockDrops([]blockMutationRecord{record})
@@ -246,6 +252,107 @@ func TestGeneratedBaselineBlockDrops(t *testing.T) {
 				t.Fatalf("ordinary drop = %+v, want item %d count %d", drop.Stack, test.item, test.count)
 			}
 		})
+	}
+}
+
+func TestGeneratedStateCountBlockDrops(t *testing.T) {
+	tests := map[string]baselineBlockDropTestCase{}
+
+	for count := 1; count <= 4; count++ {
+		value := blockPropertyValue(count)
+
+		candle := mustBlockState(t, game.Candle, game.BlockPropertyValue{Name: "candles", Value: value})
+		redCandle := mustBlockState(t, game.RedCandle, game.BlockPropertyValue{Name: "candles", Value: value})
+		seaPickle := mustBlockState(t, game.SeaPickle, game.BlockPropertyValue{Name: "pickles", Value: value})
+
+		tests["candle "+value] = baselineBlockDropTestCase{block: candle, item: game.ItemCandle, count: int32(count)}
+		tests["red candle "+value] = baselineBlockDropTestCase{block: redCandle, item: game.ItemRedCandle, count: int32(count)}
+		tests["sea pickle "+value] = baselineBlockDropTestCase{block: seaPickle, item: game.ItemSeaPickle, count: int32(count)}
+	}
+
+	for count := 1; count <= 8; count++ {
+		value := blockPropertyValue(count)
+		snow := mustBlockState(t, game.Snow, game.BlockPropertyValue{Name: "layers", Value: value})
+
+		tests["snow "+value] = baselineBlockDropTestCase{block: snow, item: game.ItemSnowball, count: int32(count)}
+	}
+
+	bottomSlab := mustBlockState(t, game.StoneSlab, game.BlockPropertyValue{Name: "type", Value: "bottom"})
+	doubleSlab := mustBlockState(t, game.StoneSlab, game.BlockPropertyValue{Name: "type", Value: "double"})
+
+	tests["single slab"] = baselineBlockDropTestCase{block: bottomSlab, item: game.ItemStoneSlab, count: 1}
+	tests["double slab"] = baselineBlockDropTestCase{block: doubleSlab, item: game.ItemStoneSlab, count: 2}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			runtime := NewRuntime(&game.World{})
+			record := blockMutationRecord{
+				change:      game.BlockChange{Position: game.BlockPosition{Y: 70}, Replacement: game.Air},
+				previous:    test.block,
+				lootContext: blockLootPlayer,
+			}
+
+			runtime.commitOrdinaryBlockDrops([]blockMutationRecord{record})
+
+			entities := runtime.snapshotRuntimeEntities()
+			if len(entities) != 1 {
+				t.Fatalf("ordinary drops = %d, want 1", len(entities))
+			}
+
+			drop := entities[0].(*runtimeItemEntity)
+			if drop.Stack.Item != test.item || drop.Stack.Count != test.count {
+				t.Fatalf("ordinary drop = %+v, want item %d count %d", drop.Stack, test.item, test.count)
+			}
+		})
+	}
+}
+
+func TestSnowDropRequiresPlayerLootContext(t *testing.T) {
+	snow := mustBlockState(t, game.Snow, game.BlockPropertyValue{Name: "layers", Value: "4"})
+
+	runtime := NewRuntime(&game.World{})
+
+	record := blockMutationRecord{
+		change:      game.BlockChange{Position: game.BlockPosition{Y: 70}, Replacement: game.Air},
+		previous:    snow,
+		lootContext: blockLootNoBreaker,
+	}
+
+	runtime.commitOrdinaryBlockDrops([]blockMutationRecord{record})
+
+	if len(runtime.snapshotRuntimeEntities()) != 0 {
+		t.Fatal("snow dropped without a player loot entity")
+	}
+}
+
+func TestGeneratedSwordAndShearsMiningRules(t *testing.T) {
+	tests := map[string]miningRuleTestCase{
+		"sword cobweb":         {item: game.ItemIronSword, block: game.Cobweb, speed: 15},
+		"sword bamboo":         {item: game.ItemWoodenSword, block: game.Bamboo, speed: math.MaxFloat32},
+		"sword leaves":         {item: game.ItemDiamondSword, block: game.OakLeaves, speed: 1.5},
+		"shears cobweb":        {item: game.ItemShears, block: game.Cobweb, speed: 15},
+		"shears leaves":        {item: game.ItemShears, block: game.OakLeaves, speed: 15},
+		"shears wool":          {item: game.ItemShears, block: game.WhiteWool, speed: 5},
+		"shears vine":          {item: game.ItemShears, block: game.Vine, speed: 2},
+		"shears glow lichen":   {item: game.ItemShears, block: game.GlowLichen, speed: 2},
+		"shears default speed": {item: game.ItemShears, block: game.Stone, speed: 1},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			speed := test.item.BaseDestroySpeed(test.block)
+			if speed != test.speed {
+				t.Fatalf("destroy speed = %g, want %g", speed, test.speed)
+			}
+		})
+	}
+
+	if !game.ItemIronSword.IsCorrectToolForDrops(game.Cobweb) {
+		t.Fatal("sword is not correct for cobweb drops")
+	}
+
+	if !game.ItemShears.IsCorrectToolForDrops(game.Cobweb) {
+		t.Fatal("shears are not correct for cobweb drops")
 	}
 }
 
@@ -270,9 +377,9 @@ func TestDoorDropUsesMinedBlockState(t *testing.T) {
 			runtime := NewRuntime(&game.World{})
 
 			record := blockMutationRecord{
-				change:       game.BlockChange{Position: game.BlockPosition{Y: 70}, Replacement: game.Air},
-				previous:     test.block,
-				ordinaryDrop: true,
+				change:      game.BlockChange{Position: game.BlockPosition{Y: 70}, Replacement: game.Air},
+				previous:    test.block,
+				lootContext: blockLootPlayer,
 			}
 
 			runtime.commitOrdinaryBlockDrops([]blockMutationRecord{record})

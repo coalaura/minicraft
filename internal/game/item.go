@@ -40,10 +40,18 @@ type Item uint16
 
 type ItemPlacementRule uint8
 
+type ItemMiningRule struct {
+	Trait          BlockTrait
+	Block          Block
+	Speed          float32
+	HasSpeed       bool
+	Correct        bool
+	HasCorrectness bool
+}
+
 type ItemMining struct {
-	Tool  ToolClass
-	Tier  HarvestTier
-	Speed float32
+	Rules        []ItemMiningRule
+	DefaultSpeed float32
 }
 
 type ItemDefinition struct {
@@ -115,13 +123,20 @@ func (item Item) MiningProperties() ItemMining {
 
 func (item Item) BaseDestroySpeed(block Block) float32 {
 	itemMining := item.MiningProperties()
-	blockMining := block.MiningProperties()
 
-	if itemMining.Tool == ToolNone || itemMining.Tool != blockMining.EffectiveTool {
-		return 1
+	for _, rule := range itemMining.Rules {
+		if !rule.HasSpeed || !rule.matches(block) {
+			continue
+		}
+
+		return rule.Speed
 	}
 
-	return itemMining.Speed
+	if itemMining.DefaultSpeed > 0 {
+		return itemMining.DefaultSpeed
+	}
+
+	return 1
 }
 
 func (item Item) IsCorrectToolForDrops(block Block) bool {
@@ -131,7 +146,24 @@ func (item Item) IsCorrectToolForDrops(block Block) bool {
 	}
 
 	itemMining := item.MiningProperties()
-	return itemMining.Tool == blockMining.EffectiveTool && itemMining.Tier >= blockMining.RequiredTier
+
+	for _, rule := range itemMining.Rules {
+		if !rule.HasCorrectness || !rule.matches(block) {
+			continue
+		}
+
+		return rule.Correct
+	}
+
+	return false
+}
+
+func (rule ItemMiningRule) matches(block Block) bool {
+	if rule.Block != Air && rule.Block == block {
+		return true
+	}
+
+	return rule.Trait != 0 && block.HasTrait(rule.Trait)
 }
 
 func ItemForBlock(block Block) (Item, bool) {

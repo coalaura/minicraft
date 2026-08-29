@@ -180,53 +180,64 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 
 func itemMining(name string) string {
 	parts := strings.Split(name, "_")
+
+	if name == "shears" {
+		return "ItemMining{Rules: []ItemMiningRule{{Block: Cobweb, Speed: 15, HasSpeed: true, Correct: true, HasCorrectness: true}, {Trait: BlockTraitLeaves, Speed: 15, HasSpeed: true}, {Trait: BlockTraitWool, Speed: 5, HasSpeed: true}, {Block: Vine, Speed: 2, HasSpeed: true}, {Block: GlowLichen, Speed: 2, HasSpeed: true}}, DefaultSpeed: 1}"
+	}
+
 	if len(parts) != 2 {
 		return "ItemMining{}"
 	}
 
-	var tool string
+	if parts[1] == "sword" {
+		return "ItemMining{Rules: []ItemMiningRule{{Block: Cobweb, Speed: 15, HasSpeed: true, Correct: true, HasCorrectness: true}, {Trait: BlockTraitSwordInstantlyMines, Speed: 3.4028235e38, HasSpeed: true}, {Trait: BlockTraitSwordEfficient, Speed: 1.5, HasSpeed: true}}, DefaultSpeed: 1}"
+	}
+
+	var mineableTrait string
 
 	switch parts[1] {
 	case "pickaxe":
-		tool = "ToolPickaxe"
+		mineableTrait = "BlockTraitMineablePickaxe"
 	case "shovel":
-		tool = "ToolShovel"
+		mineableTrait = "BlockTraitMineableShovel"
 	case "axe":
-		tool = "ToolAxe"
+		mineableTrait = "BlockTraitMineableAxe"
 	case "hoe":
-		tool = "ToolHoe"
+		mineableTrait = "BlockTraitMineableHoe"
 	default:
 		return "ItemMining{}"
 	}
 
-	tier := "HarvestTierNone"
+	incorrectTrait := ""
 	var speed float32
 
 	switch parts[0] {
 	case "wooden":
+		incorrectTrait = "BlockTraitIncorrectWoodenTool"
 		speed = 2
 	case "golden":
+		incorrectTrait = "BlockTraitIncorrectGoldTool"
 		speed = 12
 	case "copper":
-		tier = "HarvestTierStone"
+		incorrectTrait = "BlockTraitIncorrectCopperTool"
 		speed = 5
 	case "stone":
-		tier = "HarvestTierStone"
+		incorrectTrait = "BlockTraitIncorrectStoneTool"
 		speed = 4
 	case "iron":
-		tier = "HarvestTierIron"
+		incorrectTrait = "BlockTraitIncorrectIronTool"
 		speed = 6
 	case "diamond":
-		tier = "HarvestTierDiamond"
+		incorrectTrait = "BlockTraitIncorrectDiamondTool"
 		speed = 8
 	case "netherite":
-		tier = "HarvestTierDiamond"
+		incorrectTrait = "BlockTraitIncorrectNetheriteTool"
 		speed = 9
 	default:
 		return "ItemMining{}"
 	}
 
-	return fmt.Sprintf("ItemMining{Tool: %s, Tier: %s, Speed: %g}", tool, tier, speed)
+	return fmt.Sprintf("ItemMining{Rules: []ItemMiningRule{{Trait: %s, Correct: false, HasCorrectness: true}, {Trait: %s, Speed: %g, HasSpeed: true, Correct: true, HasCorrectness: true}}, DefaultSpeed: 1}", incorrectTrait, mineableTrait, speed)
 }
 
 func blockPlacementRule(block BlockDefinition) string {

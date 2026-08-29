@@ -19,6 +19,41 @@ type BlockSoundType uint8
 
 type ToolClass uint8
 
+type BlockTrait uint32
+
+type BlockFace uint8
+
+const (
+	BlockFaceDown BlockFace = iota
+	BlockFaceUp
+	BlockFaceNorth
+	BlockFaceSouth
+	BlockFaceWest
+	BlockFaceEast
+)
+
+const (
+	BlockTraitReplaceable BlockTrait = 1 << iota
+	BlockTraitDirt
+	BlockTraitSnowCannotSurviveOn
+	BlockTraitSnowCanSurviveOn
+	BlockTraitMineablePickaxe
+	BlockTraitMineableShovel
+	BlockTraitMineableAxe
+	BlockTraitMineableHoe
+	BlockTraitIncorrectWoodenTool
+	BlockTraitIncorrectStoneTool
+	BlockTraitIncorrectCopperTool
+	BlockTraitIncorrectIronTool
+	BlockTraitIncorrectDiamondTool
+	BlockTraitIncorrectGoldTool
+	BlockTraitIncorrectNetheriteTool
+	BlockTraitSwordInstantlyMines
+	BlockTraitSwordEfficient
+	BlockTraitLeaves
+	BlockTraitWool
+)
+
 const (
 	ToolNone ToolClass = iota
 	ToolPickaxe
@@ -45,6 +80,21 @@ const (
 	BlockDropDeferred
 )
 
+type BlockDropCount struct {
+	Value string
+	Count int32
+}
+
+type BlockDropRule struct {
+	Item          Item
+	Count         int32
+	CountProperty string
+	Counts        []BlockDropCount
+	GateProperty  string
+	GateValue     string
+	RequiresActor bool
+}
+
 type BlockMining struct {
 	Hardness      float32
 	EffectiveTool ToolClass
@@ -55,6 +105,7 @@ type BlockMining struct {
 	DropMax       int32
 	DropProperty  string
 	DropValue     string
+	DropRules     []BlockDropRule
 	RequiresTool  bool
 	Destroyable   bool
 }
@@ -119,6 +170,7 @@ type BlockDefinition struct {
 	LightFilter     uint8
 	Sound           BlockSoundType
 	Replaceable     bool
+	Traits          BlockTrait
 	BlockEntityType BlockEntityType
 	Mining          BlockMining
 	Properties      []BlockProperty
@@ -260,7 +312,15 @@ func (block Block) Replaceable() bool {
 		return false
 	}
 
-	return blockDefinitions[stateBlockIDs[block]].Replaceable
+	return block.HasTrait(BlockTraitReplaceable)
+}
+
+func (block Block) HasTrait(trait BlockTrait) bool {
+	if !block.Valid() {
+		return false
+	}
+
+	return blockDefinitions[stateBlockIDs[block]].Traits&trait != 0
 }
 
 func (block Block) SameLightProperties(other Block) bool {

@@ -464,11 +464,27 @@ func supportedFromBelow(blockAt func(game.BlockPosition) game.Block, position ga
 		return support != game.Air
 	}
 
-	if definition.Name == "snow" && sameBlockType(block, support) {
-		return blockPropertyInt(support, "layers") == 8
+	if definition.Name == "snow" {
+		if support.HasTrait(game.BlockTraitSnowCannotSurviveOn) {
+			return false
+		}
+
+		if support.HasTrait(game.BlockTraitSnowCanSurviveOn) {
+			return true
+		}
+
+		if sameBlockType(block, support) {
+			return blockPropertyInt(support, "layers") == 8
+		}
+
+		return support.FullFace(game.BlockFaceUp)
 	}
 
-	return support.Behavior() == game.BlockBehaviorSolid
+	if strings.HasSuffix(definition.Name, "_pressure_plate") {
+		return support.SupportsRigid(game.BlockFaceUp) || support.SupportsCenter(game.BlockFaceUp)
+	}
+
+	return support.SupportsCenter(game.BlockFaceUp)
 }
 
 func isCarpet(name string) bool {
@@ -477,6 +493,7 @@ func isCarpet(name string) bool {
 
 func buttonSupported(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) bool {
 	support := position
+	supportFace := game.BlockFaceUp
 
 	switch blockProperty(block, "face") {
 	case "floor":
@@ -491,6 +508,7 @@ func buttonSupported(blockAt func(game.BlockPosition) game.Block, position game.
 		}
 
 		support.Y++
+		supportFace = game.BlockFaceDown
 	case "wall":
 		facing, valid := directionFromName(blockProperty(block, "facing"))
 		if !valid {
@@ -502,11 +520,26 @@ func buttonSupported(blockAt func(game.BlockPosition) game.Block, position game.
 		if !offsetValid {
 			return false
 		}
+
+		supportFace = horizontalGameFace(facing)
 	default:
 		return false
 	}
 
-	return blockAt(support).Behavior() == game.BlockBehaviorSolid
+	return blockAt(support).FaceSturdy(supportFace)
+}
+
+func horizontalGameFace(direction horizontalDirection) game.BlockFace {
+	switch direction {
+	case directionNorth:
+		return game.BlockFaceNorth
+	case directionSouth:
+		return game.BlockFaceSouth
+	case directionWest:
+		return game.BlockFaceWest
+	default:
+		return game.BlockFaceEast
+	}
 }
 
 func plantSupported(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, plant game.Block) bool {
@@ -518,30 +551,22 @@ func plantSupported(blockAt func(game.BlockPosition) game.Block, position game.B
 
 	below.Y--
 
-	supportDefinition, valid := blockAt(below).Definition()
+	supportBlock := blockAt(below)
+	supportDefinition, valid := supportBlock.Definition()
 	if !valid {
 		return false
 	}
 
 	plantDefinition, _ := plant.Definition()
 	if plantDefinition.Name == "dead_bush" || strings.HasSuffix(plantDefinition.Name, "dry_grass") {
-		return isDirtPlantSupport(supportDefinition.Name) || supportDefinition.Name == "sand" || supportDefinition.Name == "red_sand" || strings.HasSuffix(supportDefinition.Name, "terracotta")
+		return supportBlock.HasTrait(game.BlockTraitDirt) || supportDefinition.Name == "farmland" || supportDefinition.Name == "sand" || supportDefinition.Name == "red_sand" || strings.HasSuffix(supportDefinition.Name, "terracotta")
 	}
 
 	if plantDefinition.Name == "wither_rose" {
-		return isDirtPlantSupport(supportDefinition.Name) || supportDefinition.Name == "netherrack" || supportDefinition.Name == "soul_sand" || supportDefinition.Name == "soul_soil"
+		return supportBlock.HasTrait(game.BlockTraitDirt) || supportDefinition.Name == "farmland" || supportDefinition.Name == "netherrack" || supportDefinition.Name == "soul_sand" || supportDefinition.Name == "soul_soil"
 	}
 
-	return isDirtPlantSupport(supportDefinition.Name)
-}
-
-func isDirtPlantSupport(name string) bool {
-	switch name {
-	case "grass_block", "dirt", "coarse_dirt", "podzol", "rooted_dirt", "mud", "muddy_mangrove_roots", "moss_block", "pale_moss_block", "farmland", "mycelium":
-		return true
-	default:
-		return false
-	}
+	return supportBlock.HasTrait(game.BlockTraitDirt) || supportDefinition.Name == "farmland"
 }
 
 func recalculateDoor(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) game.Block {
@@ -574,7 +599,7 @@ func recalculateDoor(blockAt func(game.BlockPosition) game.Block, position game.
 
 	other := blockAt(otherPosition)
 
-	if blockAt(below).Behavior() == game.BlockBehaviorSolid && other.Behavior() == game.BlockBehaviorDoor && sameBlockType(block, other) && blockProperty(other, "half") == "upper" {
+	if blockAt(below).FaceSturdy(game.BlockFaceUp) && other.Behavior() == game.BlockBehaviorDoor && sameBlockType(block, other) && blockProperty(other, "half") == "upper" {
 		return block
 	}
 
@@ -590,7 +615,13 @@ func pointedDripstoneSupported(blockAt func(game.BlockPosition) game.Block, posi
 	}
 
 	neighbor := blockAt(support)
-	if neighbor.Behavior() == game.BlockBehaviorSolid {
+	supportFace := game.BlockFaceUp
+
+	if direction == "down" {
+		supportFace = game.BlockFaceDown
+	}
+
+	if neighbor.FaceSturdy(supportFace) {
 		return true
 	}
 

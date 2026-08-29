@@ -198,8 +198,9 @@ func TestSuccessfulPlacementSynchronizesLoadedPlayers(t *testing.T) {
 
 func TestPlacementUsesVanillaReplaceabilityTarget(t *testing.T) {
 	tests := map[string]replaceabilityPlacementTestCase{
-		"short grass is replaced": {clicked: game.ShortGrass, target: game.BlockPosition{Y: 70}},
-		"flower targets adjacent": {clicked: game.Dandelion, target: game.BlockPosition{Y: 71}},
+		"short grass is replaced":   {clicked: game.ShortGrass, target: game.BlockPosition{Y: 70}},
+		"vine from tag is replaced": {clicked: game.Vine, target: game.BlockPosition{Y: 70}},
+		"flower targets adjacent":   {clicked: game.Dandelion, target: game.BlockPosition{Y: 71}},
 	}
 
 	for name, test := range tests {

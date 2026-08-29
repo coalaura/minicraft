@@ -28,6 +28,11 @@ type structuralSupportTestCase struct {
 	block   game.Block
 }
 
+type directionalSupportTestCase struct {
+	support game.Block
+	want    bool
+}
+
 func TestSlabPlacementAndMerging(t *testing.T) {
 	slabCursorPlacements := map[string]float32{"bottom": 0.25, "top": 0.75}
 
@@ -83,10 +88,83 @@ func TestSlabPlacementAndMerging(t *testing.T) {
 	assertBlockProperty(t, world.BlockAt(clicked), "type", "double")
 	assertBlockProperty(t, world.BlockAt(clicked), "waterlogged", "false")
 
-	_, merge := slabMerge(game.StoneSlab, oakBottom, protocol.BlockFaceUp, 0.5)
+	_, merge := slabMerge(game.StoneSlab, oakBottom, protocol.BlockFaceUp, 0.5, true)
 
 	if merge {
 		t.Fatal("incompatible slab types merged")
+	}
+}
+
+func TestSlabMergesThroughAdjacentPlacementTarget(t *testing.T) {
+	support := game.BlockPosition{Y: 69}
+	position := game.BlockPosition{Y: 70}
+
+	bottom := mustBlockState(t, game.OakSlab, game.BlockPropertyValue{Name: "type", Value: "bottom"})
+
+	world := &game.World{}
+
+	world.SetBlock(support, game.Stone)
+	world.SetBlock(position, bottom)
+
+	runtime := NewRuntime(world)
+
+	actor, _ := newPlacementTestSession(runtime, support)
+
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemOakSlab, Count: 1}
+
+	markPlacementChunksLoaded(actor, support, position)
+
+	joinTestSession(t, runtime, actor)
+
+	err := actor.handleUseItemOn(testUseItemOn(support, protocol.BlockFaceUp, protocol.MainHand, 3))
+	if err != nil {
+		t.Fatalf("merge slab through adjacent target: %v", err)
+	}
+
+	assertBlockProperty(t, world.BlockAt(position), "type", "double")
+}
+
+func TestDirectionalSupportUsesBlockStateShape(t *testing.T) {
+	topSlab := mustBlockState(t, game.StoneSlab, game.BlockPropertyValue{Name: "type", Value: "top"})
+	bottomSlab := mustBlockState(t, game.StoneSlab, game.BlockPropertyValue{Name: "type", Value: "bottom"})
+
+	topStairs := mustBlockState(t, game.StoneStairs,
+		game.BlockPropertyValue{Name: "facing", Value: "north"},
+		game.BlockPropertyValue{Name: "half", Value: "top"},
+		game.BlockPropertyValue{Name: "shape", Value: "straight"},
+	)
+
+	bottomStairs := mustBlockState(t, game.StoneStairs,
+		game.BlockPropertyValue{Name: "facing", Value: "north"},
+		game.BlockPropertyValue{Name: "half", Value: "bottom"},
+		game.BlockPropertyValue{Name: "shape", Value: "straight"},
+	)
+
+	tests := map[string]directionalSupportTestCase{
+		"top slab":      {support: topSlab, want: true},
+		"bottom slab":   {support: bottomSlab, want: false},
+		"top stairs":    {support: topStairs, want: true},
+		"bottom stairs": {support: bottomStairs, want: false},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			blockAt := func(game.BlockPosition) game.Block {
+				return test.support
+			}
+
+			position := game.BlockPosition{Y: 1}
+
+			candleSupported := supportedFromBelow(blockAt, position, game.Candle)
+			if candleSupported != test.want {
+				t.Fatalf("candle support = %t, want %t", candleSupported, test.want)
+			}
+
+			plateSupported := supportedFromBelow(blockAt, position, game.StonePressurePlate)
+			if plateSupported != test.want {
+				t.Fatalf("pressure plate support = %t, want %t", plateSupported, test.want)
+			}
+		})
 	}
 }
 
