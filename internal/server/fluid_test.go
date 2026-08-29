@@ -409,9 +409,9 @@ func TestFluidMutationSchedulesWaterloggedNeighbors(t *testing.T) {
 
 	waterlogged := game.BlockPosition{Y: 69}
 
-	key := scheduledBlockTickKey{position: waterlogged, typeID: game.FluidStateTypeWater}
+	key := scheduledFluidTickKey{position: waterlogged, typeID: game.FluidStateTypeWater}
 
-	_, scheduled := runtime.scheduledBlockTicks.pending[key]
+	_, scheduled := runtime.scheduledFluidTicks.pending[key]
 	if !scheduled {
 		t.Fatal("waterlogged fluid was not scheduled after an authoritative mutation")
 	}

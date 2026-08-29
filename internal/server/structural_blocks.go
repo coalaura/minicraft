@@ -543,7 +543,7 @@ func buttonSupported(blockAt func(game.BlockPosition) game.Block, position game.
 		return false
 	}
 
-	return blockAt(support).FaceSturdy(supportFace)
+	return blockAt(support).SupportsCenter(supportFace)
 }
 
 func horizontalGameFace(direction horizontalDirection) game.BlockFace {

@@ -40,6 +40,7 @@ type Runtime struct {
 	blockMutationDeliveryTail chan struct{}
 	runtimeBlockMutations     []queuedBlockMutation
 	scheduledBlockTicks       scheduledBlockTicks
+	scheduledFluidTicks       scheduledFluidTicks
 	deferredFluidSources      map[LoadedChunk]map[game.BlockPosition]struct{}
 	activeChunksMu            sync.RWMutex
 	activeChunks              map[LoadedChunk]*activeChunkReference

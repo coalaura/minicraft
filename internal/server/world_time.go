@@ -48,6 +48,7 @@ func (r *Runtime) Tick() game.TimeState {
 	r.lifecycleMu.Unlock()
 
 	r.tickScheduledBlocksLocked()
+	r.tickScheduledFluidsLocked()
 
 	miningMutations := r.tickMiningAttemptsLocked()
 

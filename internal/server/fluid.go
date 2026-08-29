@@ -96,7 +96,7 @@ func (r *Runtime) scheduleFluidNeighborsLocked(changes []game.BlockChange) {
 			if present {
 				state := block.FluidState()
 
-				r.scheduleBlockTickLocked(position, state.StateType(), r.fluidDelay(fluid, position, state, state))
+				r.scheduleFluidTickLocked(position, state.StateType(), r.fluidDelay(fluid, position, state, state))
 			}
 		}
 	}
@@ -372,7 +372,7 @@ func (r *Runtime) resumeDeferredFluidSourcesLocked(chunks []LoadedChunk) {
 
 			state := block.FluidState()
 
-			r.scheduleBlockTickLocked(source, state.StateType(), r.fluidDelay(fluid, source, state, state))
+			r.scheduleFluidTickLocked(source, state.StateType(), r.fluidDelay(fluid, source, state, state))
 		}
 	}
 }

@@ -6,10 +6,10 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
-func TestScheduledBlockTicksPauseAndResumeExactly(t *testing.T) {
+func TestScheduledFluidTicksPauseAndResumeExactly(t *testing.T) {
 	position := game.BlockPosition{X: 32, Y: 70, Z: -1}
 
-	ticks := scheduledBlockTicks{}
+	ticks := scheduledFluidTicks{}
 
 	ticks.schedule(position, game.FluidStateTypeWater, 3)
 
@@ -42,9 +42,9 @@ func TestScheduledBlockTicksPauseAndResumeExactly(t *testing.T) {
 	}
 }
 
-func TestScheduledBlockTicksIgnoreQueuedDuplicates(t *testing.T) {
+func TestScheduledFluidTicksIgnoreQueuedDuplicates(t *testing.T) {
 	position := game.BlockPosition{X: 32, Y: 70}
-	ticks := scheduledBlockTicks{}
+	ticks := scheduledFluidTicks{}
 
 	ticks.schedule(position, game.FluidStateTypeWater, 5)
 	ticks.schedule(position, game.FluidStateTypeWater, 1)
@@ -106,13 +106,66 @@ func TestScheduledTickQueueOrdersDuePriorityAndSuborder(t *testing.T) {
 	}
 }
 
-func TestScheduledBlockTicksUseIndependentChunkClocks(t *testing.T) {
+func TestScheduledBlockTicksUseBlockTypeIdentity(t *testing.T) {
+	position := game.BlockPosition{X: 8, Y: 70, Z: 8}
+
+	stoneDefinition, _ := game.StoneButton.Definition()
+	oakDefinition, _ := game.OakButton.Definition()
+
+	ticks := scheduledBlockTicks{}
+
+	ticks.schedule(position, stoneDefinition.ID, 2)
+	ticks.schedule(position, stoneDefinition.ID, 1)
+	ticks.schedule(position, oakDefinition.ID, 2)
+
+	ticks.advance(func(LoadedChunk) bool {
+		return true
+	})
+
+	due := ticks.advance(func(LoadedChunk) bool {
+		return true
+	})
+
+	if len(due) != 2 {
+		t.Fatalf("due ticks = %v, want one tick for each block type", due)
+	}
+
+	if due[0].key.typeID != stoneDefinition.ID || due[1].key.typeID != oakDefinition.ID {
+		t.Fatalf("due block types = %v, want stone then oak", due)
+	}
+}
+
+func TestScheduledBlockAndFluidTicksHaveIndependentDomains(t *testing.T) {
+	position := game.BlockPosition{Y: 70}
+
+	definition, _ := game.StoneButton.Definition()
+
+	blockTicks := scheduledBlockTicks{}
+	fluidTicks := scheduledFluidTicks{}
+
+	blockTicks.schedule(position, definition.ID, 1)
+	fluidTicks.schedule(position, game.FluidStateTypeWater, 1)
+
+	blockDue := blockTicks.advance(func(LoadedChunk) bool {
+		return true
+	})
+
+	fluidDue := fluidTicks.advance(func(LoadedChunk) bool {
+		return true
+	})
+
+	if len(blockDue) != 1 || len(fluidDue) != 1 {
+		t.Fatalf("independent due ticks = blocks %v, fluids %v; want one each", blockDue, fluidDue)
+	}
+}
+
+func TestScheduledFluidTicksUseIndependentChunkClocks(t *testing.T) {
 	first := game.BlockPosition{X: 0, Y: 70}
 	second := game.BlockPosition{X: 32, Y: 70}
 
 	firstChunk := blockLoadedChunk(first)
 
-	ticks := scheduledBlockTicks{}
+	ticks := scheduledFluidTicks{}
 
 	ticks.schedule(first, game.FluidStateTypeWater, 2)
 	ticks.schedule(second, game.FluidStateTypeWater, 2)
@@ -144,7 +197,7 @@ func TestScheduledBlockTicksUseIndependentChunkClocks(t *testing.T) {
 	}
 }
 
-func TestScheduledBlockTicksSurviveActiveChunkDestruction(t *testing.T) {
+func TestScheduledFluidTicksSurviveActiveChunkDestruction(t *testing.T) {
 	runtime := NewRuntime(game.NewOverworld(nil))
 
 	session := &Session{}
@@ -154,18 +207,18 @@ func TestScheduledBlockTicksSurviveActiveChunkDestruction(t *testing.T) {
 	chunk := blockLoadedChunk(position)
 
 	runtime.setSessionActiveChunks(session, []LoadedChunk{chunk})
-	runtime.scheduleBlockTickLocked(position, game.FluidStateTypeWater, 1)
+	runtime.scheduleFluidTickLocked(position, game.FluidStateTypeWater, 1)
 	runtime.setSessionActiveChunks(session, nil)
-	runtime.tickScheduledBlocksLocked()
+	runtime.tickScheduledFluidsLocked()
 
-	if len(runtime.scheduledBlockTicks.pending) != 1 {
-		t.Fatalf("pending ticks after chunk destruction = %d, want 1", len(runtime.scheduledBlockTicks.pending))
+	if len(runtime.scheduledFluidTicks.pending) != 1 {
+		t.Fatalf("pending ticks after chunk destruction = %d, want 1", len(runtime.scheduledFluidTicks.pending))
 	}
 
 	runtime.setSessionActiveChunks(session, []LoadedChunk{chunk})
-	runtime.tickScheduledBlocksLocked()
+	runtime.tickScheduledFluidsLocked()
 
-	if len(runtime.scheduledBlockTicks.pending) != 0 {
-		t.Fatalf("pending ticks after reactivation = %d, want 0", len(runtime.scheduledBlockTicks.pending))
+	if len(runtime.scheduledFluidTicks.pending) != 0 {
+		t.Fatalf("pending ticks after reactivation = %d, want 0", len(runtime.scheduledFluidTicks.pending))
 	}
 }

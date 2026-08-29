@@ -29,7 +29,7 @@ func (g fluidAcceptanceGenerator) BlockAt(_ int64, position game.BlockPosition) 
 
 func tickFluidAcceptanceSchedule(runtime *Runtime) {
 	runtime.worldMutationMu.Lock()
-	runtime.tickScheduledBlocksLocked()
+	runtime.tickScheduledFluidsLocked()
 	runtime.worldMutationMu.Unlock()
 }
 
@@ -44,7 +44,7 @@ func TestFluidAcceptanceRuntimeTickDoesNotDeadlock(t *testing.T) {
 
 	runtime.World.SetBlock(position, game.Water)
 
-	runtime.scheduleBlockTickLocked(position, game.FluidStateTypeWater, 1)
+	runtime.scheduleFluidTickLocked(position, game.FluidStateTypeWater, 1)
 
 	complete := make(chan struct{})
 
@@ -87,8 +87,8 @@ func TestFluidAcceptanceBucketMutationSchedulesAndFlowsAfterDelay(t *testing.T) 
 		t.Fatalf("empty water bucket: used %t, err %v", used, err)
 	}
 
-	key := scheduledBlockTickKey{position: position, typeID: game.FluidStateTypeWater}
-	if _, scheduled := runtime.scheduledBlockTicks.pending[key]; !scheduled {
+	key := scheduledFluidTickKey{position: position, typeID: game.FluidStateTypeWater}
+	if _, scheduled := runtime.scheduledFluidTicks.pending[key]; !scheduled {
 		t.Fatal("bucket mutation did not schedule its water source")
 	}
 
@@ -139,8 +139,8 @@ func TestFluidAcceptanceCrossChunkRetryWaitsForDestinationActivation(t *testing.
 		t.Fatalf("inactive cross-chunk destination = %d, want air", runtime.World.BlockAt(destination))
 	}
 
-	if len(runtime.scheduledBlockTicks.pending) != 0 {
-		t.Fatalf("inactive border left %d polling ticks, want none", len(runtime.scheduledBlockTicks.pending))
+	if len(runtime.scheduledFluidTicks.pending) != 0 {
+		t.Fatalf("inactive border left %d polling ticks, want none", len(runtime.scheduledFluidTicks.pending))
 	}
 
 	deferred := runtime.deferredFluidSources[blockLoadedChunk(destination)]
@@ -177,8 +177,8 @@ func TestFluidAcceptanceInactiveQueuePausesWithoutBacklog(t *testing.T) {
 		tickFluidAcceptanceSchedule(runtime)
 	}
 
-	if runtime.World.BlockAt(below) != game.Air || len(runtime.scheduledBlockTicks.pending) != 1 {
-		t.Fatalf("inactive fluid queue = below %d, pending %d; want air and one paused tick", runtime.World.BlockAt(below), len(runtime.scheduledBlockTicks.pending))
+	if runtime.World.BlockAt(below) != game.Air || len(runtime.scheduledFluidTicks.pending) != 1 {
+		t.Fatalf("inactive fluid queue = below %d, pending %d; want air and one paused tick", runtime.World.BlockAt(below), len(runtime.scheduledFluidTicks.pending))
 	}
 
 	runtime.setSessionActiveChunks(session, []LoadedChunk{blockLoadedChunk(position)})
@@ -225,8 +225,8 @@ func TestFluidAcceptanceEnclosedSourceStopsScheduling(t *testing.T) {
 		tickFluidAcceptanceSchedule(runtime)
 	}
 
-	if len(runtime.scheduledBlockTicks.pending) != 0 {
-		t.Fatalf("enclosed stable source left %d scheduled ticks", len(runtime.scheduledBlockTicks.pending))
+	if len(runtime.scheduledFluidTicks.pending) != 0 {
+		t.Fatalf("enclosed stable source left %d scheduled ticks", len(runtime.scheduledFluidTicks.pending))
 	}
 }
 
@@ -279,8 +279,8 @@ func TestFluidAcceptanceFiniteBasinSettlesWithoutFurtherMutations(t *testing.T) 
 		t.Fatalf("settled basin mutations grew from %d to %d", mutations, len(runtime.runtimeBlockMutations))
 	}
 
-	if len(runtime.scheduledBlockTicks.pending) != 0 {
-		t.Fatalf("settled basin left %d scheduled ticks", len(runtime.scheduledBlockTicks.pending))
+	if len(runtime.scheduledFluidTicks.pending) != 0 {
+		t.Fatalf("settled basin left %d scheduled ticks", len(runtime.scheduledFluidTicks.pending))
 	}
 }
 
@@ -339,8 +339,8 @@ func TestFluidAcceptanceProceduralSourceStartsAndCopyOnWriteCollapses(t *testing
 		t.Fatalf("authoritative neighbor mutation: result=%+v err=%v", result, err)
 	}
 
-	key := scheduledBlockTickKey{position: position, typeID: game.FluidStateTypeWater}
-	if _, scheduled := runtime.scheduledBlockTicks.pending[key]; !scheduled {
+	key := scheduledFluidTickKey{position: position, typeID: game.FluidStateTypeWater}
+	if _, scheduled := runtime.scheduledFluidTicks.pending[key]; !scheduled {
 		t.Fatal("generated source was not scheduled after neighboring authoritative mutation")
 	}
 

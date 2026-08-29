@@ -71,6 +71,7 @@ Set `world.generator` in `config.toml` to one of:
 babel
 backrooms
 fractal-vaults
+maze
 menger-sponge
 natural
 quasicrystal

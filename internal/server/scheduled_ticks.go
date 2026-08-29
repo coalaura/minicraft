@@ -30,8 +30,10 @@ type scheduledTickQueue[T comparable] struct {
 	nextSuborder uint64
 }
 
-type scheduledBlockTickKey = scheduledTickKey[game.FluidStateType]
-type scheduledBlockTicks = scheduledTickQueue[game.FluidStateType]
+type scheduledBlockTickKey = scheduledTickKey[game.BlockID]
+type scheduledFluidTickKey = scheduledTickKey[game.FluidStateType]
+type scheduledBlockTicks = scheduledTickQueue[game.BlockID]
+type scheduledFluidTicks = scheduledTickQueue[game.FluidStateType]
 
 func (ticks *scheduledTickQueue[T]) schedule(position game.BlockPosition, typeID T, delay int64, priorities ...scheduledTickPriority) {
 	if delay < 1 {
@@ -125,12 +127,36 @@ func (ticks *scheduledTickQueue[T]) advanceChunks(activeChunks []LoadedChunk) []
 	return due
 }
 
-func (r *Runtime) scheduleBlockTickLocked(position game.BlockPosition, typeID game.FluidStateType, delay int64) {
-	r.scheduledBlockTicks.schedule(position, typeID, delay)
+func (r *Runtime) scheduleBlockTickLocked(position game.BlockPosition, block game.Block, delay int64) {
+	definition, valid := block.Definition()
+	if !valid {
+		return
+	}
+
+	r.scheduledBlockTicks.schedule(position, definition.ID, delay)
 }
 
 func (r *Runtime) tickScheduledBlocksLocked() {
 	ticks := r.scheduledBlockTicks.advanceChunks(r.activeLoadedChunksLocked())
+
+	for _, tick := range ticks {
+		block := r.World.BlockAt(tick.key.position)
+
+		definition, valid := block.Definition()
+		if !valid || definition.ID != tick.key.typeID {
+			continue
+		}
+
+		r.tickBlockLocked(tick.key.position, block)
+	}
+}
+
+func (r *Runtime) scheduleFluidTickLocked(position game.BlockPosition, typeID game.FluidStateType, delay int64) {
+	r.scheduledFluidTicks.schedule(position, typeID, delay)
+}
+
+func (r *Runtime) tickScheduledFluidsLocked() {
+	ticks := r.scheduledFluidTicks.advanceChunks(r.activeLoadedChunksLocked())
 
 	for _, tick := range ticks {
 		state := r.World.FluidAt(tick.key.position)

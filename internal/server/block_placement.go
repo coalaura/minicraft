@@ -168,6 +168,10 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 		changes = r.withStructuralNeighborChanges(changes)
 
 		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationInteract, changes, len(affected), true, false, false, true)
+		if err == nil && result.Changed && block.Behavior() == game.BlockBehaviorButton {
+			r.scheduleBlockTickLocked(position, block, buttonPressTicks(block))
+		}
+
 		return true, result, affected, delivery, err
 	}()
 
