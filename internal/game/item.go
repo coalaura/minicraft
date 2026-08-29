@@ -42,7 +42,7 @@ type ItemPlacementRule uint8
 
 type ItemMiningRule struct {
 	Trait          BlockTrait
-	Block          Block
+	BlockID        BlockID
 	Speed          float32
 	HasSpeed       bool
 	Correct        bool
@@ -159,7 +159,7 @@ func (item Item) IsCorrectToolForDrops(block Block) bool {
 }
 
 func (rule ItemMiningRule) matches(block Block) bool {
-	if rule.Block != Air && rule.Block == block {
+	if rule.BlockID != AirID && block.Valid() && stateBlockIDs[block] == rule.BlockID {
 		return true
 	}
 

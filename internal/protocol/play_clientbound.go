@@ -44,6 +44,7 @@ const (
 	EquipmentSlotChest    byte = 4
 	EquipmentSlotHead     byte = 5
 
+	LevelEventLavaFizz   = 1501
 	LevelEventBlockBreak = 2001
 	SoundSourceBlock     = 4
 

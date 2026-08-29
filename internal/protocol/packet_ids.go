@@ -84,6 +84,7 @@ const (
 	ServerboundSetCreativeModeSlotID        = 0x37
 	ServerboundSwingArmID                   = 0x3C
 	ServerboundUseItemOnID                  = 0x3F
+	ServerboundUseItemID                    = 0x40
 
 	ClientboundAddEntityID                    = 0x01
 	ClientboundEntityAnimationID              = 0x02

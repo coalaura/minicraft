@@ -26,6 +26,7 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Generic runtime entities, dropped items and item pickup
 - Basic commands with client-side declarations and suggestions
 - Biomes, lighting, world time and a day/night cycle
+- Derived water and lava flow with active-chunk-paused scheduling, waterlogging, buckets and item fluid motion
 - Deterministic, seeded procedural world generation
 - In-memory world modifications without world save files
 - Transient chunk and player entity lifecycle
@@ -89,9 +90,11 @@ Run the test suite with:
 go test ./...
 ```
 
-Minicraft is not intended to be a drop-in replacement for a full vanilla server. Its focus is on the Minecraft protocol, multiplayer fundamentals and providing a small, efficient foundation for procedural worlds.
+Minicraft is not intended to be a drop-in replacement for a full vanilla server. Its focus is on the Minecraft protocol, multiplayer fundamentals, derived water and lava flow, and providing a small, efficient foundation for procedural worlds.
 
 There are still gameplay systems and protocol features that are intentionally incomplete or outside that scope.
+
+Fluid simulation covers derived water and lava flow, active-chunk-paused scheduled updates, waterlogging, buckets and item movement through fluids. Health and fire effects, Nether water evaporation and broader fluid parity remain deferred.
 
 Generic block entities support procedural copy-on-write state, removal behavior and optional runtime interaction/ticking capabilities. Generic 9x1 through 9x6 storage menus are available, including barrels and single/double normal, trapped and copper chest variants. Furnace-family block entities process the generated 1.21.11 smelting, smoking and blasting catalogues with vanilla fuel durations, remainders, lit states and menu data. Manual crafting supports the generated ordinary shaped and shapeless recipe catalogue in the player inventory and at crafting tables. Recipe-book protocol, furnace XP payout, special/dynamic recipes and component-transforming recipes are not implemented yet.
 

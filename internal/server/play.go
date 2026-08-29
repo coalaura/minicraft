@@ -280,6 +280,13 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		}
 
 		return s.handleUseItemOn(interaction)
+	case protocol.ServerboundUseItemID:
+		interaction, err := protocol.DecodeUseItem(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		return s.handleUseItem(interaction)
 	default:
 		s.Log.Printf("[play] unhandled packet id: 0x%02X\n", packet.ID)
 	}

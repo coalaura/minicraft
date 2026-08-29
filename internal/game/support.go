@@ -38,6 +38,37 @@ func (block Block) SupportsRigid(face BlockFace) bool {
 	return block.coversFace(face, targets)
 }
 
+// CombinedFaceOccludes reports whether the collision faces shared by block and
+// other completely cover their common face.
+func CombinedFaceOccludes(block, other Block, face BlockFace) bool {
+	boxes := block.CollisionBoxes(BlockPosition{})
+	otherBoxes := other.CollisionBoxes(BlockPosition{})
+
+	rectangles := make([]supportRectangle, 0, len(boxes)+len(otherBoxes))
+
+	for _, box := range boxes {
+		rectangle, touches := boxFaceRectangle(box, face)
+		if touches {
+			rectangles = append(rectangles, rectangle)
+		}
+	}
+
+	opposite := oppositeBlockFace(face)
+
+	for _, box := range otherBoxes {
+		rectangle, touches := boxFaceRectangle(box, opposite)
+		if touches {
+			rectangles = append(rectangles, rectangle)
+		}
+	}
+
+	return rectangleCovered(supportRectangle{maxFirst: 1, maxSecond: 1}, rectangles)
+}
+
+func (block Block) CombinedFaceOccludes(other Block, face BlockFace) bool {
+	return CombinedFaceOccludes(block, other, face)
+}
+
 func (block Block) coversFace(face BlockFace, targets []supportRectangle) bool {
 	boxes := block.CollisionBoxes(BlockPosition{})
 	rectangles := make([]supportRectangle, 0, len(boxes))
@@ -74,6 +105,25 @@ func boxFaceRectangle(box AABB, face BlockFace) (supportRectangle, bool) {
 		return supportRectangle{box.MinZ, box.MinY, box.MaxZ, box.MaxY}, box.MaxX >= 1-supportEpsilon
 	default:
 		return supportRectangle{}, false
+	}
+}
+
+func oppositeBlockFace(face BlockFace) BlockFace {
+	switch face {
+	case BlockFaceDown:
+		return BlockFaceUp
+	case BlockFaceUp:
+		return BlockFaceDown
+	case BlockFaceNorth:
+		return BlockFaceSouth
+	case BlockFaceSouth:
+		return BlockFaceNorth
+	case BlockFaceWest:
+		return BlockFaceEast
+	case BlockFaceEast:
+		return BlockFaceWest
+	default:
+		return face
 	}
 }
 

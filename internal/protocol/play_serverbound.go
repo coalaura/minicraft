@@ -222,6 +222,13 @@ type UseItemOn struct {
 	Sequence       int32
 }
 
+type UseItem struct {
+	Hand     int32
+	Sequence int32
+	Yaw      float32
+	Pitch    float32
+}
+
 type PlayKeepAliveResponse struct {
 	ID int64
 }
@@ -710,6 +717,24 @@ func DecodeUseItemOn(data []byte) (UseItemOn, error) {
 	}
 
 	return interaction, nil
+}
+
+func DecodeUseItem(data []byte) (UseItem, error) {
+	rd := NewPacketReader(data)
+
+	item := UseItem{
+		Hand:     rd.VarInt(),
+		Sequence: rd.VarInt(),
+		Yaw:      rd.Float(),
+		Pitch:    rd.Float(),
+	}
+
+	err := rd.Done("use item")
+	if err != nil {
+		return UseItem{}, err
+	}
+
+	return item, nil
 }
 
 func DecodePlayKeepAliveResponse(data []byte) (PlayKeepAliveResponse, error) {

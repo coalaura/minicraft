@@ -21,6 +21,8 @@ type Runtime struct {
 	ChatFormat          string
 	ChatJoinMessage     string
 	ChatLeaveMessage    string
+	FluidRules          FluidRules
+	FluidEnvironment    FluidEnvironment
 
 	// Keep each profile/entity transition ordered as one lifecycle event.
 	lifecycleMu               sync.Mutex
@@ -32,9 +34,12 @@ type Runtime struct {
 	worldMutationMu           sync.Mutex
 	commandRandomMu           sync.Mutex
 	commandRandom             func(int) int
+	fluidRandom               func(game.BlockPosition, int) int
 	commands                  *commandRegistry
 	blockMutationDeliveryTail chan struct{}
 	runtimeBlockMutations     []queuedBlockMutation
+	scheduledBlockTicks       scheduledBlockTicks
+	deferredFluidSources      map[LoadedChunk]map[game.BlockPosition]struct{}
 	activeChunksMu            sync.RWMutex
 	activeChunks              map[LoadedChunk]*activeChunkReference
 	sessionActiveChunks       map[*Session]map[LoadedChunk]struct{}
@@ -82,8 +87,10 @@ func NewRuntime(world *game.World) *Runtime {
 		World:                     world,
 		AllowBlockBreaking:        true,
 		AllowBlockPlacing:         true,
+		FluidRules:                FluidRules{WaterSourceConversion: true},
 		blockMutationDeliveryTail: initialDelivery,
 		commandRandom:             rand.IntN,
+		fluidRandom:               deterministicFluidRandom(world.Seed),
 		activeChunks:              make(map[LoadedChunk]*activeChunkReference),
 		sessionActiveChunks:       make(map[*Session]map[LoadedChunk]struct{}),
 		entities:                  make(map[int32]RuntimeEntity),

@@ -139,3 +139,29 @@ func TestUnsupportedItemsAreNotMappedToPlacementStates(t *testing.T) {
 		t.Errorf("last catalogue item maps to block %d", block)
 	}
 }
+
+func TestItemMiningRuleMatchesBlockIDAcrossStates(t *testing.T) {
+	vineWithNorthFace, valid := Vine.WithProperties(BlockPropertyValue{Name: "north", Value: "true"})
+	if !valid {
+		t.Fatal("north-facing vine state is invalid")
+	}
+
+	vineWithSouthFace, valid := Vine.WithProperties(BlockPropertyValue{Name: "south", Value: "true"})
+	if !valid {
+		t.Fatal("south-facing vine state is invalid")
+	}
+
+	rule := ItemMiningRule{BlockID: VineID}
+
+	if !rule.matches(vineWithNorthFace) {
+		t.Fatal("rule does not match north-facing vine")
+	}
+
+	if !rule.matches(vineWithSouthFace) {
+		t.Fatal("rule does not match south-facing vine")
+	}
+
+	if rule.matches(GlowLichen) {
+		t.Fatal("vine rule matches glow lichen")
+	}
+}

@@ -121,8 +121,6 @@ type TagEntry struct {
 }
 
 type MiningTags struct {
-	Tools  map[string]string
-	Tiers  map[string]string
 	Traits map[string][]string
 }
 
@@ -332,7 +330,7 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, drops map[string]
 	for _, block := range blocks {
 		fmt.Fprintf(
 			&output,
-			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Collision: %s, Emission: %d, LightFilter: %d, Sound: %s, Replaceable: %t, Traits: %s, BlockEntityType: %s, Mining: %s",
+			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Collision: %s, Emission: %d, LightFilter: %d, Sound: %s, Traits: %s, BlockEntityType: %s, Mining: %s, Waterloggable: %t",
 			goName(block.Name),
 			block.Name,
 			goName(block.Name),
@@ -343,10 +341,10 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, drops map[string]
 			block.EmitLight,
 			block.FilterLight,
 			blockSoundType(block),
-			hasBlockTrait(miningTags, block.Name, "BlockTraitReplaceable"),
 			blockTraits(miningTags, block.Name),
 			blockEntityType(block.Name),
 			blockMining(block, miningTags, drops[block.Name]),
+			hasBlockProperty(block.Properties, "waterlogged"),
 		)
 
 		if len(block.Properties) != 0 {
@@ -372,6 +370,22 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, drops map[string]
 		}
 
 		fmt.Fprintln(&output, "},")
+	}
+
+	fmt.Fprintln(&output, "}")
+	fmt.Fprintln(&output)
+
+	fmt.Fprintln(&output, "var stateFluidStates = [...]fluidStateData{")
+
+	for _, block := range blocks {
+		for state := block.MinState; state <= block.MaxState; state++ {
+			fluidType, level, occupied := blockFluidState(block, state)
+			if !occupied {
+				continue
+			}
+
+			fmt.Fprintf(&output, "\t%d: {fluidType: %s, level: %d},\n", state, fluidType, level)
+		}
 	}
 
 	fmt.Fprintln(&output, "}")
@@ -416,44 +430,7 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, drops map[string]
 }
 
 func readMiningTags(root string) (MiningTags, error) {
-	tools := make(map[string]string)
-	tiers := make(map[string]string)
 	traits := make(map[string][]string)
-
-	toolTags := []MiningTagMapping{
-		{Name: "mineable/pickaxe", Value: "ToolPickaxe"},
-		{Name: "mineable/shovel", Value: "ToolShovel"},
-		{Name: "mineable/axe", Value: "ToolAxe"},
-		{Name: "mineable/hoe", Value: "ToolHoe"},
-	}
-
-	for _, tag := range toolTags {
-		values, err := expandTag(root, tag.Name, make(map[string]bool))
-		if err != nil {
-			return MiningTags{}, err
-		}
-
-		for name := range values {
-			tools[name] = tag.Value
-		}
-	}
-
-	tierTags := []MiningTagMapping{
-		{Name: "needs_stone_tool", Value: "HarvestTierStone"},
-		{Name: "needs_iron_tool", Value: "HarvestTierIron"},
-		{Name: "needs_diamond_tool", Value: "HarvestTierDiamond"},
-	}
-
-	for _, tag := range tierTags {
-		values, err := expandTag(root, tag.Name, make(map[string]bool))
-		if err != nil {
-			return MiningTags{}, err
-		}
-
-		for name := range values {
-			tiers[name] = tag.Value
-		}
-	}
 
 	traitTags := []MiningTagMapping{
 		{Name: "replaceable", Value: "BlockTraitReplaceable"},
@@ -488,11 +465,7 @@ func readMiningTags(root string) (MiningTags, error) {
 		}
 	}
 
-	return MiningTags{Tools: tools, Tiers: tiers, Traits: traits}, nil
-}
-
-func hasBlockTrait(tags MiningTags, name, trait string) bool {
-	return slices.Contains(tags.Traits[name], trait)
+	return MiningTags{Traits: traits}, nil
 }
 
 func blockTraits(tags MiningTags, name string) string {
@@ -918,16 +891,6 @@ func deferredBlockDrop() BlockDrop {
 }
 
 func blockMining(block BlockDefinition, tags MiningTags, drop BlockDrop) string {
-	tool := tags.Tools[block.Name]
-	if tool == "" {
-		tool = "ToolNone"
-	}
-
-	tier := tags.Tiers[block.Name]
-	if tier == "" {
-		tier = "HarvestTierNone"
-	}
-
 	dropRules := "nil"
 
 	if (drop.Kind == "BlockDropExact" || drop.Kind == "BlockDropStateExact" || drop.Kind == "BlockDropDeferred") && drop.Item != "0" {
@@ -949,7 +912,7 @@ func blockMining(block BlockDefinition, tags MiningTags, drop BlockDrop) string 
 		dropRules = rules.String()
 	}
 
-	return fmt.Sprintf("BlockMining{Hardness: %g, EffectiveTool: %s, RequiredTier: %s, DropKind: %s, DropItem: %s, DropMin: %d, DropMax: %d, DropProperty: %q, DropValue: %q, DropRules: %s, RequiresTool: %t, Destroyable: %t}", block.Hardness, tool, tier, drop.Kind, drop.Item, drop.MinCount, drop.MaxCount, drop.Property, drop.Value, dropRules, len(block.HarvestTools) != 0, block.Diggable && block.Hardness >= 0)
+	return fmt.Sprintf("BlockMining{Hardness: %g, DropRules: %s, RequiresTool: %t, Destroyable: %t}", block.Hardness, dropRules, len(block.HarvestTools) != 0, block.Diggable && block.Hardness >= 0)
 }
 
 func blockEntityType(name string) string {
@@ -1125,6 +1088,31 @@ func propertyValue(block BlockDefinition, state uint16, name string) string {
 	}
 
 	return ""
+}
+
+func hasBlockProperty(properties []BlockProperty, name string) bool {
+	for _, property := range properties {
+		if property.Name == name {
+			return true
+		}
+	}
+
+	return false
+}
+
+func blockFluidState(block BlockDefinition, state uint16) (fluidType string, level int, occupied bool) {
+	switch block.Name {
+	case "water":
+		return "FluidTypeWater", propertyInt(block, state, "level"), true
+	case "lava":
+		return "FluidTypeLava", propertyInt(block, state, "level"), true
+	default:
+		if propertyValue(block, state, "waterlogged") == "true" {
+			return "FluidTypeWater", 0, true
+		}
+
+		return "", 0, false
+	}
 }
 
 func blockBehavior(block BlockDefinition) string {

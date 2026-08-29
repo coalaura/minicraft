@@ -27,6 +27,13 @@ type itemCollisionShapeTestCase struct {
 	expected float64
 }
 
+type itemFluidPhysicsTestCase struct {
+	name  string
+	fluid game.Block
+	wantX float64
+	wantY float64
+}
+
 func TestItemEntityTrackingConfig(t *testing.T) {
 	entity := &runtimeItemEntity{}
 
@@ -358,6 +365,68 @@ func TestItemEntityVanillaAirTrajectory(t *testing.T) {
 
 		assertPositionClose(t, item.State.Position, snapshot.position, 1e-12)
 		assertVelocityClose(t, item.Velocity, snapshot.velocity, 1e-12)
+	}
+}
+
+func TestItemEntityFluidBuoyancyAndLavaSurvival(t *testing.T) {
+	tests := []itemFluidPhysicsTestCase{
+		{name: "water", fluid: game.Water, wantX: 0.2 * itemEntityWaterDrag * float64(float32(0.98)), wantY: itemEntityFluidLift * itemEntityVerticalDrag},
+		{name: "lava", fluid: game.Lava, wantX: 0.2 * itemEntityLavaDrag * float64(float32(0.98)), wantY: itemEntityFluidLift * itemEntityVerticalDrag},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			world := &game.World{}
+
+			world.SetBlock(game.BlockPosition{}, test.fluid)
+
+			runtime := NewRuntime(world)
+
+			viewer := &Session{}
+
+			runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+			item := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: 1}, game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{X: 0.2}, 32767)
+
+			runtime.Tick()
+
+			assertVelocityClose(t, item.Velocity, game.Velocity{X: test.wantX, Y: test.wantY}, 1e-15)
+
+			if item.State.Removed || item.Age != 1 {
+				t.Fatalf("fluid item state = removed %t, age %d", item.State.Removed, item.Age)
+			}
+		})
+	}
+}
+
+func TestItemEntityFlowingWaterPush(t *testing.T) {
+	world := &game.World{}
+
+	flowingWater, valid := game.Water.WithProperties(game.BlockPropertyValue{Name: "level", Value: "1"})
+
+	if !valid {
+		t.Fatal("resolve flowing water")
+	}
+
+	world.SetBlocks([]game.BlockChange{
+		{Position: game.BlockPosition{}, Replacement: game.Water},
+		{Position: game.BlockPosition{X: 1}, Replacement: flowingWater},
+	})
+
+	runtime := NewRuntime(world)
+
+	viewer := &Session{}
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+	item := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: 1}, game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 32767)
+
+	runtime.Tick()
+
+	assertVelocityClose(t, item.Velocity, game.Velocity{X: itemEntityWaterPush, Y: itemEntityFluidLift * itemEntityVerticalDrag}, 1e-15)
+
+	if item.State.Position.X != 0.5 || item.State.Position.Y != 0.5+itemEntityFluidLift {
+		t.Fatalf("flowing item position = %+v", item.State.Position)
 	}
 }
 

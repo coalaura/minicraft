@@ -68,7 +68,10 @@ func TestSlabPlacementAndMerging(t *testing.T) {
 
 	world := &game.World{}
 
-	oakBottom := mustBlockState(t, game.OakSlab, game.BlockPropertyValue{Name: "type", Value: "bottom"})
+	oakBottom := mustBlockState(t, game.OakSlab,
+		game.BlockPropertyValue{Name: "type", Value: "bottom"},
+		game.BlockPropertyValue{Name: "waterlogged", Value: "true"},
+	)
 
 	world.SetBlock(clicked, oakBottom)
 

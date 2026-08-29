@@ -5,6 +5,23 @@ import (
 	"testing"
 )
 
+func TestCombinedFaceOccludes(t *testing.T) {
+	bottom := collisionBlockForTest(t, StoneSlab, BlockPropertyValue{Name: "type", Value: "bottom"})
+	top := collisionBlockForTest(t, StoneSlab, BlockPropertyValue{Name: "type", Value: "top"})
+
+	if !CombinedFaceOccludes(bottom, top, BlockFaceEast) {
+		t.Fatal("combined slab faces should occlude")
+	}
+
+	if CombinedFaceOccludes(bottom, Air, BlockFaceEast) {
+		t.Fatal("single half slab face should not occlude")
+	}
+
+	if !Stone.CombinedFaceOccludes(Air, BlockFaceNorth) {
+		t.Fatal("full block face should occlude")
+	}
+}
+
 type blockCollisionTestCase struct {
 	name  string
 	block Block
@@ -234,6 +251,17 @@ func chestStateForCollisionTest(t *testing.T, block Block, facing, chestType str
 
 	if !valid {
 		t.Fatalf("resolve %s %s chest", facing, chestType)
+	}
+
+	return state
+}
+
+func collisionBlockForTest(t *testing.T, block Block, property BlockPropertyValue) Block {
+	t.Helper()
+
+	state, valid := block.WithProperties(property)
+	if !valid {
+		t.Fatalf("resolve %d with %s=%s", block, property.Name, property.Value)
 	}
 
 	return state

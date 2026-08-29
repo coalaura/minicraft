@@ -111,6 +111,22 @@ func withBlockProperties(block game.Block, values ...game.BlockPropertyValue) ga
 	return state
 }
 
+func waterloggedMutationReplacement(current, replacement game.Block, cause blockMutationCause) game.Block {
+	currentFluid := current.FluidState()
+
+	doubleSlab := replacement.Behavior() == game.BlockBehaviorSlab && blockProperty(replacement, "type") == "double"
+	if (cause == blockMutationDirectPlace || cause == blockMutationStructural) && currentFluid.Type() == game.FluidTypeWater && replacement.Waterloggable() && !doubleSlab {
+		return withBlockProperties(replacement, game.BlockPropertyValue{Name: "waterlogged", Value: "true"})
+	}
+
+	waterlogged, valid := current.Property("waterlogged")
+	if (cause == blockMutationDirectBreak || cause == blockMutationSupportLoss || cause == blockMutationStructural) && replacement == game.Air && valid && waterlogged == "true" {
+		return game.Water
+	}
+
+	return replacement
+}
+
 func (r *Runtime) breakChanges(position game.BlockPosition) []game.BlockChange {
 	block := r.World.BlockAt(position)
 

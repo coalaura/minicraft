@@ -182,7 +182,7 @@ func itemMining(name string) string {
 	parts := strings.Split(name, "_")
 
 	if name == "shears" {
-		return "ItemMining{Rules: []ItemMiningRule{{Block: Cobweb, Speed: 15, HasSpeed: true, Correct: true, HasCorrectness: true}, {Trait: BlockTraitLeaves, Speed: 15, HasSpeed: true}, {Trait: BlockTraitWool, Speed: 5, HasSpeed: true}, {Block: Vine, Speed: 2, HasSpeed: true}, {Block: GlowLichen, Speed: 2, HasSpeed: true}}, DefaultSpeed: 1}"
+		return "ItemMining{Rules: []ItemMiningRule{{BlockID: CobwebID, Speed: 15, HasSpeed: true, Correct: true, HasCorrectness: true}, {Trait: BlockTraitLeaves, Speed: 15, HasSpeed: true}, {Trait: BlockTraitWool, Speed: 5, HasSpeed: true}, {BlockID: VineID, Speed: 2, HasSpeed: true}, {BlockID: GlowLichenID, Speed: 2, HasSpeed: true}}, DefaultSpeed: 1}"
 	}
 
 	if len(parts) != 2 {
@@ -190,7 +190,7 @@ func itemMining(name string) string {
 	}
 
 	if parts[1] == "sword" {
-		return "ItemMining{Rules: []ItemMiningRule{{Block: Cobweb, Speed: 15, HasSpeed: true, Correct: true, HasCorrectness: true}, {Trait: BlockTraitSwordInstantlyMines, Speed: 3.4028235e38, HasSpeed: true}, {Trait: BlockTraitSwordEfficient, Speed: 1.5, HasSpeed: true}}, DefaultSpeed: 1}"
+		return "ItemMining{Rules: []ItemMiningRule{{BlockID: CobwebID, Speed: 15, HasSpeed: true, Correct: true, HasCorrectness: true}, {Trait: BlockTraitSwordInstantlyMines, Speed: 3.4028235e38, HasSpeed: true}, {Trait: BlockTraitSwordEfficient, Speed: 1.5, HasSpeed: true}}, DefaultSpeed: 1}"
 	}
 
 	var mineableTrait string

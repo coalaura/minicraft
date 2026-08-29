@@ -21,6 +21,7 @@ const (
 	BlockMutationBreak BlockMutationAction = iota
 	BlockMutationPlace
 	BlockMutationInteract
+	blockMutationLiteral
 )
 
 type BlockMutation struct {
@@ -77,6 +78,7 @@ type blockMutationDelivery struct {
 	waitForDelivery  <-chan struct{}
 	deliveryComplete chan struct{}
 	runtimeSounds    []positionalBlockSound
+	runtimeEvents    []protocol.LevelEvent
 }
 
 type queuedBlockMutation struct {
@@ -233,7 +235,7 @@ func (r *Runtime) mutateWorldBlocks(changes []game.BlockChange, strict, emptyOnl
 			return r.mutateBlocksLocked(nil, BlockMutationPlace, changes, requiredChanges, true, false, true, true)
 		}
 
-		return r.mutateBlocksLocked(nil, BlockMutationPlace, changes, len(changes), true, false, true, true)
+		return r.mutateBlocksLocked(nil, blockMutationLiteral, changes, len(changes), true, false, true, true)
 	}()
 
 	return r.completeBlockMutation(result, delivery, err)
@@ -308,6 +310,23 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 
 		current := r.World.BlockAt(change.Position)
 
+		cause := blockMutationStructural
+
+		if !authoritative && index < requiredChanges {
+			switch action {
+			case BlockMutationPlace:
+				cause = blockMutationDirectPlace
+			case BlockMutationBreak:
+				if index == 0 {
+					cause = blockMutationDirectBreak
+				}
+			case BlockMutationInteract:
+				cause = blockMutationInteract
+			}
+		} else if index >= requiredChanges && current != game.Air && change.Replacement == game.Air {
+			cause = blockMutationSupportLoss
+		}
+
 		if !change.Replacement.Valid() {
 			return result, blockMutationDelivery{}, nil
 		}
@@ -331,6 +350,10 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 			}
 		}
 
+		if action != blockMutationLiteral {
+			change.Replacement = waterloggedMutationReplacement(current, change.Replacement, cause)
+		}
+
 		if current == change.Replacement {
 			continue
 		}
@@ -347,23 +370,6 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 		previousState, err := protocolBlockState(current)
 		if err != nil {
 			return BlockMutationResult{}, blockMutationDelivery{}, fmt.Errorf("encode previous block: %w", err)
-		}
-
-		cause := blockMutationStructural
-
-		if !authoritative && index < requiredChanges {
-			switch action {
-			case BlockMutationPlace:
-				cause = blockMutationDirectPlace
-			case BlockMutationBreak:
-				if index == 0 {
-					cause = blockMutationDirectBreak
-				}
-			case BlockMutationInteract:
-				cause = blockMutationInteract
-			}
-		} else if index >= requiredChanges && current != game.Air && change.Replacement == game.Air {
-			cause = blockMutationSupportLoss
 		}
 
 		committed = append(committed, change)
@@ -402,6 +408,8 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	}
 
 	r.World.SetBlocks(committed)
+
+	r.scheduleFluidNeighborsLocked(committed)
 
 	r.reconcileRuntimeBlockEntities(records)
 	r.closeRemovedBlockEntityMenus(records)
@@ -515,6 +523,13 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 			err := other.sendSoundIfLoaded(runtimeSound.sound, runtimeSound.position)
 			if err != nil {
 				other.Log.Warnf("[play] failed to send runtime block sound: %v\n", err)
+			}
+		}
+
+		for _, event := range delivery.runtimeEvents {
+			err := other.sendLevelEventIfLoaded(event)
+			if err != nil {
+				other.Log.Warnf("[play] failed to send runtime level event: %v\n", err)
 			}
 		}
 	}

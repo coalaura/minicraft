@@ -471,6 +471,7 @@ func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 		"creative slot":   {actual: ServerboundSetCreativeModeSlotID, expected: 0x37},
 		"swing arm":       {actual: ServerboundSwingArmID, expected: 0x3C},
 		"use item on":     {actual: ServerboundUseItemOnID, expected: 0x3F},
+		"use item":        {actual: ServerboundUseItemID, expected: 0x40},
 		"animation":       {actual: ClientboundEntityAnimationID, expected: 0x02},
 		"set held slot":   {actual: ClientboundSetHeldSlotID, expected: 0x67},
 	}
@@ -784,6 +785,53 @@ func TestDecodeUseItemOnRejectsTruncatedPacket(t *testing.T) {
 	_, err := DecodeUseItemOn([]byte{MainHand, 0, 0, 0})
 	if err == nil {
 		t.Fatal("decode truncated use item on succeeded")
+	}
+}
+
+func TestDecodeUseItem(t *testing.T) {
+	var writer PacketWriter
+
+	writer.VarInt(OffHand)
+	writer.VarInt(300)
+	writer.Float(45.5)
+	writer.Float(-30.25)
+
+	item, err := DecodeUseItem(writer.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode use item: %v", err)
+	}
+
+	if item.Hand != OffHand || item.Sequence != 300 || item.Yaw != 45.5 || item.Pitch != -30.25 {
+		t.Fatalf("use item = %+v", item)
+	}
+}
+
+func TestDecodeUseItemRejectsMalformedAndTrailingData(t *testing.T) {
+	malformed := []byte{0x80, 0x80, 0x80, 0x80, 0x80}
+
+	_, err := DecodeUseItem(malformed)
+	if err == nil {
+		t.Fatal("decode malformed use item succeeded")
+	}
+
+	truncated := []byte{MainHand, 1, 0, 0, 0}
+
+	_, err = DecodeUseItem(truncated)
+	if err == nil {
+		t.Fatal("decode truncated use item succeeded")
+	}
+
+	var writer PacketWriter
+
+	writer.VarInt(MainHand)
+	writer.VarInt(1)
+	writer.Float(0)
+	writer.Float(0)
+	writer.Byte(0)
+
+	_, err = DecodeUseItem(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("use item with trailing data decoded")
 	}
 }
 

@@ -179,9 +179,10 @@ func (r *Runtime) setSessionActiveChunks(session *Session, chunks []LoadedChunk)
 	}
 
 	r.activeChunksMu.Lock()
-	defer r.activeChunksMu.Unlock()
 
 	previous := r.sessionActiveChunks[session]
+
+	activated := make([]LoadedChunk, 0)
 
 	for position := range next {
 		if _, retained := previous[position]; retained {
@@ -193,6 +194,8 @@ func (r *Runtime) setSessionActiveChunks(session *Session, chunks []LoadedChunk)
 			reference = &activeChunkReference{chunk: r.newActiveChunk(position)}
 
 			r.activeChunks[position] = reference
+
+			activated = append(activated, position)
 		}
 
 		reference.references++
@@ -214,11 +217,19 @@ func (r *Runtime) setSessionActiveChunks(session *Session, chunks []LoadedChunk)
 
 	if len(next) == 0 {
 		delete(r.sessionActiveChunks, session)
+	} else {
+		r.sessionActiveChunks[session] = next
+	}
 
+	r.activeChunksMu.Unlock()
+
+	if len(activated) == 0 {
 		return
 	}
 
-	r.sessionActiveChunks[session] = next
+	r.worldMutationMu.Lock()
+	r.resumeDeferredFluidSourcesLocked(activated)
+	r.worldMutationMu.Unlock()
 }
 
 func (r *Runtime) releaseSessionActiveChunks(session *Session) {

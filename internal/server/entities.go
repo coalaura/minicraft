@@ -13,13 +13,20 @@ import (
 )
 
 const (
-	itemEntityWidth         = 0.25
-	itemEntityHeight        = 0.25
-	itemEntityGravity       = 0.04
-	itemEntityVerticalDrag  = 0.98
-	itemEntityLifetime      = 6000
-	itemEntityMergeRadius   = 0.5
-	itemEntitySyncThreshold = 0.01
+	itemEntityWidth              = 0.25
+	itemEntityHeight             = 0.25
+	itemEntityGravity            = 0.04
+	itemEntityVerticalDrag       = 0.98
+	itemEntityLifetime           = 6000
+	itemEntityMergeRadius        = 0.5
+	itemEntitySyncThreshold      = 0.01
+	itemEntityWaterDrag          = 0.99
+	itemEntityLavaDrag           = 0.95
+	itemEntityFluidLift          = 0.0005
+	itemEntityFluidRiseMax       = 0.06
+	itemEntityWaterPush          = 0.014
+	itemEntityLavaPush           = 0.0023333333333333335
+	itemEntityFluidSyncThreshold = 1e-8
 )
 
 type RuntimeEntityState struct {
@@ -81,15 +88,17 @@ type RuntimeEntityTracker interface {
 }
 
 type runtimeItemEntity struct {
-	State       RuntimeEntityState
-	Stack       game.ItemStack
-	Velocity    game.Velocity
-	Age         int32
-	PickupDelay int32
-	TargetUUID  string
-	ThrowerUUID string
-	OnGround    bool
-	TickCount   int32
+	State        RuntimeEntityState
+	Stack        game.ItemStack
+	Velocity     game.Velocity
+	Age          int32
+	PickupDelay  int32
+	TargetUUID   string
+	ThrowerUUID  string
+	OnGround     bool
+	TickCount    int32
+	FluidType    game.FluidType
+	FluidImpulse game.Velocity
 }
 
 type itemEscapeDirection struct {
@@ -194,7 +203,35 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	previous := entity.State.Position
 	previousVelocity := entity.Velocity
 
-	entity.Velocity.Y -= itemEntityGravity
+	waterContact := runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeWater)
+	lavaContact := runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeLava)
+
+	fluidType := game.FluidTypeEmpty
+
+	if waterContact.Depth > fluidContactDepth {
+		fluidType = game.FluidTypeWater
+	} else if lavaContact.Depth > fluidContactDepth {
+		fluidType = game.FluidTypeLava
+	}
+
+	switch fluidType {
+	case game.FluidTypeEmpty:
+		entity.Velocity.Y -= itemEntityGravity
+	case game.FluidTypeWater:
+		entity.Velocity.X *= itemEntityWaterDrag
+		entity.Velocity.Z *= itemEntityWaterDrag
+
+		if entity.Velocity.Y < itemEntityFluidRiseMax {
+			entity.Velocity.Y += itemEntityFluidLift
+		}
+	case game.FluidTypeLava:
+		entity.Velocity.X *= itemEntityLavaDrag
+		entity.Velocity.Z *= itemEntityLavaDrag
+
+		if entity.Velocity.Y < itemEntityFluidRiseMax {
+			entity.Velocity.Y += itemEntityFluidLift
+		}
+	}
 
 	noPhysics := runtime.itemEntityInsideCollision(entity.State.Position)
 	if noPhysics {
@@ -248,6 +285,41 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		}
 	}
 
+	waterContact = runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeWater)
+	lavaContact = runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeLava)
+
+	fluidType = game.FluidTypeEmpty
+	fluidContact := entityFluidContact{}
+
+	if waterContact.Depth > fluidContactDepth {
+		fluidType = game.FluidTypeWater
+		fluidContact = waterContact
+	} else if lavaContact.Depth > fluidContactDepth {
+		fluidType = game.FluidTypeLava
+		fluidContact = lavaContact
+	}
+
+	impulse := game.Velocity{}
+
+	switch fluidType {
+	case game.FluidTypeWater:
+		impulse.X = fluidContact.Flow.X * itemEntityWaterPush
+		impulse.Z = fluidContact.Flow.Z * itemEntityWaterPush
+	case game.FluidTypeLava:
+		impulse.X = fluidContact.Flow.X * itemEntityLavaPush
+		impulse.Z = fluidContact.Flow.Z * itemEntityLavaPush
+	}
+
+	entity.Velocity.X += impulse.X
+	entity.Velocity.Z += impulse.Z
+
+	fluidStateChanged := entity.FluidType != fluidType
+
+	fluidImpulseChanged := velocityDistanceSquared(entity.FluidImpulse, impulse) > itemEntityFluidSyncThreshold
+
+	entity.FluidType = fluidType
+	entity.FluidImpulse = impulse
+
 	movedBlock := itemEntityBlockPosition(previous) != itemEntityBlockPosition(entity.State.Position)
 
 	mergeRate := int32(40)
@@ -272,6 +344,10 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	}
 
 	if velocityDistanceSquared(entity.Velocity, previousVelocity) > itemEntitySyncThreshold {
+		entity.State.movementSyncDirty = true
+	}
+
+	if fluidStateChanged || fluidImpulseChanged {
 		entity.State.movementSyncDirty = true
 	}
 

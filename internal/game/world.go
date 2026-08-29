@@ -94,6 +94,10 @@ func (w *World) BlockAt(position BlockPosition) Block {
 	return w.Generator.BlockAt(w.Seed, position)
 }
 
+func (w *World) FluidAt(position BlockPosition) FluidState {
+	return w.BlockAt(position).FluidState()
+}
+
 func (w *World) SetBlock(position BlockPosition, block Block) {
 	w.SetBlocks([]BlockChange{{Position: position, Replacement: block}})
 }

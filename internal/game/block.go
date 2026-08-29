@@ -17,8 +17,6 @@ type BlockCollision uint8
 
 type BlockSoundType uint8
 
-type ToolClass uint8
-
 type BlockTrait uint32
 
 type BlockFace uint8
@@ -54,32 +52,6 @@ const (
 	BlockTraitWool
 )
 
-const (
-	ToolNone ToolClass = iota
-	ToolPickaxe
-	ToolShovel
-	ToolAxe
-	ToolHoe
-)
-
-type HarvestTier uint8
-
-const (
-	HarvestTierNone HarvestTier = iota
-	HarvestTierStone
-	HarvestTierIron
-	HarvestTierDiamond
-)
-
-type BlockDropKind uint8
-
-const (
-	BlockDropNone BlockDropKind = iota
-	BlockDropExact
-	BlockDropStateExact
-	BlockDropDeferred
-)
-
 type BlockDropCount struct {
 	Value string
 	Count int32
@@ -96,18 +68,10 @@ type BlockDropRule struct {
 }
 
 type BlockMining struct {
-	Hardness      float32
-	EffectiveTool ToolClass
-	RequiredTier  HarvestTier
-	DropKind      BlockDropKind
-	DropItem      Item
-	DropMin       int32
-	DropMax       int32
-	DropProperty  string
-	DropValue     string
-	DropRules     []BlockDropRule
-	RequiresTool  bool
-	Destroyable   bool
+	Hardness     float32
+	DropRules    []BlockDropRule
+	RequiresTool bool
+	Destroyable  bool
 }
 
 const (
@@ -169,11 +133,11 @@ type BlockDefinition struct {
 	Emission        uint8
 	LightFilter     uint8
 	Sound           BlockSoundType
-	Replaceable     bool
 	Traits          BlockTrait
 	BlockEntityType BlockEntityType
 	Mining          BlockMining
 	Properties      []BlockProperty
+	Waterloggable   bool
 }
 
 type BlockPosition struct {
@@ -329,6 +293,15 @@ func (block Block) SameLightProperties(other Block) bool {
 	}
 
 	return stateLightProperties[block] == stateLightProperties[other]
+}
+
+func (block Block) Waterloggable() bool {
+	definition, valid := block.Definition()
+	if !valid {
+		return false
+	}
+
+	return definition.Waterloggable
 }
 
 func (block Block) Property(name string) (string, bool) {
