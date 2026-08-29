@@ -40,6 +40,7 @@ type Player struct {
 	OnGround  bool
 	Sneaking  bool
 	Sprinting bool
+	Swimming  bool
 	Pose      PlayerPose
 
 	SelectedHotbarSlot int

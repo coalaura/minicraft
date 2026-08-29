@@ -44,7 +44,7 @@ func TestFluidAcceptanceRuntimeTickDoesNotDeadlock(t *testing.T) {
 
 	runtime.World.SetBlock(position, game.Water)
 
-	runtime.scheduleBlockTickLocked(position, scheduledBlockTickFluid, 1)
+	runtime.scheduleBlockTickLocked(position, game.FluidStateTypeWater, 1)
 
 	complete := make(chan struct{})
 
@@ -87,7 +87,7 @@ func TestFluidAcceptanceBucketMutationSchedulesAndFlowsAfterDelay(t *testing.T) 
 		t.Fatalf("empty water bucket: used %t, err %v", used, err)
 	}
 
-	key := scheduledBlockTickKey{position: position, typeID: scheduledBlockTickFluid}
+	key := scheduledBlockTickKey{position: position, typeID: game.FluidStateTypeWater}
 	if _, scheduled := runtime.scheduledBlockTicks.pending[key]; !scheduled {
 		t.Fatal("bucket mutation did not schedule its water source")
 	}
@@ -339,7 +339,7 @@ func TestFluidAcceptanceProceduralSourceStartsAndCopyOnWriteCollapses(t *testing
 		t.Fatalf("authoritative neighbor mutation: result=%+v err=%v", result, err)
 	}
 
-	key := scheduledBlockTickKey{position: position, typeID: scheduledBlockTickFluid}
+	key := scheduledBlockTickKey{position: position, typeID: game.FluidStateTypeWater}
 	if _, scheduled := runtime.scheduledBlockTicks.pending[key]; !scheduled {
 		t.Fatal("generated source was not scheduled after neighboring authoritative mutation")
 	}

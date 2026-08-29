@@ -26,6 +26,7 @@ const (
 	itemEntityFluidRiseMax       = 0.06
 	itemEntityWaterPush          = 0.014
 	itemEntityLavaPush           = 0.0023333333333333335
+	itemEntityFastLavaPush       = 0.007
 	itemEntityFluidSyncThreshold = 1e-8
 )
 
@@ -203,8 +204,8 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	previous := entity.State.Position
 	previousVelocity := entity.Velocity
 
-	waterContact := runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeWater)
-	lavaContact := runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeLava)
+	waterContact := runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeWater, false)
+	lavaContact := runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeLava, false)
 
 	fluidType := game.FluidTypeEmpty
 
@@ -285,16 +286,16 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		}
 	}
 
-	waterContact = runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeWater)
-	lavaContact = runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeLava)
+	waterContact = runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeWater, false)
+	lavaContact = runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeLava, false)
 
 	fluidType = game.FluidTypeEmpty
 	fluidContact := entityFluidContact{}
 
-	if waterContact.Depth > fluidContactDepth {
+	if waterContact.Depth > 0 {
 		fluidType = game.FluidTypeWater
 		fluidContact = waterContact
-	} else if lavaContact.Depth > fluidContactDepth {
+	} else if lavaContact.Depth > 0 {
 		fluidType = game.FluidTypeLava
 		fluidContact = lavaContact
 	}
@@ -303,14 +304,19 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 
 	switch fluidType {
 	case game.FluidTypeWater:
-		impulse.X = fluidContact.Flow.X * itemEntityWaterPush
-		impulse.Z = fluidContact.Flow.Z * itemEntityWaterPush
+		impulse = fluidCurrentImpulse(entity.Velocity, fluidContact.Flow, itemEntityWaterPush)
 	case game.FluidTypeLava:
-		impulse.X = fluidContact.Flow.X * itemEntityLavaPush
-		impulse.Z = fluidContact.Flow.Z * itemEntityLavaPush
+		push := itemEntityLavaPush
+
+		if runtime.FluidEnvironment.FastLava {
+			push = itemEntityFastLavaPush
+		}
+
+		impulse = fluidCurrentImpulse(entity.Velocity, fluidContact.Flow, push)
 	}
 
 	entity.Velocity.X += impulse.X
+	entity.Velocity.Y += impulse.Y
 	entity.Velocity.Z += impulse.Z
 
 	fluidStateChanged := entity.FluidType != fluidType

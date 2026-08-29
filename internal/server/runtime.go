@@ -34,6 +34,7 @@ type Runtime struct {
 	worldMutationMu           sync.Mutex
 	commandRandomMu           sync.Mutex
 	commandRandom             func(int) int
+	fluidRandomMu             sync.Mutex
 	fluidRandom               func(game.BlockPosition, int) int
 	commands                  *commandRegistry
 	blockMutationDeliveryTail chan struct{}
@@ -80,6 +81,7 @@ func (r *Runtime) ReleasePlayerSlot() {
 
 func NewRuntime(world *game.World) *Runtime {
 	initialDelivery := make(chan struct{})
+	fluidRandom := rand.New(rand.NewPCG(uint64(world.Seed), uint64(world.Seed)^0x9e3779b97f4a7c15))
 
 	close(initialDelivery)
 
@@ -90,14 +92,16 @@ func NewRuntime(world *game.World) *Runtime {
 		FluidRules:                FluidRules{WaterSourceConversion: true},
 		blockMutationDeliveryTail: initialDelivery,
 		commandRandom:             rand.IntN,
-		fluidRandom:               deterministicFluidRandom(world.Seed),
-		activeChunks:              make(map[LoadedChunk]*activeChunkReference),
-		sessionActiveChunks:       make(map[*Session]map[LoadedChunk]struct{}),
-		entities:                  make(map[int32]RuntimeEntity),
-		entitiesByChunk:           make(map[LoadedChunk]map[int32]RuntimeEntity),
-		entityRandom:              rand.Float32,
-		sessions:                  make(map[*Session]*game.Player),
-		connectedSessions:         make(map[*Session]struct{}),
+		fluidRandom: func(_ game.BlockPosition, bound int) int {
+			return fluidRandom.IntN(bound)
+		},
+		activeChunks:        make(map[LoadedChunk]*activeChunkReference),
+		sessionActiveChunks: make(map[*Session]map[LoadedChunk]struct{}),
+		entities:            make(map[int32]RuntimeEntity),
+		entitiesByChunk:     make(map[LoadedChunk]map[int32]RuntimeEntity),
+		entityRandom:        rand.Float32,
+		sessions:            make(map[*Session]*game.Player),
+		connectedSessions:   make(map[*Session]struct{}),
 	}
 
 	runtime.commands = newCommandRegistry(runtime)
@@ -224,6 +228,8 @@ func (r *Runtime) JoinSession(session *Session) error {
 	defer r.lifecycleMu.Unlock()
 
 	session.updatePlayerState(func(player *game.Player) bool {
+		r.updatePlayerSwimmingState(player)
+
 		player.Pose = r.calculatedPlayerPose(*player)
 
 		return true
@@ -501,15 +507,29 @@ func (r *Runtime) UpdateSneaking(session *Session, sneaking bool) {
 }
 
 func (r *Runtime) UpdateSprinting(session *Session, sprinting bool) {
+	r.worldMutationMu.Lock()
+	defer r.worldMutationMu.Unlock()
+
+	swimmingChanged := false
+
 	r.updatePlayerMetadata(session, func(player *game.Player) bool {
-		if player.Sprinting == sprinting {
-			return false
-		}
+		previousSprinting := player.Sprinting
+		previousPose := player.Pose
 
 		player.Sprinting = sprinting
 
-		return true
+		swimmingChanged = r.updatePlayerSwimmingState(player)
+		player.Pose = r.calculatedPlayerPose(*player)
+
+		return previousSprinting != player.Sprinting || swimmingChanged || previousPose != player.Pose
 	})
+
+	if swimmingChanged {
+		err := session.sendPlayerMetadata(session.snapshotPlayer())
+		if err != nil {
+			session.Log.Warnf("[play] failed to update own swimming metadata: %v\n", err)
+		}
+	}
 }
 
 func (r *Runtime) BroadcastPlayerAnimation(session *Session, animation byte) {
@@ -587,6 +607,8 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 
 	update(session.Player)
 
+	r.updatePlayerSwimmingState(session.Player)
+
 	session.Player.Pose = r.calculatedPlayerPose(*session.Player)
 
 	current := *session.Player
@@ -633,7 +655,7 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 				other.Log.Warnf("[play] failed to update player movement: %v\n", err)
 			}
 
-			if previous.Pose != current.Pose {
+			if previous.Pose != current.Pose || previous.Swimming != current.Swimming {
 				err = other.sendPlayerMetadata(current)
 				if err != nil {
 					other.Log.Warnf("[play] failed to update player pose: %v\n", err)
@@ -669,6 +691,29 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 			state.mu.RUnlock()
 
 			session.untrackRuntimeEntity(entityID)
+		}
+	}
+
+	if previous.Swimming != current.Swimming {
+		err := session.sendPlayerMetadata(current)
+		if err != nil {
+			session.Log.Warnf("[play] failed to update own player pose: %v\n", err)
+		}
+	}
+}
+
+func (r *Runtime) sendPlayerMetadataUpdates(players []game.Player) {
+	for _, player := range players {
+		for _, recipient := range r.snapshotSessions() {
+			recipientPlayer := recipient.snapshotPlayer()
+			if recipientPlayer.EntityID != player.EntityID && !playersVisible(recipientPlayer, player, recipient.renderDistance()) {
+				continue
+			}
+
+			err := recipient.sendPlayerMetadata(player)
+			if err != nil {
+				recipient.Log.Warnf("[play] failed to update player fluid metadata: %v\n", err)
+			}
 		}
 	}
 }

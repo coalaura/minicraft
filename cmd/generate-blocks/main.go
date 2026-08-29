@@ -469,12 +469,30 @@ func readMiningTags(root string) (MiningTags, error) {
 }
 
 func blockTraits(tags MiningTags, name string) string {
-	values := tags.Traits[name]
+	values := append([]string(nil), tags.Traits[name]...)
+
+	if fluidExcludedBlock(name) {
+		values = append(values, "BlockTraitFluidExcluded")
+	}
+
 	if len(values) == 0 {
 		return "0"
 	}
 
 	return strings.Join(values, " | ")
+}
+
+func fluidExcludedBlock(name string) bool {
+	if strings.HasSuffix(name, "_door") || strings.HasSuffix(name, "_sign") {
+		return true
+	}
+
+	switch name {
+	case "ladder", "sugar_cane", "bubble_column", "nether_portal", "end_portal", "end_gateway", "structure_void":
+		return true
+	default:
+		return false
+	}
 }
 
 func expandTag(root, name string, visiting map[string]bool) (map[string]struct{}, error) {

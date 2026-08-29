@@ -29,6 +29,7 @@ const (
 
 	EntityFlagSneaking  = 0x02
 	EntityFlagSprinting = 0x08
+	EntityFlagSwimming  = 0x10
 
 	EntityPoseStanding  = 0
 	EntityPoseSwimming  = 3

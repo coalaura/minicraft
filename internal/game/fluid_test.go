@@ -11,6 +11,14 @@ type fluidStateTestCase struct {
 	falling bool
 }
 
+type canonicalFluidStateTestCase struct {
+	name        string
+	base        Block
+	fluidType   FluidType
+	sourceType  FluidStateType
+	flowingType FluidStateType
+}
+
 func TestFluidStateDerivesWaterAndLavaLevels(t *testing.T) {
 	tests := []fluidStateTestCase{
 		{name: "water source", block: fluidBlockForTest(t, Water, 0), fluid: FluidTypeWater, amount: 8, source: true},
@@ -32,8 +40,60 @@ func TestFluidStateDerivesWaterAndLavaLevels(t *testing.T) {
 				t.Fatalf("own height = %v, want %v", state.OwnHeight(), wantHeight)
 			}
 
-			if state.LegacyBlock() != test.block {
-				t.Fatalf("legacy block = %d, want %d", state.LegacyBlock(), test.block)
+			wantLegacy := test.block
+
+			if test.falling {
+				base := Water
+
+				if test.fluid == FluidTypeLava {
+					base = Lava
+				}
+
+				wantLegacy = fluidBlockForTest(t, base, 8)
+			}
+
+			if state.LegacyBlock() != wantLegacy {
+				t.Fatalf("legacy block = %d, want %d", state.LegacyBlock(), wantLegacy)
+			}
+		})
+	}
+}
+
+func TestFluidStateCanonicalizesEveryLegacyLiquidLevel(t *testing.T) {
+	tests := []canonicalFluidStateTestCase{
+		{name: "water", base: Water, fluidType: FluidTypeWater, sourceType: FluidStateTypeWater, flowingType: FluidStateTypeFlowingWater},
+		{name: "lava", base: Lava, fluidType: FluidTypeLava, sourceType: FluidStateTypeLava, flowingType: FluidStateTypeFlowingLava},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for level := range 16 {
+				block := fluidBlockForTest(t, test.base, uint8(level))
+				state := block.FluidState()
+
+				wantAmount := uint8(8 - min(level, 7))
+
+				wantFalling := level >= 8
+				if wantFalling {
+					wantAmount = 8
+				}
+
+				wantType := test.flowingType
+
+				if level == 0 {
+					wantType = test.sourceType
+				}
+
+				if state.Type() != test.fluidType || state.StateType() != wantType || state.Amount() != wantAmount || state.IsFalling() != wantFalling {
+					t.Fatalf("level %d state = type %d owner %d amount %d falling %v", level, state.Type(), state.StateType(), state.Amount(), state.IsFalling())
+				}
+
+				wantLegacyLevel := min(level, 8)
+
+				wantLegacy := fluidBlockForTest(t, test.base, uint8(wantLegacyLevel))
+				if state.LegacyBlock() != wantLegacy {
+					t.Fatalf("level %d legacy block = %d, want %d", level, state.LegacyBlock(), wantLegacy)
+				}
 			}
 		})
 	}

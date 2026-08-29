@@ -163,6 +163,38 @@ func TestGeneratedBlockSoundAndReplaceabilityMetadata(t *testing.T) {
 	}
 }
 
+func TestStateAwareLiquidContainers(t *testing.T) {
+	doubleSlab, valid := OakSlab.WithProperties(BlockPropertyValue{Name: "type", Value: "double"})
+	if !valid {
+		t.Fatal("resolve double slab")
+	}
+
+	if doubleSlab.CanContainFluid(FluidTypeWater) {
+		t.Fatal("double slab accepted water")
+	}
+
+	litCandle, valid := Candle.WithProperties(
+		BlockPropertyValue{Name: "lit", Value: "true"},
+		BlockPropertyValue{Name: "waterlogged", Value: "false"},
+	)
+
+	if !valid {
+		t.Fatal("resolve lit candle")
+	}
+
+	waterlogged, valid := litCandle.WithContainedFluid(FluidTypeWater)
+	if !valid {
+		t.Fatal("lit candle rejected water")
+	}
+
+	lit, _ := waterlogged.Property("lit")
+	contained, _ := waterlogged.Property("waterlogged")
+
+	if lit != "false" || contained != "true" {
+		t.Fatalf("waterlogged candle properties = lit %q waterlogged %q", lit, contained)
+	}
+}
+
 func blockPropertyForTest(t *testing.T, block Block, name string) string {
 	t.Helper()
 

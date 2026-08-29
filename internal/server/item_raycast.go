@@ -37,16 +37,25 @@ func (r *Runtime) raycastItemGrid(player game.Player, maximumDistance float64, h
 		if worldPositionValid(position) {
 			block := r.World.BlockAt(position)
 			if hit(block) {
-				boxes := block.CollisionBoxes(position)
-				if len(boxes) == 0 && block.FluidState().IsSource() {
-					boxes = []game.AABB{fluidRaycastBox(r.World, block, position)}
+				boxes := block.OutlineBoxes(position)
+
+				if block.FluidState().IsSource() {
+					boxes = append(boxes, fluidRaycastBox(r.World, block, position))
 				}
+
+				nearestDistance := math.Inf(1)
+				nearestFace := int32(-1)
 
 				for _, box := range boxes {
 					hitDistance, face, intersects := raycastAABB(origin, directionX, directionY, directionZ, box)
-					if intersects && hitDistance <= maximumDistance {
-						return itemRaycastHit{position: position, face: face}, true
+					if intersects && hitDistance <= maximumDistance && hitDistance < nearestDistance {
+						nearestDistance = hitDistance
+						nearestFace = face
 					}
+				}
+
+				if nearestFace >= 0 {
+					return itemRaycastHit{position: position, face: nearestFace}, true
 				}
 			}
 		}

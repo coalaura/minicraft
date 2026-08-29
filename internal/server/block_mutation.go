@@ -260,7 +260,7 @@ func (r *Runtime) PlaceBlock(session *Session, clicked, position game.BlockPosit
 	return r.completeBlockMutation(result, delivery, err)
 }
 
-func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationAction, changes []game.BlockChange, requiredChanges int, allowOccupied, checkPlayerObstruction, authoritative, recalculatePlayerPoses bool) (BlockMutationResult, blockMutationDelivery, error) {
+func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationAction, changes []game.BlockChange, requiredChanges int, allowOccupied, checkPlayerObstruction, authoritative, recalculatePlayerPoses bool, lifecycleLocked ...bool) (BlockMutationResult, blockMutationDelivery, error) {
 	r.mu.RLock()
 	_, active := r.sessions[session]
 	r.mu.RUnlock()
@@ -274,6 +274,8 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	if (!active && !authoritative) || len(changes) == 0 {
 		return result, blockMutationDelivery{}, nil
 	}
+
+	changes = r.withImmediateFluidMixing(changes)
 
 	if !authoritative && action == BlockMutationBreak && !r.AllowBlockBreaking {
 		return result, blockMutationDelivery{}, nil
@@ -412,7 +414,12 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	r.scheduleFluidNeighborsLocked(committed)
 
 	r.reconcileRuntimeBlockEntities(records)
-	r.closeRemovedBlockEntityMenus(records)
+
+	if len(lifecycleLocked) != 0 && lifecycleLocked[0] {
+		r.closeRemovedBlockEntityMenusLocked(records)
+	} else {
+		r.closeRemovedBlockEntityMenus(records)
+	}
 
 	var poseChanges []game.Player
 

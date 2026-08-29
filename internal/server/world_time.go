@@ -44,6 +44,7 @@ func (r *Runtime) Tick() game.TimeState {
 	r.lifecycleMu.Lock()
 
 	r.tickActiveChunks()
+	swimmingChanges := r.updateActivePlayerSwimmingLocked()
 	r.lifecycleMu.Unlock()
 
 	r.tickScheduledBlocksLocked()
@@ -57,6 +58,7 @@ func (r *Runtime) Tick() game.TimeState {
 	r.worldMutationMu.Unlock()
 
 	r.completeRuntimeBlockMutations(deliveries)
+	r.sendPlayerMetadataUpdates(swimmingChanges)
 
 	r.tickOpenMenus()
 

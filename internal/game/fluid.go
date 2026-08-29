@@ -10,6 +10,18 @@ const (
 	FluidTypeLava
 )
 
+// FluidStateType identifies the concrete vanilla fluid that owns a state.
+// Source and flowing fluids have distinct scheduled-tick identities.
+type FluidStateType uint8
+
+const (
+	FluidStateTypeEmpty FluidStateType = iota
+	FluidStateTypeFlowingWater
+	FluidStateTypeWater
+	FluidStateTypeFlowingLava
+	FluidStateTypeLava
+)
+
 type fluidStateData struct {
 	fluidType FluidType
 	level     uint8
@@ -27,6 +39,10 @@ func (block Block) FluidState() FluidState {
 	}
 
 	data := stateFluidStates[block]
+	if data.level >= 8 {
+		data.level = 8
+	}
+
 	return FluidState(data)
 }
 
@@ -42,6 +58,25 @@ func FluidStateFromLegacyBlock(block Block) FluidState {
 
 func (state FluidState) Type() FluidType {
 	return state.fluidType
+}
+
+func (state FluidState) StateType() FluidStateType {
+	switch state.fluidType {
+	case FluidTypeWater:
+		if state.IsSource() {
+			return FluidStateTypeWater
+		}
+
+		return FluidStateTypeFlowingWater
+	case FluidTypeLava:
+		if state.IsSource() {
+			return FluidStateTypeLava
+		}
+
+		return FluidStateTypeFlowingLava
+	default:
+		return FluidStateTypeEmpty
+	}
 }
 
 func (state FluidState) Empty() bool {
@@ -117,9 +152,7 @@ func (state FluidState) LegacyBlock() Block {
 		block = Lava
 	}
 
-	level := state.level
-
-	level = min(level, 15)
+	level := min(state.level, 8)
 
 	legacy, valid := block.WithProperties(BlockPropertyValue{Name: "level", Value: fluidLevelString(level)})
 	if !valid {

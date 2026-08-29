@@ -11,7 +11,9 @@ func (r *Runtime) calculatedPlayerPose(player game.Player) game.PlayerPose {
 	currentPose := player.Pose
 	desired := game.PlayerPoseStanding
 
-	if player.Sneaking {
+	if player.Swimming {
+		desired = game.PlayerPoseCrawling
+	} else if player.Sneaking {
 		desired = game.PlayerPoseCrouching
 	}
 
@@ -36,6 +38,63 @@ func (r *Runtime) calculatedPlayerPose(player game.Player) game.PlayerPose {
 	}
 
 	return currentPose
+}
+
+func (r *Runtime) updatePlayerSwimmingState(player *game.Player) bool {
+	previous := player.Swimming
+
+	inWater := r.fluidContact(player.CollisionBox(), game.FluidTypeWater, true).Depth > 0
+
+	if player.Swimming {
+		player.Swimming = player.Sprinting && inWater
+	} else {
+		position := game.BlockPosition{
+			X: int32(math.Floor(player.Position.X)),
+			Y: int32(math.Floor(player.Position.Y)),
+			Z: int32(math.Floor(player.Position.Z)),
+		}
+
+		player.Swimming = player.Sprinting && inWater && r.playerEyeSubmerged(*player) && r.World.FluidAt(position).Type() == game.FluidTypeWater
+	}
+
+	return previous != player.Swimming
+}
+
+func (r *Runtime) playerEyeSubmerged(player game.Player) bool {
+	eye := player.EyePosition()
+
+	position := game.BlockPosition{
+		X: int32(math.Floor(eye.X)),
+		Y: int32(math.Floor(eye.Y)),
+		Z: int32(math.Floor(eye.Z)),
+	}
+
+	state := r.World.FluidAt(position)
+	if state.Type() != game.FluidTypeWater {
+		return false
+	}
+
+	return eye.Y < float64(position.Y)+state.Height(r.World, position)
+}
+
+func (r *Runtime) updateActivePlayerSwimmingLocked() []game.Player {
+	changedPlayers := make([]game.Player, 0)
+
+	for _, session := range r.snapshotSessions() {
+		player, changed := session.updatePlayerState(func(player *game.Player) bool {
+			previousPose := player.Pose
+			swimmingChanged := r.updatePlayerSwimmingState(player)
+			player.Pose = r.calculatedPlayerPose(*player)
+
+			return swimmingChanged || previousPose != player.Pose
+		})
+
+		if changed {
+			changedPlayers = append(changedPlayers, player)
+		}
+	}
+
+	return changedPlayers
 }
 
 func (r *Runtime) playerFits(player game.Player) bool {

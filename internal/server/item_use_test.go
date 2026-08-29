@@ -85,7 +85,38 @@ func TestUseItemBucketDoesNotPickUpFluidBehindSolidBlock(t *testing.T) {
 	}
 }
 
-func TestBucketUseItemOnPassesBeforeGenericWaterlogging(t *testing.T) {
+func TestBucketRaycastUsesFluidModeForHeldBucket(t *testing.T) {
+	world := &game.World{Generator: blockMutationTestGenerator{block: game.Air}}
+
+	runtime := NewRuntime(world)
+
+	nearWater := game.BlockPosition{X: 0, Y: 70, Z: 2}
+	farWater := game.BlockPosition{X: 0, Y: 70, Z: 3}
+	outlinedBlock := game.BlockPosition{X: 0, Y: 70, Z: 4}
+
+	world.SetBlocks([]game.BlockChange{
+		{Position: nearWater, Replacement: game.Water},
+		{Position: farWater, Replacement: game.Water},
+		{Position: outlinedBlock, Replacement: game.Stone},
+	})
+
+	player := game.Player{
+		Position: game.Position{X: 0.5, Y: 68.38, Z: 0.5},
+		Rotation: game.Rotation{},
+	}
+
+	fillHit, found := runtime.raycastItemGrid(player, itemUseRange, bucketFillTarget)
+	if !found || fillHit.position != nearWater {
+		t.Fatalf("empty bucket hit = %+v, found %t, want near source", fillHit, found)
+	}
+
+	placementHit, found := runtime.raycastItemGrid(player, itemUseRange, bucketPlacementTarget)
+	if !found || placementHit.position != outlinedBlock {
+		t.Fatalf("filled bucket hit = %+v, found %t, want outlined block through water", placementHit, found)
+	}
+}
+
+func TestBucketUseItemOnPassesBeforeItemUse(t *testing.T) {
 	world := &game.World{Generator: blockMutationTestGenerator{block: game.Air}}
 
 	runtime := NewRuntime(world)
@@ -109,13 +140,18 @@ func TestBucketUseItemOnPassesBeforeGenericWaterlogging(t *testing.T) {
 		t.Fatalf("pass bucket use on block: %v", err)
 	}
 
-	if waterlogged(world.BlockAt(position)) {
-		t.Fatal("Use Item On waterlogged stairs before generic Use Item")
+	if world.BlockAt(position) != game.OakStairs {
+		t.Fatalf("block after use item on = %d, want dry stairs", world.BlockAt(position))
+	}
+
+	held := actor.snapshotPlayer().Inventory.Offhand
+	if held.Item != game.ItemWaterBucket || held.Count != 1 {
+		t.Fatalf("offhand stack after use item on = %+v, want water bucket", held)
 	}
 
 	err = actor.handleUseItem(protocol.UseItem{Hand: protocol.OffHand, Sequence: 34, Yaw: 0, Pitch: 0})
 	if err != nil {
-		t.Fatalf("waterlog with generic Use Item: %v", err)
+		t.Fatalf("use water bucket: %v", err)
 	}
 
 	block := world.BlockAt(position)
@@ -123,7 +159,7 @@ func TestBucketUseItemOnPassesBeforeGenericWaterlogging(t *testing.T) {
 		t.Fatalf("waterlogged block = %d, want waterlogged stairs", block)
 	}
 
-	held := actor.snapshotPlayer().Inventory.Offhand
+	held = actor.snapshotPlayer().Inventory.Offhand
 	if held.Item != game.ItemBucket || held.Count != 1 {
 		t.Fatalf("offhand stack = %+v, want bucket", held)
 	}
@@ -184,7 +220,17 @@ func TestWaterBucketSucceedsInExistingSource(t *testing.T) {
 
 	joinTestSession(t, runtime, actor)
 
-	err := actor.handleUseItem(protocol.UseItem{Hand: protocol.MainHand, Sequence: 38, Yaw: 0, Pitch: 0})
+	err := actor.handleUseItemOn(testUseItemOn(position, protocol.BlockFaceNorth, protocol.MainHand, 37))
+	if err != nil {
+		t.Fatalf("pass water bucket use on source: %v", err)
+	}
+
+	held := actor.snapshotPlayer().Inventory.Hotbar[0]
+	if world.BlockAt(position) != game.Water || held.Item != game.ItemWaterBucket || held.Count != 1 {
+		t.Fatalf("use item on changed source or held stack: block %v, stack %+v", world.BlockAt(position), held)
+	}
+
+	err = actor.handleUseItem(protocol.UseItem{Hand: protocol.MainHand, Sequence: 38, Yaw: 0, Pitch: 0})
 	if err != nil {
 		t.Fatalf("empty water bucket into source: %v", err)
 	}
@@ -193,7 +239,7 @@ func TestWaterBucketSucceedsInExistingSource(t *testing.T) {
 		t.Fatalf("source block = %v, want water", world.BlockAt(position))
 	}
 
-	held := actor.snapshotPlayer().Inventory.Hotbar[0]
+	held = actor.snapshotPlayer().Inventory.Hotbar[0]
 	if held.Item != game.ItemBucket || held.Count != 1 {
 		t.Fatalf("held stack = %+v, want empty bucket", held)
 	}
@@ -355,10 +401,10 @@ func TestLavaBucketMixesImmediatelyBesideWater(t *testing.T) {
 	}
 }
 
-func TestWaterBucketDropsReplaceableBlockButLavaBucketDoesNot(t *testing.T) {
+func TestBucketsDropReplacedBlocks(t *testing.T) {
 	tests := map[string]bucketReplacementTestCase{
 		"water": {item: game.ItemWaterBucket, fluid: game.Water, wantDrop: 1},
-		"lava":  {item: game.ItemLavaBucket, fluid: game.Lava, wantDrop: 0},
+		"lava":  {item: game.ItemLavaBucket, fluid: game.Lava, wantDrop: 1},
 	}
 
 	for name, test := range tests {

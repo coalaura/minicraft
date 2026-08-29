@@ -36,14 +36,14 @@ func (s *Session) handleUseItemOn(interaction protocol.UseItemOn) error {
 		return s.sendBlockChangedAck(interaction.Sequence)
 	}
 
-	target, validTarget := placementTarget(interaction.Position, interaction.Face)
-	if !validTarget {
+	stack, validHand := s.heldItem(interaction.Hand)
+	if !validHand || stack.Empty() {
 		return s.resynchronizePlacement(interaction.Position, interaction.Sequence)
 	}
 
-	stack, validHand := s.heldItem(interaction.Hand)
-	if !validHand || stack.Empty() {
-		return s.resynchronizePlacement(target, interaction.Sequence)
+	_, validTarget := placementTarget(interaction.Position, interaction.Face)
+	if !validTarget {
+		return s.resynchronizePlacement(interaction.Position, interaction.Sequence)
 	}
 
 	result, affected, err = s.Runtime.PlaceHeldItem(s, interaction, stack.Item)

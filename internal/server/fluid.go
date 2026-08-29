@@ -43,23 +43,6 @@ var (
 	fluidSides = []game.BlockPosition{{X: -1}, {X: 1}, {Z: -1}, {Z: 1}}
 )
 
-func deterministicFluidRandom(seed int64) func(game.BlockPosition, int) int {
-	return func(position game.BlockPosition, bound int) int {
-		value := uint64(seed)
-
-		value ^= uint64(uint32(position.X)) * 0x9e3779b185ebca87
-		value ^= uint64(uint32(position.Y)) * 0xc2b2ae3d27d4eb4f
-		value ^= uint64(uint32(position.Z)) * 0x165667b19e3779f9
-		value ^= value >> 30
-		value *= 0xbf58476d1ce4e5b9
-		value ^= value >> 27
-		value *= 0x94d049bb133111eb
-		value ^= value >> 31
-
-		return int(value % uint64(bound))
-	}
-}
-
 func fluidForBlock(block game.Block) (FlowingFluid, bool) {
 	state := block.FluidState()
 
@@ -113,7 +96,7 @@ func (r *Runtime) scheduleFluidNeighborsLocked(changes []game.BlockChange) {
 			if present {
 				state := block.FluidState()
 
-				r.scheduleBlockTickLocked(position, scheduledBlockTickFluid, r.fluidDelay(fluid, position, state, state))
+				r.scheduleBlockTickLocked(position, state.StateType(), r.fluidDelay(fluid, position, state, state))
 			}
 		}
 	}
@@ -126,11 +109,18 @@ func (r *Runtime) fluidDelay(fluid FlowingFluid, position game.BlockPosition, ol
 		delay = lavaNetherDelay
 	}
 
-	if fluid.typeID != game.FluidTypeLava || r.FluidEnvironment.FastLava || oldState.Empty() || newState.Empty() || oldState.IsFalling() || newState.IsFalling() || newState.Amount() <= oldState.Amount() || r.fluidRandom(position, 4) == 0 {
+	if fluid.typeID != game.FluidTypeLava || oldState.Empty() || newState.Empty() || oldState.IsFalling() || newState.IsFalling() || newState.Height(r.World, position) <= oldState.Height(r.World, position) || r.nextFluidRandom(position, 4) == 0 {
 		return delay
 	}
 
 	return delay * 4
+}
+
+func (r *Runtime) nextFluidRandom(position game.BlockPosition, bound int) int {
+	r.fluidRandomMu.Lock()
+	defer r.fluidRandomMu.Unlock()
+
+	return r.fluidRandom(position, bound)
 }
 
 func (r *Runtime) fluidDropOff(fluid FlowingFluid) int {
@@ -233,16 +223,7 @@ func (r *Runtime) tickFluidLocked(position game.BlockPosition) {
 }
 
 func (r *Runtime) recomputeFluidLevel(position game.BlockPosition, fluid FlowingFluid, oldState game.FluidState) (int, bool, int) {
-	above := game.BlockPosition{X: position.X, Y: position.Y + 1, Z: position.Z}
-
-	aboveState := r.World.BlockAt(above).FluidState()
-
 	currentBlock := r.World.BlockAt(position)
-	aboveBlock := r.World.BlockAt(above)
-
-	if aboveState.Type() == fluid.typeID && r.canFlowBetween(aboveBlock, currentBlock, game.BlockFaceDown) {
-		return 8, true, 0
-	}
 
 	bestAmount := 0
 	sources := 0
@@ -283,6 +264,15 @@ func (r *Runtime) recomputeFluidLevel(position game.BlockPosition, fluid Flowing
 
 	if r.fluidSourceConversion(fluid.typeID) && sources >= 2 && supported {
 		return 8, false, sources
+	}
+
+	above := game.BlockPosition{X: position.X, Y: position.Y + 1, Z: position.Z}
+
+	aboveBlock := r.World.BlockAt(above)
+	aboveState := aboveBlock.FluidState()
+
+	if aboveState.Type() == fluid.typeID && r.canFlowBetween(aboveBlock, currentBlock, game.BlockFaceDown) {
+		return 8, true, sources
 	}
 
 	amount := bestAmount - r.fluidDropOff(fluid)
@@ -382,7 +372,7 @@ func (r *Runtime) resumeDeferredFluidSourcesLocked(chunks []LoadedChunk) {
 
 			state := block.FluidState()
 
-			r.scheduleBlockTickLocked(source, scheduledBlockTickFluid, r.fluidDelay(fluid, source, state, state))
+			r.scheduleBlockTickLocked(source, state.StateType(), r.fluidDelay(fluid, source, state, state))
 		}
 	}
 }
@@ -395,25 +385,34 @@ func (r *Runtime) fluidFlowReplacement(from, destination game.BlockPosition, flu
 	target := r.World.BlockAt(destination)
 
 	targetState := target.FluidState()
+	if targetState.Type() == fluid.typeID {
+		return game.Air, false, false
+	}
 
-	if targetState.Type() != game.FluidTypeEmpty && targetState.Type() != fluid.typeID {
+	if !targetState.Empty() {
+		if target.Waterloggable() {
+			if fluid.typeID == game.FluidTypeLava && downward && targetState.Type() == game.FluidTypeWater {
+				return target, false, true
+			}
+
+			return game.Air, false, false
+		}
+
 		source := r.World.BlockAt(from).FluidState().IsSource()
 
 		return r.fluidMixingReplacement(fluid, source, targetState, downward), false, true
 	}
 
-	if targetState.Type() == fluid.typeID && int(targetState.Amount()) >= amount {
-		return game.Air, false, false
-	}
-
-	if targetState.Type() == game.FluidTypeEmpty && fluid.typeID == game.FluidTypeWater && target.Waterloggable() {
-		replacement, valid := target.WithProperties(game.BlockPropertyValue{Name: "waterlogged", Value: "true"})
+	if target.Waterloggable() {
+		replacement, valid := target.WithContainedFluid(fluid.typeID)
 		if valid {
 			return replacement, true, false
 		}
+
+		return game.Air, false, false
 	}
 
-	if targetState.Empty() && (target == game.Air || target.Replaceable()) {
+	if !target.HasTrait(game.BlockTraitFluidExcluded) && len(target.CollisionBoxes(game.BlockPosition{})) == 0 {
 		replacement := fluidBlockForAmount(fluid, amount, downward)
 
 		if fluid.typeID == game.FluidTypeLava {
@@ -458,47 +457,32 @@ func (r *Runtime) fluidBlockMixingReplacementWith(position game.BlockPosition, s
 		return game.Air, false
 	}
 
-	if makesBasaltWith(position, blockAt) {
-		return game.Basalt, true
-	}
-
 	neighbors := [...]game.BlockPosition{
 		{X: position.X, Y: position.Y + 1, Z: position.Z},
-		{X: position.X - 1, Y: position.Y, Z: position.Z},
-		{X: position.X + 1, Y: position.Y, Z: position.Z},
 		{X: position.X, Y: position.Y, Z: position.Z - 1},
 		{X: position.X, Y: position.Y, Z: position.Z + 1},
+		{X: position.X - 1, Y: position.Y, Z: position.Z},
+		{X: position.X + 1, Y: position.Y, Z: position.Z},
 	}
+	below := game.BlockPosition{X: position.X, Y: position.Y - 1, Z: position.Z}
+	canMakeBasalt := blockAt(below) == game.SoulSoil
 
 	for _, neighbor := range neighbors {
-		if blockAt(neighbor).FluidState().Type() != game.FluidTypeWater {
-			continue
+		neighborBlock := blockAt(neighbor)
+		if neighborBlock.FluidState().Type() == game.FluidTypeWater {
+			if state.IsSource() {
+				return game.Obsidian, true
+			}
+
+			return game.Cobblestone, true
 		}
 
-		if state.IsSource() {
-			return game.Obsidian, true
+		if canMakeBasalt && neighborBlock == game.BlueIce {
+			return game.Basalt, true
 		}
-
-		return game.Cobblestone, true
 	}
 
 	return game.Air, false
-}
-
-func makesBasaltWith(position game.BlockPosition, blockAt func(game.BlockPosition) game.Block) bool {
-	below := game.BlockPosition{X: position.X, Y: position.Y - 1, Z: position.Z}
-	if blockAt(below) != game.SoulSoil {
-		return false
-	}
-
-	for _, offset := range fluidSides {
-		adjacent := game.BlockPosition{X: position.X + offset.X, Y: position.Y, Z: position.Z + offset.Z}
-		if blockAt(adjacent) == game.BlueIce {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (r *Runtime) withImmediateFluidMixing(changes []game.BlockChange) []game.BlockChange {
@@ -523,17 +507,17 @@ func (r *Runtime) withImmediateFluidMixing(changes []game.BlockChange) []game.Bl
 
 		addCandidate(change.Position)
 
-		if change.Replacement.FluidState().Type() != game.FluidTypeWater {
-			continue
+		neighbors := [...]game.BlockPosition{
+			{X: change.Position.X, Y: change.Position.Y - 1, Z: change.Position.Z},
+			{X: change.Position.X, Y: change.Position.Y + 1, Z: change.Position.Z},
+			{X: change.Position.X - 1, Y: change.Position.Y, Z: change.Position.Z},
+			{X: change.Position.X + 1, Y: change.Position.Y, Z: change.Position.Z},
+			{X: change.Position.X, Y: change.Position.Y, Z: change.Position.Z - 1},
+			{X: change.Position.X, Y: change.Position.Y, Z: change.Position.Z + 1},
 		}
 
-		below := game.BlockPosition{X: change.Position.X, Y: change.Position.Y - 1, Z: change.Position.Z}
-
-		addCandidate(below)
-
-		for _, offset := range fluidSides {
-			adjacent := game.BlockPosition{X: change.Position.X + offset.X, Y: change.Position.Y, Z: change.Position.Z + offset.Z}
-			addCandidate(adjacent)
+		for _, neighbor := range neighbors {
+			addCandidate(neighbor)
 		}
 	}
 
@@ -592,7 +576,7 @@ func (r *Runtime) fluidFlowDirections(position game.BlockPosition, fluid Flowing
 			continue
 		}
 
-		distance := r.fluidSlopeDistance(destination, fluid, direction, 1)
+		distance := r.fluidSlopeDistance(destination, fluid, direction, 0)
 
 		if distance < bestDistance {
 			bestDistance = distance
@@ -688,8 +672,27 @@ func oppositeFluidFace(offset game.BlockPosition) game.BlockFace {
 }
 
 func (r *Runtime) mutateFluidLocked(changes []game.BlockChange, fluidType game.FluidType) {
+	fizzPositions := make([]game.BlockPosition, 0)
+
+	if fluidType == game.FluidTypeLava {
+		for _, change := range changes {
+			current := r.World.BlockAt(change.Position)
+			if current == change.Replacement && current.FluidState().Type() == game.FluidTypeWater {
+				fizzPositions = append(fizzPositions, change.Position)
+			}
+		}
+	}
+
 	result, delivery, err := r.mutateBlocksLocked(nil, BlockMutationPlace, changes, len(changes), true, false, true, false)
-	if err != nil || !result.Changed {
+	if err != nil {
+		return
+	}
+
+	if !result.Changed {
+		for _, position := range fizzPositions {
+			r.queueFluidFizzLocked(position)
+		}
+
 		return
 	}
 
@@ -701,12 +704,35 @@ func (r *Runtime) mutateFluidLocked(changes []game.BlockChange, fluidType game.F
 	}
 
 	for _, record := range delivery.records {
-		if record.change.Replacement != game.Obsidian && record.change.Replacement != game.Cobblestone && record.change.Replacement != game.Stone && record.change.Replacement != game.Basalt {
-			continue
+		fizz := record.change.Replacement == game.Obsidian || record.change.Replacement == game.Cobblestone || record.change.Replacement == game.Stone || record.change.Replacement == game.Basalt
+
+		if fluidType == game.FluidTypeLava && record.previous.FluidState().Empty() && record.previous != game.Air && !record.previous.Waterloggable() && record.change.Replacement.FluidState().Type() == game.FluidTypeLava {
+			fizz = true
 		}
 
-		delivery.runtimeEvents = append(delivery.runtimeEvents, protocol.LevelEvent{Event: protocol.LevelEventLavaFizz, Position: record.change.Position})
+		if fizz {
+			delivery.runtimeEvents = append(delivery.runtimeEvents, protocol.LevelEvent{Event: protocol.LevelEventLavaFizz, Position: record.change.Position})
+		}
+	}
+
+	for _, position := range fizzPositions {
+		delivery.runtimeEvents = append(delivery.runtimeEvents, protocol.LevelEvent{Event: protocol.LevelEventLavaFizz, Position: position})
 	}
 
 	r.runtimeBlockMutations = append(r.runtimeBlockMutations, queuedBlockMutation{result: result, delivery: delivery})
+}
+
+func (r *Runtime) queueFluidFizzLocked(position game.BlockPosition) {
+	deliveryComplete := make(chan struct{})
+
+	delivery := blockMutationDelivery{
+		recipients:       r.snapshotSessions(),
+		waitForDelivery:  r.blockMutationDeliveryTail,
+		deliveryComplete: deliveryComplete,
+		runtimeEvents:    []protocol.LevelEvent{{Event: protocol.LevelEventLavaFizz, Position: position}},
+	}
+
+	r.blockMutationDeliveryTail = deliveryComplete
+
+	r.runtimeBlockMutations = append(r.runtimeBlockMutations, queuedBlockMutation{result: BlockMutationResult{Changed: true}, delivery: delivery})
 }

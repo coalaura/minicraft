@@ -106,6 +106,26 @@ func (block Block) CollisionBoxes(position BlockPosition) []AABB {
 	return boxes
 }
 
+func (block Block) OutlineBoxes(position BlockPosition) []AABB {
+	boxes := block.CollisionBoxes(position)
+	if len(boxes) != 0 {
+		return boxes
+	}
+
+	if block == Air || (!block.FluidState().Empty() && !block.Waterloggable()) {
+		return nil
+	}
+
+	return []AABB{{
+		MinX: float64(position.X),
+		MinY: float64(position.Y),
+		MinZ: float64(position.Z),
+		MaxX: float64(position.X + 1),
+		MaxY: float64(position.Y + 1),
+		MaxZ: float64(position.Z + 1),
+	}}
+}
+
 func chestCollisionBoxes(block Block) []AABB {
 	if collisionProperty(block, "type") == "single" {
 		return []AABB{unitBox(1, 0, 1, 15, 14, 15)}

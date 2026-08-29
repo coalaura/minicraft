@@ -50,6 +50,7 @@ const (
 	BlockTraitSwordEfficient
 	BlockTraitLeaves
 	BlockTraitWool
+	BlockTraitFluidExcluded
 )
 
 type BlockDropCount struct {
@@ -302,6 +303,52 @@ func (block Block) Waterloggable() bool {
 	}
 
 	return definition.Waterloggable
+}
+
+func (block Block) CanContainFluid(fluid FluidType) bool {
+	_, valid := block.WithContainedFluid(fluid)
+	return valid
+}
+
+func (block Block) WithContainedFluid(fluid FluidType) (Block, bool) {
+	if fluid != FluidTypeWater || !block.Waterloggable() || !block.FluidState().Empty() {
+		return 0, false
+	}
+
+	if block.Behavior() == BlockBehaviorSlab {
+		slabType, valid := block.Property("type")
+		if valid && slabType == "double" {
+			return 0, false
+		}
+	}
+
+	properties := []BlockPropertyValue{{Name: "waterlogged", Value: "true"}}
+
+	lit, valid := block.Property("lit")
+	if valid && lit == "true" {
+		properties = append(properties, BlockPropertyValue{Name: "lit", Value: "false"})
+	}
+
+	replacement, valid := block.WithProperties(properties...)
+	if !valid || replacement == block {
+		return 0, false
+	}
+
+	return replacement, true
+}
+
+func (block Block) WithoutContainedFluid() (Block, bool) {
+	waterlogged, valid := block.Property("waterlogged")
+	if !valid || waterlogged != "true" {
+		return 0, false
+	}
+
+	replacement, valid := block.WithProperties(BlockPropertyValue{Name: "waterlogged", Value: "false"})
+	if !valid || replacement == block {
+		return 0, false
+	}
+
+	return replacement, true
 }
 
 func (block Block) Property(name string) (string, bool) {

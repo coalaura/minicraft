@@ -26,7 +26,7 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Generic runtime entities, dropped items and item pickup
 - Basic commands with client-side declarations and suggestions
 - Biomes, lighting, world time and a day/night cycle
-- Derived water and lava flow with active-chunk-paused scheduling, waterlogging, buckets and item fluid motion
+- Vanilla-like derived water and lava flow in active world chunks, with scheduled ticks intentionally paused in inactive chunks, waterlogging, buckets and item fluid motion
 - Deterministic, seeded procedural world generation
 - In-memory world modifications without world save files
 - Transient chunk and player entity lifecycle
@@ -94,7 +94,7 @@ Minicraft is not intended to be a drop-in replacement for a full vanilla server.
 
 There are still gameplay systems and protocol features that are intentionally incomplete or outside that scope.
 
-Fluid simulation covers derived water and lava flow, active-chunk-paused scheduled updates, waterlogging, buckets and item movement through fluids. Health and fire effects, Nether water evaporation and broader fluid parity remain deferred.
+Fluid simulation covers vanilla-like derived water and lava flow in active world chunks, while scheduled fluid ticks intentionally pause in inactive chunks. It also covers waterlogging, buckets and item movement through fluids. Health, drowning, lava damage and fire consequences, Nether water evaporation and broader fluid parity remain deferred or out of scope.
 
 Generic block entities support procedural copy-on-write state, removal behavior and optional runtime interaction/ticking capabilities. Generic 9x1 through 9x6 storage menus are available, including barrels and single/double normal, trapped and copper chest variants. Furnace-family block entities process the generated 1.21.11 smelting, smoking and blasting catalogues with vanilla fuel durations, remainders, lit states and menu data. Manual crafting supports the generated ordinary shaped and shapeless recipe catalogue in the player inventory and at crafting tables. Recipe-book protocol, furnace XP payout, special/dynamic recipes and component-transforming recipes are not implemented yet.
 

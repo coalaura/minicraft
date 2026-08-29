@@ -6,10 +6,6 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
-type scheduledBlockTickType string
-
-const scheduledBlockTickFluid scheduledBlockTickType = "fluid"
-
 type scheduledTickPriority int
 
 const scheduledTickPriorityNormal scheduledTickPriority = 0
@@ -34,8 +30,8 @@ type scheduledTickQueue[T comparable] struct {
 	nextSuborder uint64
 }
 
-type scheduledBlockTickKey = scheduledTickKey[scheduledBlockTickType]
-type scheduledBlockTicks = scheduledTickQueue[scheduledBlockTickType]
+type scheduledBlockTickKey = scheduledTickKey[game.FluidStateType]
+type scheduledBlockTicks = scheduledTickQueue[game.FluidStateType]
 
 func (ticks *scheduledTickQueue[T]) schedule(position game.BlockPosition, typeID T, delay int64, priorities ...scheduledTickPriority) {
 	if delay < 1 {
@@ -119,10 +115,6 @@ func (ticks *scheduledTickQueue[T]) advanceChunks(activeChunks []LoadedChunk) []
 	}
 
 	sort.Slice(due, func(first, second int) bool {
-		if due[first].due != due[second].due {
-			return due[first].due < due[second].due
-		}
-
 		if due[first].priority != due[second].priority {
 			return due[first].priority < due[second].priority
 		}
@@ -133,7 +125,7 @@ func (ticks *scheduledTickQueue[T]) advanceChunks(activeChunks []LoadedChunk) []
 	return due
 }
 
-func (r *Runtime) scheduleBlockTickLocked(position game.BlockPosition, typeID scheduledBlockTickType, delay int64) {
+func (r *Runtime) scheduleBlockTickLocked(position game.BlockPosition, typeID game.FluidStateType, delay int64) {
 	r.scheduledBlockTicks.schedule(position, typeID, delay)
 }
 
@@ -141,10 +133,12 @@ func (r *Runtime) tickScheduledBlocksLocked() {
 	ticks := r.scheduledBlockTicks.advanceChunks(r.activeLoadedChunksLocked())
 
 	for _, tick := range ticks {
-		switch tick.key.typeID {
-		case scheduledBlockTickFluid:
-			r.tickFluidLocked(tick.key.position)
+		state := r.World.FluidAt(tick.key.position)
+		if state.StateType() != tick.key.typeID {
+			continue
 		}
+
+		r.tickFluidLocked(tick.key.position)
 	}
 }
 

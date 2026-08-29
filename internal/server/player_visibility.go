@@ -255,6 +255,10 @@ func (s *Session) sendPlayerMetadata(player game.Player) error {
 		flags |= protocol.EntityFlagSprinting
 	}
 
+	if player.Swimming {
+		flags |= protocol.EntityFlagSwimming
+	}
+
 	pose := protocol.EntityPoseStanding
 
 	switch player.Pose {

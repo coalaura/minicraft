@@ -298,6 +298,14 @@ func (r *Runtime) reconcileRuntimeBlockEntities(records []blockMutationRecord) {
 }
 
 func (r *Runtime) closeRemovedBlockEntityMenus(records []blockMutationRecord) {
+	r.closeRemovedBlockEntityMenusWithLifecycle(records, false)
+}
+
+func (r *Runtime) closeRemovedBlockEntityMenusLocked(records []blockMutationRecord) {
+	r.closeRemovedBlockEntityMenusWithLifecycle(records, true)
+}
+
+func (r *Runtime) closeRemovedBlockEntityMenusWithLifecycle(records []blockMutationRecord, lifecycleLocked bool) {
 	changed := make(map[game.BlockPosition]struct{})
 
 	for _, record := range records {
@@ -310,8 +318,10 @@ func (r *Runtime) closeRemovedBlockEntityMenus(records []blockMutationRecord) {
 		return
 	}
 
-	r.lifecycleMu.Lock()
-	defer r.lifecycleMu.Unlock()
+	if !lifecycleLocked {
+		r.lifecycleMu.Lock()
+		defer r.lifecycleMu.Unlock()
+	}
 
 	for _, session := range r.snapshotSessions() {
 		current := session.activeMenu()

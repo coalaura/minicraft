@@ -11,7 +11,7 @@ func TestScheduledBlockTicksPauseAndResumeExactly(t *testing.T) {
 
 	ticks := scheduledBlockTicks{}
 
-	ticks.schedule(position, scheduledBlockTickFluid, 3)
+	ticks.schedule(position, game.FluidStateTypeWater, 3)
 
 	for range 20 {
 		due := ticks.advance(func(LoadedChunk) bool {
@@ -37,7 +37,7 @@ func TestScheduledBlockTicksPauseAndResumeExactly(t *testing.T) {
 		return true
 	})
 
-	if len(due) != 1 || due[0].key.position != position || due[0].key.typeID != scheduledBlockTickFluid {
+	if len(due) != 1 || due[0].key.position != position || due[0].key.typeID != game.FluidStateTypeWater {
 		t.Fatalf("due ticks = %v, want one fluid tick at %v", due, position)
 	}
 }
@@ -46,8 +46,8 @@ func TestScheduledBlockTicksIgnoreQueuedDuplicates(t *testing.T) {
 	position := game.BlockPosition{X: 32, Y: 70}
 	ticks := scheduledBlockTicks{}
 
-	ticks.schedule(position, scheduledBlockTickFluid, 5)
-	ticks.schedule(position, scheduledBlockTickFluid, 1)
+	ticks.schedule(position, game.FluidStateTypeWater, 5)
+	ticks.schedule(position, game.FluidStateTypeWater, 1)
 
 	for range 4 {
 		due := ticks.advance(func(LoadedChunk) bool {
@@ -67,7 +67,7 @@ func TestScheduledBlockTicksIgnoreQueuedDuplicates(t *testing.T) {
 		t.Fatalf("due ticks = %v, want original queued tick", due)
 	}
 
-	ticks.schedule(position, scheduledBlockTickFluid, 1)
+	ticks.schedule(position, game.FluidStateTypeWater, 1)
 
 	due = ticks.advance(func(LoadedChunk) bool {
 		return true
@@ -114,8 +114,8 @@ func TestScheduledBlockTicksUseIndependentChunkClocks(t *testing.T) {
 
 	ticks := scheduledBlockTicks{}
 
-	ticks.schedule(first, scheduledBlockTickFluid, 2)
-	ticks.schedule(second, scheduledBlockTickFluid, 2)
+	ticks.schedule(first, game.FluidStateTypeWater, 2)
+	ticks.schedule(second, game.FluidStateTypeWater, 2)
 
 	for range 2 {
 		ticks.advance(func(chunk LoadedChunk) bool {
@@ -154,7 +154,7 @@ func TestScheduledBlockTicksSurviveActiveChunkDestruction(t *testing.T) {
 	chunk := blockLoadedChunk(position)
 
 	runtime.setSessionActiveChunks(session, []LoadedChunk{chunk})
-	runtime.scheduleBlockTickLocked(position, scheduledBlockTickFluid, 1)
+	runtime.scheduleBlockTickLocked(position, game.FluidStateTypeWater, 1)
 	runtime.setSessionActiveChunks(session, nil)
 	runtime.tickScheduledBlocksLocked()
 

@@ -159,7 +159,7 @@ func (r *Runtime) fillBucket(session *Session, hand int32, stack game.ItemStack,
 }
 
 func (r *Runtime) fillWaterloggedBucket(session *Session, hand int32, stack game.ItemStack, position game.BlockPosition, block game.Block) (bool, error) {
-	replacement, valid := block.WithProperties(game.BlockPropertyValue{Name: "waterlogged", Value: "false"})
+	replacement, valid := block.WithoutContainedFluid()
 	if !valid {
 		return false, nil
 	}
@@ -168,7 +168,7 @@ func (r *Runtime) fillWaterloggedBucket(session *Session, hand int32, stack game
 }
 
 func (r *Runtime) waterlogBucket(session *Session, hand int32, stack game.ItemStack, position game.BlockPosition, block game.Block) (bool, error) {
-	replacement, valid := block.WithProperties(game.BlockPropertyValue{Name: "waterlogged", Value: "true"})
+	replacement, valid := block.WithContainedFluid(game.FluidTypeWater)
 	if !valid || replacement == block {
 		return false, nil
 	}
@@ -219,22 +219,32 @@ func (r *Runtime) emptyBucketIntoSource(session *Session, hand int32, stack game
 
 func (r *Runtime) mutateBucket(session *Session, hand int32, stack game.ItemStack, position game.BlockPosition, replacement game.Block, resultItem game.Item, sound game.SoundEvent) (bool, error) {
 	r.worldMutationMu.Lock()
+	r.lifecycleMu.Lock()
 
-	result, delivery, err := func() (BlockMutationResult, blockMutationDelivery, error) {
+	result, delivery, inventoryBefore, inventoryChanged, dropped, player, err := func() (BlockMutationResult, blockMutationDelivery, game.PlayerInventory, bool, game.ItemStack, game.Player, error) {
 		defer r.worldMutationMu.Unlock()
+		defer r.lifecycleMu.Unlock()
+
+		player := session.snapshotPlayer()
+		inventoryBefore := player.Inventory.Clone()
+
+		inventory, dropped, valid := bucketInventoryResult(player, hand, stack, resultItem)
+		if !valid {
+			return BlockMutationResult{}, blockMutationDelivery{}, inventoryBefore, false, game.ItemStack{}, player, nil
+		}
 
 		current := r.World.BlockAt(position)
 		if current == replacement {
-			return BlockMutationResult{}, blockMutationDelivery{}, nil
+			return BlockMutationResult{}, blockMutationDelivery{}, inventoryBefore, false, game.ItemStack{}, player, nil
 		}
 
 		changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: position, Replacement: replacement}})
 
 		changes = r.withImmediateFluidMixing(changes)
 
-		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationInteract, changes, 1, true, false, false, false)
+		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationInteract, changes, 1, true, false, false, false, true)
 
-		if replacement.FluidState().Type() == game.FluidTypeWater && current.FluidState().Empty() && current != game.Air && !current.Waterloggable() {
+		if !replacement.FluidState().Empty() && current.FluidState().Empty() && current != game.Air && !current.Waterloggable() {
 			for index := range delivery.records {
 				record := &delivery.records[index]
 				if record.change.Position == position && record.previous == current {
@@ -244,6 +254,11 @@ func (r *Runtime) mutateBucket(session *Session, hand int32, stack game.ItemStac
 		}
 
 		if result.Changed {
+			session.playerMx.Lock()
+			session.Player.Inventory = inventory
+			player = *session.Player
+			session.playerMx.Unlock()
+
 			delivery.runtimeSounds = []positionalBlockSound{{position: position, sound: bucketSound(position, sound)}}
 
 			for _, record := range delivery.records {
@@ -253,7 +268,7 @@ func (r *Runtime) mutateBucket(session *Session, hand int32, stack game.ItemStac
 			}
 		}
 
-		return result, delivery, err
+		return result, delivery, inventoryBefore, result.Changed, dropped, player, err
 	}()
 
 	result, err = r.completeBlockMutation(result, delivery, err)
@@ -261,43 +276,43 @@ func (r *Runtime) mutateBucket(session *Session, hand int32, stack game.ItemStac
 		return false, err
 	}
 
-	return r.transformBucketHeldStack(session, hand, stack, resultItem)
+	if !dropped.Empty() {
+		r.spawnPlayerDroppedItem(player, dropped, false, true)
+	}
+
+	if inventoryChanged {
+		err = session.synchronizePlayerInventoryMutation(inventoryBefore)
+		if err != nil {
+			return true, err
+		}
+	}
+
+	return true, nil
 }
 
 func (r *Runtime) transformBucketHeldStack(session *Session, hand int32, expected game.ItemStack, result game.Item) (bool, error) {
 	r.lifecycleMu.Lock()
 
-	before := session.snapshotPlayer().Inventory
+	player := session.snapshotPlayer()
+	before := player.Inventory.Clone()
 
-	player, changed := session.updatePlayerState(func(player *game.Player) bool {
-		held, valid := heldItemPointer(player, hand)
-		if !valid || !held.Equal(expected) || player.GameMode == game.GameModeCreative {
-			return false
-		}
-
-		if held.Count == 1 {
-			held.Item = result
+	inventory, dropped, valid := bucketInventoryResult(player, hand, expected, result)
+	if valid {
+		player, _ = session.updatePlayerState(func(player *game.Player) bool {
+			player.Inventory = inventory
 
 			return true
-		}
-
-		held.Count--
-
-		remaining := game.ItemStack{Item: result, Count: 1}
-
-		insertBucketResult(&player.Inventory, &remaining)
-
-		if !remaining.Empty() {
-			r.spawnPlayerDroppedItem(*player, remaining, false, true)
-		}
-
-		return true
-	})
+		})
+	}
 
 	r.lifecycleMu.Unlock()
 
-	if !changed {
-		return player.GameMode == game.GameModeCreative, nil
+	if !valid {
+		return false, nil
+	}
+
+	if !dropped.Empty() {
+		r.spawnPlayerDroppedItem(player, dropped, false, true)
 	}
 
 	err := session.synchronizePlayerInventoryMutation(before)
@@ -308,8 +323,56 @@ func (r *Runtime) transformBucketHeldStack(session *Session, hand int32, expecte
 	return true, nil
 }
 
-func insertBucketResult(inventory *game.PlayerInventory, stack *game.ItemStack) {
-	for slot := 36; slot <= 44 && !stack.Empty(); slot++ {
+func bucketInventoryResult(player game.Player, hand int32, expected game.ItemStack, result game.Item) (game.PlayerInventory, game.ItemStack, bool) {
+	candidate := player
+	candidate.Inventory = player.Inventory.Clone()
+
+	held, valid := heldItemPointer(&candidate, hand)
+	if !valid || !held.Equal(expected) {
+		return game.PlayerInventory{}, game.ItemStack{}, false
+	}
+
+	resultStack := game.ItemStack{Item: result, Count: 1}
+
+	if player.GameMode == game.GameModeCreative {
+		if playerInventoryContains(candidate.Inventory, resultStack) {
+			return candidate.Inventory, game.ItemStack{}, true
+		}
+
+		insertPlayerInventoryStack(&candidate.Inventory, &resultStack, player.SelectedHotbarSlot)
+
+		return candidate.Inventory, resultStack, true
+	}
+
+	if held.Count == 1 {
+		*held = resultStack
+
+		return candidate.Inventory, game.ItemStack{}, true
+	}
+
+	held.Count--
+
+	insertPlayerInventoryStack(&candidate.Inventory, &resultStack, player.SelectedHotbarSlot)
+
+	return candidate.Inventory, resultStack, true
+}
+
+func insertPlayerInventoryStack(inventory *game.PlayerInventory, stack *game.ItemStack, selectedHotbarSlot int) {
+	slots := make([]int, 0, 36)
+
+	selectedSlot := 36 + selectedHotbarSlot
+
+	if selectedHotbarSlot >= 0 && selectedHotbarSlot < game.HotbarSlotCount {
+		slots = append(slots, selectedSlot)
+	}
+
+	for slot := 9; slot <= 44; slot++ {
+		if slot != selectedSlot {
+			slots = append(slots, slot)
+		}
+	}
+
+	for _, slot := range slots {
 		target := inventory.Slot(slot)
 		if target == nil || target.Empty() || !target.SameItem(*stack) {
 			continue
@@ -326,15 +389,37 @@ func insertBucketResult(inventory *game.PlayerInventory, stack *game.ItemStack) 
 		stack.Count -= moved
 	}
 
-	for slot := 9; slot <= 44 && !stack.Empty(); slot++ {
+	for _, slot := range slots {
+		if stack.Empty() {
+			break
+		}
+
 		target := inventory.Slot(slot)
 		if target == nil || !target.Empty() {
 			continue
 		}
 
+		definition, valid := stack.Item.Definition()
+		if !valid {
+			continue
+		}
+
+		moved := min(definition.StackSize, stack.Count)
 		*target = stack.Clone()
-		*stack = game.ItemStack{}
+		target.Count = moved
+		stack.Count -= moved
 	}
+}
+
+func playerInventoryContains(inventory game.PlayerInventory, stack game.ItemStack) bool {
+	for slot := 9; slot <= 45; slot++ {
+		target := inventory.Slot(slot)
+		if target != nil && !target.Empty() && target.SameItem(stack) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func sourceFluid(block game.Block) bool {
@@ -342,11 +427,11 @@ func sourceFluid(block game.Block) bool {
 }
 
 func bucketPlacementTarget(block game.Block) bool {
-	return len(block.CollisionBoxes(game.BlockPosition{})) != 0
+	return len(block.OutlineBoxes(game.BlockPosition{})) != 0
 }
 
 func bucketFillTarget(block game.Block) bool {
-	return sourceFluid(block) || len(block.CollisionBoxes(game.BlockPosition{})) != 0
+	return sourceFluid(block) || len(block.OutlineBoxes(game.BlockPosition{})) != 0
 }
 
 func bucketFluid(item game.Item) (game.Block, bool) {
@@ -377,12 +462,7 @@ func waterlogged(block game.Block) bool {
 }
 
 func canWaterlog(block game.Block) bool {
-	if !block.Waterloggable() || (block.Behavior() == game.BlockBehaviorSlab && blockProperty(block, "type") == "double") {
-		return false
-	}
-
-	value, valid := block.Property("waterlogged")
-	return valid && value == "false"
+	return block.CanContainFluid(game.FluidTypeWater)
 }
 
 func bucketCanReplace(block game.Block) bool {
