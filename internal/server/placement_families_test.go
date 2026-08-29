@@ -57,17 +57,24 @@ func TestButtonPlacementStateAndSupport(t *testing.T) {
 			assertBlockProperty(t, state, "powered", "false")
 
 			target, _ := placementTarget(interaction.Position, interaction.Face)
-			if !validPlacementSupport(func(position game.BlockPosition) game.Block {
+
+			isValidPlacementSupport := validPlacementSupport(func(position game.BlockPosition) game.Block {
 				if position == interaction.Position {
 					return game.Stone
 				}
 
 				return game.Air
-			}, target, state, game.ItemPlacementButton) {
+			}, target, state, game.ItemPlacementButton)
+
+			if !isValidPlacementSupport {
 				t.Fatal("button rejected its clicked support")
 			}
 
-			if validPlacementSupport(func(game.BlockPosition) game.Block { return game.Air }, target, state, game.ItemPlacementButton) {
+			isValidPlacementSupport = validPlacementSupport(func(game.BlockPosition) game.Block {
+				return game.Air
+			}, target, state, game.ItemPlacementButton)
+
+			if isValidPlacementSupport {
 				t.Fatal("button accepted an unsupported surface")
 			}
 		})

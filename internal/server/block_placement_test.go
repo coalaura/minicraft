@@ -235,8 +235,12 @@ func TestPlacementUsesVanillaReplaceabilityTarget(t *testing.T) {
 
 func TestDeniedPlacementResynchronizesAndAcknowledges(t *testing.T) {
 	tests := map[string]func(*Runtime){
-		"configuration": func(runtime *Runtime) { runtime.AllowBlockPlacing = false },
-		"policy":        func(runtime *Runtime) { runtime.BlockMutationPolicy = denyBlockMutationPolicy{} },
+		"configuration": func(runtime *Runtime) {
+			runtime.AllowBlockPlacing = false
+		},
+		"policy": func(runtime *Runtime) {
+			runtime.BlockMutationPolicy = denyBlockMutationPolicy{}
+		},
 	}
 
 	for name, configure := range tests {

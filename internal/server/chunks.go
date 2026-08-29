@@ -695,6 +695,7 @@ func buildChunkPackets(ctx context.Context, world *game.World, chunks []LoadedCh
 				if err != nil {
 					errOnce.Do(func() {
 						firstErr = err
+
 						cancel()
 					})
 

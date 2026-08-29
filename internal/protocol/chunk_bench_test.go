@@ -58,10 +58,18 @@ func (benchmarkAddress) String() string {
 
 func BenchmarkSectionBlocksToSection(b *testing.B) {
 	benchmarks := []sectionBlocksToSectionBenchmarkCase{
-		{name: "empty", states: func(int) int32 { return AirBlockState }},
-		{name: "uniform", states: func(int) int32 { return StoneBlockState }},
-		{name: "small_palette", states: func(index int) int32 { return int32(index % 8) }},
-		{name: "large_palette", states: func(index int) int32 { return int32(index % 300) }},
+		{name: "empty", states: func(int) int32 {
+			return AirBlockState
+		}},
+		{name: "uniform", states: func(int) int32 {
+			return StoneBlockState
+		}},
+		{name: "small_palette", states: func(index int) int32 {
+			return int32(index % 8)
+		}},
+		{name: "large_palette", states: func(index int) int32 {
+			return int32(index % 300)
+		}},
 	}
 
 	for _, benchmark := range benchmarks {

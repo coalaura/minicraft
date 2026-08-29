@@ -337,12 +337,24 @@ func TestSignedPlayerChatRejectsTamperingTransactionally(t *testing.T) {
 	valid := fixture.signedMessage(t, 0, "hello", 31, 0, [3]byte{}, 1, nil)
 
 	tests := []tamperedPlayerChatTestCase{
-		{name: "message", mutate: func(message *protocol.ChatMessage) { message.Message = "tampered" }},
-		{name: "timestamp", mutate: func(message *protocol.ChatMessage) { message.Timestamp-- }},
-		{name: "salt", mutate: func(message *protocol.ChatMessage) { message.Salt++ }},
-		{name: "signature", mutate: func(message *protocol.ChatMessage) { message.Signature[0] ^= 0xFF }},
-		{name: "unsigned", mutate: func(message *protocol.ChatMessage) { message.HasSignature = false }},
-		{name: "acknowledgement", mutate: func(message *protocol.ChatMessage) { message.Acknowledged[0] = 1 }},
+		{name: "message", mutate: func(message *protocol.ChatMessage) {
+			message.Message = "tampered"
+		}},
+		{name: "timestamp", mutate: func(message *protocol.ChatMessage) {
+			message.Timestamp--
+		}},
+		{name: "salt", mutate: func(message *protocol.ChatMessage) {
+			message.Salt++
+		}},
+		{name: "signature", mutate: func(message *protocol.ChatMessage) {
+			message.Signature[0] ^= 0xFF
+		}},
+		{name: "unsigned", mutate: func(message *protocol.ChatMessage) {
+			message.HasSignature = false
+		}},
+		{name: "acknowledgement", mutate: func(message *protocol.ChatMessage) {
+			message.Acknowledged[0] = 1
+		}},
 	}
 
 	for _, test := range tests {

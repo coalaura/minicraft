@@ -200,10 +200,13 @@ func TestOfflineProfileCachePreventsRepeatRequests(t *testing.T) {
 
 func TestOfflineProfileResolutionCanBeDisabled(t *testing.T) {
 	var requests atomic.Int32
+
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requests.Add(1)
+
 		http.Error(writer, "unexpected request", http.StatusInternalServerError)
 	}))
+
 	defer server.Close()
 
 	session := &Session{

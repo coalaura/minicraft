@@ -69,7 +69,11 @@ func TestGeneratedNameCataloguesAreSorted(t *testing.T) {
 			t.Errorf("%s catalogue is not sorted", name)
 		}
 
-		if slices.ContainsFunc(catalogue, func(item string) bool { return item == "" }) {
+		contains := slices.ContainsFunc(catalogue, func(item string) bool {
+			return item == ""
+		})
+
+		if contains {
 			t.Errorf("%s catalogue contains an empty name", name)
 		}
 	}

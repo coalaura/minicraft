@@ -307,8 +307,12 @@ func TestCraftingTableMenuLayoutRecipesAndValidity(t *testing.T) {
 
 	t.Run("closes when replaced or out of range", func(t *testing.T) {
 		tests := []craftingTableValidityTestCase{
-			{name: "replacement", mutate: func(runtime *Runtime, _ *Session) { runtime.World.SetBlock(position, game.Stone) }},
-			{name: "range", mutate: func(_ *Runtime, session *Session) { session.Player.Position.X = 100 }},
+			{name: "replacement", mutate: func(runtime *Runtime, _ *Session) {
+				runtime.World.SetBlock(position, game.Stone)
+			}},
+			{name: "range", mutate: func(_ *Runtime, session *Session) {
+				session.Player.Position.X = 100
+			}},
 		}
 
 		for _, test := range tests {
