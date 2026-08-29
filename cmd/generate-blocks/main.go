@@ -342,6 +342,7 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, drops map[string]
 
 			for _, property := range block.Properties {
 				values := property.Values
+
 				if property.Type == "bool" {
 					values = []string{"true", "false"}
 				}
@@ -473,14 +474,17 @@ func expandTag(root, name string, visiting map[string]bool) (map[string]struct{}
 		err = json.Unmarshal(rawEntry, &entry)
 		if err != nil {
 			var object TagEntry
-			if objectErr := json.Unmarshal(rawEntry, &object); objectErr != nil {
+
+			objectErr := json.Unmarshal(rawEntry, &object)
+			if objectErr != nil {
 				return nil, fmt.Errorf("decode entry in block tag %s: %w", name, err)
 			}
 
 			entry = object.ID
 		}
 
-		if after, ok := strings.CutPrefix(entry, "#"); ok {
+		after, ok := strings.CutPrefix(entry, "#")
+		if ok {
 			nested, err := expandTag(root, after, visiting)
 			if err != nil {
 				return nil, err

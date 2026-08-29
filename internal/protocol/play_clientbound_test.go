@@ -348,13 +348,15 @@ func TestEntityEventEncode(t *testing.T) {
 }
 
 func TestCommandPacketEncodersRejectInvalidValues(t *testing.T) {
-	for name, encoder := range map[string]testPacketEncoder{
+	invalidEncoders := map[string]testPacketEncoder{
 		"empty tree":                 DeclareCommands{},
 		"invalid parser":             DeclareCommands{Nodes: []CommandNode{{Type: CommandNodeRoot}, {Type: CommandNodeArgument, Name: "target", Parser: CommandParserInteger}}, RootIndex: 0},
 		"invalid string parser type": DeclareCommands{Nodes: []CommandNode{{Type: CommandNodeRoot}, {Type: CommandNodeArgument, Name: "target", Parser: CommandParserString, Properties: CommandStringProperties{Type: 3}}}, RootIndex: 0},
 		"literal suggestions":        DeclareCommands{Nodes: []CommandNode{{Type: CommandNodeRoot}, {Type: CommandNodeLiteral, Name: "help", SuggestionType: "minecraft:ask_server"}}, RootIndex: 0},
 		"negative range":             CommandSuggestions{Start: -1},
-	} {
+	}
+
+	for name, encoder := range invalidEncoders {
 		t.Run(name, func(t *testing.T) {
 			var writer PacketWriter
 

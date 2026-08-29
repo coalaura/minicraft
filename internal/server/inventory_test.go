@@ -244,7 +244,9 @@ func TestCreativePickBlockSelectsExistingHotbarStack(t *testing.T) {
 	assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundSetHeldSlotID})
 
 	reader := protocol.NewPacketReader(connection.packets(t)[0].Data)
-	if slot := reader.VarInt(); slot != 5 {
+
+	slot := reader.VarInt()
+	if slot != 5 {
 		t.Fatalf("client selected slot = %d, want 5", slot)
 	}
 
@@ -340,7 +342,8 @@ func TestDroppingHeldItemsUpdatesCreativeStateAndEquipment(t *testing.T) {
 		t.Fatalf("drop held item: %v", err)
 	}
 
-	if stack := actor.snapshotPlayer().Inventory.Hotbar[0]; !stack.Equal(game.ItemStack{Item: game.ItemOakLog, Count: 1}) {
+	stack := actor.snapshotPlayer().Inventory.Hotbar[0]
+	if !stack.Equal(game.ItemStack{Item: game.ItemOakLog, Count: 1}) {
 		t.Fatalf("stack after dropping one = %+v", stack)
 	}
 
@@ -356,7 +359,8 @@ func TestDroppingHeldItemsUpdatesCreativeStateAndEquipment(t *testing.T) {
 		t.Fatalf("drop last held item: %v", err)
 	}
 
-	if stack := actor.snapshotPlayer().Inventory.Hotbar[0]; !stack.Empty() {
+	stack = actor.snapshotPlayer().Inventory.Hotbar[0]
+	if !stack.Empty() {
 		t.Fatalf("stack after dropping last item = %+v", stack)
 	}
 
@@ -367,7 +371,8 @@ func TestDroppingHeldItemsUpdatesCreativeStateAndEquipment(t *testing.T) {
 	actor.handleSetHeldItem(protocol.SetHeldItem{Slot: 1})
 	actor.handleSetHeldItem(protocol.SetHeldItem{Slot: 0})
 
-	if stack := actor.snapshotPlayer().Inventory.Hotbar[0]; !stack.Empty() {
+	stack = actor.snapshotPlayer().Inventory.Hotbar[0]
+	if !stack.Empty() {
 		t.Fatalf("switching restored dropped stack = %+v", stack)
 	}
 }
@@ -380,7 +385,8 @@ func TestDroppingAllHeldItemsClearsCreativeStack(t *testing.T) {
 
 	actor.handleDropHeldItem(true)
 
-	if stack := actor.snapshotPlayer().Inventory.Hotbar[0]; !stack.Empty() {
+	stack := actor.snapshotPlayer().Inventory.Hotbar[0]
+	if !stack.Empty() {
 		t.Fatalf("stack after dropping all = %+v", stack)
 	}
 }
@@ -403,7 +409,9 @@ func TestJoiningPlayerReceivesVisibleEquipment(t *testing.T) {
 		}
 
 		reader := protocol.NewPacketReader(packet.Data)
-		if entityID := reader.VarInt(); entityID != actor.Player.EntityID {
+
+		entityID := reader.VarInt()
+		if entityID != actor.Player.EntityID {
 			t.Fatalf("equipment entity id = %d, want %d", entityID, actor.Player.EntityID)
 		}
 
@@ -586,6 +594,7 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 		}
 
 		candidate.carried = game.ItemStack{}
+
 		if !applyClone(candidate, game.GameModeCreative, 9, 0) || candidate.carried.Count != 64 {
 			t.Fatalf("candidate after keybound clone = %+v", candidate)
 		}
@@ -777,6 +786,7 @@ func TestGenericMenuSlotRestrictions(t *testing.T) {
 	}
 
 	candidate.carried = game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
+
 	if !applyPickup(candidate, 5, 0) || candidate.slots[5].Item != game.ItemIronHelmet || !candidate.carried.Empty() {
 		t.Fatal("armor slot rejected matching armor")
 	}
@@ -1049,6 +1059,7 @@ func testCombinedMenu(containerSlot, playerHotbarSlot *game.ItemStack) *menu {
 		remaining := candidate.slots[slot].Clone()
 
 		target := 1
+
 		if slot == 1 {
 			target = 0
 		}
@@ -1081,15 +1092,18 @@ func assertInventoryContentHeader(t *testing.T, packet protocol.Packet, stateID,
 
 	reader := protocol.NewPacketReader(packet.Data)
 
-	if windowID := reader.VarInt(); windowID != playerInventoryWindowID {
+	windowID := reader.VarInt()
+	if windowID != playerInventoryWindowID {
 		t.Fatalf("inventory window id = %d, want %d", windowID, playerInventoryWindowID)
 	}
 
-	if actualStateID := reader.VarInt(); actualStateID != stateID {
+	actualStateID := reader.VarInt()
+	if actualStateID != stateID {
 		t.Fatalf("inventory state id = %d, want %d", actualStateID, stateID)
 	}
 
-	if actualItemCount := reader.VarInt(); actualItemCount != itemCount {
+	actualItemCount := reader.VarInt()
+	if actualItemCount != itemCount {
 		t.Fatalf("inventory item count = %d, want %d", actualItemCount, itemCount)
 	}
 }
@@ -1104,7 +1118,10 @@ func readSimpleItemStack(t *testing.T, reader *protocol.PacketReader) game.ItemS
 
 	stack := game.ItemStack{Item: game.Item(reader.VarInt()), Count: count}
 
-	if added, removed := reader.VarInt(), reader.VarInt(); added != 0 || removed != 0 {
+	added := reader.VarInt()
+	removed := reader.VarInt()
+
+	if added != 0 || removed != 0 {
 		t.Fatalf("simple item stack has %d added and %d removed components", added, removed)
 	}
 

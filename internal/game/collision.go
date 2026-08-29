@@ -198,12 +198,16 @@ func slabCollisionBoxes(block Block) []AABB {
 }
 
 func stairCollisionBoxes(block Block) []AABB {
-	baseMinY, baseMaxY := 0.0, 8.0
-	stepMinY, stepMaxY := 8.0, 16.0
+	baseMinY := 0.0
+	baseMaxY := 8.0
+	stepMinY := 8.0
+	stepMaxY := 16.0
 
 	if collisionProperty(block, "half") == "top" {
-		baseMinY, baseMaxY = 8, 16
-		stepMinY, stepMaxY = 0, 8
+		baseMinY = 8
+		baseMaxY = 16
+		stepMinY = 0
+		stepMaxY = 8
 	}
 
 	boxes := []AABB{unitBox(0, baseMinY, 0, 16, baseMaxY, 16)}

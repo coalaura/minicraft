@@ -17,7 +17,7 @@ func TestDecodeLoginStartRequiresUUIDAndConsumesPacket(t *testing.T) {
 		t.Fatalf("login start = %+v", start)
 	}
 
-	truncated := writer.Buffer.Bytes()[:writer.Buffer.Len()-1]
+	truncated := writer.Buffer.Bytes()[:writer.Len()-1]
 	_, err = DecodeLoginStart(truncated)
 	if err == nil {
 		t.Fatal("truncated login start decoded")

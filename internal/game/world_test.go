@@ -105,7 +105,8 @@ func TestNewOverworldUsesSeedAndGeneratorSpawn(t *testing.T) {
 }
 
 func TestNewOverworldUsesGeneratorMetadataAndDefaultSeaLevel(t *testing.T) {
-	if seaLevel := NewOverworld(nil).SeaLevel; seaLevel != 63 {
+	seaLevel := NewOverworld(nil).SeaLevel
+	if seaLevel != 63 {
 		t.Fatalf("default sea level = %d, want 63", seaLevel)
 	}
 
@@ -158,7 +159,8 @@ func TestWorldGenerationIsDeterministic(t *testing.T) {
 	}
 
 	for _, position := range slices.Backward(positions) {
-		if actual := second.BlockAt(position); actual != expected[position] {
+		actual := second.BlockAt(position)
+		if actual != expected[position] {
 			t.Fatalf("block at %+v = %d, want %d", position, actual, expected[position])
 		}
 	}
@@ -176,19 +178,23 @@ func TestWorldOverridesTakePrecedence(t *testing.T) {
 
 	world.SetBlock(position, Air)
 
-	if actual := world.BlockAt(position); actual != Air {
+	actual := world.BlockAt(position)
+	if actual != Air {
 		t.Fatalf("overridden block = %d, want air", actual)
 	}
 
 	neighbor := BlockPosition{X: -16, Y: 12, Z: 16}
-	if actual := world.BlockAt(neighbor); actual != Stone {
-		t.Fatalf("neighbor block = %d, want generated stone", actual)
+
+	neighborBlock := world.BlockAt(neighbor)
+	if neighborBlock != Stone {
+		t.Fatalf("neighbor block = %d, want generated stone", neighborBlock)
 	}
 
 	world.ClearBlockOverride(position)
 
-	if actual := world.BlockAt(position); actual != Stone {
-		t.Fatalf("cleared override block = %d, want generated stone", actual)
+	clearedBlock := world.BlockAt(position)
+	if clearedBlock != Stone {
+		t.Fatalf("cleared override block = %d, want generated stone", clearedBlock)
 	}
 }
 
@@ -280,7 +286,8 @@ func TestSetBlocksCachesChunkEntityGenerationForMultipleRemovals(t *testing.T) {
 		t.Fatalf("same-chunk removals generated block entities %d times, want 1", generator.entityCalls)
 	}
 
-	if count := world.BlockEntityOverrideCount(); count != 2 {
+	count := world.BlockEntityOverrideCount()
+	if count != 2 {
 		t.Fatalf("same-chunk removal tombstones = %d, want 2", count)
 	}
 }
@@ -299,7 +306,9 @@ func TestSnapshotChunkOverridesIsIndependent(t *testing.T) {
 	}
 
 	snapshot[local] = Stone
-	if block := world.BlockAt(position); block != Air {
+
+	block := world.BlockAt(position)
+	if block != Air {
 		t.Fatalf("snapshot mutation changed world block to %d", block)
 	}
 }

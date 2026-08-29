@@ -19,10 +19,10 @@ func (*pointerGenerator) BlockAt(_ int64, _ game.BlockPosition) game.Block {
 	return game.Air
 }
 
-func TestRegisterAndCreate(t *testing.T) {
-	const name = "registry-test-valid"
+const registryTestName = "registry-test-valid"
 
-	err := Register(name, func() (game.Generator, error) {
+func TestRegisterAndCreate(t *testing.T) {
+	err := Register(registryTestName, func() (game.Generator, error) {
 		return testGenerator{}, nil
 	})
 
@@ -30,7 +30,7 @@ func TestRegisterAndCreate(t *testing.T) {
 		t.Fatalf("register generator: %v", err)
 	}
 
-	generated, err := New(name)
+	generated, err := New(registryTestName)
 	if err != nil {
 		t.Fatalf("create generator: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestRegisterAndCreate(t *testing.T) {
 		t.Fatalf("generator type = %T", generated)
 	}
 
-	err = Register(name, func() (game.Generator, error) {
+	err = Register(registryTestName, func() (game.Generator, error) {
 		return testGenerator{}, nil
 	})
 

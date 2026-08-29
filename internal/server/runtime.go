@@ -120,6 +120,7 @@ func (r *Runtime) unregisterConnectedSession(session *Session) {
 
 func (r *Runtime) DisconnectAll(reason string) error {
 	r.mu.Lock()
+
 	if r.shuttingDown {
 		r.mu.Unlock()
 
@@ -204,6 +205,7 @@ func (r *Runtime) allocateEntityID() int32 {
 
 func (r *Runtime) allocateEntityIDLocked() int32 {
 	r.nextEntityID++
+
 	return r.nextEntityID
 }
 

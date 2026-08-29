@@ -6,6 +6,8 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
+const atriumBalconyWidth = int64(5)
+
 func grandAtriumForZone(seed int64, current zone) atriumSpec {
 	group := floorDiv(current.layer, verticalGroupSize)
 
@@ -26,6 +28,7 @@ func grandAtriumForZone(seed int64, current zone) atriumSpec {
 	}
 
 	anchorHashSalt := saltZone
+
 	if anchorLayer != 0 {
 		anchorHashSalt ^= mix64(uint64(anchorLayer) + saltLayer)
 	}
@@ -77,7 +80,8 @@ func grandAtriumBlockAt(seed, worldX, worldY, worldZ int64, current zone) (game.
 		return game.Air, false
 	}
 
-	if block, ok := atriumStairBlockAt(spec, worldY, current.localX, current.localZ); ok {
+	block, ok := atriumStairBlockAt(spec, worldY, current.localX, current.localZ)
+	if ok {
 		return block, true
 	}
 
@@ -152,9 +156,7 @@ func atriumEntranceAt(spec atriumSpec, current zone, worldY int64) bool {
 }
 
 func atriumBalconyAt(spec atriumSpec, x, z, level int64) bool {
-	const width = int64(5)
-
-	nearEdge := x <= spec.x0+width || x >= spec.x1-width || z <= spec.z0+width || z >= spec.z1-width
+	nearEdge := x <= spec.x0+atriumBalconyWidth || x >= spec.x1-atriumBalconyWidth || z <= spec.z0+atriumBalconyWidth || z >= spec.z1-atriumBalconyWidth
 	if nearEdge {
 		return true
 	}
@@ -174,12 +176,10 @@ func atriumRailAt(spec atriumSpec, x, z, level int64) bool {
 		return false
 	}
 
-	const width = int64(5)
-
-	innerX0 := spec.x0 + width
-	innerX1 := spec.x1 - width
-	innerZ0 := spec.z0 + width
-	innerZ1 := spec.z1 - width
+	innerX0 := spec.x0 + atriumBalconyWidth
+	innerX1 := spec.x1 - atriumBalconyWidth
+	innerZ0 := spec.z0 + atriumBalconyWidth
+	innerZ1 := spec.z1 - atriumBalconyWidth
 
 	centerX := (spec.x0 + spec.x1) / 2
 	centerZ := (spec.z0 + spec.z1) / 2
@@ -263,7 +263,9 @@ func atriumStairBlockAt(spec atriumSpec, worldY, x, z int64) (game.Block, bool) 
 			continue
 		}
 
-		if step, ok := stairStepAt(plan, x, z); ok && worldY == lowerFloor+1+int64(step) {
+		step, ok := stairStepAt(plan, x, z)
+
+		if ok && worldY == lowerFloor+1+int64(step) {
 			return stairBlock(game.OakStairs, stairFacing(plan)), true
 		}
 

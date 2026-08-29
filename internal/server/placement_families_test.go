@@ -98,11 +98,13 @@ func TestPlacementFamilyInitialStates(t *testing.T) {
 
 	assertBlockProperty(t, copperGrate, "waterlogged", "false")
 
-	for _, test := range []chainPlacementTestCase{
+	chainPlacements := []chainPlacementTestCase{
 		{name: "x", face: protocol.BlockFaceEast, axis: "x"},
 		{name: "y", face: protocol.BlockFaceUp, axis: "y"},
 		{name: "z", face: protocol.BlockFaceSouth, axis: "z"},
-	} {
+	}
+
+	for _, test := range chainPlacements {
 		t.Run("chain_"+test.name, func(t *testing.T) {
 			chain, stateValid := placementState(game.IronChain, game.ItemPlacementChain, protocol.UseItemOn{Face: test.face}, 0)
 			if !stateValid {
@@ -208,7 +210,8 @@ func TestSurvivalCandleStackingConsumesAndUpdatesState(t *testing.T) {
 
 	assertBlockProperty(t, world.BlockAt(position), "candles", "2")
 
-	if count := actor.snapshotPlayer().Inventory.Hotbar[0].Count; count != 1 {
+	count := actor.snapshotPlayer().Inventory.Hotbar[0].Count
+	if count != 1 {
 		t.Fatalf("candle count = %d, want 1", count)
 	}
 
@@ -222,7 +225,8 @@ func TestSurvivalCandleStackingConsumesAndUpdatesState(t *testing.T) {
 
 	assertBlockProperty(t, world.BlockAt(position), "candles", "2")
 
-	if count := actor.snapshotPlayer().Inventory.Hotbar[0].Count; count != 1 {
+	count = actor.snapshotPlayer().Inventory.Hotbar[0].Count
+	if count != 1 {
 		t.Fatalf("candle count after rejected stack = %d, want 1", count)
 	}
 
@@ -267,6 +271,7 @@ func TestButtonInteractionPrecedesPlacementAndPlaysSound(t *testing.T) {
 	}
 
 	assertBlockProperty(t, world.BlockAt(position), "powered", "true")
+
 	if world.BlockAt(game.BlockPosition{Y: 71}) != game.Air {
 		t.Fatal("button interaction also placed held block")
 	}
@@ -395,7 +400,8 @@ func TestSupportedPlantAndButtonBreakWithSupport(t *testing.T) {
 				t.Fatalf("remove support: result=%+v err=%v", result, err)
 			}
 
-			if block := world.BlockAt(blockPosition); block != game.Air {
+			block := world.BlockAt(blockPosition)
+			if block != game.Air {
 				t.Fatalf("unsupported block = %d, want air", block)
 			}
 		})

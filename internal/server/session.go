@@ -80,6 +80,7 @@ func (s *Session) returnToInventoryMenu() {
 
 func (s *Session) allocateWindowID() int32 {
 	s.nextWindowID++
+
 	if s.nextWindowID > 100 {
 		s.nextWindowID = 1
 	}

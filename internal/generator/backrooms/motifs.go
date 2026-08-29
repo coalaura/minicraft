@@ -95,6 +95,7 @@ func cornerMotif(current zone, hash uint64) structure {
 	if hash&(1<<50) != 0 {
 		directionX = -1
 	}
+
 	if hash&(1<<51) != 0 {
 		directionZ = -1
 	}

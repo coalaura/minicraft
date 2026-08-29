@@ -109,16 +109,25 @@ func assertPlayerMetadata(t *testing.T, packet protocol.Packet, entityID int32, 
 
 	reader := protocol.NewPacketReader(packet.Data)
 
-	if actual := reader.VarInt(); actual != entityID {
+	actual := reader.VarInt()
+	if actual != entityID {
 		t.Fatalf("metadata entity id = %d, want %d", actual, entityID)
 	}
 
-	if index, metadataType, actual := reader.Byte(), reader.VarInt(), reader.Byte(); index != protocol.EntityFlagsMetadataIndex || metadataType != protocol.MetadataTypeByte || actual != flags {
-		t.Fatalf("flags metadata = (index=%d type=%d value=%#x), want value %#x", index, metadataType, actual, flags)
+	index := reader.Byte()
+	metadataType := reader.VarInt()
+	flagValue := reader.Byte()
+
+	if index != protocol.EntityFlagsMetadataIndex || metadataType != protocol.MetadataTypeByte || flagValue != flags {
+		t.Fatalf("flags metadata = (index=%d type=%d value=%#x), want value %#x", index, metadataType, flagValue, flags)
 	}
 
-	if index, metadataType, actual := reader.Byte(), reader.VarInt(), reader.VarInt(); index != protocol.EntityPoseMetadataIndex || metadataType != protocol.MetadataTypePose || actual != pose {
-		t.Fatalf("pose metadata = (index=%d type=%d value=%d), want value %d", index, metadataType, actual, pose)
+	index = reader.Byte()
+	metadataType = reader.VarInt()
+	poseValue := reader.VarInt()
+
+	if index != protocol.EntityPoseMetadataIndex || metadataType != protocol.MetadataTypePose || poseValue != pose {
+		t.Fatalf("pose metadata = (index=%d type=%d value=%d), want value %d", index, metadataType, poseValue, pose)
 	}
 }
 
@@ -127,15 +136,18 @@ func assertPlayerAnimation(t *testing.T, packet protocol.Packet, entityID int32,
 
 	reader := protocol.NewPacketReader(packet.Data)
 
-	if actual := reader.VarInt(); actual != entityID {
+	actual := reader.VarInt()
+	if actual != entityID {
 		t.Fatalf("animation entity id = %d, want %d", actual, entityID)
 	}
 
-	if actual := reader.Byte(); actual != animation {
-		t.Fatalf("animation = %d, want %d", actual, animation)
+	animationValue := reader.Byte()
+	if animationValue != animation {
+		t.Fatalf("animation = %d, want %d", animationValue, animation)
 	}
 
-	if err := reader.Err(); err != nil {
+	err := reader.Err()
+	if err != nil {
 		t.Fatalf("decode animation: %v", err)
 	}
 }

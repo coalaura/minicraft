@@ -37,12 +37,14 @@ func TestGeneratedItemCatalogueCoversVanillaItems(t *testing.T) {
 }
 
 func TestItemPlacementBlockMapping(t *testing.T) {
-	for name, test := range map[string]itemPlacementBlockMappingTestCase{
+	placementBlockCases := map[string]itemPlacementBlockMappingTestCase{
 		"stone": {item: ItemStone, block: Stone},
 		"dirt":  {item: ItemDirt, block: Dirt},
 		"glass": {item: ItemGlass, block: Glass},
 		"log":   {item: ItemOakLog, block: OakLog},
-	} {
+	}
+
+	for name, test := range placementBlockCases {
 		t.Run(name, func(t *testing.T) {
 			block, ok := test.item.PlacementBlock()
 			if !ok || block != test.block {
@@ -51,7 +53,8 @@ func TestItemPlacementBlockMapping(t *testing.T) {
 		})
 	}
 
-	if rule := ItemOakLog.PlacementRule(); rule != ItemPlacementAxis {
+	rule := ItemOakLog.PlacementRule()
+	if rule != ItemPlacementAxis {
 		t.Fatalf("oak log placement rule = %d, want axis", rule)
 	}
 
@@ -62,7 +65,7 @@ func TestItemPlacementBlockMapping(t *testing.T) {
 		}
 	}
 
-	for item, rule := range map[Item]ItemPlacementRule{
+	placementRuleCases := map[Item]ItemPlacementRule{
 		ItemOakSlab:                   ItemPlacementSlab,
 		ItemOakStairs:                 ItemPlacementStairs,
 		ItemOakDoor:                   ItemPlacementDoor,
@@ -93,8 +96,11 @@ func TestItemPlacementBlockMapping(t *testing.T) {
 		ItemWaxedExposedCopperChest:   ItemPlacementChest,
 		ItemWaxedWeatheredCopperChest: ItemPlacementChest,
 		ItemWaxedOxidizedCopperChest:  ItemPlacementChest,
-	} {
-		if actual := item.PlacementRule(); actual != rule {
+	}
+
+	for item, rule := range placementRuleCases {
+		actual := item.PlacementRule()
+		if actual != rule {
 			t.Errorf("item %d placement rule = %d, want %d", item, actual, rule)
 		}
 	}
@@ -122,12 +128,14 @@ func TestUnsupportedItemsAreNotMappedToPlacementStates(t *testing.T) {
 	}
 
 	for _, item := range items {
-		if block, ok := item.PlacementBlock(); ok {
+		block, ok := item.PlacementBlock()
+		if ok {
 			t.Errorf("item %d maps to block %d", item, block)
 		}
 	}
 
-	if block, ok := MaxItemID.PlacementBlock(); ok {
+	block, ok := MaxItemID.PlacementBlock()
+	if ok {
 		t.Errorf("last catalogue item maps to block %d", block)
 	}
 }

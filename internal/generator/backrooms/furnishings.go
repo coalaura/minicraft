@@ -5,8 +5,9 @@ import (
 )
 
 func libraryBlockAt(seed, worldX, worldY, worldZ int64, current zone, room featureRoom) (game.Block, bool) {
-	if block, ok := roomDoorBlockAt(game.OakDoor, worldY, current, room, 2); ok {
-		return block, true
+	door, ok := roomDoorBlockAt(game.OakDoor, worldY, current, room, 2)
+	if ok {
+		return door, true
 	}
 
 	if worldY != int64(floorY+1) && worldY != int64(floorY+2) {
@@ -48,12 +49,14 @@ func libraryBlockAt(seed, worldX, worldY, worldZ int64, current zone, room featu
 
 func archiveBlockAt(seed, worldX, worldY, worldZ int64, current zone, room featureRoom) (game.Block, bool) {
 	door := game.OakDoor
+
 	if mix64(current.hash^saltFurniture)%4 == 0 {
 		door = game.IronDoor
 	}
 
-	if block, ok := roomDoorBlockAt(door, worldY, current, room, 1); ok {
-		return block, true
+	entry, ok := roomDoorBlockAt(door, worldY, current, room, 1)
+	if ok {
+		return entry, true
 	}
 
 	if worldY != int64(floorY+1) && worldY != int64(floorY+2) {
@@ -151,12 +154,14 @@ func receptionBackdropAt(current zone, room featureRoom) bool {
 
 func serviceRoomBlockAt(worldY int64, current zone, room featureRoom) (game.Block, bool) {
 	door := game.OakDoor
+
 	if mix64(current.hash^saltFurniture)&1 == 0 {
 		door = game.IronDoor
 	}
 
-	if block, ok := roomDoorBlockAt(door, worldY, current, room, 1); ok {
-		return block, true
+	entry, ok := roomDoorBlockAt(door, worldY, current, room, 1)
+	if ok {
+		return entry, true
 	}
 
 	if worldY != int64(floorY+1) || !roomInteriorContains(room, current.localX, current.localZ) {
@@ -184,8 +189,9 @@ func serviceShelfAt(current zone, room featureRoom) bool {
 }
 
 func conferenceBlockAt(worldY int64, current zone, room featureRoom) (game.Block, bool) {
-	if block, ok := roomDoorBlockAt(game.OakDoor, worldY, current, room, 2); ok {
-		return block, true
+	door, ok := roomDoorBlockAt(game.OakDoor, worldY, current, room, 2)
+	if ok {
+		return door, true
 	}
 
 	if worldY != int64(floorY+1) || !roomInteriorContains(room, current.localX, current.localZ) {
@@ -209,6 +215,7 @@ func conferenceBlockAt(worldY int64, current zone, room featureRoom) (game.Block
 
 		if abs64(current.localZ-centerZ) == 3 && abs64(current.localX-centerX) <= tableHalf && floorMod(current.localX-centerX, 3) == 0 {
 			facing := "south"
+
 			if current.localZ > centerZ {
 				facing = "north"
 			}
@@ -227,6 +234,7 @@ func conferenceBlockAt(worldY int64, current zone, room featureRoom) (game.Block
 
 		if abs64(current.localX-centerX) == 3 && abs64(current.localZ-centerZ) <= tableHalf && floorMod(current.localZ-centerZ, 3) == 0 {
 			facing := "east"
+
 			if current.localX > centerX {
 				facing = "west"
 			}
@@ -239,8 +247,9 @@ func conferenceBlockAt(worldY int64, current zone, room featureRoom) (game.Block
 }
 
 func bathroomBlockAt(worldY int64, current zone, room featureRoom) (game.Block, bool) {
-	if block, ok := roomDoorBlockAt(game.IronDoor, worldY, current, room, 1); ok {
-		return block, true
+	door, ok := roomDoorBlockAt(game.IronDoor, worldY, current, room, 1)
+	if ok {
+		return door, true
 	}
 
 	if !roomInteriorContains(room, current.localX, current.localZ) {
@@ -252,17 +261,21 @@ func bathroomBlockAt(worldY int64, current zone, room featureRoom) (game.Block, 
 	verticalStalls := hash&1 == 0
 
 	if worldY == int64(floorY+1) || worldY == int64(floorY+2) {
-		if index, door := bathroomStallDoorIndexAt(current, room, verticalStalls); door {
-			if index == 1 && hash&(1<<12) != 0 {
+		stallIndex, stallDoor := bathroomStallDoorIndexAt(current, room, verticalStalls)
+
+		if stallDoor {
+			if stallIndex == 1 && hash&(1<<12) != 0 {
 				return game.Air, true
 			}
 
 			hinge := "left"
-			if index%2 != 0 {
+
+			if stallIndex%2 != 0 {
 				hinge = "right"
 			}
 
 			facing := "north"
+
 			if !verticalStalls {
 				facing = "west"
 			}
@@ -317,8 +330,9 @@ func renovationBlockAt(worldY int64, current zone, room featureRoom) (game.Block
 }
 
 func windowRoomBlockAt(worldY int64, current zone, room featureRoom) (game.Block, bool) {
-	if block, ok := roomDoorBlockAt(game.OakDoor, worldY, current, room, 1); ok {
-		return block, true
+	door, ok := roomDoorBlockAt(game.OakDoor, worldY, current, room, 1)
+	if ok {
+		return door, true
 	}
 
 	if worldY == int64(floorY+1) || worldY == int64(floorY+2) {
@@ -373,8 +387,9 @@ func windowWallAt(current zone, room featureRoom) bool {
 }
 
 func storageBlockAt(worldY int64, current zone, room featureRoom) (game.Block, bool) {
-	if block, ok := roomDoorBlockAt(game.IronDoor, worldY, current, room, 1); ok {
-		return block, true
+	door, ok := roomDoorBlockAt(game.IronDoor, worldY, current, room, 1)
+	if ok {
+		return door, true
 	}
 
 	if !roomInteriorContains(room, current.localX, current.localZ) {
@@ -410,8 +425,9 @@ func storageBlockAt(worldY int64, current zone, room featureRoom) (game.Block, b
 }
 
 func classroomBlockAt(worldY int64, current zone, room featureRoom) (game.Block, bool) {
-	if block, ok := roomDoorBlockAt(game.OakDoor, worldY, current, room, 2); ok {
-		return block, true
+	door, ok := roomDoorBlockAt(game.OakDoor, worldY, current, room, 2)
+	if ok {
+		return door, true
 	}
 
 	if worldY == int64(floorY+1) || worldY == int64(floorY+2) {
@@ -443,6 +459,7 @@ func classroomBlockAt(worldY int64, current zone, room featureRoom) (game.Block,
 
 			if floorMod(relativeX, 4) == 1 && floorMod(relativeZ, 4) == 2 {
 				facing := "north"
+
 				if room.entranceSide == featureNorth {
 					facing = "south"
 				}
@@ -461,6 +478,7 @@ func classroomBlockAt(worldY int64, current zone, room featureRoom) (game.Block,
 
 			if floorMod(relativeZ, 4) == 1 && floorMod(relativeX, 4) == 2 {
 				facing := "west"
+
 				if room.entranceSide == featureWest {
 					facing = "east"
 				}
@@ -509,8 +527,9 @@ func classroomTeacherPositionAt(current zone, room featureRoom) bool {
 }
 
 func machineRoomBlockAt(worldY int64, current zone, room featureRoom) (game.Block, bool) {
-	if block, ok := roomDoorBlockAt(game.IronDoor, worldY, current, room, 1); ok {
-		return block, true
+	door, ok := roomDoorBlockAt(game.IronDoor, worldY, current, room, 1)
+	if ok {
+		return door, true
 	}
 
 	if !roomInteriorContains(room, current.localX, current.localZ) {
@@ -546,6 +565,7 @@ func doorGalleryBlockAt(worldY int64, current zone, room featureRoom) (game.Bloc
 	}
 
 	facing := "south"
+
 	if vertical {
 		if direction > 0 {
 			facing = "east"
@@ -557,11 +577,13 @@ func doorGalleryBlockAt(worldY int64, current zone, room featureRoom) (game.Bloc
 	}
 
 	door := game.OakDoor
+
 	if index == 2 && mix64(current.hash^saltFurniture)&1 == 0 {
 		door = game.IronDoor
 	}
 
 	hinge := "left"
+
 	if index%2 != 0 {
 		hinge = "right"
 	}

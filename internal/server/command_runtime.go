@@ -152,6 +152,7 @@ func (r *Runtime) ClearItems(session *Session, item *game.Item, maximum int32) (
 			}
 
 			count := stack.Count
+
 			if maximum > 0 {
 				count = min(count, maximum-removed)
 			}
@@ -170,6 +171,7 @@ func (r *Runtime) ClearItems(session *Session, item *game.Item, maximum int32) (
 
 		if !currentMenu.carried.Empty() && (item == nil || currentMenu.carried.Item == *item) && (maximum < 0 || removed < maximum || maximum == 0) {
 			count := currentMenu.carried.Count
+
 			if maximum > 0 {
 				count = min(count, maximum-removed)
 			}
@@ -178,6 +180,7 @@ func (r *Runtime) ClearItems(session *Session, item *game.Item, maximum int32) (
 
 			if maximum != 0 {
 				currentMenu.carried.Count -= count
+
 				if currentMenu.carried.Count == 0 {
 					currentMenu.carried = game.ItemStack{}
 				}

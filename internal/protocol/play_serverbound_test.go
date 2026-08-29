@@ -99,7 +99,9 @@ func TestDecodeChatAck(t *testing.T) {
 		t.Fatalf("chat acknowledgement = %+v", acknowledgement)
 	}
 
-	for _, data := range [][]byte{{0xFF, 0xFF, 0xFF, 0xFF, 0x0F}, {0x00, 0x00}} {
+	invalidAcknowledgements := [][]byte{{0xFF, 0xFF, 0xFF, 0xFF, 0x0F}, {0x00, 0x00}}
+
+	for _, data := range invalidAcknowledgements {
 		_, err := DecodeChatAck(data)
 		if err == nil {
 			t.Fatalf("invalid chat acknowledgement %x decoded", data)
@@ -168,12 +170,14 @@ func TestDecodeChatCommandsRejectMalformedPayloads(t *testing.T) {
 	writer.Byte(0)
 	writer.Byte(0)
 
-	for name, data := range map[string][]byte{
+	malformedPayloads := map[string][]byte{
 		"empty unsigned":        {0},
 		"unsigned trailing":     {0x04, '/', 's', 'a', 'y', 0},
 		"signed negative count": writer.Buffer.Bytes(),
 		"signed truncated":      writer.Buffer.Bytes()[:40],
-	} {
+	}
+
+	for name, data := range malformedPayloads {
 		t.Run(name, func(t *testing.T) {
 			if name[:6] == "signed" {
 				_, err := DecodeSignedChatCommand(data)
@@ -202,7 +206,9 @@ func TestDecodeCommandSuggestionRequest(t *testing.T) {
 		t.Fatalf("suggestion request = %+v", request)
 	}
 
-	for _, data := range [][]byte{{0x01, 0x04, '/', 'g'}, {0x01, 0x00, 0x00}} {
+	invalidRequests := [][]byte{{0x01, 0x04, '/', 'g'}, {0x01, 0x00, 0x00}}
+
+	for _, data := range invalidRequests {
 		_, err := DecodeCommandSuggestionRequest(data)
 		if err == nil {
 			t.Fatalf("invalid suggestion request %x decoded", data)
@@ -551,7 +557,9 @@ func TestBlockPositionRoundTrip(t *testing.T) {
 		var wr PacketWriter
 
 		wr.BlockPosition(position)
-		if err := wr.Err(); err != nil {
+
+		err := wr.Err()
+		if err != nil {
 			t.Fatalf("encode position %+v: %v", position, err)
 		}
 
@@ -562,7 +570,8 @@ func TestBlockPositionRoundTrip(t *testing.T) {
 			t.Errorf("position round trip = %+v, want %+v", actualB, position)
 		}
 
-		if err := rd.Err(); err != nil {
+		err = rd.Err()
+		if err != nil {
 			t.Fatalf("decode position %+v: %v", position, err)
 		}
 	}

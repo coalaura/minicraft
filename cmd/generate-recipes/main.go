@@ -135,6 +135,7 @@ func (source *ingredientSource) UnmarshalJSON(raw []byte) error {
 	err := json.Unmarshal(raw, &single)
 	if err == nil {
 		*source = []string{single}
+
 		return nil
 	}
 
@@ -238,6 +239,7 @@ func readRecipes(path string, resolver *tagResolver) ([]generatedRecipe, []gener
 	if len(recipes) != 1010 {
 		return nil, nil, fmt.Errorf("generated %d ordinary recipes, want 1010", len(recipes))
 	}
+
 	if len(cookingRecipes) != 107 {
 		return nil, nil, fmt.Errorf("generated %d cooking recipes, want 107", len(cookingRecipes))
 	}
@@ -512,7 +514,9 @@ func generate(recipes []generatedRecipe, cookingRecipes []generatedCookingRecipe
 	fmt.Fprintln(&output)
 	fmt.Fprintln(&output, "var generatedCookingRecipes = map[CookingRecipeType]map[Item]CookingRecipe{")
 
-	for _, recipeType := range []string{cookingSmelting, cookingSmoking, cookingBlasting} {
+	cookingTypes := []string{cookingSmelting, cookingSmoking, cookingBlasting}
+
+	for _, recipeType := range cookingTypes {
 		fmt.Fprintf(&output, "\t%s: {\n", cookingTypeIdentifier(recipeType))
 
 		for _, recipe := range cookingRecipes {
@@ -548,7 +552,9 @@ func generate(recipes []generatedRecipe, cookingRecipes []generatedCookingRecipe
 	fmt.Fprintln(&output)
 	fmt.Fprintln(&output, "var generatedCraftingRemainders = map[Item]Item{")
 
-	for _, pair := range [][2]string{{"water_bucket", "bucket"}, {"lava_bucket", "bucket"}, {"milk_bucket", "bucket"}, {"dragon_breath", "glass_bottle"}, {"honey_bottle", "glass_bottle"}} {
+	craftingRemainders := [][2]string{{"water_bucket", "bucket"}, {"lava_bucket", "bucket"}, {"milk_bucket", "bucket"}, {"dragon_breath", "glass_bottle"}, {"honey_bottle", "glass_bottle"}}
+
+	for _, pair := range craftingRemainders {
 		fmt.Fprintf(&output, "\tItem(%d): Item(%d),\n", items[pair[0]], items[pair[1]])
 	}
 

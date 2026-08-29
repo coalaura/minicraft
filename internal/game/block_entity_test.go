@@ -66,7 +66,9 @@ func (g chestEntityGenerator) BlockAt(_ int64, position BlockPosition) Block {
 func (g chestEntityGenerator) GenerateBlockEntities(_ int64, chunk ChunkPosition) ChunkBlockEntities {
 	entities := make(ChunkBlockEntities)
 
-	for index, position := range []BlockPosition{g.first, g.second} {
+	chestPositions := []BlockPosition{g.first, g.second}
+
+	for index, position := range chestPositions {
 		positionChunk, local := blockIndex(position)
 		if positionChunk != chunk {
 			continue
@@ -117,6 +119,7 @@ func (g *pointBlockEntityGenerator) BlockAt(_ int64, position BlockPosition) Blo
 
 func (g *pointBlockEntityGenerator) GenerateBlockEntity(_ int64, position BlockPosition) (BlockEntity, bool) {
 	g.pointCalls++
+
 	if position != g.position {
 		return BlockEntity{}, false
 	}
@@ -144,7 +147,9 @@ func TestBlockEntityDataSupportsDifferentShapes(t *testing.T) {
 	}
 
 	withoutInventory := BlockEntity{Type: BlockEntityType(2)}
-	if _, valid = withoutInventory.Inventory(); valid {
+
+	_, valid = withoutInventory.Inventory()
+	if valid {
 		t.Fatal("data-less block entity unexpectedly exposes inventory")
 	}
 
@@ -174,10 +179,12 @@ func TestBlockEntityMetadataDefinesIdentityAndProtocolValues(t *testing.T) {
 		t.Fatalf("barrel block entity definition = %+v, %v", entityDefinition, valid)
 	}
 
-	for _, test := range []blockEntityMetadataTestCase{
+	metadataCases := []blockEntityMetadataTestCase{
 		{block: Chest, entityType: BlockEntityTypeChest, name: "chest", registryID: 1},
 		{block: TrappedChest, entityType: BlockEntityTypeTrappedChest, name: "trapped_chest", registryID: 2},
-	} {
+	}
+
+	for _, test := range metadataCases {
 		blockDefinition, blockValid := test.block.Definition()
 		entityDefinition, entityValid := test.entityType.Definition()
 
@@ -218,7 +225,8 @@ func TestGeneratedChestHalvesUseIndependentCopyOnWriteAndTombstones(t *testing.T
 		t.Fatal("mutating first generated chest half failed")
 	}
 
-	if count := world.BlockEntityOverrideCount(); count != 1 {
+	count := world.BlockEntityOverrideCount()
+	if count != 1 {
 		t.Fatalf("block entity overrides after one-half mutation = %d, want 1", count)
 	}
 
@@ -244,11 +252,13 @@ func TestGeneratedBlockEntitiesAreFilteredAgainstHostAndChunkLocality(t *testing
 	generator := &staleBlockEntityGenerator{}
 	world := &World{Generator: generator}
 
-	if entity, present := world.BlockEntityAt(BlockPosition{X: 1, Y: 70, Z: 1}); present {
+	entity, present := world.BlockEntityAt(BlockPosition{X: 1, Y: 70, Z: 1})
+	if present {
 		t.Fatalf("stale point block entity = %+v, true; want absent", entity)
 	}
 
-	if entities := world.SnapshotChunkBlockEntities(ChunkPosition{}); len(entities) != 0 {
+	entities := world.SnapshotChunkBlockEntities(ChunkPosition{})
+	if len(entities) != 0 {
 		t.Fatalf("filtered chunk block entities = %+v, want none", entities)
 	}
 }
@@ -270,6 +280,7 @@ func TestBlockEntityPointLookupAvoidsChunkEnumeration(t *testing.T) {
 	}
 
 	world.SnapshotChunkBlockEntities(ChunkPosition{})
+
 	if generator.chunkCalls != 1 {
 		t.Fatalf("chunk snapshot calls = %d, want 1", generator.chunkCalls)
 	}
@@ -301,11 +312,13 @@ func TestGeneratedBarrelContentsAreDeterministicAndDoNotCreateOverrides(t *testi
 	chunk, local := blockIndex(position)
 	snapshot := first.SnapshotChunkBlockEntities(chunk)
 
-	if entity := snapshot[local]; !entity.Equal(expected) {
+	entity := snapshot[local]
+	if !entity.Equal(expected) {
 		t.Fatalf("snapshot barrel entity = %+v, want %+v", entity, expected)
 	}
 
-	if count := first.BlockEntityOverrideCount(); count != 0 {
+	count := first.BlockEntityOverrideCount()
+	if count != 0 {
 		t.Fatalf("block entity overrides after reads = %d, want 0", count)
 	}
 }
@@ -329,7 +342,8 @@ func TestGeneratedBarrelMutationUsesCopyOnWriteAndCollapsesWhenRestored(t *testi
 		t.Fatal("mutating generated barrel entity failed")
 	}
 
-	if count := world.BlockEntityOverrideCount(); count != 1 {
+	count := world.BlockEntityOverrideCount()
+	if count != 1 {
 		t.Fatalf("block entity overrides after mutation = %d, want 1", count)
 	}
 
@@ -342,7 +356,8 @@ func TestGeneratedBarrelMutationUsesCopyOnWriteAndCollapsesWhenRestored(t *testi
 		t.Fatal("restoring generated barrel entity failed")
 	}
 
-	if count := world.BlockEntityOverrideCount(); count != 0 {
+	count = world.BlockEntityOverrideCount()
+	if count != 0 {
 		t.Fatalf("block entity overrides after restoration = %d, want 0", count)
 	}
 }
@@ -358,22 +373,26 @@ func TestGeneratedBarrelBreakCreatesTombstoneAndReplacementIsEmpty(t *testing.T)
 
 	world.SetBlock(position, Air)
 
-	if entity, present := world.BlockEntityAt(position); present {
+	entity, present := world.BlockEntityAt(position)
+	if present {
 		t.Fatalf("broken barrel entity = %+v, true; want absent", entity)
 	}
 
 	chunk, local := blockIndex(position)
-	if _, present := world.SnapshotChunkBlockEntities(chunk)[local]; present {
+
+	_, present = world.SnapshotChunkBlockEntities(chunk)[local]
+	if present {
 		t.Fatal("broken barrel reappeared in snapshot")
 	}
 
-	if count := world.BlockEntityOverrideCount(); count != 1 {
+	count := world.BlockEntityOverrideCount()
+	if count != 1 {
 		t.Fatalf("block entity overrides after break = %d, want 1", count)
 	}
 
 	world.SetBlock(position, Barrel)
 
-	entity, present := world.BlockEntityAt(position)
+	entity, present = world.BlockEntityAt(position)
 	if !present {
 		t.Fatal("replacement barrel entity is absent")
 	}
@@ -410,7 +429,8 @@ func TestClearBlockOverrideRestoresGeneratedBarrel(t *testing.T) {
 	world.SetBlock(position, Air)
 	world.ClearBlockOverride(position)
 
-	if block := world.BlockAt(position); block != Barrel {
+	block := world.BlockAt(position)
+	if block != Barrel {
 		t.Fatalf("cleared barrel block = %d, want barrel", block)
 	}
 
@@ -419,7 +439,8 @@ func TestClearBlockOverrideRestoresGeneratedBarrel(t *testing.T) {
 		t.Fatalf("cleared barrel entity = %+v, %v; want %+v, true", entity, present, original)
 	}
 
-	if count := world.BlockEntityOverrideCount(); count != 0 {
+	count := world.BlockEntityOverrideCount()
+	if count != 0 {
 		t.Fatalf("block entity overrides after clear = %d, want 0", count)
 	}
 }

@@ -155,7 +155,7 @@ func (c *Connection) ReadPacket() (*Packet, error) {
 			var extra [1]byte
 
 			extraLength, extraErr := zr.Read(extra[:])
-			if extraLength != 0 || extraErr != io.EOF {
+			if extraLength != 0 || !errors.Is(extraErr, io.EOF) {
 				if extraErr == nil {
 					extraErr = errors.New("decompressed packet contains extra data")
 				}

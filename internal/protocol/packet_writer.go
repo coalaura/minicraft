@@ -48,7 +48,7 @@ func (w *PacketWriter) Int(value int32) {
 
 	binary.BigEndian.PutUint32(encoded[:], uint32(value))
 
-	_, w.err = w.Buffer.Write(encoded[:])
+	_, w.err = w.Write(encoded[:])
 }
 
 func (w *PacketWriter) Long(value int64) {
@@ -60,7 +60,7 @@ func (w *PacketWriter) Long(value int64) {
 
 	binary.BigEndian.PutUint64(encoded[:], uint64(value))
 
-	_, w.err = w.Buffer.Write(encoded[:])
+	_, w.err = w.Write(encoded[:])
 }
 
 func (w *PacketWriter) BlockPosition(position game.BlockPosition) {
@@ -80,7 +80,7 @@ func (w *PacketWriter) Short(value int16) {
 
 	binary.BigEndian.PutUint16(encoded[:], uint16(value))
 
-	_, w.err = w.Buffer.Write(encoded[:])
+	_, w.err = w.Write(encoded[:])
 }
 
 func (w *PacketWriter) Float(value float32) {
@@ -264,6 +264,7 @@ func (w *PacketWriter) nbtTextCompound(component game.TextComponent) {
 		w.nbtStringField("action", string(component.Style.ClickEvent.Action))
 
 		field := "value"
+
 		if component.Style.ClickEvent.Action == game.ClickSuggestCommand {
 			field = "command"
 		}

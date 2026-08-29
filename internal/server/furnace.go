@@ -191,6 +191,7 @@ func (furnace *runtimeFurnace) cookingRecipeType() game.CookingRecipeType {
 
 func (furnace *runtimeFurnace) burnDuration(item game.Item) int32 {
 	duration := game.FuelDuration(item)
+
 	if furnace.entity.Type == game.BlockEntityTypeSmoker || furnace.entity.Type == game.BlockEntityTypeBlastFurnace {
 		duration /= 2
 	}
@@ -237,6 +238,7 @@ func furnaceCanBurn(recipe game.CookingRecipe, items []game.ItemStack) bool {
 	if result.Empty() {
 		return true
 	}
+
 	if !result.SameItem(produced) {
 		return false
 	}
@@ -304,6 +306,7 @@ func (r *Runtime) openFurnaceLocked(session *Session, furnace *runtimeFurnace) e
 
 	if err != nil {
 		r.closeMenuLocked(session, false)
+
 		return err
 	}
 
@@ -371,7 +374,9 @@ func quickMoveFurnace(furnace *runtimeFurnace) menuQuickMove {
 		case slot == furnaceInputSlot || slot == furnaceFuelSlot:
 			moveIntoSlots(candidate, &remaining, slotRange(3, 38))
 		case slot >= 3 && slot <= 38:
-			if _, cookable := game.CookingRecipeFor(furnace.cookingRecipeType(), remaining); cookable {
+			_, cookable := game.CookingRecipeFor(furnace.cookingRecipeType(), remaining)
+
+			if cookable {
 				moveIntoSlots(candidate, &remaining, []int{furnaceInputSlot})
 			} else if game.IsFuel(remaining.Item) {
 				moveIntoSlots(candidate, &remaining, []int{furnaceFuelSlot})

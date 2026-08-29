@@ -609,6 +609,7 @@ func (p EntityEquipment) Encode(wr *PacketWriter) {
 
 	for index, equipment := range p.Equipment {
 		slot := equipment.Slot
+
 		if index < len(p.Equipment)-1 {
 			slot |= 0x80
 		}
@@ -833,6 +834,7 @@ func (p PlayerInfoUpdate) Encode(wr *PacketWriter) {
 
 		if p.Actions&PlayerInfoActionInitializeChat != 0 {
 			wr.Bool(player.ChatSession != nil)
+
 			if player.ChatSession != nil {
 				player.ChatSession.Encode(wr)
 			}

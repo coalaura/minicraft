@@ -26,6 +26,7 @@ func zoneCoordinate(value int64) (int64, int64) {
 
 func floorDiv(value, divisor int64) int64 {
 	quotient := value / divisor
+
 	if value%divisor < 0 {
 		quotient--
 	}

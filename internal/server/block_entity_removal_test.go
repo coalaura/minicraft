@@ -82,6 +82,7 @@ func TestContainerRemovalDropsContentsAndPropertyChangesDoNot(t *testing.T) {
 			runtime := NewRuntime(world)
 
 			preservedState := test.block
+
 			if test.entityType == game.BlockEntityTypeBarrel {
 				preservedState = mustBlockState(t, game.Barrel,
 					game.BlockPropertyValue{Name: "facing", Value: "north"},
@@ -288,6 +289,7 @@ func TestContainerRemovalMatchesVanillaSplitRandomness(t *testing.T) {
 		}
 
 		total += dropped.Stack.Count
+
 		if dropped.State.Position != expectedPosition || dropped.PickupDelay != 0 {
 			t.Fatalf("container drop = position %+v, delay %d", dropped.State.Position, dropped.PickupDelay)
 		}
@@ -297,12 +299,10 @@ func TestContainerRemovalMatchesVanillaSplitRandomness(t *testing.T) {
 		t.Fatalf("dropped count = %d, want 31", total)
 	}
 
-	const deviation = 0.11485000171139836
-
 	expectedVelocity := game.Velocity{
-		X: float64(float32(0.6)-float32(0.1)) * deviation,
-		Y: 0.2 + float64(float32(0.7)-float32(0.2))*deviation,
-		Z: float64(float32(0.8)-float32(0.3)) * deviation,
+		X: float64(float32(0.6)-float32(0.1)) * motionDeviation,
+		Y: 0.2 + float64(float32(0.7)-float32(0.2))*motionDeviation,
+		Z: float64(float32(0.8)-float32(0.3)) * motionDeviation,
 	}
 
 	found := false
@@ -311,6 +311,7 @@ func TestContainerRemovalMatchesVanillaSplitRandomness(t *testing.T) {
 		dropped := entity.(*runtimeItemEntity)
 		if dropped.Stack.Count == 10 {
 			found = true
+
 			if math.Abs(dropped.Velocity.X-expectedVelocity.X) > 1e-15 || math.Abs(dropped.Velocity.Y-expectedVelocity.Y) > 1e-15 || math.Abs(dropped.Velocity.Z-expectedVelocity.Z) > 1e-15 {
 				t.Fatalf("first split velocity = %+v, want %+v", dropped.Velocity, expectedVelocity)
 			}

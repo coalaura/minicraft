@@ -68,6 +68,7 @@ func TestBuildLevelChunkUsesGeneratorBiomes(t *testing.T) {
 			for localZ := range 4 {
 				for localX := range 4 {
 					want := int32(game.BiomeForest)
+
 					if localX < 2 {
 						want = int32(game.BiomePlains)
 					}

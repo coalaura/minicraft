@@ -305,6 +305,7 @@ func (r *Runtime) commitOrdinaryBlockDrops(records []blockMutationRecord) {
 		}
 
 		count := mining.DropMin
+
 		if mining.DropMax > mining.DropMin {
 			count += int32(r.nextEntityRandom() * float32(mining.DropMax-mining.DropMin+1))
 		}

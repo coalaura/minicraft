@@ -354,6 +354,7 @@ func (registry *commandRegistry) registerClear() {
 		}
 
 		key := "commands.clear.success.single"
+
 		if maxCount == 0 {
 			key = "commands.clear.test.single"
 		}
@@ -362,6 +363,7 @@ func (registry *commandRegistry) registerClear() {
 
 		if len(resolved) > 1 {
 			key = "commands.clear.success.multiple"
+
 			if maxCount == 0 {
 				key = "commands.clear.test.multiple"
 			}
@@ -446,6 +448,7 @@ func (registry *commandRegistry) registerSetBlock() {
 		var result BlockMutationResult
 
 		var err error
+
 		if keep {
 			result, err = registry.runtime.MutateEmptyWorldBlocks(change)
 		} else if strict {
@@ -564,11 +567,12 @@ func (registry *commandRegistry) registerFill() {
 
 		var err error
 
-		if mode == fillModeKeep {
+		switch mode {
+		case fillModeKeep:
 			result, err = registry.runtime.MutateEmptyWorldBlocks(changes)
-		} else if mode == fillModeStrict {
+		case fillModeStrict:
 			result, err = registry.runtime.MutateWorldBlocksStrict(changes)
-		} else {
+		default:
 			result, err = registry.runtime.MutateWorldBlocks(changes)
 		}
 
@@ -1147,7 +1151,9 @@ func itemDisplayName(item game.Item) game.TextComponent {
 
 	translationType := "item"
 
-	if _, block := item.PlacementBlock(); block {
+	_, block := item.PlacementBlock()
+
+	if block {
 		translationType = "block"
 	}
 

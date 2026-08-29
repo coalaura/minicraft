@@ -47,7 +47,8 @@ func wallBlock(seed, worldX, worldY, worldZ int64, current zone, blocks paletteB
 }
 
 func structureAt(seed int64, current zone) structure {
-	if boundary, found := zoneBoundaryStructureAt(seed, current); found {
+	boundary, found := zoneBoundaryStructureAt(seed, current)
+	if found {
 		return boundary
 	}
 
@@ -124,6 +125,7 @@ func boundaryOpening(seed, segment, local, boundary int64, vertical bool) bool {
 
 func boundaryOpeningSpec(seed, segment, boundary int64, vertical bool) openingSpec {
 	salt := saltEdge
+
 	if vertical {
 		salt ^= 0xe9b91f1b9de263c7
 	}
@@ -235,14 +237,14 @@ func classicStructureAt(seed int64, current zone) structure {
 	return mergeStructure(base, divider)
 }
 
+const dividerCellSize = int64(16)
+
 func classicDividerStructureAt(seed int64, current zone) structure {
-	const cellSize = int64(16)
+	cellX := current.localX / dividerCellSize
+	cellZ := current.localZ / dividerCellSize
 
-	cellX := current.localX / cellSize
-	cellZ := current.localZ / cellSize
-
-	withinX := current.localX % cellSize
-	withinZ := current.localZ % cellSize
+	withinX := current.localX % dividerCellSize
+	withinZ := current.localZ % dividerCellSize
 
 	hash := coordinateHash(seed, current.x*4+cellX, current.z*4+cellZ, saltWall^0x8f0b72d3be9c1465)
 	if hash%100 >= 68 {
@@ -394,7 +396,9 @@ func longHallStructureAt(seed int64, current zone) structure {
 	along := current.localZ
 
 	if !vertical {
-		across, along = along, across
+		swap := across
+		across = along
+		along = swap
 	}
 
 	if abs64(across-corridorCenter) <= halfWidth {
@@ -408,6 +412,7 @@ func longHallStructureAt(seed int64, current zone) structure {
 		segment := along / 12
 
 		side := int64(0)
+
 		if across == rightWall {
 			side = 1
 		}
@@ -520,14 +525,14 @@ func cubicleStructureAt(seed int64, current zone) structure {
 	return structureOpen
 }
 
+const pillarCellSize = int64(8)
+
 func pillarStructureAt(seed int64, current zone) structure {
-	const cellSize = int64(8)
+	cellX := current.localX / pillarCellSize
+	cellZ := current.localZ / pillarCellSize
 
-	cellX := current.localX / cellSize
-	cellZ := current.localZ / cellSize
-
-	withinX := current.localX % cellSize
-	withinZ := current.localZ % cellSize
+	withinX := current.localX % pillarCellSize
+	withinZ := current.localZ % pillarCellSize
 
 	hash := coordinateHash(seed, current.x*8+cellX, current.z*8+cellZ, saltWall^0x52f01d1fa98ddfed)
 
@@ -536,14 +541,16 @@ func pillarStructureAt(seed int64, current zone) structure {
 	}
 
 	size := int64(1)
+
 	if (hash>>8)%100 < 34 {
 		size = 2
 	}
+
 	if (hash>>16)%100 < 5 {
 		size = 3
 	}
 
-	span := max(cellSize-size-2, 1)
+	span := max(pillarCellSize-size-2, 1)
 
 	startX := int64(1 + (hash>>24)%uint64(span))
 	startZ := int64(1 + (hash>>32)%uint64(span))
@@ -553,7 +560,7 @@ func pillarStructureAt(seed int64, current zone) structure {
 	}
 
 	if hash%13 == 0 {
-		if withinZ == startZ && withinX >= startX && withinX <= min(startX+5, cellSize-2) {
+		if withinZ == startZ && withinX >= startX && withinX <= min(startX+5, pillarCellSize-2) {
 			return structureWall
 		}
 	}
@@ -561,14 +568,14 @@ func pillarStructureAt(seed int64, current zone) structure {
 	return structureOpen
 }
 
+const sparseCellSize = int64(16)
+
 func sparseStructureAt(seed int64, current zone) structure {
-	const cellSize = int64(16)
+	cellX := current.localX / sparseCellSize
+	cellZ := current.localZ / sparseCellSize
 
-	cellX := current.localX / cellSize
-	cellZ := current.localZ / cellSize
-
-	withinX := current.localX % cellSize
-	withinZ := current.localZ % cellSize
+	withinX := current.localX % sparseCellSize
+	withinZ := current.localZ % sparseCellSize
 
 	hash := coordinateHash(seed, current.x*4+cellX, current.z*4+cellZ, saltWall^0xd21fb6417307e88f)
 

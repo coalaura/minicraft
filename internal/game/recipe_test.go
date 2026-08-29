@@ -165,7 +165,8 @@ func TestGeneratedCookingRecipesAndFuelMetadata(t *testing.T) {
 		})
 	}
 
-	if _, valid := CookingRecipeFor(CookingRecipeBlasting, ItemStack{Item: ItemPotato, Count: 1}); valid {
+	_, valid := CookingRecipeFor(CookingRecipeBlasting, ItemStack{Item: ItemPotato, Count: 1})
+	if valid {
 		t.Fatal("potato unexpectedly has a blasting recipe")
 	}
 

@@ -132,7 +132,9 @@ func TestRuntimeBroadcastPlayerMovement(t *testing.T) {
 	alice, aliceConnection := newMovementTestSession(runtime, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Alice")
 	charlie, charlieConnection := newMovementTestSession(runtime, "20212223-2425-2627-2829-2a2b2c2d2e2f", "Charlie")
 
-	for _, session := range []*Session{bob, alice, charlie} {
+	movementSessions := []*Session{bob, alice, charlie}
+
+	for _, session := range movementSessions {
 		runtime.AssignEntityID(session)
 
 		err := runtime.JoinSession(session)
@@ -147,7 +149,8 @@ func TestRuntimeBroadcastPlayerMovement(t *testing.T) {
 
 	bob.handleMovePlayerRotation(protocol.MovePlayerRotation{Yaw: 90, Pitch: 30, Flags: protocol.MovementFlagOnGround})
 
-	if packetIDs := bobConnection.packetIDs(t); len(packetIDs) != 0 {
+	packetIDs := bobConnection.packetIDs(t)
+	if len(packetIDs) != 0 {
 		t.Fatalf("originating player received movement packets: %v", packetIDs)
 	}
 
@@ -236,7 +239,8 @@ func TestJoiningPlayerSeesLatestAuthoritativePosition(t *testing.T) {
 
 		position := game.Position{X: reader.Double(), Y: reader.Double(), Z: reader.Double()}
 
-		if err = reader.Err(); err != nil {
+		err = reader.Err()
+		if err != nil {
 			t.Fatalf("decode add entity: %v", err)
 		}
 

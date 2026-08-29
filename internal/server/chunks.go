@@ -565,10 +565,12 @@ func (s *Session) chunkStreamLoop(ctx context.Context) error {
 			}
 
 			s.chunkMx.Lock()
+
 			if s.chunkBatchAwaiting && time.Since(s.chunkBatchSentAt) >= chunkBatchAckTimeout {
 				s.chunkBatchAwaiting = false
 				s.chunkFeedbackTimedOut = true
 			}
+
 			s.chunkMx.Unlock()
 
 			continue
@@ -598,11 +600,14 @@ func (s *Session) chunkStreamLoop(ctx context.Context) error {
 			return err
 		}
 
-		if err = ctx.Err(); err != nil {
+		err = ctx.Err()
+
+		if err != nil {
 			return nil
 		}
 
 		s.chunkMx.Lock()
+
 		if revision != s.chunkRevision || !s.chunkQueueReady {
 			s.chunkMx.Unlock()
 
@@ -707,7 +712,9 @@ func buildChunkPackets(ctx context.Context, world *game.World, chunks []LoadedCh
 		return nil, firstErr
 	}
 
-	if err := ctx.Err(); err != nil {
+	err := ctx.Err()
+
+	if err != nil {
 		return nil, err
 	}
 
@@ -740,6 +747,7 @@ func chunkCoordinate(position float64) int32 {
 
 func blockChunkCoordinate(position int32) int32 {
 	chunk := position / ChunkWidth
+
 	if position%ChunkWidth < 0 {
 		chunk--
 	}

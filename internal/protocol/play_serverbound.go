@@ -283,6 +283,7 @@ func DecodeChatMessage(data []byte) (ChatMessage, error) {
 	}
 
 	message.HasSignature = rd.Bool()
+
 	if message.HasSignature {
 		for index := range message.Signature {
 			message.Signature[index] = rd.Byte()

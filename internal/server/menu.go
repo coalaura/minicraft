@@ -349,6 +349,7 @@ func (candidate *menuCandidate) appendDrop(stack game.ItemStack) {
 
 func (candidate *menuCandidate) stackLimit(slot int, stack game.ItemStack) int32 {
 	limit := stackLimit(stack)
+
 	if slot < 0 || slot >= len(candidate.menu.slots) {
 		return limit
 	}
@@ -514,6 +515,7 @@ func takeCraftingInputs(candidate *menuCandidate, inputSlots []int) {
 		}
 
 		remainder := game.ItemStack{Item: remainderItem, Count: 1}
+
 		if input.Empty() {
 			*input = remainder
 

@@ -20,6 +20,8 @@ const (
 	boulevardHalfWidth = int64(5)
 	grandHalfWidth     = int64(7)
 
+	walkwayHalfWidth = int64(3)
+
 	streetWalkHalfWidth    = int64(6)
 	boulevardWalkHalfWidth = int64(8)
 	grandWalkHalfWidth     = int64(10)
@@ -376,16 +378,19 @@ func blockForPreparedColumn(seed int64, worldY int32, column *preparedColumn) ga
 		return preparedSurfaceBlock(column)
 	}
 
-	if block := grandIntersectionBlock(seed, worldY, column.relativeX, column.relativeZ); block != game.Air {
-		return block
+	grandBlock := grandIntersectionBlock(seed, worldY, column.relativeX, column.relativeZ)
+	if grandBlock != game.Air {
+		return grandBlock
 	}
 
-	if block := elevatedAvenueBlock(seed, worldY, column.relativeX, column.relativeZ, column.streets); block != game.Air {
-		return block
+	avenueBlock := elevatedAvenueBlock(seed, worldY, column.relativeX, column.relativeZ, column.streets)
+	if avenueBlock != game.Air {
+		return avenueBlock
 	}
 
-	if block, claimed := preparedLocalSkybridgeBlock(worldY, column); claimed {
-		return block
+	skybridgeBlock, claimed := preparedLocalSkybridgeBlock(worldY, column)
+	if claimed {
+		return skybridgeBlock
 	}
 
 	if column.streets.streetX || column.streets.streetZ || column.streets.boulevardX || column.streets.boulevardZ || column.streets.grandX || column.streets.grandZ {
@@ -482,16 +487,19 @@ func blockAt(seed int64, position game.BlockPosition, originX, originZ int64) ga
 		return surfaceBlock(seed, relativeX, relativeZ, streets)
 	}
 
-	if block := grandIntersectionBlock(seed, position.Y, relativeX, relativeZ); block != game.Air {
-		return block
+	grandBlock := grandIntersectionBlock(seed, position.Y, relativeX, relativeZ)
+	if grandBlock != game.Air {
+		return grandBlock
 	}
 
-	if block := elevatedAvenueBlock(seed, position.Y, relativeX, relativeZ, streets); block != game.Air {
-		return block
+	avenueBlock := elevatedAvenueBlock(seed, position.Y, relativeX, relativeZ, streets)
+	if avenueBlock != game.Air {
+		return avenueBlock
 	}
 
-	if block, claimed := localSkybridgeBlock(seed, position.Y, relativeX, relativeZ, streets); claimed {
-		return block
+	skybridgeBlock, claimed := localSkybridgeBlock(seed, position.Y, relativeX, relativeZ, streets)
+	if claimed {
+		return skybridgeBlock
 	}
 
 	if streets.streetX || streets.streetZ || streets.boulevardX || streets.boulevardZ || streets.grandX || streets.grandZ {

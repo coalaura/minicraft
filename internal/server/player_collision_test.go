@@ -206,13 +206,15 @@ func TestPlayerPoseSelectionAndRestoration(t *testing.T) {
 
 	joinTestSession(t, runtime, player)
 
-	if pose := player.snapshotPlayer().Pose; pose != game.PlayerPoseStanding {
+	pose := player.snapshotPlayer().Pose
+	if pose != game.PlayerPoseStanding {
 		t.Fatalf("initial pose = %d, want standing", pose)
 	}
 
 	player.handlePlayerInput(protocol.PlayerInput{Flags: protocol.PlayerInputSneak})
 
-	if pose := player.snapshotPlayer().Pose; pose != game.PlayerPoseCrouching {
+	pose = player.snapshotPlayer().Pose
+	if pose != game.PlayerPoseCrouching {
 		t.Fatalf("sneaking pose = %d, want crouching", pose)
 	}
 
@@ -223,7 +225,8 @@ func TestPlayerPoseSelectionAndRestoration(t *testing.T) {
 		t.Fatalf("recalculate obstructed pose: %v", err)
 	}
 
-	if pose := player.snapshotPlayer().Pose; pose != game.PlayerPoseCrawling {
+	pose = player.snapshotPlayer().Pose
+	if pose != game.PlayerPoseCrawling {
 		t.Fatalf("obstructed pose = %d, want crawling", pose)
 	}
 
@@ -234,13 +237,15 @@ func TestPlayerPoseSelectionAndRestoration(t *testing.T) {
 		t.Fatalf("recalculate restored crouch: %v", err)
 	}
 
-	if pose := player.snapshotPlayer().Pose; pose != game.PlayerPoseCrouching {
+	pose = player.snapshotPlayer().Pose
+	if pose != game.PlayerPoseCrouching {
 		t.Fatalf("restored sneaking pose = %d, want crouching", pose)
 	}
 
 	player.handlePlayerInput(protocol.PlayerInput{})
 
-	if pose := player.snapshotPlayer().Pose; pose != game.PlayerPoseStanding {
+	pose = player.snapshotPlayer().Pose
+	if pose != game.PlayerPoseStanding {
 		t.Fatalf("restored standing pose = %d, want standing", pose)
 	}
 }
@@ -345,7 +350,8 @@ func TestCrawlingCollisionBoxAllowsPlacementAbovePlayer(t *testing.T) {
 
 	joinTestSession(t, runtime, player)
 
-	if pose := player.snapshotPlayer().Pose; pose != game.PlayerPoseCrawling {
+	pose := player.snapshotPlayer().Pose
+	if pose != game.PlayerPoseCrawling {
 		t.Fatalf("initial pose = %d, want crawling", pose)
 	}
 
@@ -384,7 +390,8 @@ func TestInvalidMovementInputIsRejectedWithoutMutation(t *testing.T) {
 	}
 
 	for _, move := range invalidMoves {
-		if err := player.handleMovePlayerPosition(move); err == nil {
+		err := player.handleMovePlayerPosition(move)
+		if err == nil {
 			t.Fatalf("accepted invalid position %+v", move)
 		}
 	}
@@ -394,7 +401,9 @@ func TestInvalidMovementInputIsRejectedWithoutMutation(t *testing.T) {
 		t.Fatal("accepted infinite rotation")
 	}
 
-	if current := player.snapshotPlayer(); current.Position != initial.Position || current.Rotation != initial.Rotation {
+	current := player.snapshotPlayer()
+
+	if current.Position != initial.Position || current.Rotation != initial.Rotation {
 		t.Fatalf("invalid movement changed state from %+v to %+v", initial, current)
 	}
 

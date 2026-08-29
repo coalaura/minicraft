@@ -529,6 +529,7 @@ func (w *World) clearBlockOverride(chunk ChunkPosition, local LocalBlockPosition
 
 func NewOverworld(generator Generator, seed ...int64) *World {
 	var worldSeed int64
+
 	if len(seed) > 0 {
 		worldSeed = seed[0]
 	}
@@ -582,6 +583,7 @@ func blockIndex(position BlockPosition) (ChunkPosition, LocalBlockPosition) {
 
 func blockChunkCoordinate(coordinate int32) int32 {
 	chunk := coordinate / ChunkWidth
+
 	if coordinate%ChunkWidth < 0 {
 		chunk--
 	}

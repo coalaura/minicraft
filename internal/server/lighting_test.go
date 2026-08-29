@@ -127,6 +127,7 @@ func TestNormalOpenLightMasksAndFullbrightBypass(t *testing.T) {
 	}
 
 	fullbrightCalls := generator.calls
+
 	if len(chunk.SkyLight) != protocol.OverworldLightSectionCount || &chunk.SkyLight[0][0] != &chunk.SkyLight[1][0] {
 		t.Fatal("fullbright chunk did not reuse shared sky arrays")
 	}

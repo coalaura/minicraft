@@ -70,6 +70,7 @@ func Names() []string {
 	defer registryMx.RUnlock()
 
 	names := make([]string, 0, len(factories))
+
 	for name := range factories {
 		names = append(names, name)
 	}

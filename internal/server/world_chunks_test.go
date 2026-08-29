@@ -142,19 +142,23 @@ func TestWholeChunkGenerationIsPreparedOnceAndIncludesOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if calls := generator.chunkCalls.Load(); calls != 1 {
+	calls := generator.chunkCalls.Load()
+	if calls != 1 {
 		t.Fatalf("GenerateChunk calls = %d, want 1", calls)
 	}
 
-	if calls := generator.sectionCalls.Load(); calls != protocol.OverworldSectionCount {
+	calls = generator.sectionCalls.Load()
+	if calls != protocol.OverworldSectionCount {
 		t.Fatalf("GenerateSection calls = %d, want %d", calls, protocol.OverworldSectionCount)
 	}
 
-	if calls := generator.biomeCalls.Load(); calls != protocol.OverworldSectionCount*protocol.BiomeSectionVolume {
+	calls = generator.biomeCalls.Load()
+	if calls != protocol.OverworldSectionCount*protocol.BiomeSectionVolume {
 		t.Fatalf("BiomeAt calls = %d, want %d", calls, protocol.OverworldSectionCount*protocol.BiomeSectionVolume)
 	}
 
-	if calls := generator.blockCalls.Load(); calls != 0 {
+	calls = generator.blockCalls.Load()
+	if calls != 0 {
 		t.Fatalf("BlockAt calls = %d, want 0", calls)
 	}
 
@@ -181,19 +185,23 @@ func TestNormalLightingPreparesEachContextChunkOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if calls := generator.chunkCalls.Load(); calls != 9 {
+	calls := generator.chunkCalls.Load()
+	if calls != 9 {
 		t.Fatalf("GenerateChunk calls = %d, want 9", calls)
 	}
 
-	if calls := generator.sectionCalls.Load(); calls != 9*protocol.OverworldSectionCount {
+	calls = generator.sectionCalls.Load()
+	if calls != 9*protocol.OverworldSectionCount {
 		t.Fatalf("GenerateSection calls = %d, want %d", calls, 9*protocol.OverworldSectionCount)
 	}
 
-	if calls := generator.biomeCalls.Load(); calls != protocol.OverworldSectionCount*protocol.BiomeSectionVolume {
+	calls = generator.biomeCalls.Load()
+	if calls != protocol.OverworldSectionCount*protocol.BiomeSectionVolume {
 		t.Fatalf("BiomeAt calls = %d, want %d", calls, protocol.OverworldSectionCount*protocol.BiomeSectionVolume)
 	}
 
-	if calls := generator.blockCalls.Load(); calls != 0 {
+	calls = generator.blockCalls.Load()
+	if calls != 0 {
 		t.Fatalf("BlockAt calls = %d, want 0", calls)
 	}
 
@@ -260,7 +268,8 @@ func TestChunkBatchValidatesGeneratedBlocksBeforeWriting(t *testing.T) {
 		t.Fatalf("sent chunk count = %d, want 0", sent)
 	}
 
-	if packets := connection.packets(t); len(packets) != 0 {
+	packets := connection.packets(t)
+	if len(packets) != 0 {
 		t.Fatalf("invalid chunk wrote packets: %v", connection.packetIDs(t))
 	}
 }
@@ -313,6 +322,7 @@ func assertBulkSectionMatches(t *testing.T, generator game.Generator, bulk game.
 				})
 
 				actual := uniformBlock
+
 				if !uniform {
 					actual = blocks[localY*256+localZ*16+localX]
 				}

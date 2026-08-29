@@ -185,6 +185,7 @@ func itemMining(name string) string {
 	}
 
 	var tool string
+
 	switch parts[1] {
 	case "pickaxe":
 		tool = "ToolPickaxe"
@@ -207,15 +208,20 @@ func itemMining(name string) string {
 	case "golden":
 		speed = 12
 	case "copper":
-		tier, speed = "HarvestTierStone", 5
+		tier = "HarvestTierStone"
+		speed = 5
 	case "stone":
-		tier, speed = "HarvestTierStone", 4
+		tier = "HarvestTierStone"
+		speed = 4
 	case "iron":
-		tier, speed = "HarvestTierIron", 6
+		tier = "HarvestTierIron"
+		speed = 6
 	case "diamond":
-		tier, speed = "HarvestTierDiamond", 8
+		tier = "HarvestTierDiamond"
+		speed = 8
 	case "netherite":
-		tier, speed = "HarvestTierDiamond", 9
+		tier = "HarvestTierDiamond"
+		speed = 9
 	default:
 		return "ItemMining{}"
 	}

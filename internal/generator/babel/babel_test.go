@@ -37,7 +37,9 @@ func TestGeneratorRegisters(t *testing.T) {
 func TestGeneratorSpawnIsOpenAndSupported(t *testing.T) {
 	generated := Generator{}
 
-	for _, seed := range []int64{0, 1, -1, 123456789, -987654321} {
+	seeds := []int64{0, 1, -1, 123456789, -987654321}
+
+	for _, seed := range seeds {
 		spawn := generated.Spawn(seed)
 
 		position := game.BlockPosition{X: int32(spawn.X), Y: int32(spawn.Y), Z: int32(spawn.Z)}
@@ -121,7 +123,7 @@ func TestGeneratorUsesArchitecturalMaterialVariety(t *testing.T) {
 
 	glassFound := false
 
-	for _, glass := range []game.Block{
+	glassVariants := []game.Block{
 		game.LightBlueStainedGlass,
 		game.GrayStainedGlass,
 		game.PurpleStainedGlass,
@@ -129,7 +131,9 @@ func TestGeneratorUsesArchitecturalMaterialVariety(t *testing.T) {
 		game.OrangeStainedGlass,
 		game.MagentaStainedGlass,
 		game.BlueStainedGlass,
-	} {
+	}
+
+	for _, glass := range glassVariants {
 		if _, ok := seen[glass]; ok {
 			glassFound = true
 
@@ -381,6 +385,7 @@ func snapshotGeneratedSection(generated game.GeneratedChunk, sectionMinY int32) 
 
 func blockChunkCoordinate(coordinate int32) int32 {
 	chunk := coordinate / game.ChunkWidth
+
 	if coordinate%game.ChunkWidth < 0 {
 		chunk--
 	}

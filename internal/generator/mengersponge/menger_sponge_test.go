@@ -43,20 +43,23 @@ func TestGeneratorSpawnIsOpenAndSupported(t *testing.T) {
 		Z: int32(spawn.Z),
 	}
 
-	if block := generated.BlockAt(0, position); block != game.Air {
-		t.Fatalf("spawn block = %d, want air", block)
+	spawnBlock := generated.BlockAt(0, position)
+	if spawnBlock != game.Air {
+		t.Fatalf("spawn block = %d, want air", spawnBlock)
 	}
 
 	position.Y++
 
-	if block := generated.BlockAt(0, position); block != game.Air {
-		t.Fatalf("block above spawn = %d, want air", block)
+	blockAboveSpawn := generated.BlockAt(0, position)
+	if blockAboveSpawn != game.Air {
+		t.Fatalf("block above spawn = %d, want air", blockAboveSpawn)
 	}
 
 	position.Y -= 2
 
-	if block := generated.BlockAt(0, position); block != game.Stone {
-		t.Fatalf("block below spawn = %d, want stone", block)
+	blockBelowSpawn := generated.BlockAt(0, position)
+	if blockBelowSpawn != game.Stone {
+		t.Fatalf("block below spawn = %d, want stone", blockBelowSpawn)
 	}
 }
 
@@ -116,17 +119,18 @@ func TestGeneratorBuildsMengerPattern(t *testing.T) {
 				Z: test.z,
 			}
 
-			if block := generated.BlockAt(0, position); block != test.block {
+			block := generated.BlockAt(0, position)
+			if block != test.block {
 				t.Fatalf("block at %+v = %d, want %d", position, block, test.block)
 			}
 		})
 	}
 }
 
+const farScale = int32(387420489) // 3^18
+
 func TestGeneratorExtendsToArbitrarilyLargeCoordinates(t *testing.T) {
 	generated := Generator{}
-
-	const farScale = int32(387420489) // 3^18
 
 	strut := game.BlockPosition{
 		X: farScale,
@@ -134,8 +138,9 @@ func TestGeneratorExtendsToArbitrarilyLargeCoordinates(t *testing.T) {
 		Z: 0,
 	}
 
-	if block := generated.BlockAt(0, strut); block != game.Stone {
-		t.Fatalf("far strut = %d, want stone", block)
+	farStrutBlock := generated.BlockAt(0, strut)
+	if farStrutBlock != game.Stone {
+		t.Fatalf("far strut = %d, want stone", farStrutBlock)
 	}
 
 	opening := game.BlockPosition{
@@ -144,8 +149,9 @@ func TestGeneratorExtendsToArbitrarilyLargeCoordinates(t *testing.T) {
 		Z: farScale,
 	}
 
-	if block := generated.BlockAt(0, opening); block != game.Air {
-		t.Fatalf("far opening = %d, want air", block)
+	farOpeningBlock := generated.BlockAt(0, opening)
+	if farOpeningBlock != game.Air {
+		t.Fatalf("far opening = %d, want air", farOpeningBlock)
 	}
 }
 
@@ -168,11 +174,12 @@ func TestGeneratorIsSymmetricAcrossNegativeCoordinates(t *testing.T) {
 		}
 
 		for _, variant := range variants {
-			if block := generated.BlockAt(0, variant); block != expected {
+			variantBlock := generated.BlockAt(0, variant)
+			if variantBlock != expected {
 				t.Errorf(
 					"block at %+v = %d, want %d to match %+v",
 					variant,
-					block,
+					variantBlock,
 					expected,
 					positive,
 				)
@@ -190,7 +197,8 @@ func TestGeneratorStopsAtBuildHeight(t *testing.T) {
 	}
 
 	for _, position := range positions {
-		if block := generated.BlockAt(0, position); block != game.Air {
+		block := generated.BlockAt(0, position)
+		if block != game.Air {
 			t.Errorf("block outside build height at %+v = %d, want air", position, block)
 		}
 	}
@@ -240,7 +248,8 @@ func TestPreparedChunkAndSectionGeneratorMatchBlockAt(t *testing.T) {
 							block = preparedBlock
 						}
 
-						if want := generated.BlockAt(42, position); block != want {
+						want := generated.BlockAt(42, position)
+						if block != want {
 							t.Fatalf("chunk %+v section %d position %+v = %d, want %d", chunk, sectionMinY, position, block, want)
 						}
 					}
@@ -280,6 +289,7 @@ func TestPreparedChunkGenerationIsDeterministicAndConcurrent(t *testing.T) {
 
 			if index%2 == 0 {
 				results <- snapshotGeneratedChunk(prepared, sections)
+
 				return
 			}
 

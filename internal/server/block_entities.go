@@ -5,6 +5,11 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+const (
+	itemWidth       = 0.25
+	motionDeviation = 0.11485000171139836
+)
+
 type RuntimeBlockEntity interface {
 	BlockEntityType() game.BlockEntityType
 	BlockPosition() game.BlockPosition
@@ -37,11 +42,6 @@ func (r *Runtime) commitBlockEntityRemovalEffects(records []blockMutationRecord)
 }
 
 func (r *Runtime) dropContainerContents(position game.BlockPosition, items []game.ItemStack) {
-	const (
-		itemWidth       = 0.25
-		motionDeviation = 0.11485000171139836
-	)
-
 	for _, source := range items {
 		remaining := source.Clone()
 
@@ -174,6 +174,7 @@ func (r *Runtime) closeMenuWithRemovalStateLocked(session *Session, notify, disc
 	current := session.containerMenu
 	if current == nil || current == session.inventoryMenu {
 		session.returnToInventoryMenu()
+
 		return
 	}
 

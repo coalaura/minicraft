@@ -42,6 +42,7 @@ func TestTerrainIsDeterministicAndSeeded(t *testing.T) {
 	}
 
 	generated := Generator{}
+
 	for _, position := range positions {
 		first := generated.BlockAt(8, position)
 		second := generated.BlockAt(8, position)
@@ -55,18 +56,21 @@ func TestTerrainIsDeterministicAndSeeded(t *testing.T) {
 	}
 }
 
+const terrainSeed = int64(1234)
+
 func TestTerrainFillsThroughItsSurface(t *testing.T) {
-	const seed = int64(1234)
-
 	generated := Generator{}
-	height := surfaceHeight(seed, -16, 16)
 
-	if block := generated.BlockAt(seed, game.BlockPosition{X: -16, Y: height, Z: 16}); block != game.Stone {
-		t.Fatalf("surface block = %d, want stone", block)
+	height := surfaceHeight(terrainSeed, -16, 16)
+
+	surfaceBlock := generated.BlockAt(terrainSeed, game.BlockPosition{X: -16, Y: height, Z: 16})
+	if surfaceBlock != game.Stone {
+		t.Fatalf("surface block = %d, want stone", surfaceBlock)
 	}
 
-	if block := generated.BlockAt(seed, game.BlockPosition{X: -16, Y: height + 1, Z: 16}); block != game.Air {
-		t.Fatalf("block above surface = %d, want air", block)
+	blockAboveSurface := generated.BlockAt(terrainSeed, game.BlockPosition{X: -16, Y: height + 1, Z: 16})
+	if blockAboveSurface != game.Air {
+		t.Fatalf("block above surface = %d, want air", blockAboveSurface)
 	}
 }
 
@@ -74,7 +78,8 @@ func TestEverySeedProvidesSafeSpawn(t *testing.T) {
 	seeds := []int64{math.MinInt64, -34359738448, -1, 0, 1, 34359738448, math.MaxInt64}
 
 	for _, seed := range seeds {
-		if height := surfaceHeight(seed, 0, 0); height != 69 {
+		height := surfaceHeight(seed, 0, 0)
+		if height != 69 {
 			t.Errorf("seed %d spawn surface height = %d, want 69", seed, height)
 		}
 	}

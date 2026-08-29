@@ -249,6 +249,7 @@ func (registry *commandRegistry) match(source CommandSource, command *registered
 
 		for _, element := range pattern.Elements {
 			cursor := end
+
 			if consumed < len(tokens) {
 				cursor = tokens[consumed].start
 			}
@@ -354,6 +355,7 @@ func (argument commandArgument) suggestions(source CommandSource, prefix string)
 
 func (argument commandArgument) commandNode() protocol.CommandNode {
 	suggestionType := ""
+
 	if argument.clientSuggests {
 		suggestionType = commandSuggestionProvider
 	}

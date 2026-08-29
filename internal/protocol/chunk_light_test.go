@@ -66,7 +66,8 @@ func TestUpdateLightEncodingUsesVarIntCoordinatesAndLightPayload(t *testing.T) {
 		t.Fatalf("block light = count %d data %x", count, light)
 	}
 
-	if err := reader.Err(); err != nil {
+	err = reader.Err()
+	if err != nil {
 		t.Fatalf("decode light update: %v", err)
 	}
 }

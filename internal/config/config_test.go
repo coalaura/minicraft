@@ -170,12 +170,14 @@ func TestConfigWorldLightingAndTime(t *testing.T) {
 }
 
 func TestRenderDistanceIsClamped(t *testing.T) {
-	for configured, expected := range map[int32]int32{
+	renderDistanceCases := map[int32]int32{
 		-10: int32(MinRenderDistance),
 		0:   int32(MinRenderDistance),
 		1:   int32(MinRenderDistance),
 		64:  int32(MaxRenderDistance),
-	} {
+	}
+
+	for configured, expected := range renderDistanceCases {
 		cfg := Config{Server: ServerConfig{RenderDistance: &configured}}
 
 		cfg.SetDefaults()
@@ -210,11 +212,13 @@ func TestMaxPlayersRejectsProtocolOverflow(t *testing.T) {
 }
 
 func TestSpawnCoordinatesMustBeFinite(t *testing.T) {
-	for name, value := range map[string]float64{
+	spawnCoordinateCases := map[string]float64{
 		"nan":      math.NaN(),
 		"positive": math.Inf(1),
 		"negative": math.Inf(-1),
-	} {
+	}
+
+	for name, value := range spawnCoordinateCases {
 		t.Run(name, func(t *testing.T) {
 			cfg := Config{
 				Server: ServerConfig{MaxPlayers: new(1), DefaultGameMode: "creative"},

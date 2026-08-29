@@ -304,8 +304,9 @@ func blockForColumn(seed int64, worldX, worldY, worldZ int32, description column
 		return game.Air
 	}
 
-	if block := nodeStructureBlock(worldY, description.node); block != game.Air {
-		return block
+	nodeBlock := nodeStructureBlock(worldY, description.node)
+	if nodeBlock != game.Air {
+		return nodeBlock
 	}
 
 	if description.reliefHeight == 0 || worldY > surfaceY+description.reliefHeight {
@@ -389,6 +390,7 @@ func nodeStructureBlock(worldY int32, node nodeDescription) game.Block {
 	progress := float64(relativeY-1) / float64(max(node.height-1, 1))
 
 	baseRadius := 2.4
+
 	if node.hash%23 == 0 {
 		baseRadius = 3.0
 	}

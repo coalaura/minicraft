@@ -36,7 +36,8 @@ func TestDroppingHeldItemSpawnsRequestedStack(t *testing.T) {
 
 			session.handleDropHeldItem(test.dropAll)
 
-			if count := session.snapshotPlayer().Inventory.Hotbar[0].Count; count != test.remaining {
+			count := session.snapshotPlayer().Inventory.Hotbar[0].Count
+			if count != test.remaining {
 				t.Fatalf("remaining count = %d, want %d", count, test.remaining)
 			}
 
@@ -214,6 +215,7 @@ func TestHandThrowUsesVanillaRandomOrderAndFloatNumerics(t *testing.T) {
 	}
 
 	item := runtime.spawnPlayerDroppedItem(player, game.ItemStack{Item: game.ItemStone, Count: 1}, false, true)
+
 	if randomIndex != len(randomValues) {
 		t.Fatalf("random calls = %d, want %d", randomIndex, len(randomValues))
 	}

@@ -43,12 +43,15 @@ func TestSpawnIsOpenAndSupported(t *testing.T) {
 		spawn := generated.Spawn(seed)
 		position := game.BlockPosition{X: int32(spawn.X), Y: int32(spawn.Y), Z: int32(spawn.Z)}
 
-		if block := generated.BlockAt(seed, position); block != game.Air {
-			t.Fatalf("seed %d spawn block = %d, want air", seed, block)
+		spawnBlock := generated.BlockAt(seed, position)
+		if spawnBlock != game.Air {
+			t.Fatalf("seed %d spawn block = %d, want air", seed, spawnBlock)
 		}
 
 		position.Y--
-		if block := generated.BlockAt(seed, position); block == game.Air {
+
+		belowSpawnBlock := generated.BlockAt(seed, position)
+		if belowSpawnBlock == game.Air {
 			t.Fatalf("seed %d block below spawn is air", seed)
 		}
 	}
@@ -79,6 +82,7 @@ func TestGeneratorIsDeterministicAndSeeded(t *testing.T) {
 
 			if first.path != second.path || first.pathFamily != second.pathFamily || first.reliefHeight != second.reliefHeight || math.Abs(first.field-second.field) > 0.000001 {
 				seededDifference = true
+
 				break
 			}
 		}
@@ -126,6 +130,7 @@ func TestPreparedSectionsAreDeterministicWhenConcurrent(t *testing.T) {
 				block, uniform := prepared.GenerateSection(testCase.sectionMinY, &blocks)
 				if block != expectedBlock || uniform != expectedUniform || blocks != expectedBlocks {
 					errors <- "prepared section changed"
+
 					return
 				}
 			}

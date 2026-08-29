@@ -6,6 +6,7 @@ import (
 
 func verticalPlanForZone(current zone, upper bool) verticalPlan {
 	salt := saltVertical ^ uint64(0x6c84a9f21d37be05)
+
 	if upper {
 		salt ^= 0xb8214f7ca6039de1
 	} else {
@@ -94,7 +95,9 @@ func connectorPlanForZone(current zone) verticalPlan {
 }
 
 func layerConnectorBlockAt(seed, worldX, worldY, worldZ int64, current zone) (game.Block, bool) {
-	for _, lowerLayer := range []int64{current.layer - 1, current.layer} {
+	layers := []int64{current.layer - 1, current.layer}
+
+	for _, lowerLayer := range layers {
 		if !layerConnectorEnabled(seed, current.x, current.z, lowerLayer) {
 			continue
 		}
@@ -131,7 +134,9 @@ func layerConnectorBlockAt(seed, worldX, worldY, worldZ int64, current zone) (ga
 			return game.Air, true
 		}
 
-		if step, ok := stairStepAt(plan, lowerZone.localX, lowerZone.localZ); ok {
+		step, ok := stairStepAt(plan, lowerZone.localX, lowerZone.localZ)
+
+		if ok {
 			stairY := int64(floorY+1) + int64(step)
 			if normalizedY == stairY {
 				return stairBlock(game.OakStairs, stairFacing(plan)), true

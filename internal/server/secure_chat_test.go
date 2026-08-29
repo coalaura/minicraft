@@ -265,7 +265,8 @@ func TestSignedPlayerChatAcceptanceReplayAndAcknowledgements(t *testing.T) {
 	assertOnlyChatPacket(t, fixture.senderConnection, protocol.ClientboundPlayerChatID)
 	assertOnlyChatPacket(t, fixture.recipientConnection, protocol.ClientboundPlayerChatID)
 
-	if prints := fixture.logger.chatPrints(); len(prints) != 1 || prints[0] != "[chat] <Laura> hello\n" {
+	prints := fixture.logger.chatPrints()
+	if len(prints) != 1 || prints[0] != "[chat] <Laura> hello\n" {
 		t.Fatalf("chat prints = %q", prints)
 	}
 
@@ -280,7 +281,8 @@ func TestSignedPlayerChatAcceptanceReplayAndAcknowledgements(t *testing.T) {
 	assertOnlyChatPacket(t, fixture.senderConnection, protocol.ClientboundPlayDisconnectID)
 	assertOnlyChatPacket(t, fixture.recipientConnection)
 
-	if prints := fixture.logger.chatPrints(); len(prints) != 1 {
+	prints = fixture.logger.chatPrints()
+	if len(prints) != 1 {
 		t.Fatalf("replay produced chat prints %q", prints)
 	}
 
@@ -424,7 +426,9 @@ func TestSecureCustomFormatFallsBackToSystemChatAfterVerification(t *testing.T) 
 	assertSystemMessages(t, fixture.senderConnection, "[Laura] hello")
 	assertSystemMessages(t, fixture.recipientConnection, "[Laura] hello")
 
-	for _, connection := range []*recordingConnection{fixture.senderConnection, fixture.recipientConnection} {
+	chatConnections := []*recordingConnection{fixture.senderConnection, fixture.recipientConnection}
+
+	for _, connection := range chatConnections {
 		for _, packet := range connection.packets(t) {
 			if packet.ID == protocol.ClientboundPlayerChatID {
 				t.Fatal("custom formatted content was relayed as signed player chat")
@@ -432,7 +436,8 @@ func TestSecureCustomFormatFallsBackToSystemChatAfterVerification(t *testing.T) 
 		}
 	}
 
-	if prints := fixture.logger.chatPrints(); len(prints) != 1 || prints[0] != "[chat] <Laura> hello\n" {
+	prints := fixture.logger.chatPrints()
+	if len(prints) != 1 || prints[0] != "[chat] <Laura> hello\n" {
 		t.Fatalf("chat prints = %q", prints)
 	}
 }
@@ -453,7 +458,8 @@ func TestDisabledChatDoesNotValidateRelayOrLog(t *testing.T) {
 	assertOnlyChatPacket(t, fixture.senderConnection)
 	assertOnlyChatPacket(t, fixture.recipientConnection)
 
-	if prints := fixture.logger.chatPrints(); len(prints) != 0 {
+	prints := fixture.logger.chatPrints()
+	if len(prints) != 0 {
 		t.Fatalf("disabled chat produced prints %q", prints)
 	}
 }

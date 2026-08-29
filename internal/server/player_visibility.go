@@ -40,6 +40,7 @@ func (s *Session) sendPlayerInfo(players []playerInfoSnapshot) error {
 	}
 
 	actions := byte(protocol.PlayerInfoActionAddPlayer | protocol.PlayerInfoActionUpdateGameMode | protocol.PlayerInfoActionUpdateListed)
+
 	if s.secureChatEnforced() {
 		actions |= protocol.PlayerInfoActionInitializeChat
 	}
@@ -97,7 +98,9 @@ func (s *Session) sendPlayerEquipment(player game.Player, slots ...byte) error {
 
 		switch slot {
 		case protocol.EquipmentSlotMainHand:
-			if held := player.Inventory.Held(player.SelectedHotbarSlot); held != nil {
+			held := player.Inventory.Held(player.SelectedHotbarSlot)
+
+			if held != nil {
 				stack = held.Clone()
 			}
 		case protocol.EquipmentSlotOffHand:

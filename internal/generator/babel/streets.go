@@ -157,8 +157,6 @@ func elevatedAvenueBlock(seed int64, worldY int32, relativeX, relativeZ int64, s
 }
 
 func avenueAxisBlock(seed int64, worldY int32, crossOffset, alongCoordinate int64) game.Block {
-	const walkwayHalfWidth = int64(3)
-
 	if crossOffset > walkwayHalfWidth {
 		if worldY >= baseFloorY+1 && worldY < skywayFloorY && crossOffset == walkwayHalfWidth+2 && positiveRemainder(alongCoordinate, 24) <= 1 {
 			if worldY%6 == 0 {

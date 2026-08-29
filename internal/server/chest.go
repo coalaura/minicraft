@@ -247,6 +247,7 @@ func (r *Runtime) openChestLocked(session *Session, clicked *runtimeChest) error
 	backing.Attach(r, session)
 
 	title := "container.chest"
+
 	if len(backing.chests) == 2 {
 		title = "container.chestDouble"
 	}

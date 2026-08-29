@@ -152,6 +152,7 @@ func CookingRecipeFor(recipeType CookingRecipeType, input ItemStack) (CookingRec
 	}
 
 	recipe.result = recipe.result.Clone()
+
 	return recipe, true
 }
 

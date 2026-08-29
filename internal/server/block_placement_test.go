@@ -65,7 +65,8 @@ func TestCreativeBlockPlacementOnEachFace(t *testing.T) {
 				t.Fatalf("handle use item on: %v", err)
 			}
 
-			if block := world.BlockAt(test.target); block != game.Stone {
+			block := world.BlockAt(test.target)
+			if block != game.Stone {
 				t.Fatalf("placed block = %d, want stone", block)
 			}
 
@@ -112,7 +113,8 @@ func TestSurvivalPlacementConsumesActualHand(t *testing.T) {
 
 			player := actor.snapshotPlayer()
 
-			wantMain, wantOffhand := int32(3), int32(4)
+			wantMain := int32(3)
+			wantOffhand := int32(4)
 
 			if hand == protocol.MainHand {
 				wantMain--
@@ -151,7 +153,8 @@ func TestFailedPlacementDoesNotConsumeSurvivalItem(t *testing.T) {
 		t.Fatalf("handle use item on: %v", err)
 	}
 
-	if count := actor.snapshotPlayer().Inventory.Hotbar[0].Count; count != 3 {
+	count := actor.snapshotPlayer().Inventory.Hotbar[0].Count
+	if count != 3 {
 		t.Fatalf("stack after failed placement = %d, want 3", count)
 	}
 }
@@ -221,7 +224,8 @@ func TestPlacementUsesVanillaReplaceabilityTarget(t *testing.T) {
 				t.Fatalf("place stone: %v", err)
 			}
 
-			if block := world.BlockAt(test.target); block != game.Stone {
+			block := world.BlockAt(test.target)
+			if block != game.Stone {
 				t.Fatalf("placement target %+v = %d, want stone", test.target, block)
 			}
 		})
@@ -259,7 +263,8 @@ func TestDeniedPlacementResynchronizesAndAcknowledges(t *testing.T) {
 				t.Fatalf("handle use item on: %v", err)
 			}
 
-			if block := world.BlockAt(target); block != game.Air {
+			block := world.BlockAt(target)
+			if block != game.Air {
 				t.Fatalf("denied placement changed block to %d", block)
 			}
 
@@ -297,7 +302,8 @@ func TestOffhandPlacementUsesOffhandItem(t *testing.T) {
 		t.Fatalf("handle use item on: %v", err)
 	}
 
-	if block := world.BlockAt(target); block != game.Dirt {
+	block := world.BlockAt(target)
+	if block != game.Dirt {
 		t.Fatalf("offhand placed block = %d, want dirt", block)
 	}
 }
@@ -323,7 +329,8 @@ func TestMainHandPlacementUsesSelectedHotbarItem(t *testing.T) {
 		t.Fatalf("handle use item on: %v", err)
 	}
 
-	if block := world.BlockAt(target); block != game.Dirt {
+	block := world.BlockAt(target)
+	if block != game.Dirt {
 		t.Fatalf("selected hotbar item placed block = %d, want dirt", block)
 	}
 }
@@ -371,7 +378,8 @@ func TestAxisBlockPlacementUsesClickedFace(t *testing.T) {
 				t.Fatalf("handle use item on: %v", err)
 			}
 
-			if block := world.BlockAt(target); block != want {
+			block := world.BlockAt(target)
+			if block != want {
 				t.Fatalf("placed oak log state = %d, want %d", block, want)
 			}
 		})
@@ -399,7 +407,8 @@ func TestUnsupportedComplexPlacementIsRejected(t *testing.T) {
 		t.Fatalf("handle use item on: %v", err)
 	}
 
-	if block := world.BlockAt(target); block != game.Air {
+	block := world.BlockAt(target)
+	if block != game.Air {
 		t.Fatalf("unsupported placement changed block to %d", block)
 	}
 
@@ -427,7 +436,8 @@ func TestPlacementAgainstAirIsRejected(t *testing.T) {
 		t.Fatalf("handle use item on: %v", err)
 	}
 
-	if block := world.BlockAt(target); block != game.Air {
+	block := world.BlockAt(target)
+	if block != game.Air {
 		t.Fatalf("placement against air changed block to %d", block)
 	}
 
@@ -456,7 +466,8 @@ func TestOccupiedOrDistantPlacementIsRejected(t *testing.T) {
 			t.Fatalf("handle use item on: %v", err)
 		}
 
-		if block := world.BlockAt(target); block != game.Dirt {
+		block := world.BlockAt(target)
+		if block != game.Dirt {
 			t.Fatalf("occupied block changed to %d", block)
 		}
 
@@ -484,7 +495,8 @@ func TestOccupiedOrDistantPlacementIsRejected(t *testing.T) {
 			t.Fatalf("handle use item on: %v", err)
 		}
 
-		if block := world.BlockAt(target); block != game.Air {
+		block := world.BlockAt(target)
+		if block != game.Air {
 			t.Fatalf("distant placement changed block to %d", block)
 		}
 

@@ -29,7 +29,9 @@ type structuralSupportTestCase struct {
 }
 
 func TestSlabPlacementAndMerging(t *testing.T) {
-	for name, cursorY := range map[string]float32{"bottom": 0.25, "top": 0.75} {
+	slabCursorPlacements := map[string]float32{"bottom": 0.25, "top": 0.75}
+
+	for name, cursorY := range slabCursorPlacements {
 		t.Run(name, func(t *testing.T) {
 			clicked := game.BlockPosition{Y: 70}
 			target := game.BlockPosition{X: 1, Y: 70}
@@ -81,7 +83,9 @@ func TestSlabPlacementAndMerging(t *testing.T) {
 	assertBlockProperty(t, world.BlockAt(clicked), "type", "double")
 	assertBlockProperty(t, world.BlockAt(clicked), "waterlogged", "false")
 
-	if _, merge := slabMerge(game.StoneSlab, oakBottom, protocol.BlockFaceUp, 0.5); merge {
+	_, merge := slabMerge(game.StoneSlab, oakBottom, protocol.BlockFaceUp, 0.5)
+
+	if merge {
 		t.Fatal("incompatible slab types merged")
 	}
 }
@@ -272,7 +276,9 @@ func TestIronDoorBreaksAsTwoBlockStructureWithoutBecomingInteractable(t *testing
 		t.Fatal("resolve upper iron door state")
 	}
 
-	for name, brokenPosition := range map[string]game.BlockPosition{"lower": lowerPosition, "upper": upperPosition} {
+	doorHalves := map[string]game.BlockPosition{"lower": lowerPosition, "upper": upperPosition}
+
+	for name, brokenPosition := range doorHalves {
 		t.Run(name, func(t *testing.T) {
 			world := &game.World{}
 
@@ -346,6 +352,7 @@ func TestAuthoritativeMutationsRemoveMatchingDoorHalves(t *testing.T) {
 				}
 
 				otherPosition := lowerPosition
+
 				if test.changes[0].Position == lowerPosition {
 					otherPosition = upperPosition
 				}
@@ -402,7 +409,9 @@ func TestAuthoritativeBulkMutationRecalculatesStructuralNeighbors(t *testing.T) 
 }
 
 func TestTrapdoorAndFenceGateInteraction(t *testing.T) {
-	for name, item := range map[string]game.Item{"trapdoor": game.ItemOakTrapdoor, "fence_gate": game.ItemOakFenceGate} {
+	gateItems := map[string]game.Item{"trapdoor": game.ItemOakTrapdoor, "fence_gate": game.ItemOakFenceGate}
+
+	for name, item := range gateItems {
 		t.Run(name, func(t *testing.T) {
 			clicked := game.BlockPosition{Y: 70}
 			target := game.BlockPosition{X: 1, Y: 70}

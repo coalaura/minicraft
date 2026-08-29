@@ -132,6 +132,7 @@ func (r *Runtime) setBarrelOpenStateLocked(barrel *runtimeBarrel, open bool) {
 	}
 
 	event := game.SoundBlockBarrelClose
+
 	if open {
 		event = game.SoundBlockBarrelOpen
 	}

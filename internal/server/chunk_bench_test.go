@@ -115,10 +115,12 @@ func BenchmarkLightingModes(b *testing.B) {
 	}
 
 	for _, benchmark := range benchmarks {
-		for _, mode := range []lightingModeBenchmarkCase{
+		modes := []lightingModeBenchmarkCase{
 			{name: "normal", mode: game.LightingNormal},
 			{name: "fullbright", mode: game.LightingFullbright},
-		} {
+		}
+
+		for _, mode := range modes {
 			b.Run(benchmark.name+"/"+mode.name, func(b *testing.B) {
 				world := game.NewOverworld(benchmark.generator, 42)
 

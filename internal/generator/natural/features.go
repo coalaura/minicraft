@@ -76,6 +76,7 @@ func treeForCell(seed int64, cellX, cellZ int32) (tree, bool) {
 	}
 
 	height := int32(4 + (hash>>28)%3)
+
 	if kind == treeSpruce {
 		height = int32(6 + (hash>>28)%3)
 	}

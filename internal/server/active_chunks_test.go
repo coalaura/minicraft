@@ -53,6 +53,7 @@ func (interaction *recordingBlockEntityInteraction) BlockPosition() game.BlockPo
 
 func (interaction *recordingBlockEntityInteraction) InteractBlock(_ *Runtime, _ *Session) error {
 	interaction.calls++
+
 	return nil
 }
 
@@ -111,7 +112,8 @@ func TestRuntimeActiveChunksFollowSessionViews(t *testing.T) {
 	runtime.setSessionActiveChunks(first, []LoadedChunk{{X: 0, Z: 0}, sharedPosition})
 	runtime.setSessionActiveChunks(second, []LoadedChunk{sharedPosition})
 
-	if count := runtime.ActiveChunkCount(); count != 2 {
+	count := runtime.ActiveChunkCount()
+	if count != 2 {
 		t.Fatalf("active chunk count = %d, want 2", count)
 	}
 
@@ -129,19 +131,24 @@ func TestRuntimeActiveChunksFollowSessionViews(t *testing.T) {
 		t.Fatal("shared chunk state was not retained for the second session")
 	}
 
-	if _, active = runtime.ActiveChunk(LoadedChunk{}); active {
+	_, active = runtime.ActiveChunk(LoadedChunk{})
+
+	if active {
 		t.Fatal("chunk left by all sessions is still active")
 	}
 
 	runtime.LeaveSession(second)
 
-	if _, active = runtime.ActiveChunk(sharedPosition); active {
+	_, active = runtime.ActiveChunk(sharedPosition)
+
+	if active {
 		t.Fatal("shared chunk remained active after its final session left")
 	}
 
 	runtime.LeaveSession(first)
 
-	if count := runtime.ActiveChunkCount(); count != 0 {
+	count = runtime.ActiveChunkCount()
+	if count != 0 {
 		t.Fatalf("active chunk count after leaves = %d, want 0", count)
 	}
 }
@@ -196,13 +203,15 @@ func TestVisibleChunksActivateRuntimeStateBeforeDelivery(t *testing.T) {
 	}
 
 	expected := len(chunksInView(LoadedChunk{}, 2))
-	if count := session.Runtime.ActiveChunkCount(); count != expected {
+	count := session.Runtime.ActiveChunkCount()
+	if count != expected {
 		t.Fatalf("active chunk count = %d, want %d", count, expected)
 	}
 
 	session.Runtime.LeaveSession(session)
 
-	if count := session.Runtime.ActiveChunkCount(); count != 0 {
+	count = session.Runtime.ActiveChunkCount()
+	if count != 0 {
 		t.Fatalf("active chunk count after leave = %d, want 0", count)
 	}
 }
@@ -221,7 +230,8 @@ func TestReleasedSessionCannotReactivateChunks(t *testing.T) {
 		t.Fatalf("late visible chunk update: %v", err)
 	}
 
-	if count := runtime.ActiveChunkCount(); count != 0 {
+	count := runtime.ActiveChunkCount()
+	if count != 0 {
 		t.Fatalf("active chunk count after late update = %d, want 0", count)
 	}
 }

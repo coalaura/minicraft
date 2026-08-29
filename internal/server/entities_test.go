@@ -14,7 +14,8 @@ func TestRuntimeEntityIDsSharePlayerNamespace(t *testing.T) {
 	first, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "First")
 	second, _ := newMovementTestSession(runtime, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Second")
 
-	if id := runtime.AssignEntityID(first); id != 1 {
+	id := runtime.AssignEntityID(first)
+	if id != 1 {
 		t.Fatalf("first player entity id = %d, want 1", id)
 	}
 
@@ -23,7 +24,8 @@ func TestRuntimeEntityIDsSharePlayerNamespace(t *testing.T) {
 		t.Fatalf("item entity id = %d, want 2", item.State.ID)
 	}
 
-	if id := runtime.AssignEntityID(second); id != 3 {
+	id = runtime.AssignEntityID(second)
+	if id != 3 {
 		t.Fatalf("second player entity id = %d, want 3", id)
 	}
 
@@ -94,6 +96,7 @@ func TestRuntimeEntityTracksAfterChunkLoads(t *testing.T) {
 	session.trackEntitiesInChunk(LoadedChunk{X: 1})
 
 	assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundAddEntityID, protocol.ClientboundEntityMetadataID})
+
 	if !session.tracksRuntimeEntity(item.State.ID) {
 		t.Fatal("entity in newly loaded chunk was not tracked")
 	}
@@ -317,7 +320,9 @@ func TestItemEntityTargetAndConcurrentPickupCannotDuplicate(t *testing.T) {
 	first, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "First")
 	second, _ := newMovementTestSession(runtime, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Second")
 
-	for _, session := range []*Session{first, second} {
+	pickupSessions := []*Session{first, second}
+
+	for _, session := range pickupSessions {
 		session.Player.Position = game.Position{Y: 64}
 		session.loadedChunks = map[LoadedChunk]struct{}{{}: {}}
 
@@ -413,7 +418,9 @@ func assertOpenContainerPickup(t *testing.T, session *Session, connection *recor
 		}
 
 		reader := protocol.NewPacketReader(packet.Data)
-		if windowID := reader.VarInt(); windowID != session.activeMenu().windowID {
+
+		windowID := reader.VarInt()
+		if windowID != session.activeMenu().windowID {
 			t.Fatalf("pickup menu window = %d, want %d", windowID, session.activeMenu().windowID)
 		}
 
@@ -428,6 +435,7 @@ func assertOpenContainerPickup(t *testing.T, session *Session, connection *recor
 
 		for slot := range itemCount {
 			stack := readSimpleItemStack(t, reader)
+
 			if slot == playerMenuSlot {
 				picked = stack
 			}
@@ -455,6 +463,7 @@ func containsPacketSequence(ids, expected []int32) bool {
 	for _, id := range ids {
 		if id == expected[next] {
 			next++
+
 			if next == len(expected) {
 				return true
 			}

@@ -31,7 +31,8 @@ func TestSpawnPlatform(t *testing.T) {
 	}
 
 	for position, expected := range tests {
-		if actual := world.BlockAt(position); actual != expected {
+		actual := world.BlockAt(position)
+		if actual != expected {
 			t.Errorf("block at %+v = %d, want %d", position, actual, expected)
 		}
 	}

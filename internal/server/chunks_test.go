@@ -143,7 +143,8 @@ func TestInitialChunksUseSessionTracking(t *testing.T) {
 		t.Fatalf("update unchanged player chunks: %v", err)
 	}
 
-	if packets = connection.packets(t); len(packets) != 0 {
+	packets = connection.packets(t)
+	if len(packets) != 0 {
 		t.Fatalf("unchanged center sent packets: %v", connection.packetIDs(t))
 	}
 }
@@ -227,7 +228,8 @@ func TestPlayerChunkTransitionStreamsChangedColumns(t *testing.T) {
 		t.Fatalf("update within chunk: %v", err)
 	}
 
-	if packets = connection.packets(t); len(packets) != 0 {
+	packets = connection.packets(t)
+	if len(packets) != 0 {
 		t.Fatalf("movement within chunk sent packets: %v", connection.packetIDs(t))
 	}
 }
@@ -278,7 +280,9 @@ func TestNegativeChunkBoundaryTransition(t *testing.T) {
 		expectedUnloaded = append(expectedUnloaded, LoadedChunk{X: 2, Z: chunkZ})
 	}
 
-	for _, chunkZ := range []int32{0, -1, 1, -2, 2} {
+	loadedChunkZs := []int32{0, -1, 1, -2, 2}
+
+	for _, chunkZ := range loadedChunkZs {
 		expectedLoaded = append(expectedLoaded, LoadedChunk{X: -3, Z: chunkZ})
 	}
 
@@ -303,7 +307,9 @@ func TestSessionsTrackLoadedChunksIndependently(t *testing.T) {
 	first, firstConnection := newChunkTestSession(game.Position{})
 	second, secondConnection := newChunkTestSession(game.Position{X: 160})
 
-	for _, session := range []*Session{first, second} {
+	sessions := []*Session{first, second}
+
+	for _, session := range sessions {
 		err := session.updatePlayerChunks()
 		if err != nil {
 			t.Fatalf("load session chunks: %v", err)
@@ -324,7 +330,8 @@ func TestSessionsTrackLoadedChunksIndependently(t *testing.T) {
 		t.Fatal("moving session received no chunk updates")
 	}
 
-	if packets := secondConnection.packets(t); len(packets) != 0 {
+	packets := secondConnection.packets(t)
+	if len(packets) != 0 {
 		t.Fatalf("stationary session received packets: %v", secondConnection.packetIDs(t))
 	}
 
@@ -356,7 +363,8 @@ func assertCenterChunkPacket(t *testing.T, packet protocol.Packet, expected Load
 
 	actual := LoadedChunk{X: reader.VarInt(), Z: reader.VarInt()}
 
-	if err := reader.Err(); err != nil {
+	err := reader.Err()
+	if err != nil {
 		t.Fatalf("decode center chunk: %v", err)
 	}
 
@@ -377,7 +385,8 @@ func assertForgottenChunkPackets(t *testing.T, packets []protocol.Packet, expect
 
 		actual := LoadedChunk{Z: reader.Int(), X: reader.Int()}
 
-		if err := reader.Err(); err != nil {
+		err := reader.Err()
+		if err != nil {
 			t.Fatalf("decode forgotten chunk %d: %v", index, err)
 		}
 
@@ -403,7 +412,8 @@ func assertLoadedChunkPackets(t *testing.T, packets []protocol.Packet, expected 
 
 		actual := LoadedChunk{X: reader.Int(), Z: reader.Int()}
 
-		if err := reader.Err(); err != nil {
+		err := reader.Err()
+		if err != nil {
 			t.Fatalf("decode loaded chunk %d: %v", index, err)
 		}
 
@@ -424,7 +434,8 @@ func assertChunkBatchEndPacket(t *testing.T, packet protocol.Packet, expectedSiz
 
 	actualSize := reader.VarInt()
 
-	if err := reader.Err(); err != nil {
+	err := reader.Err()
+	if err != nil {
 		t.Fatalf("decode chunk batch end: %v", err)
 	}
 

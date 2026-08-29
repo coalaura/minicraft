@@ -58,7 +58,8 @@ func TestActiveBarrelRealizationIsPassive(t *testing.T) {
 		t.Fatalf("active barrel = %+v, %v; want %+v, true", barrel, active, entity)
 	}
 
-	if overrides := world.BlockEntityOverrideCount(); overrides != 0 {
+	overrides := world.BlockEntityOverrideCount()
+	if overrides != 0 {
 		t.Fatalf("block entity overrides after realization = %d, want 0", overrides)
 	}
 
@@ -68,7 +69,8 @@ func TestActiveBarrelRealizationIsPassive(t *testing.T) {
 		t.Fatal("passive active barrel changed while ticking")
 	}
 
-	if overrides := world.BlockEntityOverrideCount(); overrides != 0 {
+	overrides = world.BlockEntityOverrideCount()
+	if overrides != 0 {
 		t.Fatalf("block entity overrides after passive tick = %d, want 0", overrides)
 	}
 }
@@ -387,6 +389,7 @@ func TestBarrelValidityUsesStrictEyeToBlockBoundsDistance(t *testing.T) {
 	}
 
 	player.Position.X -= 0.0001
+
 	if !containerWithinRange(player, position) {
 		t.Fatal("barrel menu was invalid just inside the maximum distance")
 	}

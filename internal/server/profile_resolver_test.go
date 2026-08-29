@@ -180,7 +180,9 @@ func TestOfflineProfileCachePreventsRepeatRequests(t *testing.T) {
 
 	resolver := newTestOfflineProfileResolver(server)
 
-	for _, username := range []string{"Bob", "bob"} {
+	testUsernames := []string{"Bob", "bob"}
+
+	for _, username := range testUsernames {
 		properties, err := resolver.resolve(t.Context(), username)
 		if err != nil {
 			t.Fatalf("resolve %q: %v", username, err)

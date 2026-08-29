@@ -245,11 +245,16 @@ func TestCraftingTableMenuLayoutRecipesAndValidity(t *testing.T) {
 
 		menu := session.activeMenu()
 
-		menu.slots[1].stack.Item, menu.slots[1].stack.Count = game.ItemIronIngot, 1
-		menu.slots[2].stack.Item, menu.slots[2].stack.Count = game.ItemIronIngot, 1
-		menu.slots[3].stack.Item, menu.slots[3].stack.Count = game.ItemIronIngot, 1
-		menu.slots[5].stack.Item, menu.slots[5].stack.Count = game.ItemStick, 1
-		menu.slots[8].stack.Item, menu.slots[8].stack.Count = game.ItemStick, 1
+		menu.slots[1].stack.Item = game.ItemIronIngot
+		menu.slots[1].stack.Count = 1
+		menu.slots[2].stack.Item = game.ItemIronIngot
+		menu.slots[2].stack.Count = 1
+		menu.slots[3].stack.Item = game.ItemIronIngot
+		menu.slots[3].stack.Count = 1
+		menu.slots[5].stack.Item = game.ItemStick
+		menu.slots[5].stack.Count = 1
+		menu.slots[8].stack.Item = game.ItemStick
+		menu.slots[8].stack.Count = 1
 
 		refreshCraftingMenu(menu)
 
@@ -337,7 +342,9 @@ func TestCraftingTableAcceptsInputPredictionWithoutDerivedResult(t *testing.T) {
 
 	menu := session.activeMenu()
 
-	for _, slot := range []int{1, 2, 4, 6, 7, 8, 9} {
+	independentSlots := []int{1, 2, 4, 6, 7, 8, 9}
+
+	for _, slot := range independentSlots {
 		*menu.slots[slot].stack = game.ItemStack{Item: game.ItemCobblestone, Count: 1}
 	}
 
@@ -443,7 +450,10 @@ func assertCraftingTableOpenScreen(t *testing.T, packet protocol.Packet, windowI
 
 	reader := protocol.NewPacketReader(packet.Data)
 
-	if actualWindowID, menuType := reader.VarInt(), reader.VarInt(); actualWindowID != windowID || menuType != protocol.MenuCrafting {
+	actualWindowID := reader.VarInt()
+	menuType := reader.VarInt()
+
+	if actualWindowID != windowID || menuType != protocol.MenuCrafting {
 		t.Fatalf("crafting table open screen = window %d type %d; want window %d type %d", actualWindowID, menuType, windowID, protocol.MenuCrafting)
 	}
 }

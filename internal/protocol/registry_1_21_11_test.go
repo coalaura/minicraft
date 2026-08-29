@@ -28,11 +28,15 @@ func TestGenericContainerMenuRegistryIDs12111(t *testing.T) {
 		}
 	}
 
-	if _, valid := Generic9xMenuType(0); valid {
+	_, validZeroRows := Generic9xMenuType(0)
+
+	if validZeroRows {
 		t.Fatal("zero-row generic menu type is valid")
 	}
 
-	if _, valid := Generic9xMenuType(7); valid {
+	_, validSevenRows := Generic9xMenuType(7)
+
+	if validSevenRows {
 		t.Fatal("seven-row generic menu type is valid")
 	}
 }

@@ -14,6 +14,8 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+const slotReservationAttempts = 32
+
 type statusResponsePlayers struct {
 	Online int `json:"online"`
 	Max    int `json:"max"`
@@ -275,7 +277,9 @@ func TestRuntimeVisibilityTransitionsAcrossRenderDistance(t *testing.T) {
 		},
 	}
 
-	for _, session := range []*Session{bob, alice} {
+	joinSessions := []*Session{bob, alice}
+
+	for _, session := range joinSessions {
 		runtime.AssignEntityID(session)
 
 		err := runtime.JoinSession(session)
@@ -328,7 +332,8 @@ func TestRuntimeVisibilityTransitionsAcrossRenderDistance(t *testing.T) {
 
 	runtime.BroadcastPlayerAnimation(alice, protocol.EntityAnimationSwingMainHand)
 
-	if packets := bobConnection.packets(t); len(packets) != 0 {
+	packets := bobConnection.packets(t)
+	if len(packets) != 0 {
 		t.Fatalf("invisible animation packets = %v, want none", bobConnection.packetIDs(t))
 	}
 }
@@ -336,14 +341,12 @@ func TestRuntimeVisibilityTransitionsAcrossRenderDistance(t *testing.T) {
 func TestRuntimePlayerSlotReservationIsAtomic(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
-	const attempts = 32
-
 	var (
 		waitGroup sync.WaitGroup
-		results   = make(chan bool, attempts)
+		results   = make(chan bool, slotReservationAttempts)
 	)
 
-	for range attempts {
+	for range slotReservationAttempts {
 		waitGroup.Go(func() {
 			results <- runtime.ReservePlayerSlot(1)
 		})
@@ -410,7 +413,8 @@ func TestStatusResponseReportsActivePlayers(t *testing.T) {
 
 	responseJSON := reader.String(32767)
 
-	if err = reader.Err(); err != nil {
+	err = reader.Err()
+	if err != nil {
 		t.Fatalf("decode status packet: %v", err)
 	}
 

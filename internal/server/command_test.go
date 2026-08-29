@@ -112,6 +112,7 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 	if !validProperties || entityProperties.SingleTarget || !entityProperties.OnlyPlayers {
 		t.Fatalf("gamemode targets properties = %+v", gamemodeTargets.Properties)
 	}
+
 	giveLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "give")
 	giveTargets := commandNodeChild(declaration.Nodes, giveLiteral, protocol.CommandNodeArgument, "targets")
 	item := commandNodeChild(declaration.Nodes, giveTargets, protocol.CommandNodeArgument, "item")
@@ -120,6 +121,7 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 	if giveTargets == nil || giveTargets.Executable || giveTargets.Parser != protocol.CommandParserEntity || giveTargets.SuggestionType != "" {
 		t.Fatalf("give targets argument = %+v", giveTargets)
 	}
+
 	if item == nil || !item.Executable || item.Parser != protocol.CommandParserResource || item.Properties != (protocol.CommandResourceProperties{Registry: "minecraft:item"}) || item.SuggestionType != "" {
 		t.Fatalf("give item argument = %+v", item)
 	}
@@ -207,7 +209,9 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 		t.Fatalf("setblock block argument = %+v", setblockBlock)
 	}
 
-	for _, modeName := range []string{"replace", "keep", "strict"} {
+	setblockModes := []string{"replace", "keep", "strict"}
+
+	for _, modeName := range setblockModes {
 		if commandNodeChild(declaration.Nodes, setblockBlock, protocol.CommandNodeLiteral, modeName) == nil {
 			t.Fatalf("setblock mode %q is not declared", modeName)
 		}
@@ -230,7 +234,9 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 		t.Fatalf("fill block argument = %+v", fillBlock)
 	}
 
-	for _, modeName := range []string{"replace", "keep", "outline", "hollow", "strict"} {
+	fillModes := []string{"replace", "keep", "outline", "hollow", "strict"}
+
+	for _, modeName := range fillModes {
 		if commandNodeChild(declaration.Nodes, fillBlock, protocol.CommandNodeLiteral, modeName) == nil {
 			t.Fatalf("fill mode %q is not declared", modeName)
 		}
@@ -335,11 +341,13 @@ func TestCommandTimeQueryAndSet(t *testing.T) {
 
 	runtime.World.SetTime(48001, false)
 
-	for _, query := range []commandTimeQueryTestCase{
+	timeQueries := []commandTimeQueryTestCase{
 		{"time query daytime", 1},
 		{"time query gametime", 0},
 		{"time query day", 2},
-	} {
+	}
+
+	for _, query := range timeQueries {
 		connection.reset()
 
 		executeCommand(t, session, query.input)
@@ -361,19 +369,24 @@ func TestCommandTimeQueryAndSet(t *testing.T) {
 		}
 	}
 
-	for _, test := range []commandTimeMutationTestCase{{"time set 4242", 4242}, {"time set 2t", 2}, {"time set 1.5s", 30}, {"time set 0.5d", 12000}, {"time add 0.5s", 12010}} {
+	timeMutations := []commandTimeMutationTestCase{{"time set 4242", 4242}, {"time set 2t", 2}, {"time set 1.5s", 30}, {"time set 0.5d", 12000}, {"time add 0.5s", 12010}}
+
+	for _, test := range timeMutations {
 		connection.reset()
 
 		executeCommand(t, session, test.input)
 
-		if dayTime := runtime.World.Time().DayTime; dayTime != test.want {
+		dayTime := runtime.World.Time().DayTime
+		if dayTime != test.want {
 			t.Fatalf("day time after %q = %d, want %d", test.input, dayTime, test.want)
 		}
 
 		assertSystemComponents(t, connection, game.TranslatableText("commands.time.set", game.LiteralText(fmt.Sprint(test.want))))
 	}
 
-	for _, input := range []string{"time set -1", "time set 1x", "time set nope", "time set DAY", "time query DAY"} {
+	invalidTimeInputs := []string{"time set -1", "time set 1x", "time set nope", "time set DAY", "time query DAY"}
+
+	for _, input := range invalidTimeInputs {
 		connection.reset()
 		executeCommand(t, session, input)
 
@@ -430,11 +443,13 @@ func TestCommandTargetsPlayersByName(t *testing.T) {
 	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.gamemode.success.other", game.LiteralText("Alice"), game.TranslatableText("gameMode.spectator")))
 	assertSystemComponents(t, aliceConnection, game.TranslatableText("gameMode.changed", game.TranslatableText("gameMode.spectator")))
 
-	if mode := alice.snapshotPlayer().GameMode; mode != game.GameModeSpectator {
+	mode := alice.snapshotPlayer().GameMode
+	if mode != game.GameModeSpectator {
 		t.Fatalf("alice game mode = %d, want spectator", mode)
 	}
 
-	if mode := bob.snapshotPlayer().GameMode; mode != game.GameModeSurvival {
+	mode = bob.snapshotPlayer().GameMode
+	if mode != game.GameModeSurvival {
 		t.Fatalf("bob game mode = %d, want survival", mode)
 	}
 
@@ -442,7 +457,8 @@ func TestCommandTargetsPlayersByName(t *testing.T) {
 
 	executeCommand(t, bob, "gamemode creative alice")
 
-	if mode := alice.snapshotPlayer().GameMode; mode != game.GameModeCreative {
+	mode = alice.snapshotPlayer().GameMode
+	if mode != game.GameModeCreative {
 		t.Fatalf("alice game mode after case-insensitive target = %d, want creative", mode)
 	}
 
@@ -478,29 +494,36 @@ func TestCommandSelectorResolution(t *testing.T) {
 
 	executeCommand(t, zed, "gamemode adventure @s")
 
-	if mode := zed.snapshotPlayer().GameMode; mode != game.GameModeAdventure {
+	mode := zed.snapshotPlayer().GameMode
+	if mode != game.GameModeAdventure {
 		t.Fatalf("zed game mode after @s = %d, want adventure", mode)
 	}
 
-	if mode := bob.snapshotPlayer().GameMode; mode != game.GameModeSurvival {
+	mode = bob.snapshotPlayer().GameMode
+	if mode != game.GameModeSurvival {
 		t.Fatalf("bob game mode after @s = %d, want survival", mode)
 	}
 
 	executeCommand(t, zed, "gamemode creative @a")
 
-	for _, session := range []*Session{zed, bob, alice} {
-		if mode := session.snapshotPlayer().GameMode; mode != game.GameModeCreative {
+	selectorSessions := []*Session{zed, bob, alice}
+
+	for _, session := range selectorSessions {
+		mode := session.snapshotPlayer().GameMode
+		if mode != game.GameModeCreative {
 			t.Fatalf("%s game mode after @a = %d, want creative", session.Player.Name, mode)
 		}
 	}
 
 	executeCommand(t, zed, "gamemode spectator @p")
 
-	if mode := bob.snapshotPlayer().GameMode; mode != game.GameModeSpectator {
+	mode = bob.snapshotPlayer().GameMode
+	if mode != game.GameModeSpectator {
 		t.Fatalf("bob game mode after @p = %d, want spectator", mode)
 	}
 
-	if mode := zed.snapshotPlayer().GameMode; mode != game.GameModeCreative {
+	mode = zed.snapshotPlayer().GameMode
+	if mode != game.GameModeCreative {
 		t.Fatalf("zed game mode after @p = %d, want creative", mode)
 	}
 
@@ -514,11 +537,13 @@ func TestCommandSelectorResolution(t *testing.T) {
 
 	executeCommand(t, zed, "gamemode adventure @r")
 
-	if mode := alice.snapshotPlayer().GameMode; mode != game.GameModeAdventure {
+	mode = alice.snapshotPlayer().GameMode
+	if mode != game.GameModeAdventure {
 		t.Fatalf("alice game mode after @r = %d, want adventure", mode)
 	}
 
-	if mode := bob.snapshotPlayer().GameMode; mode != game.GameModeSpectator {
+	mode = bob.snapshotPlayer().GameMode
+	if mode != game.GameModeSpectator {
 		t.Fatalf("bob game mode after @r = %d, want spectator", mode)
 	}
 }
@@ -540,7 +565,8 @@ func TestCommandRejectsUnsupportedSelectors(t *testing.T) {
 
 	assertSyntaxError(t, bobConnection, "gamemode creative @a[gamemode=survival]", 18, game.LiteralText("Selector options are not supported"))
 
-	if mode := bob.snapshotPlayer().GameMode; mode != game.GameModeSurvival {
+	mode := bob.snapshotPlayer().GameMode
+	if mode != game.GameModeSurvival {
 		t.Fatalf("bob game mode after rejected selectors = %d, want survival", mode)
 	}
 
@@ -548,10 +574,12 @@ func TestCommandRejectsUnsupportedSelectors(t *testing.T) {
 
 	joinTestSession(t, runtime, alice)
 
-	for _, test := range []commandTargetErrorTestCase{
+	targetErrors := []commandTargetErrorTestCase{
 		{"teleport @a", game.TranslatableText("argument.player.toomany")},
 		{"teleport Nobody", game.TranslatableText("argument.player.unknown")},
-	} {
+	}
+
+	for _, test := range targetErrors {
 		argument := runtime.commands.targetArgument("destination", false)
 
 		token := commandToken{value: strings.TrimPrefix(test.input, "teleport "), start: len("teleport "), end: len(test.input)}
@@ -640,7 +668,8 @@ func TestCommandGameModeSynchronization(t *testing.T) {
 
 	executeCommand(t, bob, "gamemode creative")
 
-	if mode := bob.snapshotPlayer().GameMode; mode != game.GameModeCreative {
+	mode := bob.snapshotPlayer().GameMode
+	if mode != game.GameModeCreative {
 		t.Fatalf("bob game mode = %d, want creative", mode)
 	}
 
@@ -674,7 +703,8 @@ func TestCommandGameModeSynchronization(t *testing.T) {
 
 	assertSyntaxError(t, bobConnection, "gamemode bogus", 9, game.TranslatableText("argument.gamemode.invalid", game.LiteralText("bogus")))
 
-	if mode := bob.snapshotPlayer().GameMode; mode != game.GameModeCreative {
+	mode = bob.snapshotPlayer().GameMode
+	if mode != game.GameModeCreative {
 		t.Fatalf("bob game mode after invalid mode = %d, want creative", mode)
 	}
 }
@@ -800,6 +830,7 @@ func TestCommandGiveRejectsInvalidArguments(t *testing.T) {
 	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.give.failed.toomanyitems", game.LiteralText("6400"), game.TranslatableText("block.minecraft.stone")).WithColor(game.TextColorRed))
 
 	player := bob.snapshotPlayer()
+
 	if bob.activeMenu().stateID != 0 {
 		t.Fatalf("inventory state id after rejected gives = %d, want 0", bob.activeMenu().stateID)
 	}
@@ -835,6 +866,7 @@ func TestCommandGiveDropsOverflowWhenInventoryIsFull(t *testing.T) {
 	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.give.success.single", game.LiteralText("1"), game.TranslatableText("block.minecraft.stone"), game.LiteralText("Bob")))
 
 	player := bob.snapshotPlayer()
+
 	if bob.activeMenu().stateID != 0 {
 		t.Fatalf("inventory state id after failed give = %d, want 0", bob.activeMenu().stateID)
 	}
@@ -906,7 +938,9 @@ func TestCommandGiveProcessesMultipleTargetsIndependently(t *testing.T) {
 
 		executeCommand(t, bob, "give @a stone 3")
 
-		for _, session := range []*Session{bob, alice} {
+		giveSessions := []*Session{bob, alice}
+
+		for _, session := range giveSessions {
 			inventory := session.snapshotPlayer().Inventory
 			if session.activeMenu().stateID != 1 || !inventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemStone, Count: 3}) {
 				t.Fatalf("%s inventory after give = %+v", session.snapshotPlayer().Name, inventory)
@@ -1155,7 +1189,8 @@ func TestCommandTeleportRelativeCoordinates(t *testing.T) {
 
 	assertPlayerPositionPacket(t, positionPackets[0], 2, absolute)
 
-	if position := bob.snapshotPlayer().Position; position != absolute {
+	position := bob.snapshotPlayer().Position
+	if position != absolute {
 		t.Fatalf("position after absolute teleport = %+v, want %+v", position, absolute)
 	}
 }
@@ -1169,7 +1204,9 @@ func TestCommandTeleportToPlayerAndMultipleTargets(t *testing.T) {
 	bob.Player.Position = game.Position{X: 8.5, Y: 70, Z: 8.5}
 	alice.Player.Position = game.Position{X: 8.5, Y: 75, Z: 8.5}
 
-	for _, session := range []*Session{bob, alice} {
+	tpSessions := []*Session{bob, alice}
+
+	for _, session := range tpSessions {
 		session.Config = &config.Config{Server: config.ServerConfig{RenderDistance: new(int32(1))}}
 
 		prepareCommandSessionChunks(session)
@@ -1185,7 +1222,8 @@ func TestCommandTeleportToPlayerAndMultipleTargets(t *testing.T) {
 
 	destination := game.Position{X: 8.5, Y: 75, Z: 8.5}
 
-	if position := bob.snapshotPlayer().Position; position != destination {
+	position := bob.snapshotPlayer().Position
+	if position != destination {
 		t.Fatalf("bob position after teleport to alice = %+v, want %+v", position, destination)
 	}
 
@@ -1203,8 +1241,9 @@ func TestCommandTeleportToPlayerAndMultipleTargets(t *testing.T) {
 
 	executeCommand(t, bob, "tp @a 5.5 69 5.5")
 
-	for _, session := range []*Session{bob, alice} {
-		if position := session.snapshotPlayer().Position; position != shared {
+	for _, session := range tpSessions {
+		position := session.snapshotPlayer().Position
+		if position != shared {
 			t.Fatalf("%s position after @a teleport = %+v, want %+v", session.Player.Name, position, shared)
 		}
 	}
@@ -1243,7 +1282,8 @@ func TestCommandSetBlockMutatesWorldAndNotifiesSessions(t *testing.T) {
 
 	executeCommand(t, bob, "setblock 3 70 -2 stone")
 
-	if block := runtime.World.BlockAt(position); block != game.Stone {
+	block := runtime.World.BlockAt(position)
+	if block != game.Stone {
 		t.Fatalf("block after setblock = %d, want stone", block)
 	}
 
@@ -1264,7 +1304,8 @@ func TestCommandSetBlockMutatesWorldAndNotifiesSessions(t *testing.T) {
 		t.Fatalf("encode dirt state: %v", err)
 	}
 
-	if block := runtime.World.BlockAt(position); block != game.Dirt {
+	block = runtime.World.BlockAt(position)
+	if block != game.Dirt {
 		t.Fatalf("block after replacing = %d, want dirt", block)
 	}
 
@@ -1284,7 +1325,8 @@ func TestCommandSetBlockMutatesWorldAndNotifiesSessions(t *testing.T) {
 
 	assertSyntaxError(t, bobConnection, "setblock 3 70 -2 bogus", 17, game.LiteralText("Unknown block 'bogus'"))
 
-	if block := runtime.World.BlockAt(position); block != game.Dirt {
+	block = runtime.World.BlockAt(position)
+	if block != game.Dirt {
 		t.Fatalf("block after unknown block = %d, want dirt", block)
 	}
 
@@ -1294,7 +1336,8 @@ func TestCommandSetBlockMutatesWorldAndNotifiesSessions(t *testing.T) {
 
 	relative := game.BlockPosition{X: 4, Y: 70, Z: -2}
 
-	if block := runtime.World.BlockAt(relative); block != game.Cobblestone {
+	block = runtime.World.BlockAt(relative)
+	if block != game.Cobblestone {
 		t.Fatalf("relative block after setblock = %d, want cobblestone", block)
 	}
 
@@ -1324,11 +1367,13 @@ func TestCommandSetBlockInsidePlayerRecalculatesPose(t *testing.T) {
 
 	executeCommand(t, bob, "setblock 8 71 8 stone")
 
-	if block := runtime.World.BlockAt(headPosition); block != game.Stone {
+	block := runtime.World.BlockAt(headPosition)
+	if block != game.Stone {
 		t.Fatalf("block placed inside the player = %d, want stone", block)
 	}
 
-	if pose := bob.snapshotPlayer().Pose; pose != game.PlayerPoseCrawling {
+	pose := bob.snapshotPlayer().Pose
+	if pose != game.PlayerPoseCrawling {
 		t.Fatalf("pose after placing a block at head height = %d, want crawling", pose)
 	}
 
@@ -1413,7 +1458,8 @@ func TestCommandFillMutatesRegion(t *testing.T) {
 	}
 
 	for _, position := range region {
-		if block := runtime.World.BlockAt(position); block != game.Stone {
+		block := runtime.World.BlockAt(position)
+		if block != game.Stone {
 			t.Fatalf("block at %+v after fill = %d, want stone", position, block)
 		}
 	}
@@ -1441,7 +1487,8 @@ func TestCommandFillMutatesRegion(t *testing.T) {
 	executeCommand(t, bob, "fill 1 70 1 0 70 0 dirt")
 
 	for _, position := range region {
-		if block := runtime.World.BlockAt(position); block != game.Dirt {
+		block := runtime.World.BlockAt(position)
+		if block != game.Dirt {
 			t.Fatalf("block at %+v after reversed fill = %d, want dirt", position, block)
 		}
 	}
@@ -1466,7 +1513,8 @@ func TestCommandFillVolumeLimits(t *testing.T) {
 		}
 
 		for _, position := range samples {
-			if block := runtime.World.BlockAt(position); block != game.Stone {
+			block := runtime.World.BlockAt(position)
+			if block != game.Stone {
 				t.Fatalf("block at %+v = %d, want stone", position, block)
 			}
 		}
@@ -1481,8 +1529,11 @@ func TestCommandFillVolumeLimits(t *testing.T) {
 
 		assertSystemComponents(t, bobConnection, game.TranslatableText("commands.fill.toobig", game.LiteralText("32768"), game.LiteralText("33792")).WithColor(game.TextColorRed))
 
-		for _, position := range []game.BlockPosition{{X: 0, Y: 0, Z: 0}, {X: 32, Y: 31, Z: 31}} {
-			if block := runtime.World.BlockAt(position); block != game.Air {
+		volumeOverflowPositions := []game.BlockPosition{{X: 0, Y: 0, Z: 0}, {X: 32, Y: 31, Z: 31}}
+
+		for _, position := range volumeOverflowPositions {
+			block := runtime.World.BlockAt(position)
+			if block != game.Air {
 				t.Fatalf("block at %+v after rejected fill = %d, want air", position, block)
 			}
 		}
@@ -1497,8 +1548,11 @@ func TestCommandFillVolumeLimits(t *testing.T) {
 
 		assertSystemComponents(t, bobConnection, game.TranslatableText("commands.fill.toobig", game.LiteralText("32768"), game.LiteralText("32769")).WithColor(game.TextColorRed))
 
-		for _, position := range []game.BlockPosition{{X: 0, Y: 0, Z: 0}, {X: 32768, Y: 0, Z: 0}} {
-			if block := runtime.World.BlockAt(position); block != game.Air {
+		axisOverflowPositions := []game.BlockPosition{{X: 0, Y: 0, Z: 0}, {X: 32768, Y: 0, Z: 0}}
+
+		for _, position := range axisOverflowPositions {
+			block := runtime.World.BlockAt(position)
+			if block != game.Air {
 				t.Fatalf("block at %+v after rejected fill = %d, want air", position, block)
 			}
 		}
@@ -1517,11 +1571,13 @@ func TestCommandFillVolumeLimits(t *testing.T) {
 
 		assertSystemComponents(t, bobConnection, game.TranslatableText("commands.fill.success", game.LiteralText("1")))
 
-		if block := runtime.World.BlockAt(game.BlockPosition{X: 0, Y: 70, Z: 0}); block != game.Dirt {
+		block := runtime.World.BlockAt(game.BlockPosition{X: 0, Y: 70, Z: 0})
+		if block != game.Dirt {
 			t.Fatalf("existing block after partial fill = %d, want dirt", block)
 		}
 
-		if block := runtime.World.BlockAt(game.BlockPosition{X: 1, Y: 70, Z: 0}); block != game.Dirt {
+		block = runtime.World.BlockAt(game.BlockPosition{X: 1, Y: 70, Z: 0})
+		if block != game.Dirt {
 			t.Fatalf("missing block after partial fill = %d, want dirt", block)
 		}
 	})

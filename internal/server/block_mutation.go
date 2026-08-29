@@ -326,6 +326,7 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 		}
 
 		cause := blockMutationStructural
+
 		if !authoritative && index < requiredChanges {
 			switch action {
 			case BlockMutationPlace:
@@ -344,7 +345,10 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 		committed = append(committed, change)
 		states = append(states, state)
 
-		previousEntity, hadPreviousEntity := game.BlockEntity{}, false
+		var previousEntity game.BlockEntity
+
+		hadPreviousEntity := false
+
 		if game.BlockEntityTypeForBlock(current) != game.BlockEntityTypeForBlock(change.Replacement) {
 			previousEntity, hadPreviousEntity = r.World.BlockEntityAt(change.Position)
 		}
@@ -356,6 +360,7 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	}
 
 	result.Allowed = true
+
 	if len(committed) == 0 {
 		return result, blockMutationDelivery{}, nil
 	}
@@ -616,6 +621,7 @@ func blockOpenCloseSound(block game.Block, open bool) (game.SoundEvent, bool) {
 	}
 
 	variant := ""
+
 	switch {
 	case strings.HasPrefix(definition.Name, "bamboo_"):
 		variant = "bamboo"

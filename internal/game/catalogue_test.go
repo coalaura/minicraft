@@ -11,14 +11,16 @@ type generatedNameLookupTestCase struct {
 }
 
 func TestItemByName(t *testing.T) {
-	for _, test := range []generatedNameLookupTestCase{
+	itemCases := []generatedNameLookupTestCase{
 		{name: "stone", ok: true},
 		{name: "minecraft:stone", ok: true},
 		{name: "", ok: false},
 		{name: "other:stone", ok: false},
 		{name: "minecraft:", ok: false},
 		{name: "minecraft:stone:extra", ok: false},
-	} {
+	}
+
+	for _, test := range itemCases {
 		item, ok := ItemByName(test.name)
 		if ok != test.ok {
 			t.Errorf("ItemByName(%q) = %d, %v; want ok %v", test.name, item, ok, test.ok)
@@ -32,14 +34,16 @@ func TestItemByName(t *testing.T) {
 }
 
 func TestBlockByNameReturnsDefaultState(t *testing.T) {
-	for _, test := range []generatedNameLookupTestCase{
+	blockCases := []generatedNameLookupTestCase{
 		{name: "grass_block", ok: true},
 		{name: "minecraft:grass_block", ok: true},
 		{name: "", ok: false},
 		{name: "other:grass_block", ok: false},
 		{name: "minecraft:", ok: false},
 		{name: "minecraft:grass_block:extra", ok: false},
-	} {
+	}
+
+	for _, test := range blockCases {
 		block, ok := BlockByName(test.name)
 		if ok != test.ok {
 			t.Errorf("BlockByName(%q) = %d, %v; want ok %v", test.name, block, ok, test.ok)
@@ -53,10 +57,12 @@ func TestBlockByNameReturnsDefaultState(t *testing.T) {
 }
 
 func TestGeneratedNameCataloguesAreSorted(t *testing.T) {
-	for name, catalogue := range map[string][]string{
+	catalogues := map[string][]string{
 		"items":  ItemNames,
 		"blocks": BlockNames,
-	} {
+	}
+
+	for name, catalogue := range catalogues {
 		if !slices.IsSorted(catalogue) {
 			t.Errorf("%s catalogue is not sorted", name)
 		}

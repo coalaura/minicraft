@@ -22,6 +22,7 @@ func ambientDoorSpecForZone(seed int64, current zone) ambientDoorSpec {
 		center := int64(11 + (candidate>>16)%42)
 
 		direction := int64(1)
+
 		if candidate&(1<<24) != 0 {
 			direction = -1
 		}
@@ -164,11 +165,13 @@ func ambientDoorBlockAt(seed, worldY int64, current zone) (game.Block, bool) {
 	}
 
 	door := game.OakDoor
+
 	if spec.iron {
 		door = game.IronDoor
 	}
 
 	hinge := "left"
+
 	if mix64(current.hash^saltOddity^0x75be29c104f8da63)&1 != 0 {
 		hinge = "right"
 	}
@@ -183,6 +186,7 @@ func roomDoorBlockAt(base game.Block, worldY int64, current zone, room featureRo
 	}
 
 	hinge := "left"
+
 	if width > 1 && index%2 != 0 {
 		hinge = "right"
 	} else if width == 1 && mix64(current.hash^saltFurniture)&1 != 0 {
@@ -198,6 +202,7 @@ func actualDoorBlock(base game.Block, worldY int64, facing, hinge string) (game.
 	}
 
 	half := "lower"
+
 	if worldY == int64(floorY+2) {
 		half = "upper"
 	}
@@ -222,6 +227,7 @@ func roomEntranceIndex(current zone, room featureRoom, width int64) (int64, bool
 	}
 
 	coordinate := current.localZ
+
 	if room.entranceSide == featureNorth || room.entranceSide == featureSouth {
 		coordinate = current.localX
 	}

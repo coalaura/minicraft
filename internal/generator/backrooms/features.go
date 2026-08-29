@@ -4,6 +4,8 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
+const featureRoomMargin = int64(6)
+
 func featureStructureAt(seed int64, current zone) (structure, bool) {
 	if current.feature == featureNone {
 		return structureOpen, false
@@ -88,19 +90,17 @@ func featureRoomForZone(current zone) featureRoom {
 		depth = int64(16 + (hash>>16)%5)
 	}
 
-	const margin = int64(6)
-
 	quadrant := (hash >> 24) % 4
 
-	x0 := margin
-	z0 := margin
+	x0 := featureRoomMargin
+	z0 := featureRoomMargin
 
 	if quadrant == 1 || quadrant == 3 {
-		x0 = zoneSize - margin - width
+		x0 = zoneSize - featureRoomMargin - width
 	}
 
 	if quadrant >= 2 {
-		z0 = zoneSize - margin - depth
+		z0 = zoneSize - featureRoomMargin - depth
 	}
 
 	x1 := x0 + width - 1
@@ -201,7 +201,9 @@ func bathroomStructureAt(current zone, room featureRoom) (structure, bool) {
 		}
 
 		if current.localZ == front && current.localX >= room.x0+2 && current.localX <= room.x1-2 {
-			if _, door := bathroomStallDoorIndexAt(current, room, true); door {
+			_, door := bathroomStallDoorIndexAt(current, room, true)
+
+			if door {
 				return structureOpen, true
 			}
 
@@ -286,6 +288,7 @@ func renovationStructureAt(current zone, room featureRoom) (structure, bool) {
 			gapCenter := int64(8 + (hash>>12)%48)
 
 			coordinate := current.localX
+
 			if current.localX == room.x0 || current.localX == room.x1 {
 				coordinate = current.localZ
 			}
@@ -352,6 +355,7 @@ func doorGalleryStructureAt(current zone, room featureRoom) (structure, bool) {
 	index, ok := doorGalleryDoorIndex(current, room, vertical, line)
 	if ok {
 		_ = index
+
 		return structureDoorway, true
 	}
 
@@ -388,6 +392,7 @@ func doorGalleryWall(current zone, room featureRoom) (bool, int64, int64) {
 	vertical := hash&1 == 0
 
 	direction := int64(1)
+
 	if hash&(1<<8) != 0 {
 		direction = -1
 	}

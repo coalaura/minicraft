@@ -278,6 +278,7 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 		}
 
 		valid = true
+
 		if len(changedSlots) == 0 && beforeCarried.Equal(candidate.carried) {
 			return false
 		}
@@ -393,6 +394,7 @@ func applyPickup(candidate *menuCandidate, slot int, button int8) bool {
 
 		return true
 	}
+
 	if slot < 0 {
 		return true
 	}
@@ -421,6 +423,7 @@ func applyResultPickup(candidate *menuCandidate, slot int, button int8) bool {
 
 	if candidate.carried.Empty() {
 		amount := target.Count
+
 		if button == 1 {
 			amount = (amount + 1) / 2
 		}
@@ -475,7 +478,11 @@ func applyLeftPickup(candidate *menuCandidate, slot int, target *game.ItemStack)
 	}
 
 	if candidate.accepts(slot, *carried) {
-		*target, *carried = carried.Clone(), target.Clone()
+		targetClone := target.Clone()
+		carriedClone := carried.Clone()
+
+		*target = carriedClone
+		*carried = targetClone
 	}
 
 	return true
@@ -525,7 +532,11 @@ func applyRightPickup(candidate *menuCandidate, slot int, target *game.ItemStack
 	}
 
 	if candidate.accepts(slot, *carried) {
-		*target, *carried = carried.Clone(), target.Clone()
+		targetClone := target.Clone()
+		carriedClone := carried.Clone()
+
+		*target = carriedClone
+		*carried = targetClone
 	}
 
 	return true
@@ -635,7 +646,11 @@ func applySwap(candidate *menuCandidate, slot int, button int8) bool {
 		return true
 	}
 
-	*target, *other = other.Clone(), target.Clone()
+	otherClone := other.Clone()
+	targetClone := target.Clone()
+
+	*target = otherClone
+	*other = targetClone
 
 	return true
 }
@@ -644,6 +659,7 @@ func applyClone(candidate *menuCandidate, mode game.GameMode, slot int, _ int8) 
 	if mode != game.GameModeCreative {
 		return false
 	}
+
 	if slot < 0 {
 		return true
 	}
@@ -703,6 +719,7 @@ func applyThrow(candidate *menuCandidate, slot int, button int8) bool {
 
 func applyResultThrow(candidate *menuCandidate, slot int, button int8) bool {
 	amount := int32(1)
+
 	if button == 1 {
 		amount = candidate.slots[slot].Count
 	}
@@ -762,6 +779,7 @@ func applyQuickCraft(candidate *menuCandidate, mode game.GameMode, slot int, but
 		slots := append([]int(nil), candidate.menu.drag.slots...)
 
 		candidate.menu.resetDrag()
+
 		if len(slots) == 1 {
 			if dragButton == 0 || dragButton == 1 {
 				return applyPickup(candidate, slots[0], dragButton)
@@ -789,6 +807,7 @@ func applyDragDistribution(candidate *menuCandidate, slots []int, button int8) {
 		target := candidate.slot(slot)
 
 		capacity := candidate.stackLimit(slot, original)
+
 		if !target.Empty() {
 			capacity -= target.Count
 		}
@@ -805,6 +824,7 @@ func applyDragDistribution(candidate *menuCandidate, slots []int, button int8) {
 		}
 
 		amount = min(amount, capacity)
+
 		if button != 2 {
 			amount = min(amount, remaining)
 		}
@@ -842,6 +862,7 @@ func applyPickupAll(candidate *menuCandidate, slot int, button int8) bool {
 	first := 0
 	last := len(candidate.slots)
 	step := 1
+
 	if button == 1 {
 		first = len(candidate.slots) - 1
 		last = -1
@@ -974,7 +995,12 @@ func (s *Session) handleSwapWithOffhand() {
 		}
 
 		before = player.Inventory.Clone()
-		*held, player.Inventory.Offhand = player.Inventory.Offhand.Clone(), held.Clone()
+
+		heldClone := held.Clone()
+		offhandClone := player.Inventory.Offhand.Clone()
+
+		*held = offhandClone
+		player.Inventory.Offhand = heldClone
 
 		return true
 	})
@@ -1066,6 +1092,7 @@ func (s *Session) synchronizePlayerInventoryMutationSlot(before game.PlayerInven
 
 	if preferredPlayerSlot != nil && len(changedSlots) == 1 {
 		menuSlot := noMenuSlot
+
 		for slot, definition := range currentMenu.slots {
 			if definition.hasPlayerSlot && definition.playerSlot == *preferredPlayerSlot {
 				menuSlot = slot

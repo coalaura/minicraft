@@ -59,11 +59,15 @@ func TestBaselineMiningSpeeds(t *testing.T) {
 
 	player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemWoodenShovel, Count: 1}
 
-	if got, want := destroyProgress(player, stone), 1/hardness/100; math.Abs(got-want) > 1e-9 {
+	got := destroyProgress(player, stone)
+	want := 1 / hardness / 100
+
+	if math.Abs(got-want) > 1e-9 {
 		t.Fatalf("incorrect-tool progress = %.12f, want %.12f", got, want)
 	}
 
-	if got := destroyProgress(player, game.Bedrock); got != 0 {
+	got = destroyProgress(player, game.Bedrock)
+	if got != 0 {
 		t.Fatalf("bedrock destroy progress = %f, want 0", got)
 	}
 
@@ -96,7 +100,8 @@ func TestSurvivalMiningStopAndDelayedCompletion(t *testing.T) {
 	startMining(t, actor, position, 1)
 	stopMining(t, actor, position, 2)
 
-	if block := world.BlockAt(position); block != game.Stone {
+	block := world.BlockAt(position)
+	if block != game.Stone {
 		t.Fatalf("block after early stop = %d, want stone", block)
 	}
 
@@ -104,7 +109,8 @@ func TestSurvivalMiningStopAndDelayedCompletion(t *testing.T) {
 		runtime.Tick()
 	}
 
-	if block := world.BlockAt(position); block != game.Air {
+	block = world.BlockAt(position)
+	if block != game.Air {
 		t.Fatalf("block after delayed completion = %d, want air", block)
 	}
 }
@@ -126,7 +132,8 @@ func TestSurvivalMiningAbortAndTargetInvalidation(t *testing.T) {
 		runtime.Tick()
 	}
 
-	if block := world.BlockAt(position); block != game.Stone {
+	block := world.BlockAt(position)
+	if block != game.Stone {
 		t.Fatalf("block after abort = %d, want stone", block)
 	}
 
@@ -358,7 +365,8 @@ func TestNetheritePickaxeMinesAndDropsStoneBricks(t *testing.T) {
 
 	stopMining(t, handActor, position, 2)
 
-	if block := handWorld.BlockAt(position); block != game.StoneBricks {
+	block := handWorld.BlockAt(position)
+	if block != game.StoneBricks {
 		t.Fatalf("hand mined stone bricks in four mining units")
 	}
 
@@ -376,7 +384,8 @@ func TestNetheritePickaxeMinesAndDropsStoneBricks(t *testing.T) {
 
 	stopMining(t, actor, position, 4)
 
-	if block := world.BlockAt(position); block != game.Air {
+	block = world.BlockAt(position)
+	if block != game.Air {
 		t.Fatalf("block after four mining units = %d, want air", block)
 	}
 
@@ -495,15 +504,18 @@ func assertMiningCrack(t *testing.T, packet protocol.Packet, entityID int32, pos
 
 	reader := protocol.NewPacketReader(packet.Data)
 
-	if got := reader.VarInt(); got != entityID {
+	got := reader.VarInt()
+	if got != entityID {
 		t.Fatalf("breaker entity id = %d, want %d", got, entityID)
 	}
 
-	if got := reader.BlockPosition(); got != position {
-		t.Fatalf("crack position = %+v, want %+v", got, position)
+	actualPosition := reader.BlockPosition()
+	if actualPosition != position {
+		t.Fatalf("crack position = %+v, want %+v", actualPosition, position)
 	}
 
-	if got := int8(reader.Byte()); got != stage {
-		t.Fatalf("crack stage = %d, want %d", got, stage)
+	actualStage := int8(reader.Byte())
+	if actualStage != stage {
+		t.Fatalf("crack stage = %d, want %d", actualStage, stage)
 	}
 }

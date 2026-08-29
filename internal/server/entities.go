@@ -178,6 +178,7 @@ func (entity *runtimeItemEntity) AddEntityPacket(snapshot runtimeEntitySpawnSnap
 
 func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	entity.State.mu.Lock()
+
 	if entity.State.Removed {
 		entity.State.mu.Unlock()
 
@@ -185,6 +186,7 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	}
 
 	entity.TickCount++
+
 	if entity.PickupDelay > 0 && entity.PickupDelay != 32767 {
 		entity.PickupDelay--
 	}
@@ -232,6 +234,7 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		}
 
 		horizontalDrag := float32(0.98)
+
 		if entity.OnGround {
 			horizontalDrag *= runtime.blockFrictionBelow(entity.State.Position)
 		}
@@ -248,6 +251,7 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	movedBlock := itemEntityBlockPosition(previous) != itemEntityBlockPosition(entity.State.Position)
 
 	mergeRate := int32(40)
+
 	if movedBlock {
 		mergeRate = 2
 	}
@@ -256,11 +260,13 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	entity.State.mu.Unlock()
 
 	runtime.runtimeEntityMoved(entity, previous)
+
 	if shouldMerge && runtime.mergeItemEntity(entity) {
 		return
 	}
 
 	entity.State.mu.Lock()
+
 	if entity.Age != -32768 {
 		entity.Age++
 	}
@@ -355,6 +361,7 @@ func (r *Runtime) spawnPlayerDroppedItem(player game.Player, stack game.ItemStac
 	}
 
 	entity := r.SpawnItemEntity(stack, position, velocity, 40)
+
 	if thrownFromHand {
 		entity.ThrowerUUID = player.UUID
 	}
@@ -688,6 +695,7 @@ func (s *Session) clearTrackedEntities() {
 
 func (r *Runtime) pickUpItemEntity(entity *runtimeItemEntity) bool {
 	entity.State.mu.RLock()
+
 	if entity.PickupDelay != 0 {
 		entity.State.mu.RUnlock()
 
@@ -741,6 +749,7 @@ func (r *Runtime) pickUpItemEntity(entity *runtimeItemEntity) bool {
 		originalCount := originalStack.Count
 
 		entity.State.mu.Lock()
+
 		if entity.State.Removed || !entity.Stack.Equal(originalStack) {
 			entity.State.mu.Unlock()
 
@@ -786,6 +795,7 @@ func (r *Runtime) synchronizeDirtyRuntimeEntityMetadata(entity RuntimeEntityMeta
 	state := stateful.RuntimeEntityState()
 
 	state.mu.Lock()
+
 	if !state.metadataDirty || state.Removed {
 		state.mu.Unlock()
 
@@ -898,7 +908,9 @@ func mergeItemEntities(entity, other *runtimeItemEntity) (bool, *runtimeItemEnti
 	second := other
 
 	if first.State.ID > second.State.ID {
-		first, second = second, first
+		swap := first
+		first = second
+		second = swap
 	}
 
 	first.State.mu.Lock()
@@ -982,13 +994,16 @@ func (r *Runtime) itemVelocityTowardsClosestSpace(position game.Position, veloci
 
 	closest := math.MaxFloat64
 	closestDirection := directions[len(directions)-1]
+
 	for _, direction := range directions {
 		neighbor := game.BlockPosition{X: block.X + direction.X, Y: block.Y + direction.Y, Z: block.Z + direction.Z}
+
 		if blockCollisionShapeFull(r.World.BlockAt(neighbor), neighbor) {
 			continue
 		}
 
 		distance := direction.AxisPosition
+
 		if direction.Positive {
 			distance = 1 - distance
 		}
@@ -1004,6 +1019,7 @@ func (r *Runtime) itemVelocityTowardsClosestSpace(position game.Position, veloci
 	velocity.Z *= 0.75
 
 	speed := float64(r.nextEntityRandom()*float32(0.2) + float32(0.1))
+
 	if !closestDirection.Positive {
 		speed = -speed
 	}

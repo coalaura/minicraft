@@ -143,6 +143,7 @@ func (entity *BlockEntity) Inventory() ([]ItemStack, bool) {
 
 func (entity BlockEntity) Clone() BlockEntity {
 	clone := entity
+
 	if entity.Data != nil {
 		clone.Data = entity.Data.CloneBlockEntityData()
 	}

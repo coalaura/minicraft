@@ -221,7 +221,8 @@ func TestFurnaceFamilyPlacementAndInteraction(t *testing.T) {
 				t.Fatalf("opened menu = backing %T, type %d", current.backing, current.protocolMenuType)
 			}
 
-			if got := countPacketID(connection.packets(t), protocol.ClientboundContainerSetDataID); got != 4 {
+			got := countPacketID(connection.packets(t), protocol.ClientboundContainerSetDataID)
+			if got != 4 {
 				t.Fatalf("initial furnace data packets = %d, want 4", got)
 			}
 		})
@@ -280,10 +281,12 @@ func TestMultipleFurnaceViewersShareStateWithIndependentMenus(t *testing.T) {
 
 	runtime.Tick()
 
-	for name, viewer := range map[string]furnaceViewerTestCase{
+	furnaceViewers := map[string]furnaceViewerTestCase{
 		"first":  {session: first, connection: firstConnection},
 		"second": {session: second, connection: secondConnection},
-	} {
+	}
+
+	for name, viewer := range furnaceViewers {
 		packets := viewer.connection.packets(t)
 		if countPacketID(packets, protocol.ClientboundContainerSetContentID) != 1 || countPacketID(packets, protocol.ClientboundContainerSetDataID) == 0 {
 			t.Fatalf("%s viewer packets = %v", name, viewer.connection.packetIDs(t))
@@ -366,7 +369,9 @@ func TestFurnaceInputClickImmediatelySynchronizesChangedData(t *testing.T) {
 		t.Fatalf("cooking data after input click = progress %d, total %d", currentData.CookingProgress, currentData.CookingTotalTime)
 	}
 
-	for name, connection := range map[string]*recordingConnection{"first": firstConnection, "second": secondConnection} {
+	viewerConnections := map[string]*recordingConnection{"first": firstConnection, "second": secondConnection}
+
+	for name, connection := range viewerConnections {
 		packets := connection.packets(t)
 		if countPacketID(packets, protocol.ClientboundContainerSetContentID) != 1 || countPacketID(packets, protocol.ClientboundContainerSetDataID) != 2 {
 			t.Fatalf("%s viewer packets = %v", name, connection.packetIDs(t))
@@ -396,6 +401,7 @@ func TestFurnaceMenuRestrictionsQuickMoveAndDataSynchronization(t *testing.T) {
 	}
 
 	candidate.slots[furnaceFuelSlot] = game.ItemStack{Item: game.ItemBucket, Count: 1}
+
 	if candidate.accepts(furnaceFuelSlot, game.ItemStack{Item: game.ItemBucket, Count: 1}) {
 		t.Fatal("bucket exception allowed stacking buckets")
 	}
@@ -425,11 +431,13 @@ func TestFurnaceMenuRestrictionsQuickMoveAndDataSynchronization(t *testing.T) {
 	current.protocolMenuType = protocol.MenuFurnace
 	session.containerMenu = current
 
-	if err := session.sendChangedMenuData(current, true); err != nil {
+	err := session.sendChangedMenuData(current, true)
+	if err != nil {
 		t.Fatalf("initial data synchronization: %v", err)
 	}
 
-	if got := countPacketID(connection.packets(t), protocol.ClientboundContainerSetDataID); got != 4 {
+	got := countPacketID(connection.packets(t), protocol.ClientboundContainerSetDataID)
+	if got != 4 {
 		t.Fatalf("initial data packets = %d, want 4", got)
 	}
 
@@ -437,11 +445,13 @@ func TestFurnaceMenuRestrictionsQuickMoveAndDataSynchronization(t *testing.T) {
 
 	data.CookingProgress = 1
 
-	if err := session.sendChangedMenuData(current, false); err != nil {
+	err = session.sendChangedMenuData(current, false)
+	if err != nil {
 		t.Fatalf("changed data synchronization: %v", err)
 	}
 
-	if got := countPacketID(connection.packets(t), protocol.ClientboundContainerSetDataID); got != 1 {
+	got = countPacketID(connection.packets(t), protocol.ClientboundContainerSetDataID)
+	if got != 1 {
 		t.Fatalf("changed data packets = %d, want 1", got)
 	}
 }

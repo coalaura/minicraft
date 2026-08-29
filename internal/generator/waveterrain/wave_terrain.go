@@ -89,6 +89,7 @@ func (generated *generatedChunk) GenerateSection(sectionMinY int32, blocks *[gam
 		for localZ := range int32(game.ChunkWidth) {
 			for localX := range int32(game.ChunkWidth) {
 				index := localY*256 + localZ*16 + localX
+
 				if worldY <= generated.heights[localZ*game.ChunkWidth+localX] {
 					blocks[index] = game.Stone
 				} else {

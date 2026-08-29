@@ -128,7 +128,9 @@ func (r *Runtime) breakChanges(position game.BlockPosition) []game.BlockChange {
 		other.Y++
 	}
 
-	if otherBlock := r.World.BlockAt(other); isTwoBlockDoor(otherBlock) && sameBlockType(block, otherBlock) && blockProperty(block, "half") != blockProperty(otherBlock, "half") {
+	otherBlock := r.World.BlockAt(other)
+
+	if isTwoBlockDoor(otherBlock) && sameBlockType(block, otherBlock) && blockProperty(block, "half") != blockProperty(otherBlock, "half") {
 		changes = append(changes, game.BlockChange{Position: other, Replacement: game.Air})
 	}
 
@@ -155,6 +157,7 @@ func (r *Runtime) withAuthoritativeDoorChanges(primary []game.BlockChange) []gam
 		}
 
 		otherPosition := change.Position
+
 		if blockProperty(current, "half") == "upper" {
 			if otherPosition.Y == math.MinInt32 {
 				continue
@@ -303,8 +306,11 @@ func appendStructuralPosition(positions []game.BlockPosition, seen map[game.Bloc
 }
 
 func recalculateStructuralBlock(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) game.Block {
-	if _, hasSnowy := block.Property("snowy"); hasSnowy {
+	_, hasSnowy := block.Property("snowy")
+
+	if hasSnowy {
 		snowy := false
+
 		if position.Y < math.MaxInt32 {
 			above := position
 
@@ -371,7 +377,9 @@ func recalculateChest(blockAt func(game.BlockPosition) game.Block, position game
 			return withBlockProperties(block, game.BlockPropertyValue{Name: "type", Value: "single"})
 		}
 
-		if _, _, copper := copperChestProperties(block); copper {
+		_, _, copper := copperChestProperties(block)
+
+		if copper {
 			normalized, _ := normalizedCopperChestBlock(block, neighbor)
 
 			return copyChestProperties(normalized, block)
@@ -394,7 +402,10 @@ func recalculateChest(blockAt func(game.BlockPosition) game.Block, position game
 		}
 
 		replacement := withBlockProperties(block, game.BlockPropertyValue{Name: "type", Value: oppositeChestType(neighborType)})
-		if _, _, copper := copperChestProperties(block); copper {
+
+		_, _, copper := copperChestProperties(block)
+
+		if copper {
 			normalized, _ := normalizedCopperChestBlock(block, neighbor)
 
 			return copyChestProperties(normalized, replacement)

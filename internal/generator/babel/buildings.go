@@ -17,6 +17,7 @@ func towerBlock(worldY int32, localX, localZ int64, lot lotDescription) game.Blo
 
 	if relativeY == firstSetback || relativeY == secondSetback {
 		previousInset := inset
+
 		if relativeY == firstSetback {
 			previousInset = lot.baseInset
 		} else {
@@ -106,6 +107,7 @@ func towerFacadeBlock(relativeY int32, localX, localZ, inset int64, lot lotDescr
 	}
 
 	panelCoordinate := localX
+
 	if localX == inset || localX == lotScale-1-inset {
 		panelCoordinate = localZ
 	}
@@ -141,8 +143,9 @@ func courtyardBlock(worldY int32, localX, localZ int64, lot lotDescription) game
 	insideInner := insideRect(localX, localZ, innerInset)
 
 	if insideInner {
-		if block := courtyardGardenBlock(relativeY, localX, localZ, lot); block != game.Air {
-			return block
+		gardenBlock := courtyardGardenBlock(relativeY, localX, localZ, lot)
+		if gardenBlock != game.Air {
+			return gardenBlock
 		}
 
 		bridgeLevel := int32(lot.floorHeight*4 + 1)
@@ -286,6 +289,7 @@ func describeLot(seed int64, cellX, cellZ int64) lotDescription {
 	districtHash := hashCoordinates(seed, districtX, districtZ, 0x94d049bb133111eb)
 
 	kind := lotTower
+
 	switch lotHash % 11 {
 	case 0:
 		kind = lotPlaza
@@ -297,9 +301,11 @@ func describeLot(seed int64, cellX, cellZ int64) lotDescription {
 	floorHeight := int32(5 + (lotHash>>20)&1)
 
 	height := int32(72 + (lotHash>>24)%92 + (districtHash>>12)%28)
+
 	if kind == lotCourtyard {
 		height = int32(48 + (lotHash>>24)%54 + (districtHash>>12)%18)
 	}
+
 	if height > 178 {
 		height = 178
 	}

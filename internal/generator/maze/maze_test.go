@@ -18,21 +18,28 @@ func TestGeneratorIsRegistered(t *testing.T) {
 	}
 }
 
+var spawnSeeds = []int64{-123456789, -1, 0, 1, 123456789}
+
+var layoutSeeds = []int64{-17, 0, 1, 42, 999999}
+
 func TestSpawnIsOpenAndSupported(t *testing.T) {
 	generated := Generator{}
 
-	for _, seed := range []int64{-123456789, -1, 0, 1, 123456789} {
+	for _, seed := range spawnSeeds {
 		spawn := generated.Spawn(seed)
 
 		position := game.BlockPosition{X: int32(spawn.X), Y: int32(spawn.Y), Z: int32(spawn.Z)}
 
-		if block := generated.BlockAt(seed, position); block != game.Air {
-			t.Fatalf("seed %d spawn block = %d, want air", seed, block)
+		spawnBlock := generated.BlockAt(seed, position)
+		if spawnBlock != game.Air {
+			t.Fatalf("seed %d spawn block = %d, want air", seed, spawnBlock)
 		}
 
 		position.Y--
-		if block := generated.BlockAt(seed, position); block != game.SmoothStone {
-			t.Fatalf("seed %d block below spawn = %d, want smooth stone", seed, block)
+
+		belowSpawnBlock := generated.BlockAt(seed, position)
+		if belowSpawnBlock != game.SmoothStone {
+			t.Fatalf("seed %d block below spawn = %d, want smooth stone", seed, belowSpawnBlock)
 		}
 	}
 }
@@ -40,7 +47,7 @@ func TestSpawnIsOpenAndSupported(t *testing.T) {
 func TestEveryCellHasExactlyOnePreferredExit(t *testing.T) {
 	generated := Generator{}
 
-	for _, seed := range []int64{-17, 0, 1, 42, 999999} {
+	for _, seed := range layoutSeeds {
 		mazeOrientation := orientationForSeed(seed)
 
 		for cellZ := int32(-8); cellZ <= 8; cellZ++ {
@@ -66,7 +73,7 @@ func TestWalkwaysAreTwoBlocksWide(t *testing.T) {
 		t.Fatalf("walkway width = %d, want 2", walkwayWidth)
 	}
 
-	for _, seed := range []int64{-17, 0, 1, 42, 999999} {
+	for _, seed := range layoutSeeds {
 		for cellZ := int32(-8); cellZ <= 8; cellZ++ {
 			for cellX := int32(-8); cellX <= 8; cellX++ {
 				cellMinX := cellX * cellSize
@@ -80,8 +87,9 @@ func TestWalkwaysAreTwoBlocksWide(t *testing.T) {
 							Z: cellMinZ + offsetZ,
 						}
 
-						if block := generated.BlockAt(seed, position); block != game.Air {
-							t.Fatalf("seed %d cell (%d,%d) walkway block %+v = %d, want air", seed, cellX, cellZ, position, block)
+						walkwayBlock := generated.BlockAt(seed, position)
+						if walkwayBlock != game.Air {
+							t.Fatalf("seed %d cell (%d,%d) walkway block %+v = %d, want air", seed, cellX, cellZ, position, walkwayBlock)
 						}
 					}
 				}
@@ -102,14 +110,18 @@ func TestMazeWallsAreFourBlocksHigh(t *testing.T) {
 
 	for offset := range wallHeight {
 		wall.Y = wallMinY + int32(offset)
-		if block := generated.BlockAt(seed, wall); block != game.StoneBricks {
-			t.Fatalf("wall at y=%d = %d, want stone bricks", wall.Y, block)
+
+		wallBlock := generated.BlockAt(seed, wall)
+		if wallBlock != game.StoneBricks {
+			t.Fatalf("wall at y=%d = %d, want stone bricks", wall.Y, wallBlock)
 		}
 	}
 
 	wall.Y = wallMinY + wallHeight
-	if block := generated.BlockAt(seed, wall); block != game.Air {
-		t.Fatalf("block above wall = %d, want air", block)
+
+	aboveWallBlock := generated.BlockAt(seed, wall)
+	if aboveWallBlock != game.Air {
+		t.Fatalf("block above wall = %d, want air", aboveWallBlock)
 	}
 }
 
@@ -120,6 +132,7 @@ func TestDifferentSeedsChangeLayout(t *testing.T) {
 		for worldX := int32(-32); worldX <= 32; worldX++ {
 			if isWall(0, worldX, worldZ) != isWall(1, worldX, worldZ) {
 				changed = true
+
 				break
 			}
 		}
@@ -153,6 +166,7 @@ func TestGenerateSectionMatchesBlockAt(t *testing.T) {
 
 							want := generated.BlockAt(seed, position)
 							got := uniformBlock
+
 							if !uniform {
 								got = blocks[localY*256+localZ*16+localX]
 							}

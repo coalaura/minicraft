@@ -50,7 +50,9 @@ func TestBlockPlacementRuleFamilies(t *testing.T) {
 }
 
 func TestUnsupportedBlockEntityPlacementFamiliesRemainExcluded(t *testing.T) {
-	for _, name := range []string{"white_bed", "oak_sign", "white_banner", "white_shulker_box", "decorated_pot", "oak_shelf", "suspicious_sand"} {
+	unsupportedBlocks := []string{"white_bed", "oak_sign", "white_banner", "white_shulker_box", "decorated_pot", "oak_shelf", "suspicious_sand"}
+
+	for _, name := range unsupportedBlocks {
 		block := BlockDefinition{Name: name, DefaultState: 1, BoundingBox: "block"}
 
 		rule := blockPlacementRule(block)

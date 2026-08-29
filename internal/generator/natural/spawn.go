@@ -6,17 +6,19 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
-func (Generator) Spawn(seed int64) game.Position {
-	const searchRadius = int32(192)
+const spawnSearchRadius = int32(192)
 
+func (Generator) Spawn(seed int64) game.Position {
 	bestX := int32(0)
 	bestZ := int32(0)
 
 	bestScore := math.MaxFloat64
 
-	for radius := int32(0); radius <= searchRadius; radius += 8 {
+	for radius := int32(0); radius <= spawnSearchRadius; radius += 8 {
+		edges := []int32{-radius, radius}
+
 		for z := -radius; z <= radius; z += 8 {
-			for _, x := range []int32{-radius, radius} {
+			for _, x := range edges {
 				spawnScore := scoreSpawn(seed, x, z)
 				if spawnScore < bestScore {
 					bestX = x
@@ -27,7 +29,7 @@ func (Generator) Spawn(seed int64) game.Position {
 		}
 
 		for x := -radius + 8; x < radius; x += 8 {
-			for _, z := range []int32{-radius, radius} {
+			for _, z := range edges {
 				spawnScore := scoreSpawn(seed, x, z)
 				if spawnScore < bestScore {
 					bestX = x

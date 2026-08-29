@@ -90,15 +90,18 @@ func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 		return block
 	}
 
-	if feature, ok := treeFeatureAt(seed, position); ok {
+	feature, ok := treeFeatureAt(seed, position)
+	if ok {
 		return feature
 	}
 
-	if feature, ok := cactusFeatureAt(seed, position, terrain); ok {
+	feature, ok = cactusFeatureAt(seed, position, terrain)
+	if ok {
 		return feature
 	}
 
-	if feature, ok := surfaceDecorationAt(seed, position, terrain); ok {
+	feature, ok = surfaceDecorationAt(seed, position, terrain)
+	if ok {
 		return feature
 	}
 

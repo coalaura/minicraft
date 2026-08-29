@@ -41,11 +41,12 @@ func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 }
 
 func blockAtLayerColumn(seed, worldX, worldY, worldZ int64, current zone, blocks paletteBlocks, profile structure) game.Block {
-	if block, handled := grandAtriumBlockAt(seed, worldX, worldY, worldZ, current); handled {
+	block, handled := grandAtriumBlockAt(seed, worldX, worldY, worldZ, current)
+	if handled {
 		return block
 	}
 
-	block, handled := layerConnectorBlockAt(seed, worldX, worldY, worldZ, current)
+	block, handled = layerConnectorBlockAt(seed, worldX, worldY, worldZ, current)
 	if handled {
 		return block
 	}

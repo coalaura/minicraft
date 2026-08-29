@@ -62,7 +62,8 @@ func TestBlockStatePropertyResolution(t *testing.T) {
 		t.Fatalf("last redstone wire state = %d, %v; want %d, true", last, ok, wire.MaxState)
 	}
 
-	if _, ok = wire.StateForProperties(3, 0, 0, 0, 0); ok {
+	_, ok = wire.StateForProperties(3, 0, 0, 0, 0)
+	if ok {
 		t.Fatal("out-of-range property index succeeded")
 	}
 }
@@ -78,7 +79,9 @@ func TestBlockStatePropertiesCanBeReadAndChanged(t *testing.T) {
 		t.Fatal("resolve oak stair properties")
 	}
 
-	for property, want := range map[string]string{"facing": "east", "half": "top", "shape": "inner_left", "waterlogged": "false"} {
+	stairsProperties := map[string]string{"facing": "east", "half": "top", "shape": "inner_left", "waterlogged": "false"}
+
+	for property, want := range stairsProperties {
 		actual, found := state.Property(property)
 		if !found || actual != want {
 			t.Errorf("property %s = %q, %v; want %q, true", property, actual, found, want)
@@ -97,7 +100,8 @@ func TestBlockStatePropertiesCanBeReadAndChanged(t *testing.T) {
 	}
 
 	for _, values := range invalid {
-		if _, valid := state.WithProperties(values...); valid {
+		_, valid := state.WithProperties(values...)
+		if valid {
 			t.Errorf("invalid values resolved: %+v", values)
 		}
 	}

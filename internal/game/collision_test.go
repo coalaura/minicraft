@@ -69,15 +69,18 @@ func TestSlabCollisionUsesResolvedState(t *testing.T) {
 		t.Fatal("resolve double slab")
 	}
 
-	if box := bottom.CollisionBoxes(BlockPosition{})[0]; box.MinY != 0 || box.MaxY != 0.5 {
+	box := bottom.CollisionBoxes(BlockPosition{})[0]
+	if box.MinY != 0 || box.MaxY != 0.5 {
 		t.Fatalf("bottom slab box = %+v", box)
 	}
 
-	if box := top.CollisionBoxes(BlockPosition{})[0]; box.MinY != 0.5 || box.MaxY != 1 {
+	box = top.CollisionBoxes(BlockPosition{})[0]
+	if box.MinY != 0.5 || box.MaxY != 1 {
 		t.Fatalf("top slab box = %+v", box)
 	}
 
-	if box := double.CollisionBoxes(BlockPosition{})[0]; box.MinY != 0 || box.MaxY != 1 {
+	box = double.CollisionBoxes(BlockPosition{})[0]
+	if box.MinY != 0 || box.MaxY != 1 {
 		t.Fatalf("double slab box = %+v", box)
 	}
 }

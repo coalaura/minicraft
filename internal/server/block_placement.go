@@ -230,41 +230,55 @@ func (r *Runtime) placeItem(session *Session, interaction protocol.UseItemOn, it
 		}
 
 		if rule == game.ItemPlacementSlab {
-			if replacement, merge := slabMerge(base, clicked, interaction.Face, interaction.CursorY); merge {
+			replacement, merge := slabMerge(base, clicked, interaction.Face, interaction.CursorY)
+
+			if merge {
 				changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
 				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
 				consumed = r.consumePlacedItemLocked(session, interaction.Hand, item, result, consumeHeldItem)
+
 				return result, []game.BlockPosition{interaction.Position}, delivery, err
 			}
 
-			if replacement, merge := slabMerge(base, r.World.BlockAt(adjacent), oppositeBlockFace(interaction.Face), interaction.CursorY); merge {
+			replacement, merge = slabMerge(base, r.World.BlockAt(adjacent), oppositeBlockFace(interaction.Face), interaction.CursorY)
+
+			if merge {
 				changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: adjacent, Replacement: replacement}})
 
 				result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
 				consumed = r.consumePlacedItemLocked(session, interaction.Hand, item, result, consumeHeldItem)
+
 				return result, []game.BlockPosition{adjacent}, delivery, err
 			}
 		}
 
-		if replacement, convert := candleCakePlacement(base, rule, clicked, interaction.Face); convert {
+		replacement, convert := candleCakePlacement(base, rule, clicked, interaction.Face)
+
+		if convert {
 			changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
 			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
 			consumed = r.consumePlacedItemLocked(session, interaction.Hand, item, result, consumeHeldItem)
+
 			return result, []game.BlockPosition{interaction.Position}, delivery, err
 		}
 
 		canStack := rule != game.ItemPlacementCandle || !secondaryUseActive(session.snapshotPlayer())
-		if replacement, stack := stackedPlacement(base, rule, clicked, interaction.Face); canStack && stack {
+
+		replacement, stack := stackedPlacement(base, rule, clicked, interaction.Face)
+
+		if canStack && stack {
 			changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: replacement}})
 
 			result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, 1, true, true, false, true)
 			consumed = r.consumePlacedItemLocked(session, interaction.Hand, item, result, consumeHeldItem)
+
 			return result, []game.BlockPosition{interaction.Position}, delivery, err
 		}
 
 		target := adjacent
+
 		if blockReplaceableBy(clicked, base) {
 			target = interaction.Position
 		}
@@ -276,6 +290,7 @@ func (r *Runtime) placeItem(session *Session, interaction protocol.UseItemOn, it
 		player := session.snapshotPlayer()
 
 		state, valid := placementStateWithRotation(base, rule, interaction, player.Rotation)
+
 		if rule == game.ItemPlacementChest {
 			state, valid = chestPlacementState(r.World.BlockAt, target, base, interaction, player)
 		}
@@ -331,6 +346,7 @@ func (r *Runtime) placeItem(session *Session, interaction protocol.UseItemOn, it
 
 		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationPlace, changes, requiredChanges, true, true, false, true)
 		consumed = r.consumePlacedItemLocked(session, interaction.Hand, item, result, consumeHeldItem)
+
 		return result, affected, delivery, err
 	}()
 
@@ -362,6 +378,7 @@ func (r *Runtime) consumePlacedItemLocked(session *Session, hand int32, item gam
 		}
 
 		stack.Count--
+
 		if stack.Count == 0 {
 			*stack = game.ItemStack{}
 		}
@@ -459,7 +476,10 @@ func placementStateWithRotation(base game.Block, rule game.ItemPlacementRule, in
 		)
 	case game.ItemPlacementTrapdoor:
 		trapdoorFacing := facing.opposite()
-		if clickedDirection, ok := blockFaceDirection(interaction.Face); ok {
+
+		clickedDirection, ok := blockFaceDirection(interaction.Face)
+
+		if ok {
 			trapdoorFacing = clickedDirection
 		}
 
@@ -529,6 +549,7 @@ func placementStateWithRotation(base game.Block, rule game.ItemPlacementRule, in
 		)
 	case game.ItemPlacementPointedDripstone:
 		direction := ""
+
 		if interaction.Face == protocol.BlockFaceUp {
 			direction = "up"
 		}
@@ -571,6 +592,7 @@ func chestPlacementState(blockAt func(game.BlockPosition) game.Block, position g
 				connectedPartner = partner
 
 				chestType = "left"
+
 				if facing.left() == partnerDirection {
 					chestType = "right"
 				}
@@ -788,11 +810,13 @@ func doorHinge(blockAt func(game.BlockPosition) game.Block, position game.BlockP
 	}
 
 	leftDoor := game.Air
+
 	if leftValid {
 		leftDoor = blockAt(leftPosition)
 	}
 
 	rightDoor := game.Air
+
 	if rightValid {
 		rightDoor = blockAt(rightPosition)
 	}
@@ -863,6 +887,7 @@ func (s *Session) resynchronizeBlocks(positions []game.BlockPosition, sequence i
 	states := make([]int32, len(positions))
 
 	s.Runtime.worldMutationMu.Lock()
+
 	for index, position := range positions {
 		state, err := protocolBlockState(s.Runtime.World.BlockAt(position))
 		if err != nil {

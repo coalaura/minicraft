@@ -302,6 +302,7 @@ func generateLightingBlocks(world *game.World, targetX, targetZ int32, buffer *l
 
 							sectionOffset := localY*256 + localZ*16 + localX
 							block := uniformBlock
+
 							if !uniform {
 								block = generated[sectionOffset]
 							}
@@ -628,6 +629,7 @@ func (buffer *lightingBuffer) enqueue(index int) {
 	buffer.queue[buffer.queueTail] = int32(index)
 
 	buffer.queueTail++
+
 	if buffer.queueTail == len(buffer.queue) {
 		buffer.queueTail = 0
 	}
@@ -639,6 +641,7 @@ func (buffer *lightingBuffer) dequeue() int {
 	index := int(buffer.queue[buffer.queueHead])
 
 	buffer.queueHead++
+
 	if buffer.queueHead == len(buffer.queue) {
 		buffer.queueHead = 0
 	}

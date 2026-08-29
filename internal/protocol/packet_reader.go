@@ -203,6 +203,7 @@ func (r *PacketReader) BytesMax(max int) []byte {
 	}
 
 	length := r.VarInt()
+
 	if r.err != nil {
 		return nil
 	}

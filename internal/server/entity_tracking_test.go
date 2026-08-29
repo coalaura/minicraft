@@ -158,20 +158,24 @@ func TestProtocolPositionDeltaUsesAbsoluteRounding(t *testing.T) {
 		t.Fatalf("rounded delta = (%d, %t), want (1, true)", delta, valid)
 	}
 
-	for _, position := range []float64{
+	inRangePositions := []float64{
 		32767.49 / entityPositionScale,
 		-32768.49 / entityPositionScale,
-	} {
+	}
+
+	for _, position := range inRangePositions {
 		_, valid = protocolPositionDelta(0, position)
 		if !valid {
 			t.Fatalf("in-range position %v did not fit", position)
 		}
 	}
 
-	for _, position := range []float64{
+	outOfRangePositions := []float64{
 		32767.5 / entityPositionScale,
 		-32768.5 / entityPositionScale,
-	} {
+	}
+
+	for _, position := range outOfRangePositions {
 		delta, valid = protocolPositionDelta(0, position)
 		if valid || delta != 0 {
 			t.Fatalf("out-of-range position %v = (%d, %t), want (0, false)", position, delta, valid)
@@ -391,7 +395,8 @@ func TestItemLandingForcesImmediateSynchronization(t *testing.T) {
 	for tick := 2; tick <= 12; tick++ {
 		runtime.Tick()
 
-		if packets := connection.packetIDs(t); len(packets) != 0 {
+		packets := connection.packetIDs(t)
+		if len(packets) != 0 {
 			t.Fatalf("ordinary air tick %d packets = %v", tick, packets)
 		}
 	}
@@ -411,7 +416,8 @@ func TestItemLandingForcesImmediateSynchronization(t *testing.T) {
 
 	runtime.Tick()
 
-	if packets := connection.packetIDs(t); len(packets) != 0 {
+	packets := connection.packetIDs(t)
+	if len(packets) != 0 {
 		t.Fatalf("settled post-landing packets = %v", packets)
 	}
 }
@@ -430,6 +436,7 @@ func TestCollisionAxisOrderMatchesVanilla(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			barrier := zBarrier
+
 			if math.Abs(test.movement.X) >= math.Abs(test.movement.Z) {
 				barrier = xBarrier
 			}

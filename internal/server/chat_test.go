@@ -51,7 +51,8 @@ func TestPlayerChatBroadcastsGlobally(t *testing.T) {
 	assertSystemMessages(t, senderConnection, "[Laura] hello")
 	assertSystemMessages(t, recipientConnection, "[Laura] hello")
 
-	if prints := logger.chatPrints(); len(prints) != 1 || prints[0] != "[chat] <Laura> hello\n" {
+	prints := logger.chatPrints()
+	if len(prints) != 1 || prints[0] != "[chat] <Laura> hello\n" {
 		t.Fatalf("chat prints = %q", prints)
 	}
 }

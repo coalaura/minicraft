@@ -287,7 +287,9 @@ func TestBlockMutationReleasesLocksBeforeBroadcast(t *testing.T) {
 
 	releaseWrite()
 
-	for _, result := range []chan error{firstResult, secondResult} {
+	mutationResults := []chan error{firstResult, secondResult}
+
+	for _, result := range mutationResults {
 		select {
 		case err := <-result:
 			if err != nil {

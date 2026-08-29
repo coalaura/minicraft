@@ -95,6 +95,7 @@ func clamp01(value float64) float64 {
 
 func floorDiv(value, divisor int32) int32 {
 	quotient := value / divisor
+
 	if value%divisor < 0 {
 		quotient--
 	}

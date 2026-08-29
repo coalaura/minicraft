@@ -114,16 +114,19 @@ func TestChestPlacementPairsAllOrientations(t *testing.T) {
 }
 
 func TestNormalAndTrappedChestsDoNotPair(t *testing.T) {
-	for _, test := range []chestBlockTestCase{
+	chestPairs := []chestBlockTestCase{
 		{name: "normal_next_to_trapped", block: game.TrappedChest, item: game.ItemTrappedChest},
 		{name: "trapped_next_to_normal", block: game.Chest, item: game.ItemChest},
-	} {
+	}
+
+	for _, test := range chestPairs {
 		t.Run(test.name, func(t *testing.T) {
 			support := game.BlockPosition{Y: 69}
 			target := game.BlockPosition{Y: 70}
 			partnerPosition := game.BlockPosition{X: -1, Y: 70}
 
 			partnerBlock := game.Chest
+
 			if test.block == game.Chest {
 				partnerBlock = game.TrappedChest
 			}
@@ -316,7 +319,9 @@ func TestSecondaryUseControlsChestPairing(t *testing.T) {
 
 func TestBreakingEitherChestHalfLeavesSingleSurvivor(t *testing.T) {
 	for _, chest := range chestBlocksForTest() {
-		for _, brokenType := range []string{"left", "right"} {
+		brokenTypes := []string{"left", "right"}
+
+		for _, brokenType := range brokenTypes {
 			t.Run(chest.name+"_"+brokenType, func(t *testing.T) {
 				left := game.BlockPosition{Y: 70}
 				right := game.BlockPosition{X: -1, Y: 70}
@@ -369,7 +374,9 @@ func TestChestMenusUseExpectedSizesAndDoubleStorageOrder(t *testing.T) {
 	assertChestOpenScreen(t, chestPacket(t, connection.packets(t), protocol.ClientboundOpenScreenID), protocol.MenuGeneric9x3)
 	assertMenuSnapshotHeader(t, chestPacket(t, connection.packets(t), protocol.ClientboundContainerSetContentID), 1, 0, 63)
 
-	for _, position := range []game.BlockPosition{{Y: 70}, {X: -1, Y: 70}} {
+	doubleHalves := []game.BlockPosition{{Y: 70}, {X: -1, Y: 70}}
+
+	for _, position := range doubleHalves {
 		left := game.BlockPosition{Y: 70}
 		right := game.BlockPosition{X: -1, Y: 70}
 
@@ -508,7 +515,9 @@ func TestDoubleChestQuickMoveAndSwapTransactions(t *testing.T) {
 }
 
 func TestChestOpeningIsBlockedAboveEitherHalf(t *testing.T) {
-	for _, positions := range [][]game.BlockPosition{{{Y: 70}}, {{Y: 70}, {X: -1, Y: 70}}} {
+	chestShapeVariants := [][]game.BlockPosition{{{Y: 70}}, {{Y: 70}, {X: -1, Y: 70}}}
+
+	for _, positions := range chestShapeVariants {
 		for _, blocked := range positions {
 			t.Run("blocked", func(t *testing.T) {
 				runtime, session, connection := newChestTestRuntime(t, positions...)
@@ -542,6 +551,7 @@ func TestChestOpeningIsNotBlockedByNonConductor(t *testing.T) {
 	runtime.World.SetBlock(above, game.RedstoneBlock)
 
 	openChestForTest(t, runtime, session, position)
+
 	if session.activeMenu() == session.inventoryMenu {
 		t.Fatal("redstone block incorrectly blocked chest opening")
 	}
@@ -674,7 +684,9 @@ func TestCopperChestOpenCloseSoundsUseOxidationFamily(t *testing.T) {
 }
 
 func TestChestMenuClosesWhenEitherDoubleHalfIsRemoved(t *testing.T) {
-	for _, removed := range []game.BlockPosition{{Y: 70}, {X: -1, Y: 70}} {
+	removableHalves := []game.BlockPosition{{Y: 70}, {X: -1, Y: 70}}
+
+	for _, removed := range removableHalves {
 		t.Run("removed", func(t *testing.T) {
 			left := game.BlockPosition{Y: 70}
 			right := game.BlockPosition{X: -1, Y: 70}
@@ -742,6 +754,7 @@ func normalizedCopperChestBlockForTest(first, second copperChestBlockTestCase) c
 
 func copperChestSoundForTest(chest copperChestBlockTestCase, action string) game.SoundEvent {
 	family := "copper_chest"
+
 	if chest.oxidation == 2 {
 		family = "copper_chest_weathered"
 	}
@@ -785,8 +798,10 @@ func newChestTestRuntimeForBlock(t *testing.T, block game.Block, positions ...ga
 
 	for _, position := range positions {
 		chestType := "single"
+
 		if len(positions) == 2 {
 			chestType = "left"
+
 			if position.X < positions[0].X {
 				chestType = "right"
 			}

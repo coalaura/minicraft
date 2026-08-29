@@ -41,11 +41,13 @@ func (c *packetReadTestConnection) SetWriteDeadline(time.Time) error {
 }
 
 func TestReadPacketRejectsInvalidFrameLengths(t *testing.T) {
-	for _, frame := range [][]byte{
+	invalidFrames := [][]byte{
 		{0x00},
 		{0x80, 0x80, 0x80, 0x01},
 		{0xFF, 0xFF, 0xFF, 0xFF, 0x0F},
-	} {
+	}
+
+	for _, frame := range invalidFrames {
 		connection := newPacketReadTestConnection(frame, 0)
 
 		_, err := connection.ReadPacket()
@@ -84,11 +86,13 @@ func TestReadPacketRejectsInvalidCompressionLengths(t *testing.T) {
 }
 
 func TestReadPacketRejectsMismatchedDecompressedLengths(t *testing.T) {
-	for _, frame := range [][]byte{
+	malformedFrames := [][]byte{
 		compressedTestFrame(t, 4, []byte{0x00, 1, 2}),
 		compressedTestFrame(t, 2, []byte{0x00, 1, 2}),
 		frameTestPayload(t, append(encodeTestVarInt(t, 2), 0x01, 0x02, 0x03)),
-	} {
+	}
+
+	for _, frame := range malformedFrames {
 		connection := newPacketReadTestConnection(frame, 1)
 
 		_, err := connection.ReadPacket()

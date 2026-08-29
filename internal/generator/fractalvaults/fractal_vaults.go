@@ -158,7 +158,8 @@ func wallLevel(coordinate, origin int64) int {
 
 		distance := local
 
-		if other := scale - local; other < distance {
+		other := scale - local
+		if other < distance {
 			distance = other
 		}
 

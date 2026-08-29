@@ -208,6 +208,7 @@ func isWall(seed int64, worldX, worldZ int32) bool {
 		cellZ := floorDiv(worldZ, cellSize)
 
 		var sourceX int32
+
 		if mazeOrientation.horizontal == directionEast {
 			sourceX = boundaryX - 1
 		} else {
@@ -225,6 +226,7 @@ func isWall(seed int64, worldX, worldZ int32) bool {
 	boundaryZ := floorDiv(worldZ, cellSize)
 
 	var sourceZ int32
+
 	if mazeOrientation.vertical == directionNorth {
 		sourceZ = boundaryZ
 	} else {
@@ -267,6 +269,7 @@ func mix64(value uint64) uint64 {
 
 func floorDiv(value, divisor int32) int32 {
 	quotient := value / divisor
+
 	if value%divisor < 0 {
 		quotient--
 	}
