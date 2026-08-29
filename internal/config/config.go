@@ -179,7 +179,7 @@ func (c *Config) SetDefaults() {
 	}
 
 	if c.World.Generator == "" {
-		c.World.Generator = "spawn-platform"
+		c.World.Generator = "superflat"
 	}
 
 	if c.World.Lighting == "" {

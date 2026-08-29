@@ -10,7 +10,7 @@ import (
 	"github.com/coalaura/minicraft/internal/generator/mengersponge"
 	"github.com/coalaura/minicraft/internal/generator/natural"
 	"github.com/coalaura/minicraft/internal/generator/quasicrystal"
-	"github.com/coalaura/minicraft/internal/generator/spawnplatform"
+	"github.com/coalaura/minicraft/internal/generator/superflat"
 	"github.com/coalaura/minicraft/internal/generator/waveterrain"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
@@ -61,7 +61,7 @@ func (emissiveBenchmarkGenerator) GenerationBounds(_ int64, _ game.ChunkPosition
 
 func BenchmarkBuildLevelChunk(b *testing.B) {
 	benchmarks := []chunkBenchmarkCase{
-		{name: "spawn_platform", generator: spawnplatform.New()},
+		{name: "superflat", generator: superflat.New()},
 		{name: "natural", generator: natural.New()},
 		{name: "wave_terrain", generator: waveterrain.New()},
 		{name: "menger_sponge", generator: mengersponge.New()},

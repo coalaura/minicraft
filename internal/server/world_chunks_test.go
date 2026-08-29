@@ -8,7 +8,7 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/generator/fractalvaults"
 	"github.com/coalaura/minicraft/internal/generator/mengersponge"
-	"github.com/coalaura/minicraft/internal/generator/spawnplatform"
+	"github.com/coalaura/minicraft/internal/generator/superflat"
 	"github.com/coalaura/minicraft/internal/generator/waveterrain"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
@@ -83,7 +83,7 @@ func (generated *countingGeneratedChunk) BiomeAt(_, _, _ int32) game.Biome {
 }
 
 func TestLevelChunksQueryWorldAcrossBoundaries(t *testing.T) {
-	world := game.NewOverworld(spawnplatform.New())
+	world := game.NewOverworld(superflat.New())
 
 	right, err := buildLevelChunk(world, 0, 0)
 	if err != nil {
@@ -104,14 +104,14 @@ func TestLevelChunksQueryWorldAcrossBoundaries(t *testing.T) {
 		t.Fatal("chunk changed when generated in a different order")
 	}
 
-	assertChunkBlockState(t, left, 15, 69, 0, protocol.StoneBlockState)
-	assertChunkBlockState(t, right, 0, 69, 0, protocol.StoneBlockState)
-	assertChunkBlockState(t, right, 4, 69, 0, protocol.StoneBlockState)
-	assertChunkBlockState(t, right, 5, 69, 0, protocol.AirBlockState)
+	assertChunkBlockState(t, left, 15, 69, 0, int32(game.GrassBlock))
+	assertChunkBlockState(t, right, 0, 69, 0, int32(game.GrassBlock))
+	assertChunkBlockState(t, right, 4, 69, 0, int32(game.GrassBlock))
+	assertChunkBlockState(t, right, 5, 69, 0, int32(game.GrassBlock))
 }
 
 func TestLevelChunksIncludeWorldOverrides(t *testing.T) {
-	world := game.NewOverworld(spawnplatform.New())
+	world := game.NewOverworld(superflat.New())
 
 	world.SetBlock(game.BlockPosition{X: 0, Y: 69, Z: 0}, game.Air)
 	world.SetBlock(game.BlockPosition{X: 5, Y: 69, Z: 0}, game.Stone)
@@ -211,8 +211,8 @@ func TestNormalLightingPreparesEachContextChunkOnce(t *testing.T) {
 func TestBulkGeneratorsMatchBlockAt(t *testing.T) {
 	tests := []bulkGeneratorTestCase{
 		{
-			name:       "spawn platform",
-			generator:  spawnplatform.New(),
+			name:       "superflat",
+			generator:  superflat.New(),
 			chunks:     []game.ChunkPosition{{}, {X: -1}, {X: 2, Z: 2}},
 			sectionMin: []int32{48, 64, 80},
 		},

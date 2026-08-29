@@ -7,7 +7,7 @@ import (
 
 	"github.com/coalaura/minicraft/internal/config"
 	"github.com/coalaura/minicraft/internal/game"
-	"github.com/coalaura/minicraft/internal/generator/spawnplatform"
+	"github.com/coalaura/minicraft/internal/generator/superflat"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
@@ -345,7 +345,7 @@ func newChunkTestSession(position game.Position) (*Session, *recordingConnection
 	session := &Session{
 		Conn:    protocol.NewConnection(connection, nil),
 		Config:  &config.Config{Server: config.ServerConfig{RenderDistance: new(int32(2))}},
-		Runtime: NewRuntime(game.NewOverworld(spawnplatform.New())),
+		Runtime: NewRuntime(game.NewOverworld(superflat.New())),
 		Player:  &game.Player{Position: position},
 	}
 

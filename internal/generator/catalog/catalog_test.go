@@ -6,13 +6,17 @@ import (
 	"github.com/coalaura/minicraft/internal/generator"
 )
 
-func TestCatalogIncludesWaveTerrain(t *testing.T) {
-	generated, err := generator.New("wave-terrain")
-	if err != nil {
-		t.Fatalf("create wave terrain from catalog: %v", err)
-	}
+func TestCatalogIncludesGenerators(t *testing.T) {
+	names := []string{"superflat", "test-world", "wave-terrain"}
 
-	if generated == nil {
-		t.Fatal("catalog returned a nil wave terrain generator")
+	for _, name := range names {
+		generated, err := generator.New(name)
+		if err != nil {
+			t.Fatalf("create %s from catalog: %v", name, err)
+		}
+
+		if generated == nil {
+			t.Fatalf("catalog returned a nil %s generator", name)
+		}
 	}
 }

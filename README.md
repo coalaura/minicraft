@@ -75,11 +75,12 @@ maze
 menger-sponge
 natural
 quasicrystal
-spawn-platform
+superflat
+test-world
 wave-terrain
 ```
 
-Generators are deterministic for a given seed and produce their worlds procedurally as chunks are requested. `spawn-platform` is the simplest example to start from, while the others demonstrate more complex and unusual generation techniques.
+Generators are deterministic for a given seed and produce their worlds procedurally as chunks are requested. `superflat` provides a simple grass-topped building world with sparse vegetation, while `test-world` uses a stone-brick surface with contrasting chunk borders, centers and axes. The others demonstrate more complex and unusual generation techniques.
 
 No persistent world storage is required: generated terrain can always be reconstructed from its generator and seed, while player modifications live only in memory.
 

@@ -13,8 +13,8 @@ func TestConfigDefaults(t *testing.T) {
 
 	cfg.SetDefaults()
 
-	if cfg.World.Generator != "spawn-platform" {
-		t.Fatalf("world generator = %q, want spawn-platform", cfg.World.Generator)
+	if cfg.World.Generator != "superflat" {
+		t.Fatalf("world generator = %q, want superflat", cfg.World.Generator)
 	}
 
 	if cfg.RenderDistance() != DefaultRenderDistance {

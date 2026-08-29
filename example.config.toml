@@ -44,9 +44,9 @@ leave-message = "{player} left the game"
 
 # World generation and spawn settings.
 [world]
-# Procedural world generator: babel, backrooms, fractal-vaults, menger-sponge,
-# natural, quasicrystal, spawn-platform, or wave-terrain.
-generator = "spawn-platform"
+# Procedural world generator: babel, backrooms, fractal-vaults, maze,
+# menger-sponge, natural, quasicrystal, superflat, test-world, or wave-terrain.
+generator = "superflat"
 
 # Seed passed to the selected world generator.
 seed = 0
