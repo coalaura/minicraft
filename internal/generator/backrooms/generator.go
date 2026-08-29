@@ -52,6 +52,7 @@ func blockAtLayerColumn(seed, worldX, worldY, worldZ int64, current zone, blocks
 	}
 
 	layerFloor := int64(layerFloorY(current.layer))
+
 	templateY := int64(floorY) + (worldY - layerFloor)
 	currentCeilingY := int64(zoneCeilingY(current))
 

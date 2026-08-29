@@ -960,6 +960,7 @@ func validPlacementInteraction(interaction protocol.UseItemOn) bool {
 	}
 
 	coordinates := [...]float32{interaction.CursorX, interaction.CursorY, interaction.CursorZ}
+
 	for _, coordinate := range coordinates {
 		if math.IsNaN(float64(coordinate)) || math.IsInf(float64(coordinate), 0) || coordinate < 0 || coordinate > 1 {
 			return false

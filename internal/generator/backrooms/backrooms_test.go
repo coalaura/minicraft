@@ -90,6 +90,7 @@ func TestBreakingCeilingNeverExposesOutsideBetweenLayers(t *testing.T) {
 	for _, seed := range ceilingSeeds {
 		for layer := int64(-8); layer <= 8; layer++ {
 			current := zoneAtLayer(seed, 0, 0, layer)
+
 			ceiling := layerFloorY(layer) + (zoneCeilingY(current) - floorY)
 			nextFloor := layerFloorY(layer + 1)
 

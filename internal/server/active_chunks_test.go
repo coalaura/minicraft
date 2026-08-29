@@ -204,6 +204,7 @@ func TestVisibleChunksActivateRuntimeStateBeforeDelivery(t *testing.T) {
 
 	expected := len(chunksInView(LoadedChunk{}, 2))
 	count := session.Runtime.ActiveChunkCount()
+
 	if count != expected {
 		t.Fatalf("active chunk count = %d, want %d", count, expected)
 	}

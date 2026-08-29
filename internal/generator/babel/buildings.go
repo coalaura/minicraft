@@ -168,6 +168,7 @@ func courtyardBlock(worldY int32, localX, localZ int64, lot lotDescription) game
 
 	outerShell := isOuterShell(localX, localZ, outerInset)
 	innerShell := isInnerShell(localX, localZ, innerInset)
+
 	if outerShell || innerShell {
 		if relativeY%lot.floorHeight == 0 {
 			return lot.palette.trim
@@ -175,6 +176,7 @@ func courtyardBlock(worldY int32, localX, localZ int64, lot lotDescription) game
 
 		panel := positiveRemainder(localX+localZ+int64(lot.hash&7), 5)
 		floorPhase := (relativeY - 1) % lot.floorHeight
+
 		if (floorPhase == 2 || floorPhase == 3) && panel >= 1 && panel <= 3 {
 			return lot.palette.glass
 		}
@@ -243,6 +245,7 @@ func plazaBlock(worldY int32, localX, localZ int64, lot lotDescription) game.Blo
 
 	cornerX := absolute(centerX)
 	cornerZ := absolute(centerZ)
+
 	if cornerX >= 9 && cornerX <= 10 && cornerZ >= 9 && cornerZ <= 10 && relativeY <= 11 {
 		if relativeY == 11 {
 			return lot.palette.light

@@ -211,9 +211,11 @@ func (furnace *runtimeFurnace) synchronizeInventory(_ *Runtime, actor *Session) 
 		}
 
 		current.incrementStateID()
+
 		err := viewer.sendMenuSnapshot(current.snapshot())
 		if err != nil && viewer.Log != nil {
 			viewer.Log.Warnf("[play] failed to synchronize furnace: %v\n", err)
+
 			continue
 		}
 

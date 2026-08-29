@@ -103,6 +103,7 @@ func (generated *generatedChunk) GenerateSection(sectionMinY int32, blocks *[gam
 
 				if yInRange[localY] {
 					block = game.Stone
+
 					xMask := generated.xMasks[localX]
 					yMask := yMasks[localY]
 					zMask := generated.zMasks[localZ]

@@ -36,6 +36,7 @@ func mix64(value uint64) uint64 {
 
 func nearestGridIndex(value, scale int64) int64 {
 	cell := floorDiv(value, scale)
+
 	local := positiveRemainder(value, scale)
 	if local > scale/2 {
 		cell++

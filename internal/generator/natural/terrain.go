@@ -31,6 +31,7 @@ func columnAt(seed int64, worldX, worldZ int32) column {
 	height += mountainHeight
 
 	riverField := fractalNoise(seed, (warpedX+warpZ*0.08)/470, (warpedZ-warpedX*0.06)/470, 3, saltRivers)
+
 	riverStrength := 1 - smoothstep(0.015, 0.072, math.Abs(riverField))
 	riverStrength *= smoothstep(-0.12, 0.18, continentalness)
 	riverStrength *= 1 - mountainMask*0.76

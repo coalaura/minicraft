@@ -356,6 +356,7 @@ func TestCommandTimeQueryAndSet(t *testing.T) {
 	}
 
 	presets := map[string]int64{"day": 1000, "noon": 6000, "night": 13000, "midnight": 18000}
+
 	for preset, ticks := range presets {
 		connection.reset()
 
@@ -1810,6 +1811,7 @@ func decodeInventorySnapshot(t *testing.T, packet protocol.Packet) (int32, []gam
 	}
 
 	items := make([]game.ItemStack, game.PlayerInventorySlots)
+
 	for slot := range items {
 		items[slot] = readSimpleItemStack(t, reader)
 	}

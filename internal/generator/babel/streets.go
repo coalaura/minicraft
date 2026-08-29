@@ -101,6 +101,7 @@ func roadSurface(relativeX, relativeZ int64, streets streetState) game.Block {
 func grandIntersectionBlock(seed int64, worldY int32, relativeX, relativeZ int64) game.Block {
 	offsetX := absolute(gridSignedOffset(relativeX, districtScale))
 	offsetZ := absolute(gridSignedOffset(relativeZ, districtScale))
+
 	if offsetX > grandPlazaRadius || offsetZ > grandPlazaRadius {
 		return game.Air
 	}
@@ -139,6 +140,7 @@ func elevatedAvenueBlock(seed int64, worldY int32, relativeX, relativeZ int64, s
 
 	if streets.grandX {
 		offset := absolute(gridSignedOffset(relativeX, districtScale))
+
 		block := avenueAxisBlock(seed, worldY, offset, relativeZ)
 		if block != game.Air {
 			return block
@@ -147,6 +149,7 @@ func elevatedAvenueBlock(seed int64, worldY int32, relativeX, relativeZ int64, s
 
 	if streets.grandZ {
 		offset := absolute(gridSignedOffset(relativeZ, districtScale))
+
 		block := avenueAxisBlock(seed^0x5bd1e995, worldY, offset, relativeX)
 		if block != game.Air {
 			return block
@@ -248,6 +251,7 @@ func skybridgeAxisBlock(worldY int32, crossingOffset, widthOffset int64, first, 
 	}
 
 	bridgeRelativeY := bridgeY - baseFloorY
+
 	span := max(lotOuterInsetAt(first, bridgeRelativeY), lotOuterInsetAt(second, bridgeRelativeY)) + 1
 	if crossingOffset > span || widthOffset > 2 || worldY < bridgeY || worldY > bridgeY+4 {
 		return game.Air, false

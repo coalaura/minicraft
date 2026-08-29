@@ -145,6 +145,7 @@ func buildChangedLightUpdates(world *game.World, changes []game.BlockChange) ([]
 	for _, change := range changes {
 		minChunkX := blockChunkCoordinate(change.Position.X - 14)
 		maxChunkX := blockChunkCoordinate(change.Position.X + 14)
+
 		minChunkZ := blockChunkCoordinate(change.Position.Z - 14)
 		maxChunkZ := blockChunkCoordinate(change.Position.Z + 14)
 

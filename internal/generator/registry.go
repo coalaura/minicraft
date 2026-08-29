@@ -86,6 +86,7 @@ func isNil(generated game.Generator) bool {
 	}
 
 	value := reflect.ValueOf(generated)
+
 	switch value.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
 		return value.IsNil()

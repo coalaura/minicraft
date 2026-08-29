@@ -490,6 +490,7 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 			}
 
 			event := protocol.LevelEvent{Event: protocol.LevelEventBlockBreak, Position: record.change.Position, Data: record.previousState}
+
 			err := other.sendLevelEventIfLoaded(event)
 			if err != nil {
 				other.Log.Warnf("[play] failed to send block break effect: %v\n", err)

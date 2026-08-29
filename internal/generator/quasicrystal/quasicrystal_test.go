@@ -69,12 +69,14 @@ func TestGeneratorIsDeterministicAndSeeded(t *testing.T) {
 	for _, position := range positions {
 		first := generated.BlockAt(12345, position)
 		second := generated.BlockAt(12345, position)
+
 		if first != second {
 			t.Fatalf("block at %+v changed from %d to %d", position, first, second)
 		}
 	}
 
 	seededDifference := false
+
 	for x := int32(-128); x <= 128 && !seededDifference; x += 11 {
 		for z := int32(-128); z <= 128; z += 13 {
 			first := describeColumn(1, x, z)
@@ -127,6 +129,7 @@ func TestPreparedSectionsAreDeterministicWhenConcurrent(t *testing.T) {
 		group.Go(func() {
 			for range 8 {
 				var blocks [game.SectionVolume]game.Block
+
 				block, uniform := prepared.GenerateSection(testCase.sectionMinY, &blocks)
 				if block != expectedBlock || uniform != expectedUniform || blocks != expectedBlocks {
 					errors <- "prepared section changed"
@@ -172,6 +175,7 @@ func BenchmarkSectionGeneratorCalls(b *testing.B) {
 
 func TestGenerationBoundsContainAllStructures(t *testing.T) {
 	generated := Generator{}
+
 	minY, maxY, ok := generated.GenerationBounds(0, game.ChunkPosition{})
 	if !ok {
 		t.Fatal("generator reported empty bounds")

@@ -204,6 +204,7 @@ func TestBarrelShiftClickMatchesVanillaReversePlayerRouting(t *testing.T) {
 	connection.reset()
 
 	currentMenu := session.activeMenu()
+
 	err := session.handleContainerClick(protocol.ContainerClick{
 		WindowID:    currentMenu.windowID,
 		StateID:     currentMenu.stateID,

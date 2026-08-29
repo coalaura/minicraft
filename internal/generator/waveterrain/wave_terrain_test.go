@@ -46,6 +46,7 @@ func TestTerrainIsDeterministicAndSeeded(t *testing.T) {
 	for _, position := range positions {
 		first := generated.BlockAt(8, position)
 		second := generated.BlockAt(8, position)
+
 		if first != second {
 			t.Fatalf("block at %+v changed from %d to %d", position, first, second)
 		}

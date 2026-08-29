@@ -24,6 +24,7 @@ func TestItemByName(t *testing.T) {
 		item, ok := ItemByName(test.name)
 		if ok != test.ok {
 			t.Errorf("ItemByName(%q) = %d, %v; want ok %v", test.name, item, ok, test.ok)
+
 			continue
 		}
 
@@ -47,6 +48,7 @@ func TestBlockByNameReturnsDefaultState(t *testing.T) {
 		block, ok := BlockByName(test.name)
 		if ok != test.ok {
 			t.Errorf("BlockByName(%q) = %d, %v; want ok %v", test.name, block, ok, test.ok)
+
 			continue
 		}
 

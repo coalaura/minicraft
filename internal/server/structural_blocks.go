@@ -516,6 +516,7 @@ func buttonSupported(blockAt func(game.BlockPosition) game.Block, position game.
 		}
 
 		var offsetValid bool
+
 		support, offsetValid = facing.opposite().offset(support)
 		if !offsetValid {
 			return false
@@ -552,6 +553,7 @@ func plantSupported(blockAt func(game.BlockPosition) game.Block, position game.B
 	below.Y--
 
 	supportBlock := blockAt(below)
+
 	supportDefinition, valid := supportBlock.Definition()
 	if !valid {
 		return false
