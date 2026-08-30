@@ -70,6 +70,8 @@ func (hopper *runtimeHopper) Tick(runtime *Runtime, _ *ActiveChunk) {
 		return
 	}
 
+	previousCooldown := data.TransferCooldown
+
 	data.TransferCooldown--
 
 	hopper.tickedGameTime = runtime.World.Time().Age
@@ -89,7 +91,9 @@ func (hopper *runtimeHopper) Tick(runtime *Runtime, _ *ActiveChunk) {
 		hopper.synchronizeInventory(nil)
 	}
 
-	runtime.World.SetBlockEntity(hopper.position, hopper.entity)
+	if inventoryChanged || previousCooldown > 0 {
+		runtime.World.SetBlockEntity(hopper.position, hopper.entity)
+	}
 }
 
 func (hopper *runtimeHopper) tryMoveItems(runtime *Runtime, data *game.HopperBlockEntityData) bool {
@@ -362,31 +366,41 @@ func (r *Runtime) hopperSuctionBlocked(position game.BlockPosition) bool {
 		return false
 	}
 
-	return definition.ID != 909 && definition.ID != 910
+	return definition.ID != game.BeeNestID && definition.ID != game.BeehiveID
 }
 
 func (r *Runtime) itemEntitiesInBox(box game.AABB) []*runtimeItemEntity {
 	minChunk := positionLoadedChunk(game.Position{X: box.MinX, Z: box.MinZ})
 	maxChunk := positionLoadedChunk(game.Position{X: box.MaxX, Z: box.MaxZ})
 
-	r.entityMu.RLock()
+	r.activeChunksMu.RLock()
 
-	var items []*runtimeItemEntity
+	activeChunks := make([]LoadedChunk, 0, (maxChunk.X-minChunk.X+1)*(maxChunk.Z-minChunk.Z+1))
 
 	for chunkX := minChunk.X; chunkX <= maxChunk.X; chunkX++ {
 		for chunkZ := minChunk.Z; chunkZ <= maxChunk.Z; chunkZ++ {
 			chunkPosition := LoadedChunk{X: chunkX, Z: chunkZ}
 
-			_, active := r.ActiveChunk(chunkPosition)
+			_, active := r.activeChunks[chunkPosition]
 			if !active {
 				continue
 			}
 
-			for _, entity := range r.entitiesByChunk[chunkPosition] {
-				item, itemEntity := entity.(*runtimeItemEntity)
-				if itemEntity {
-					items = append(items, item)
-				}
+			activeChunks = append(activeChunks, chunkPosition)
+		}
+	}
+
+	r.activeChunksMu.RUnlock()
+
+	r.entityMu.RLock()
+
+	var items []*runtimeItemEntity
+
+	for _, chunkPosition := range activeChunks {
+		for _, entity := range r.entitiesByChunk[chunkPosition] {
+			item, itemEntity := entity.(*runtimeItemEntity)
+			if itemEntity {
+				items = append(items, item)
 			}
 		}
 	}

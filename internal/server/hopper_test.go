@@ -1,7 +1,9 @@
 package server
 
 import (
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
@@ -16,6 +18,33 @@ type hopperBlockedTransferCase struct {
 	name    string
 	enabled bool
 	fill    bool
+}
+
+type hopperRuntimeTestGenerator struct {
+	position game.BlockPosition
+}
+
+func (generator hopperRuntimeTestGenerator) BlockAt(_ int64, position game.BlockPosition) game.Block {
+	if position == generator.position {
+		return game.Hopper
+	}
+
+	return game.Air
+}
+
+func (generator hopperRuntimeTestGenerator) GenerateBlockEntities(_ int64, chunk game.ChunkPosition) game.ChunkBlockEntities {
+	loaded := blockLoadedChunk(generator.position)
+	if chunk.X != loaded.X || chunk.Z != loaded.Z {
+		return nil
+	}
+
+	local := game.LocalBlockPosition{
+		X: generator.position.X - loaded.X*ChunkWidth,
+		Y: generator.position.Y,
+		Z: generator.position.Z - loaded.Z*ChunkWidth,
+	}
+
+	return game.ChunkBlockEntities{local: game.NewBlockEntity(game.BlockEntityTypeHopper)}
 }
 
 func TestHopperPlacementAndMenuQuickMove(t *testing.T) {
@@ -327,6 +356,59 @@ func TestHopperSucksItemEntitiesPartiallyAndFully(t *testing.T) {
 	}
 }
 
+func TestHopperItemQueryDoesNotInvertActiveChunkEntityLocks(t *testing.T) {
+	world := &game.World{}
+
+	runtime := NewRuntime(world)
+
+	viewer := &Session{}
+
+	box := game.AABB{MinX: 0, MinY: 0, MinZ: 0, MaxX: 1, MaxY: 2, MaxZ: 1}
+
+	runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: 1}, game.Position{X: 0.5, Y: 1, Z: 0.5}, game.Velocity{}, 0)
+
+	start := make(chan struct{})
+	done := make(chan struct{})
+
+	var waitGroup sync.WaitGroup
+
+	waitGroup.Add(2)
+
+	go func() {
+		defer waitGroup.Done()
+
+		<-start
+
+		for range 10_000 {
+			runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+			runtime.setSessionActiveChunks(viewer, nil)
+		}
+	}()
+
+	go func() {
+		defer waitGroup.Done()
+
+		<-start
+
+		for range 10_000 {
+			runtime.itemEntitiesInBox(box)
+		}
+	}()
+
+	close(start)
+
+	go func() {
+		waitGroup.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("active chunk changes and hopper item queries deadlocked")
+	}
+}
+
 func TestHopperAutomationSynchronizesViewers(t *testing.T) {
 	position := game.BlockPosition{Y: 70}
 	above := game.BlockPosition{Y: 71}
@@ -410,6 +492,101 @@ func TestHopperPausesAcrossInactiveChunksAndStaleRuntimeCannotTick(t *testing.T)
 
 	if hopperData(t, current).TransferCooldown != 1 {
 		t.Fatalf("re-activated hopper cooldown = %d, want 1", hopperData(t, current).TransferCooldown)
+	}
+}
+
+func TestGeneratedIdleHopperTicksWithoutCreatingOverride(t *testing.T) {
+	position := game.BlockPosition{Y: 70}
+
+	world := &game.World{Generator: hopperRuntimeTestGenerator{position: position}}
+
+	runtime := NewRuntime(world)
+
+	viewer := &Session{}
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{blockLoadedChunk(position)})
+
+	hopper := mustRuntimeHopper(t, runtime, position)
+
+	for range 32 {
+		runtime.Tick()
+	}
+
+	if hopperData(t, hopper).TransferCooldown != 0 {
+		t.Fatalf("idle runtime hopper cooldown = %d, want 0", hopperData(t, hopper).TransferCooldown)
+	}
+
+	count := world.BlockEntityOverrideCount()
+	if count != 0 {
+		t.Fatalf("block entity overrides after idle ticks = %d, want 0", count)
+	}
+
+	data := hopperData(t, hopper)
+
+	data.Items[0] = game.ItemStack{Item: game.ItemStone, Count: 1}
+
+	hopper.Changed(runtime, nil, []int{0})
+
+	count = world.BlockEntityOverrideCount()
+	if count != 1 {
+		t.Fatalf("block entity overrides after inventory mutation = %d, want 1", count)
+	}
+
+	data.Items[0] = game.ItemStack{}
+	data.TransferCooldown = -1
+
+	hopper.Changed(runtime, nil, []int{0})
+
+	count = world.BlockEntityOverrideCount()
+	if count != 0 {
+		t.Fatalf("block entity overrides after generated equality restoration = %d, want 0", count)
+	}
+
+	data.TransferCooldown = 2
+
+	runtime.Tick()
+
+	persisted, present := world.BlockEntityAt(position)
+	if !present || persisted.Data.(*game.HopperBlockEntityData).TransferCooldown != 1 {
+		t.Fatalf("persisted generated hopper after cooldown tick = %+v, %v", persisted, present)
+	}
+
+	count = world.BlockEntityOverrideCount()
+	if count != 1 {
+		t.Fatalf("block entity overrides after cooldown mutation = %d, want 1", count)
+	}
+
+	data.TransferCooldown = -1
+
+	hopper.Changed(runtime, nil, nil)
+
+	count = world.BlockEntityOverrideCount()
+	if count != 0 {
+		t.Fatalf("block entity overrides after cooldown restoration = %d, want 0", count)
+	}
+}
+
+func TestHopperSuctionBlockingUsesBeehiveTagIdentities(t *testing.T) {
+	position := game.BlockPosition{Y: 71}
+
+	world := &game.World{}
+
+	runtime := NewRuntime(world)
+
+	blocks := []game.Block{game.BeeNest, game.Beehive}
+
+	for _, block := range blocks {
+		world.SetBlock(position, block)
+
+		if runtime.hopperSuctionBlocked(position) {
+			t.Fatalf("hopper suction blocked by %d", block)
+		}
+	}
+
+	world.SetBlock(position, game.Stone)
+
+	if !runtime.hopperSuctionBlocked(position) {
+		t.Fatal("hopper suction was not blocked by full collision block")
 	}
 }
 
