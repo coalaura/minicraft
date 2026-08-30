@@ -279,7 +279,7 @@ func destroyProgress(player game.Player, block game.Block) float64 {
 	efficiency := tool.stack.EnchantmentLevel(game.EnchantmentEfficiency)
 
 	if speed > 1 && efficiency > 0 {
-		speed += float32(efficiency * efficiency)
+		speed += float32(efficiency*efficiency + 1)
 	}
 
 	return float64(speed) / float64(mining.Hardness) / divisor
@@ -300,8 +300,17 @@ func (r *Runtime) damageMiningTool(session *Session, tool miningTool, block game
 	mining := tool.stack.Item.MiningProperties()
 	blockMining := block.MiningProperties()
 
-	if !valid || definition.MaxDurability <= 0 || mining.DamagePerBlock <= 0 || blockMining.Hardness == 0 {
+	if !valid || definition.MaxDurability <= 0 || mining.DamagePerBlock <= 0 {
 		return nil, false
+	}
+
+	if blockMining.Hardness == 0 {
+		blockDefinition, blockValid := block.Definition()
+
+		isFire := blockValid && (blockDefinition.ID == game.FireID || blockDefinition.ID == game.SoulFireID)
+		if tool.stack.Item != game.ItemShears || isFire {
+			return nil, false
+		}
 	}
 
 	damage := int32(0)

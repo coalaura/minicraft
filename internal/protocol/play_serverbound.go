@@ -756,11 +756,14 @@ func decodeUntrustedSlot(rd *PacketReader) (UntrustedSlot, error) {
 	item := UntrustedSlot{ItemCount: rd.VarInt()}
 
 	err := rd.Err()
-	if err != nil || item.ItemCount == 0 {
+	if err != nil || item.ItemCount <= 0 {
 		return item, err
 	}
 
 	item.ItemID = rd.VarInt()
+	if item.ItemID < 0 || item.ItemID > int32(game.MaxItemID) {
+		return UntrustedSlot{}, fmt.Errorf("invalid slot item ID %d", item.ItemID)
+	}
 
 	addedComponentCount := rd.VarInt()
 	removedComponentCount := rd.VarInt()
@@ -792,7 +795,12 @@ func decodeUntrustedSlot(rd *PacketReader) (UntrustedSlot, error) {
 	item.RemovedComponents = make([]int32, removedComponentCount)
 
 	for index := range item.RemovedComponents {
-		item.RemovedComponents[index] = rd.VarInt()
+		componentType := rd.VarInt()
+		if componentType < 0 || componentType > game.MaxItemComponentType {
+			return UntrustedSlot{}, fmt.Errorf("invalid removed slot component type %d", componentType)
+		}
+
+		item.RemovedComponents[index] = componentType
 	}
 
 	err = rd.Err()
@@ -800,11 +808,22 @@ func decodeUntrustedSlot(rd *PacketReader) (UntrustedSlot, error) {
 		return UntrustedSlot{}, err
 	}
 
+	stack := game.ItemStack{Components: item.Components, RemovedComponents: item.RemovedComponents}
+
+	stack.NormalizeComponents()
+
+	item.Components = stack.Components
+	item.RemovedComponents = stack.RemovedComponents
+
 	return item, nil
 }
 
 func decodeUntrustedSlotComponent(rd *PacketReader) (game.ItemComponent, error) {
 	componentType := rd.VarInt()
+	if componentType < 0 || componentType > game.MaxItemComponentType {
+		return game.ItemComponent{}, fmt.Errorf("invalid added slot component type %d", componentType)
+	}
+
 	data := rd.BytesMax(maxUntrustedComponentBytes)
 
 	err := rd.Err()

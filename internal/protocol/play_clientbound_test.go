@@ -17,6 +17,11 @@ type packetIDTest struct {
 	expected int32
 }
 
+type clientboundItemStackFixture struct {
+	stack    game.ItemStack
+	expected []byte
+}
+
 func TestMovementPacketIDsProtocol774(t *testing.T) {
 	packetIDs := map[string]packetIDTest{
 		"container set content":        {actual: ClientboundContainerSetContentID, expected: 0x12},
@@ -82,32 +87,85 @@ func TestContainerInventoryPacketsEncode(t *testing.T) {
 	}, []byte{0x03, 0x00, 0x02, 0x01, 0x2C})
 }
 
-func TestItemStackEncodesDamageAndEnchantments(t *testing.T) {
-	stack := game.ItemStack{Item: game.ItemDiamondPickaxe, Count: 1}
-
-	stack.SetDamage(300)
-	stack.SetEnchantments(map[game.Enchantment]int32{
-		game.EnchantmentFortune:    3,
-		game.EnchantmentEfficiency: 5,
-	})
-
-	var writer PacketWriter
-
-	encodeItemStack(&writer, stack)
-
-	err := writer.Err()
-	if err != nil {
-		t.Fatalf("encode item stack: %v", err)
+func TestContainerSetSlotEncodesItemStackReferenceFixtures(t *testing.T) {
+	fixtures := map[string]clientboundItemStackFixture{
+		"plain diamond pickaxe": {
+			stack: game.ItemStack{Item: game.ItemDiamondPickaxe, Count: 1},
+			expected: []byte{
+				0x00, 0x01, 0x00, 0x2D,
+				0x01, 0xAA, 0x07, 0x00, 0x00,
+			},
+		},
+		"damaged diamond pickaxe": {
+			stack: game.ItemStack{
+				Item:  game.ItemDiamondPickaxe,
+				Count: 1,
+				Components: []game.ItemComponent{
+					{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}},
+				},
+			},
+			expected: []byte{
+				0x00, 0x01, 0x00, 0x2D,
+				0x01, 0xAA, 0x07, 0x01, 0x00, 0x03, 0xAC, 0x02,
+			},
+		},
+		"one enchantment": {
+			stack: game.ItemStack{
+				Item:  game.ItemDiamondPickaxe,
+				Count: 1,
+				Components: []game.ItemComponent{
+					{Type: game.ItemComponentEnchantments, Data: []byte{0x01, 0x14, 0x05}},
+				},
+			},
+			expected: []byte{
+				0x00, 0x01, 0x00, 0x2D,
+				0x01, 0xAA, 0x07, 0x01, 0x00, 0x0D, 0x01, 0x14, 0x05,
+			},
+		},
+		"multiple enchantments": {
+			stack: game.ItemStack{
+				Item:  game.ItemDiamondPickaxe,
+				Count: 1,
+				Components: []game.ItemComponent{
+					{Type: game.ItemComponentEnchantments, Data: []byte{0x02, 0x14, 0x05, 0x17, 0x03}},
+				},
+			},
+			expected: []byte{
+				0x00, 0x01, 0x00, 0x2D,
+				0x01, 0xAA, 0x07, 0x01, 0x00, 0x0D, 0x02, 0x14, 0x05, 0x17, 0x03,
+			},
+		},
+		"added and removed components": {
+			stack: game.ItemStack{
+				Item:              game.ItemDiamondPickaxe,
+				Count:             1,
+				Components:        []game.ItemComponent{{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}}},
+				RemovedComponents: []int32{1},
+			},
+			expected: []byte{
+				0x00, 0x01, 0x00, 0x2D,
+				0x01, 0xAA, 0x07, 0x01, 0x01, 0x03, 0xAC, 0x02, 0x01,
+			},
+		},
 	}
 
-	expected := []byte{
-		0x01, 0xAA, 0x07, 0x02, 0x00,
-		0x03, 0xAC, 0x02,
-		0x0D, 0x02, 0x14, 0x05, 0x17, 0x03,
-	}
+	for name, fixture := range fixtures {
+		t.Run(name, func(t *testing.T) {
+			packet := ContainerSetSlot{WindowID: 0, StateID: 1, Slot: 45, Item: fixture.stack}
 
-	if !bytes.Equal(writer.Buffer.Bytes(), expected) {
-		t.Fatalf("encoded item stack = %x, want %x", writer.Buffer.Bytes(), expected)
+			var writer PacketWriter
+
+			packet.Encode(&writer)
+
+			err := writer.Err()
+			if err != nil {
+				t.Fatalf("encode container slot: %v", err)
+			}
+
+			if !bytes.Equal(writer.Buffer.Bytes(), fixture.expected) {
+				t.Fatalf("encoded container slot = %x, want %x", writer.Buffer.Bytes(), fixture.expected)
+			}
+		})
 	}
 }
 

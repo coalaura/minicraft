@@ -1,5 +1,7 @@
 package game
 
+import "strconv"
+
 type TextColor string
 
 const (
@@ -72,4 +74,8 @@ func (component TextComponent) WithClickEvent(action ClickAction, value string) 
 	component.Style.ClickEvent = &ClickEvent{Action: action, Value: value}
 
 	return component
+}
+
+func formatInt32(value int32) string {
+	return strconv.FormatInt(int64(value), 10)
 }

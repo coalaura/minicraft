@@ -20,11 +20,10 @@ type copperChestTestCase struct {
 }
 
 type itemMetadataTestCase struct {
-	name              string
-	item              Item
-	maxDurability     int32
-	enchantCategories ItemEnchantCategory
-	damagePerBlock    int32
+	name           string
+	item           Item
+	maxDurability  int32
+	damagePerBlock int32
 }
 
 func TestGeneratedItemCatalogueCoversVanillaItems(t *testing.T) {
@@ -51,31 +50,27 @@ func TestGeneratedItemCatalogueCoversVanillaItems(t *testing.T) {
 func TestGeneratedItemMetadata(t *testing.T) {
 	tests := []itemMetadataTestCase{
 		{
-			name:              "pickaxe",
-			item:              ItemDiamondPickaxe,
-			maxDurability:     1561,
-			enchantCategories: ItemEnchantCategoryMining | ItemEnchantCategoryMiningLoot | ItemEnchantCategoryDurability | ItemEnchantCategoryVanishing,
-			damagePerBlock:    1,
+			name:           "pickaxe",
+			item:           ItemDiamondPickaxe,
+			maxDurability:  1561,
+			damagePerBlock: 1,
 		},
 		{
-			name:              "sword",
-			item:              ItemDiamondSword,
-			maxDurability:     1561,
-			enchantCategories: ItemEnchantCategoryWeapon | ItemEnchantCategoryFireAspect | ItemEnchantCategoryMeleeWeapon | ItemEnchantCategoryDurability | ItemEnchantCategorySharpWeapon | ItemEnchantCategorySweeping | ItemEnchantCategoryVanishing,
-			damagePerBlock:    2,
+			name:           "sword",
+			item:           ItemDiamondSword,
+			maxDurability:  1561,
+			damagePerBlock: 2,
 		},
 		{
-			name:              "shears",
-			item:              ItemShears,
-			maxDurability:     238,
-			enchantCategories: ItemEnchantCategoryMining | ItemEnchantCategoryDurability | ItemEnchantCategoryVanishing,
-			damagePerBlock:    1,
+			name:           "shears",
+			item:           ItemShears,
+			maxDurability:  238,
+			damagePerBlock: 1,
 		},
 		{
-			name:              "chest armor",
-			item:              ItemLeatherChestplate,
-			maxDurability:     80,
-			enchantCategories: ItemEnchantCategoryEquippable | ItemEnchantCategoryArmor | ItemEnchantCategoryChestArmor | ItemEnchantCategoryDurability | ItemEnchantCategoryVanishing,
+			name:          "chest armor",
+			item:          ItemLeatherChestplate,
+			maxDurability: 80,
 		},
 		{
 			name: "non-tool",
@@ -92,10 +87,6 @@ func TestGeneratedItemMetadata(t *testing.T) {
 
 			if definition.MaxDurability != test.maxDurability {
 				t.Fatalf("max durability = %d, want %d", definition.MaxDurability, test.maxDurability)
-			}
-
-			if definition.EnchantCategories != test.enchantCategories {
-				t.Fatalf("enchant categories = %d, want %d", definition.EnchantCategories, test.enchantCategories)
 			}
 
 			if definition.Mining.DamagePerBlock != test.damagePerBlock {
@@ -176,7 +167,6 @@ func TestItemStackComponentReplacementPreservesUnknownComponents(t *testing.T) {
 	stack.SetDamage(5)
 
 	expectedComponents := []ItemComponent{
-		{Type: 99, Data: []byte{0xAA}},
 		{Type: ItemComponentDamage, Data: []byte{0x05}},
 		{Type: 100, Data: []byte{0xBB}},
 	}
@@ -194,6 +184,62 @@ func TestItemStackComponentReplacementPreservesUnknownComponents(t *testing.T) {
 
 	if !slices.Equal(stack.RemovedComponents, []int32{99}) {
 		t.Fatalf("removed components = %v, want [99]", stack.RemovedComponents)
+	}
+}
+
+func TestItemStackComponentPatchEqualityUsesMapSemantics(t *testing.T) {
+	first := ItemStack{
+		Item:  ItemDiamondPickaxe,
+		Count: 1,
+		Components: []ItemComponent{
+			{Type: 99, Data: []byte{0x01}},
+			{Type: ItemComponentDamage, Data: []byte{0x02}},
+			{Type: 99, Data: []byte{0x03}},
+			{Type: ItemComponentEnchantments, Data: []byte{0x01, 0x14, 0x05}},
+		},
+		RemovedComponents: []int32{100, ItemComponentDamage, 100},
+	}
+
+	second := ItemStack{
+		Item:  ItemDiamondPickaxe,
+		Count: 1,
+		Components: []ItemComponent{
+			{Type: ItemComponentEnchantments, Data: []byte{0x01, 0x14, 0x05}},
+			{Type: 99, Data: []byte{0x03}},
+		},
+		RemovedComponents: []int32{ItemComponentDamage, 100},
+	}
+
+	if !first.Equal(second) || !first.SameItem(second) {
+		t.Fatal("semantically identical component patches compare different")
+	}
+
+	second.Components[1].Data = []byte{0x04}
+
+	if first.Equal(second) {
+		t.Fatal("component patches with different opaque payloads compare equal")
+	}
+}
+
+func TestItemStackNormalizeComponentsUsesLastAdditionAndRemovalWins(t *testing.T) {
+	stack := ItemStack{
+		Components: []ItemComponent{
+			{Type: ItemComponentDamage, Data: []byte{0x01}},
+			{Type: 99, Data: []byte{0xAA, 0xBB}},
+			{Type: ItemComponentDamage, Data: []byte{0x02}},
+		},
+		RemovedComponents: []int32{99, 99},
+	}
+
+	stack.NormalizeComponents()
+
+	expected := []ItemComponent{{Type: ItemComponentDamage, Data: []byte{0x02}}}
+	if len(stack.Components) != 1 || stack.Components[0].Type != expected[0].Type || !bytes.Equal(stack.Components[0].Data, expected[0].Data) {
+		t.Fatalf("normalized components = %v, want %v", stack.Components, expected)
+	}
+
+	if !slices.Equal(stack.RemovedComponents, []int32{99}) {
+		t.Fatalf("normalized removals = %v, want [99]", stack.RemovedComponents)
 	}
 }
 
@@ -329,7 +375,6 @@ func TestItemMiningRuleMatchesBlockIDAcrossStates(t *testing.T) {
 	}
 
 	rule := ItemMiningRule{BlockID: VineID}
-
 	if !rule.matches(vineWithNorthFace) {
 		t.Fatal("rule does not match north-facing vine")
 	}

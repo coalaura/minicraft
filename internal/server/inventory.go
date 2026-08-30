@@ -12,7 +12,6 @@ const (
 	playerInventoryWindowID = 0
 	outsideInventorySlot    = -999
 	creativeDropSlot        = -1
-	maxItemComponentType    = 103
 )
 
 const (
@@ -1207,7 +1206,7 @@ func creativeItemStack(item protocol.UntrustedSlot) (game.ItemStack, bool) {
 	removed := make([]int32, len(item.RemovedComponents))
 
 	for index, componentType := range item.RemovedComponents {
-		if componentType < 0 || componentType > maxItemComponentType {
+		if componentType < 0 || componentType > game.MaxItemComponentType {
 			return game.ItemStack{}, false
 		}
 

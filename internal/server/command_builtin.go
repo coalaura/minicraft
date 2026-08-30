@@ -119,13 +119,13 @@ func (registry *commandRegistry) registerEnchant() {
 			return commandFailure{message: game.TranslatableText("commands.enchant.failed")}
 		}
 
-		enchantmentName := game.TranslatableText("enchantment.minecraft." + definition.Name)
+		enchantmentName := selected.FullName(selectedLevel)
 
 		if len(resolved) == 1 {
 			return source.Feedback(game.TranslatableText("commands.enchant.success.single", enchantmentName, game.LiteralText(resolved[0].snapshotPlayer().Name)))
 		}
 
-		return source.Feedback(game.TranslatableText("commands.enchant.success.multiple", enchantmentName, integerText(int64(affected))))
+		return source.Feedback(game.TranslatableText("commands.enchant.success.multiple", enchantmentName, integerText(int64(len(resolved)))))
 	}
 
 	registry.register(&registeredCommand{

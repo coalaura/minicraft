@@ -1,6 +1,8 @@
 package game
 
 import (
+	"bytes"
+	"slices"
 	"sort"
 )
 
@@ -45,35 +47,10 @@ type Item uint16
 
 type ItemPlacementRule uint8
 
-type ItemEnchantCategory uint32
-
-const (
-	ItemEnchantCategoryArmor ItemEnchantCategory = 1 << iota
-	ItemEnchantCategoryBow
-	ItemEnchantCategoryChestArmor
-	ItemEnchantCategoryCrossbow
-	ItemEnchantCategoryDurability
-	ItemEnchantCategoryEquippable
-	ItemEnchantCategoryFireAspect
-	ItemEnchantCategoryFishing
-	ItemEnchantCategoryFootArmor
-	ItemEnchantCategoryHeadArmor
-	ItemEnchantCategoryLegArmor
-	ItemEnchantCategoryLunge
-	ItemEnchantCategoryMace
-	ItemEnchantCategoryMeleeWeapon
-	ItemEnchantCategoryMining
-	ItemEnchantCategoryMiningLoot
-	ItemEnchantCategorySharpWeapon
-	ItemEnchantCategorySweeping
-	ItemEnchantCategoryTrident
-	ItemEnchantCategoryVanishing
-	ItemEnchantCategoryWeapon
-)
-
 const (
 	ItemComponentDamage       int32 = 3
 	ItemComponentEnchantments int32 = 13
+	MaxItemComponentType      int32 = 103
 )
 
 type ItemMiningRule struct {
@@ -92,12 +69,11 @@ type ItemMining struct {
 }
 
 type ItemDefinition struct {
-	ID                Item
-	Name              string
-	StackSize         int32
-	MaxDurability     int32
-	EnchantCategories ItemEnchantCategory
-	Mining            ItemMining
+	ID            Item
+	Name          string
+	StackSize     int32
+	MaxDurability int32
+	Mining        ItemMining
 }
 
 type ItemStack struct {
@@ -243,21 +219,28 @@ func (stack ItemStack) Clone() ItemStack {
 }
 
 func (stack ItemStack) Equal(other ItemStack) bool {
-	if stack.Item != other.Item || stack.Count != other.Count || len(stack.Components) != len(other.Components) || len(stack.RemovedComponents) != len(other.RemovedComponents) {
+	if stack.Item != other.Item || stack.Count != other.Count {
 		return false
 	}
 
-	for index := range stack.Components {
-		first := stack.Components[index]
-		second := other.Components[index]
+	firstComponents, firstRemoved := normalizedComponentPatch(stack.Components, stack.RemovedComponents)
+	secondComponents, secondRemoved := normalizedComponentPatch(other.Components, other.RemovedComponents)
 
-		if first.Type != second.Type || string(first.Data) != string(second.Data) {
+	if len(firstComponents) != len(secondComponents) || len(firstRemoved) != len(secondRemoved) {
+		return false
+	}
+
+	for index := range firstComponents {
+		first := firstComponents[index]
+		second := secondComponents[index]
+
+		if first.Type != second.Type || !bytes.Equal(first.Data, second.Data) {
 			return false
 		}
 	}
 
-	for index := range stack.RemovedComponents {
-		if stack.RemovedComponents[index] != other.RemovedComponents[index] {
+	for index := range firstRemoved {
+		if firstRemoved[index] != secondRemoved[index] {
 			return false
 		}
 	}
@@ -387,7 +370,11 @@ func (stack *ItemStack) SetEnchantments(enchantments map[Enchantment]int32) {
 }
 
 func (stack ItemStack) component(componentType int32) ([]byte, bool) {
-	for _, component := range stack.Components {
+	if slices.Contains(stack.RemovedComponents, componentType) {
+		return nil, false
+	}
+
+	for _, component := range slices.Backward(stack.Components) {
 		if component.Type == componentType {
 			return component.Data, true
 		}
@@ -428,6 +415,60 @@ func (stack *ItemStack) replaceComponent(componentType int32, data []byte) {
 	}
 
 	stack.RemovedComponents = removed
+	stack.NormalizeComponents()
+}
+
+func (stack *ItemStack) NormalizeComponents() {
+	stack.Components, stack.RemovedComponents = normalizedComponentPatch(stack.Components, stack.RemovedComponents)
+}
+
+func normalizedComponentPatch(components []ItemComponent, removedComponents []int32) ([]ItemComponent, []int32) {
+	removedTypes := make(map[int32]struct{}, len(removedComponents))
+
+	for _, componentType := range removedComponents {
+		removedTypes[componentType] = struct{}{}
+	}
+
+	componentData := make(map[int32][]byte, len(components))
+
+	for _, component := range components {
+		if _, removed := removedTypes[component.Type]; removed {
+			continue
+		}
+
+		componentData[component.Type] = component.Data
+	}
+
+	componentTypes := make([]int, 0, len(componentData))
+
+	for componentType := range componentData {
+		componentTypes = append(componentTypes, int(componentType))
+	}
+
+	sort.Ints(componentTypes)
+
+	normalizedComponents := make([]ItemComponent, 0, len(componentTypes))
+
+	for _, componentType := range componentTypes {
+		typed := int32(componentType)
+		normalizedComponents = append(normalizedComponents, ItemComponent{Type: typed, Data: componentData[typed]})
+	}
+
+	removedTypeList := make([]int, 0, len(removedTypes))
+
+	for componentType := range removedTypes {
+		removedTypeList = append(removedTypeList, int(componentType))
+	}
+
+	sort.Ints(removedTypeList)
+
+	normalizedRemoved := make([]int32, len(removedTypeList))
+
+	for index, componentType := range removedTypeList {
+		normalizedRemoved[index] = int32(componentType)
+	}
+
+	return normalizedComponents, normalizedRemoved
 }
 
 func appendComponentVarInt(data []byte, value int32) []byte {

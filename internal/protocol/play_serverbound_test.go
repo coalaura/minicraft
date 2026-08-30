@@ -7,6 +7,12 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
+type untrustedSlotFixture struct {
+	data    []byte
+	item    game.ItemStack
+	removed []int32
+}
+
 func TestDecodeClientInformation(t *testing.T) {
 	data := []byte{
 		0x05, 'e', 'n', '_', 'u', 's',
@@ -766,17 +772,9 @@ func TestDecodeSetCreativeModeSlotAcceptsGameplayComponents(t *testing.T) {
 }
 
 func TestDecodeSetCreativeModeSlotRejectsUnsupportedAddedComponent(t *testing.T) {
-	var writer PacketWriter
+	data := []byte{0x00, 0x24, 0x01, 0x01, 0x01, 0x00, 0x01, 0x01, 0x10}
 
-	writer.Short(36)
-	writer.VarInt(1)
-	writer.VarInt(1)
-	writer.VarInt(1)
-	writer.VarInt(0)
-	writer.VarInt(1)
-	writer.Bytes([]byte{16})
-
-	_, err := DecodeSetCreativeModeSlot(writer.Buffer.Bytes())
+	_, err := DecodeSetCreativeModeSlot(data)
 	if err == nil || err.Error() != "unsupported added slot component type 1" {
 		t.Fatalf("decode creative slot with added max_stack_size component error = %v", err)
 	}
@@ -786,6 +784,132 @@ func TestDecodeSetCreativeModeSlotRejectsTrailingData(t *testing.T) {
 	_, err := DecodeSetCreativeModeSlot([]byte{0, 36, 0, 0})
 	if err == nil {
 		t.Fatal("creative slot with trailing data decoded")
+	}
+}
+
+func TestDecodeSetCreativeModeSlotReferenceFixtures(t *testing.T) {
+	fixtures := map[string]untrustedSlotFixture{
+		"plain diamond pickaxe": {
+			data: []byte{0x00, 0x24, 0x01, 0xAA, 0x07, 0x00, 0x00},
+			item: game.ItemStack{Item: game.ItemDiamondPickaxe, Count: 1},
+		},
+		"damaged diamond pickaxe": {
+			data: []byte{0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x00, 0x03, 0x02, 0xAC, 0x02},
+			item: game.ItemStack{
+				Item:       game.ItemDiamondPickaxe,
+				Count:      1,
+				Components: []game.ItemComponent{{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}}},
+			},
+		},
+		"one enchantment": {
+			data: []byte{0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x00, 0x0D, 0x03, 0x01, 0x14, 0x05},
+			item: game.ItemStack{
+				Item:       game.ItemDiamondPickaxe,
+				Count:      1,
+				Components: []game.ItemComponent{{Type: game.ItemComponentEnchantments, Data: []byte{0x01, 0x14, 0x05}}},
+			},
+		},
+		"multiple enchantments": {
+			data: []byte{0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x00, 0x0D, 0x05, 0x02, 0x14, 0x05, 0x17, 0x03},
+			item: game.ItemStack{
+				Item:       game.ItemDiamondPickaxe,
+				Count:      1,
+				Components: []game.ItemComponent{{Type: game.ItemComponentEnchantments, Data: []byte{0x02, 0x14, 0x05, 0x17, 0x03}}},
+			},
+		},
+		"added and removed components": {
+			data: []byte{0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x01, 0x03, 0x02, 0xAC, 0x02, 0x01},
+			item: game.ItemStack{
+				Item:       game.ItemDiamondPickaxe,
+				Count:      1,
+				Components: []game.ItemComponent{{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}}},
+			},
+			removed: []int32{1},
+		},
+	}
+
+	for name, fixture := range fixtures {
+		t.Run(name, func(t *testing.T) {
+			update, err := DecodeSetCreativeModeSlot(fixture.data)
+			if err != nil {
+				t.Fatalf("decode creative slot: %v", err)
+			}
+
+			if update.Slot != 36 || update.Item.ItemID != int32(fixture.item.Item) || update.Item.ItemCount != fixture.item.Count {
+				t.Fatalf("creative slot = %+v", update)
+			}
+
+			if len(update.Item.Components) != len(fixture.item.Components) {
+				t.Fatalf("creative slot components = %v, want %v", update.Item.Components, fixture.item.Components)
+			}
+
+			for index, component := range update.Item.Components {
+				expected := fixture.item.Components[index]
+				if component.Type != expected.Type || !slices.Equal(component.Data, expected.Data) {
+					t.Fatalf("creative slot component = %v, want %v", component, expected)
+				}
+			}
+
+			if !slices.Equal(update.Item.RemovedComponents, fixture.removed) {
+				t.Fatalf("creative slot removed components = %v, want %v", update.Item.RemovedComponents, fixture.removed)
+			}
+		})
+	}
+}
+
+func TestDecodeSetCreativeModeSlotRejectsMalformedUntrustedSlots(t *testing.T) {
+	fixtures := map[string][]byte{
+		"truncated item ID":                {0x00, 0x24, 0x01},
+		"truncated component payload":      {0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x00, 0x03, 0x02, 0xAC},
+		"overlong item count varint":       {0x00, 0x24, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00},
+		"negative item count":              {0x00, 0x24, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0xAA, 0x07, 0x00, 0x00},
+		"negative item ID":                 {0x00, 0x24, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0x00, 0x00},
+		"item ID above registry":           {0x00, 0x24, 0x01, 0xE1, 0x0B, 0x00, 0x00},
+		"negative added component count":   {0x00, 0x24, 0x01, 0xAA, 0x07, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0x00},
+		"overlong added component count":   {0x00, 0x24, 0x01, 0xAA, 0x07, 0x81, 0x08, 0x00},
+		"negative removed component count": {0x00, 0x24, 0x01, 0xAA, 0x07, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F},
+		"negative component payload length": {0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x00, 0x03,
+			0xFF, 0xFF, 0xFF, 0xFF, 0x0F},
+		"component payload length above limit": {0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x00, 0x03,
+			0x81, 0x80, 0x40},
+		"invalid enchantment ID": {0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x00, 0x0D,
+			0x03, 0x01, 0x2B, 0x01},
+		"unsupported non-default component": {0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x00, 0x01,
+			0x01, 0x10},
+	}
+
+	for name, data := range fixtures {
+		t.Run(name, func(t *testing.T) {
+			_, err := DecodeSetCreativeModeSlot(data)
+			if err == nil {
+				t.Fatal("malformed creative slot decoded")
+			}
+		})
+	}
+}
+
+func TestDecodeSetCreativeModeSlotNormalizesComponentPatchMap(t *testing.T) {
+	data := []byte{
+		0x00, 0x24,
+		0x01, 0xAA, 0x07,
+		0x03, 0x02,
+		0x03, 0x01, 0x01,
+		0x03, 0x01, 0x02,
+		0x0D, 0x03, 0x01, 0x14, 0x05,
+		0x0D, 0x0D,
+	}
+
+	update, err := DecodeSetCreativeModeSlot(data)
+	if err != nil {
+		t.Fatalf("decode creative slot: %v", err)
+	}
+
+	if len(update.Item.Components) != 1 || update.Item.Components[0].Type != game.ItemComponentDamage || !slices.Equal(update.Item.Components[0].Data, []byte{0x02}) {
+		t.Fatalf("normalized additions = %v, want last damage payload", update.Item.Components)
+	}
+
+	if !slices.Equal(update.Item.RemovedComponents, []int32{game.ItemComponentEnchantments}) {
+		t.Fatalf("normalized removals = %v, want enchantments", update.Item.RemovedComponents)
 	}
 }
 

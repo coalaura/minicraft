@@ -19,6 +19,12 @@ type miningRuleTestCase struct {
 	speed float32
 }
 
+type miningDurabilityTestCase struct {
+	item       game.Item
+	block      game.Block
+	wantDamage int32
+}
+
 type baselineBlockDropTestCase struct {
 	block game.Block
 	item  game.Item
@@ -118,7 +124,7 @@ func TestEfficiencyMiningProgressAndTiming(t *testing.T) {
 	player.Inventory.Hotbar[0].SetEnchantment(game.EnchantmentEfficiency, 2)
 
 	efficient := destroyProgress(player, stone)
-	wantEfficient := 12 / hardness / 30
+	wantEfficient := 13 / hardness / 30
 
 	if math.Abs(efficient-wantEfficient) > 1e-9 {
 		t.Fatalf("Efficiency II destroy progress = %.12f, want %.12f", efficient, wantEfficient)
@@ -427,6 +433,36 @@ func TestGeneratedSwordAndShearsMiningRules(t *testing.T) {
 
 	if !game.ItemShears.IsCorrectToolForDrops(game.Cobweb) {
 		t.Fatal("shears are not correct for cobweb drops")
+	}
+}
+
+func TestShearsDurabilityOnInstantBlocksExcludesOnlyFire(t *testing.T) {
+	tests := map[string]miningDurabilityTestCase{
+		"shears damage on torch":   {item: game.ItemShears, block: game.Torch, wantDamage: 1},
+		"shears skip fire":         {item: game.ItemShears, block: game.Fire, wantDamage: 0},
+		"shears skip soul fire":    {item: game.ItemShears, block: game.SoulFire, wantDamage: 0},
+		"generic tool skips torch": {item: game.ItemIronPickaxe, block: game.Torch, wantDamage: 0},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			runtime := NewRuntime(&game.World{})
+
+			session, _ := newBlockMutationTestSession(runtime, commandTestBobUUID, "Miner", game.GameModeSurvival)
+
+			stack := game.ItemStack{Item: test.item, Count: 1}
+
+			session.Player.Inventory.Hotbar[0] = stack
+
+			joinTestSession(t, runtime, session)
+
+			runtime.damageMiningTool(session, miningTool{stack: stack, slot: 0}, test.block)
+
+			damage := session.snapshotPlayer().Inventory.Hotbar[0].Damage()
+			if damage != test.wantDamage {
+				t.Fatalf("damage = %d, want %d", damage, test.wantDamage)
+			}
+		})
 	}
 }
 

@@ -1007,7 +1007,7 @@ func TestCommandEnchantAppliesHeldItemLevelsAndSynchronizes(t *testing.T) {
 		t.Fatalf("decode inventory update: %v", err)
 	}
 
-	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.enchant.success.single", game.TranslatableText("enchantment.minecraft.efficiency"), game.LiteralText("Bob")))
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.enchant.success.single", game.EnchantmentEfficiency.FullName(1), game.LiteralText("Bob")))
 	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundEntityEquipmentID})
 
 	reader = protocol.NewPacketReader(observerConnection.packets(t)[0].Data)
@@ -1033,34 +1033,26 @@ func TestCommandEnchantAppliesHeldItemLevelsAndSynchronizes(t *testing.T) {
 
 	executeCommand(t, bob, "enchant Bob efficiency 4")
 
-	if bob.snapshotPlayer().Inventory.Hotbar[3].EnchantmentLevel(game.EnchantmentEfficiency) != 4 {
-		t.Fatal("explicit enchantment level did not upgrade the held item")
+	if bob.snapshotPlayer().Inventory.Hotbar[3].EnchantmentLevel(game.EnchantmentEfficiency) != 1 {
+		t.Fatal("reapplying the same enchantment changed the held item")
 	}
 
-	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundContainerSetContentID, protocol.ClientboundSystemChatID})
-	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundEntityEquipmentID})
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.enchant.failed.incompatible", game.TranslatableText("item.minecraft.iron_pickaxe")).WithColor(game.TextColorRed))
+	assertPacketIDs(t, observerConnection.packetIDs(t), nil)
 
 	bobConnection.reset()
 	observerConnection.reset()
 
-	executeCommand(t, bob, "enchant Bob efficiency 2")
-
-	if bob.snapshotPlayer().Inventory.Hotbar[3].EnchantmentLevel(game.EnchantmentEfficiency) != 4 {
-		t.Fatal("lower enchantment level downgraded the held item")
-	}
-
-	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundSystemChatID})
-	assertPacketIDs(t, observerConnection.packetIDs(t), nil)
-
-	bobConnection.reset()
+	bob.Player.Inventory.Hotbar[3] = game.ItemStack{Item: game.ItemIronPickaxe, Count: 1}
 
 	executeCommand(t, bob, "enchant Bob efficiency 0")
 
-	if bob.snapshotPlayer().Inventory.Hotbar[3].EnchantmentLevel(game.EnchantmentEfficiency) != 4 {
+	if bob.snapshotPlayer().Inventory.Hotbar[3].EnchantmentLevel(game.EnchantmentEfficiency) != 0 {
 		t.Fatal("level zero changed the held item's enchantment")
 	}
 
-	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundSystemChatID})
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.enchant.success.single", game.EnchantmentEfficiency.FullName(0), game.LiteralText("Bob")))
+	assertPacketIDs(t, observerConnection.packetIDs(t), nil)
 }
 
 func TestCommandEnchantRejectsInvalidTargetsAndArguments(t *testing.T) {
@@ -1167,7 +1159,7 @@ func TestCommandEnchantSkipsInvalidMultipleTargets(t *testing.T) {
 		t.Fatal("multi-target enchantment did not synchronize only changed inventories")
 	}
 
-	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.enchant.success.multiple", game.TranslatableText("enchantment.minecraft.efficiency"), game.LiteralText("1")))
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.enchant.success.multiple", game.EnchantmentEfficiency.FullName(3), game.LiteralText("2")))
 }
 
 func TestCommandGiveProcessesMultipleTargetsIndependently(t *testing.T) {

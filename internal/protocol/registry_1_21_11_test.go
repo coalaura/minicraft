@@ -48,33 +48,24 @@ func TestCraftingMenuRegistryID12111(t *testing.T) {
 }
 
 func TestEnchantmentRegistryOrder12111(t *testing.T) {
-	expected := []string{
-		"minecraft:protection", "minecraft:fire_protection", "minecraft:feather_falling", "minecraft:blast_protection",
-		"minecraft:projectile_protection", "minecraft:respiration", "minecraft:aqua_affinity", "minecraft:thorns",
-		"minecraft:depth_strider", "minecraft:frost_walker", "minecraft:binding_curse", "minecraft:soul_speed",
-		"minecraft:swift_sneak", "minecraft:sharpness", "minecraft:smite", "minecraft:bane_of_arthropods",
-		"minecraft:knockback", "minecraft:fire_aspect", "minecraft:looting", "minecraft:sweeping_edge",
-		"minecraft:efficiency", "minecraft:silk_touch", "minecraft:unbreaking", "minecraft:fortune",
-		"minecraft:power", "minecraft:punch", "minecraft:flame", "minecraft:infinity",
-		"minecraft:luck_of_the_sea", "minecraft:lure", "minecraft:loyalty", "minecraft:impaling",
-		"minecraft:riptide", "minecraft:lunge", "minecraft:channeling", "minecraft:multishot",
-		"minecraft:quick_charge", "minecraft:piercing", "minecraft:density", "minecraft:breach",
-		"minecraft:wind_burst", "minecraft:mending", "minecraft:vanishing_curse",
-	}
-
 	for _, registry := range ConfigurationRegistries {
 		if registry.ID != "minecraft:enchantment" {
 			continue
 		}
 
-		if !slices.Equal(registry.Entries, expected) {
-			t.Fatalf("enchantment registry entries = %v, want %v", registry.Entries, expected)
+		if !slices.Equal(registry.Entries, generatedEnchantmentRegistryEntries) {
+			t.Fatalf("enchantment registry entries = %v, want generated authority", registry.Entries)
 		}
 
-		for index, name := range expected {
+		for index, name := range generatedEnchantmentRegistryEntries {
 			registryID, found := registry.EntryID(name)
 			if !found || registryID != int32(index) {
 				t.Fatalf("%s registry ID = %d, found %t; want %d, true", name, registryID, found, index)
+			}
+
+			definition, valid := game.Enchantment(index).Definition()
+			if !valid || name != "minecraft:"+definition.Name {
+				t.Fatalf("registry entry %d = %s, game definition = %+v, valid %t", index, name, definition, valid)
 			}
 		}
 
@@ -140,17 +131,13 @@ func TestConfigurationEnchantmentDependencyTags12111(t *testing.T) {
 	}
 
 	itemTags := registries["minecraft:item"]
-	requiredItemTags := []string{
-		"armor", "bow", "chest_armor", "crossbow", "durability", "equippable", "fire_aspect", "fishing", "foot_armor", "head_armor",
-		"leg_armor", "lunge", "mace", "melee_weapon", "mining", "mining_loot", "sharp_weapon", "sweeping", "trident", "vanishing", "weapon",
+	if len(itemTags) != len(generatedItemEnchantmentTags) {
+		t.Fatalf("item enchantment tags = %d, want %d", len(itemTags), len(generatedItemEnchantmentTags))
 	}
 
-	for _, name := range requiredItemTags {
-		id := "minecraft:enchantable/" + name
-		entries, exists := itemTags[id]
-
-		if !exists || len(entries) == 0 {
-			t.Errorf("required item tag %s = %v, exists %t", id, entries, exists)
+	for _, expected := range generatedItemEnchantmentTags {
+		if !slices.Equal(itemTags[expected.ID], expected.Entries) {
+			t.Errorf("item tag %s = %v, want %v", expected.ID, itemTags[expected.ID], expected.Entries)
 		}
 	}
 
@@ -163,14 +150,13 @@ func TestConfigurationEnchantmentDependencyTags12111(t *testing.T) {
 	}
 
 	enchantmentTags := registries["minecraft:enchantment"]
-	requiredEnchantmentTags := []string{"armor", "boots", "bow", "crossbow", "damage", "mining", "riptide"}
+	if len(enchantmentTags) != len(generatedEnchantmentTags) {
+		t.Fatalf("enchantment tags = %d, want %d", len(enchantmentTags), len(generatedEnchantmentTags))
+	}
 
-	for _, name := range requiredEnchantmentTags {
-		id := "minecraft:exclusive_set/" + name
-		entries, exists := enchantmentTags[id]
-
-		if !exists || len(entries) == 0 {
-			t.Errorf("required enchantment tag %s = %v, exists %t", id, entries, exists)
+	for _, expected := range generatedEnchantmentTags {
+		if !slices.Equal(enchantmentTags[expected.ID], expected.Entries) {
+			t.Errorf("enchantment tag %s = %v, want %v", expected.ID, enchantmentTags[expected.ID], expected.Entries)
 		}
 	}
 

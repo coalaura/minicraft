@@ -683,6 +683,8 @@ func encodeItemStack(wr *PacketWriter, stack game.ItemStack) {
 		return
 	}
 
+	stack.NormalizeComponents()
+
 	wr.VarInt(stack.Count)
 	wr.VarInt(int32(stack.Item))
 	wr.VarInt(int32(len(stack.Components)))

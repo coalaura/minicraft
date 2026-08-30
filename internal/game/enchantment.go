@@ -1,43 +1,47 @@
+//go:generate go run ../../cmd/generate-enchantments -order ../../data/enchantment_order.json -enchantments ../../data/enchantments -enchantment-tags ../../data/enchantment_tags -item-tags ../../data/item_tags -items ../../data/items.json -game-output enchantments_generated.go -protocol-output ../protocol/enchantment_tags_generated.go
+
 package game
+
+import "slices"
 
 type Enchantment int32
 
 type EnchantmentDefinition struct {
-	ID                Enchantment
-	Name              string
-	MaximumLevel      int32
-	EnchantCategories ItemEnchantCategory
-}
-
-const (
-	EnchantmentEfficiency Enchantment = 20
-	EnchantmentSilkTouch  Enchantment = 21
-	EnchantmentUnbreaking Enchantment = 22
-	EnchantmentFortune    Enchantment = 23
-	maxEnchantmentID      Enchantment = 42
-)
-
-var enchantmentDefinitions = map[Enchantment]EnchantmentDefinition{
-	EnchantmentEfficiency: {ID: EnchantmentEfficiency, Name: "efficiency", MaximumLevel: 5, EnchantCategories: ItemEnchantCategoryMining},
-	EnchantmentSilkTouch:  {ID: EnchantmentSilkTouch, Name: "silk_touch", MaximumLevel: 1, EnchantCategories: ItemEnchantCategoryMiningLoot},
-	EnchantmentUnbreaking: {ID: EnchantmentUnbreaking, Name: "unbreaking", MaximumLevel: 3, EnchantCategories: ItemEnchantCategoryDurability},
-	EnchantmentFortune:    {ID: EnchantmentFortune, Name: "fortune", MaximumLevel: 3, EnchantCategories: ItemEnchantCategoryMiningLoot},
+	ID             Enchantment
+	Name           string
+	MaximumLevel   int32
+	SupportedItems []Item
+	ExclusiveMask  uint64
+	Curse          bool
 }
 
 func (enchantment Enchantment) Valid() bool {
-	return enchantment >= 0 && enchantment <= maxEnchantmentID
+	return enchantment >= 0 && enchantment <= MaxEnchantmentID
 }
 
 func (enchantment Enchantment) Definition() (EnchantmentDefinition, bool) {
-	definition, exists := enchantmentDefinitions[enchantment]
+	if !enchantment.Valid() {
+		return EnchantmentDefinition{}, false
+	}
 
-	return definition, exists
+	return generatedEnchantmentDefinitions[enchantment], true
 }
 
 func (enchantment Enchantment) Compatible(other Enchantment) bool {
-	return enchantment == other ||
-		(enchantment != EnchantmentSilkTouch || other != EnchantmentFortune) &&
-			(enchantment != EnchantmentFortune || other != EnchantmentSilkTouch)
+	if enchantment == other {
+		return false
+	}
+
+	definition, valid := enchantment.Definition()
+	if !valid || !other.Valid() {
+		return false
+	}
+
+	otherDefinition, _ := other.Definition()
+	otherMask := uint64(1) << uint(other)
+	enchantmentMask := uint64(1) << uint(enchantment)
+
+	return definition.ExclusiveMask&otherMask == 0 && otherDefinition.ExclusiveMask&enchantmentMask == 0
 }
 
 func (enchantment Enchantment) Supports(item Item) bool {
@@ -46,18 +50,34 @@ func (enchantment Enchantment) Supports(item Item) bool {
 		return false
 	}
 
-	itemDefinition, exists := item.Definition()
-	if !exists {
-		return false
+	return slices.Contains(definition.SupportedItems, item)
+}
+
+func (enchantment Enchantment) FullName(level int32) TextComponent {
+	definition, valid := enchantment.Definition()
+	if !valid {
+		return TextComponent{}
 	}
 
-	return itemDefinition.EnchantCategories&definition.EnchantCategories != 0
+	color := TextColorGray
+
+	if definition.Curse {
+		color = TextColorRed
+	}
+
+	name := TranslatableText("enchantment.minecraft." + definition.Name).WithColor(color)
+
+	if level != 1 || definition.MaximumLevel != 1 {
+		name = name.Append(LiteralText(" "), TranslatableText("enchantment.level."+formatInt32(level)))
+	}
+
+	return name
 }
 
 func EnchantmentByName(name string) (Enchantment, bool) {
-	for enchantment, definition := range enchantmentDefinitions {
+	for enchantment, definition := range generatedEnchantmentDefinitions {
 		if name == definition.Name || name == "minecraft:"+definition.Name {
-			return enchantment, true
+			return Enchantment(enchantment), true
 		}
 	}
 

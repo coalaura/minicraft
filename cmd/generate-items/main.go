@@ -12,11 +12,10 @@ import (
 )
 
 type ItemDefinition struct {
-	ID                uint16   `json:"id"`
-	Name              string   `json:"name"`
-	StackSize         int32    `json:"stackSize"`
-	MaxDurability     int32    `json:"maxDurability"`
-	EnchantCategories []string `json:"enchantCategories"`
+	ID            uint16 `json:"id"`
+	Name          string `json:"name"`
+	StackSize     int32  `json:"stackSize"`
+	MaxDurability int32  `json:"maxDurability"`
 }
 
 type BlockProperty struct {
@@ -136,12 +135,11 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 	for _, item := range items {
 		fmt.Fprintf(
 			&output,
-			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, EnchantCategories: %s, Mining: %s},\n",
+			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, Mining: %s},\n",
 			goName(item.Name),
 			item.Name,
 			item.StackSize,
 			item.MaxDurability,
-			itemEnchantCategories(item.EnchantCategories),
 			itemMining(item.Name),
 		)
 	}
@@ -180,20 +178,6 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 	}
 
 	return formatted, nil
-}
-
-func itemEnchantCategories(categories []string) string {
-	if len(categories) == 0 {
-		return "0"
-	}
-
-	values := make([]string, len(categories))
-
-	for index, category := range categories {
-		values[index] = "ItemEnchantCategory" + goName(category)
-	}
-
-	return strings.Join(values, " | ")
 }
 
 func itemMining(name string) string {

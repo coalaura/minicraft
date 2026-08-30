@@ -2145,11 +2145,7 @@
     "id": 357,
     "name": "carved_pumpkin",
     "displayName": "Carved Pumpkin",
-    "stackSize": 64,
-    "enchantCategories": [
-      "equippable",
-      "vanishing"
-    ]
+    "stackSize": 64
   },
   {
     "id": 358,
@@ -5162,10 +5158,6 @@
     "name": "carrot_on_a_stick",
     "displayName": "Carrot on a Stick",
     "stackSize": 1,
-    "enchantCategories": [
-      "durability",
-      "vanishing"
-    ],
     "maxDurability": 25
   },
   {
@@ -5173,10 +5165,6 @@
     "name": "warped_fungus_on_a_stick",
     "displayName": "Warped Fungus on a Stick",
     "stackSize": 1,
-    "enchantCategories": [
-      "durability",
-      "vanishing"
-    ],
     "maxDurability": 100
   },
   {
@@ -5190,11 +5178,6 @@
     "name": "elytra",
     "displayName": "Elytra",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "phantom_membrane"
     ],
@@ -5349,13 +5332,6 @@
     "name": "turtle_helmet",
     "displayName": "Turtle Shell",
     "stackSize": 1,
-    "enchantCategories": [
-      "head_armor",
-      "equippable",
-      "armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "turtle_scute"
     ],
@@ -5388,10 +5364,6 @@
     "name": "flint_and_steel",
     "displayName": "Flint and Steel",
     "stackSize": 1,
-    "enchantCategories": [
-      "durability",
-      "vanishing"
-    ],
     "maxDurability": 64
   },
   {
@@ -5411,11 +5383,6 @@
     "name": "bow",
     "displayName": "Bow",
     "stackSize": 1,
-    "enchantCategories": [
-      "bow",
-      "durability",
-      "vanishing"
-    ],
     "maxDurability": 384
   },
   {
@@ -5519,15 +5486,6 @@
     "name": "wooden_sword",
     "displayName": "Wooden Sword",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "durability",
-      "sharp_weapon",
-      "sweeping",
-      "vanishing"
-    ],
     "repairWith": [
       "oak_planks",
       "spruce_planks",
@@ -5549,12 +5507,6 @@
     "name": "wooden_shovel",
     "displayName": "Wooden Shovel",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "oak_planks",
       "spruce_planks",
@@ -5576,12 +5528,6 @@
     "name": "wooden_pickaxe",
     "displayName": "Wooden Pickaxe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "oak_planks",
       "spruce_planks",
@@ -5603,14 +5549,6 @@
     "name": "wooden_axe",
     "displayName": "Wooden Axe",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "mining",
-      "mining_loot",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "oak_planks",
       "spruce_planks",
@@ -5632,12 +5570,6 @@
     "name": "wooden_hoe",
     "displayName": "Wooden Hoe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "oak_planks",
       "spruce_planks",
@@ -5659,15 +5591,6 @@
     "name": "copper_sword",
     "displayName": "Copper Sword",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "durability",
-      "sharp_weapon",
-      "sweeping",
-      "vanishing"
-    ],
     "repairWith": [
       "copper_ingot"
     ],
@@ -5678,12 +5601,6 @@
     "name": "copper_shovel",
     "displayName": "Copper Shovel",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "copper_ingot"
     ],
@@ -5694,12 +5611,6 @@
     "name": "copper_pickaxe",
     "displayName": "Copper Pickaxe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "copper_ingot"
     ],
@@ -5710,14 +5621,6 @@
     "name": "copper_axe",
     "displayName": "Copper Axe",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "mining",
-      "mining_loot",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "copper_ingot"
     ],
@@ -5728,12 +5631,6 @@
     "name": "copper_hoe",
     "displayName": "Copper Hoe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "copper_ingot"
     ],
@@ -5744,15 +5641,6 @@
     "name": "stone_sword",
     "displayName": "Stone Sword",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "durability",
-      "sharp_weapon",
-      "sweeping",
-      "vanishing"
-    ],
     "repairWith": [
       "cobbled_deepslate",
       "cobblestone",
@@ -5765,12 +5653,6 @@
     "name": "stone_shovel",
     "displayName": "Stone Shovel",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "cobbled_deepslate",
       "cobblestone",
@@ -5783,12 +5665,6 @@
     "name": "stone_pickaxe",
     "displayName": "Stone Pickaxe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "cobbled_deepslate",
       "cobblestone",
@@ -5801,14 +5677,6 @@
     "name": "stone_axe",
     "displayName": "Stone Axe",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "mining",
-      "mining_loot",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "cobbled_deepslate",
       "cobblestone",
@@ -5821,12 +5689,6 @@
     "name": "stone_hoe",
     "displayName": "Stone Hoe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "cobbled_deepslate",
       "cobblestone",
@@ -5839,15 +5701,6 @@
     "name": "golden_sword",
     "displayName": "Golden Sword",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "durability",
-      "sharp_weapon",
-      "sweeping",
-      "vanishing"
-    ],
     "repairWith": [
       "gold_ingot"
     ],
@@ -5858,12 +5711,6 @@
     "name": "golden_shovel",
     "displayName": "Golden Shovel",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "gold_ingot"
     ],
@@ -5874,12 +5721,6 @@
     "name": "golden_pickaxe",
     "displayName": "Golden Pickaxe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "gold_ingot"
     ],
@@ -5890,14 +5731,6 @@
     "name": "golden_axe",
     "displayName": "Golden Axe",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "mining",
-      "mining_loot",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "gold_ingot"
     ],
@@ -5908,12 +5741,6 @@
     "name": "golden_hoe",
     "displayName": "Golden Hoe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "gold_ingot"
     ],
@@ -5924,15 +5751,6 @@
     "name": "iron_sword",
     "displayName": "Iron Sword",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "durability",
-      "sharp_weapon",
-      "sweeping",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -5943,12 +5761,6 @@
     "name": "iron_shovel",
     "displayName": "Iron Shovel",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -5959,12 +5771,6 @@
     "name": "iron_pickaxe",
     "displayName": "Iron Pickaxe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -5975,14 +5781,6 @@
     "name": "iron_axe",
     "displayName": "Iron Axe",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "mining",
-      "mining_loot",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -5993,12 +5791,6 @@
     "name": "iron_hoe",
     "displayName": "Iron Hoe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -6009,15 +5801,6 @@
     "name": "diamond_sword",
     "displayName": "Diamond Sword",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "durability",
-      "sharp_weapon",
-      "sweeping",
-      "vanishing"
-    ],
     "repairWith": [
       "diamond"
     ],
@@ -6028,12 +5811,6 @@
     "name": "diamond_shovel",
     "displayName": "Diamond Shovel",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "diamond"
     ],
@@ -6044,12 +5821,6 @@
     "name": "diamond_pickaxe",
     "displayName": "Diamond Pickaxe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "diamond"
     ],
@@ -6060,14 +5831,6 @@
     "name": "diamond_axe",
     "displayName": "Diamond Axe",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "mining",
-      "mining_loot",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "diamond"
     ],
@@ -6078,12 +5841,6 @@
     "name": "diamond_hoe",
     "displayName": "Diamond Hoe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "diamond"
     ],
@@ -6094,15 +5851,6 @@
     "name": "netherite_sword",
     "displayName": "Netherite Sword",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "durability",
-      "sharp_weapon",
-      "sweeping",
-      "vanishing"
-    ],
     "repairWith": [
       "netherite_ingot"
     ],
@@ -6113,12 +5861,6 @@
     "name": "netherite_shovel",
     "displayName": "Netherite Shovel",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "netherite_ingot"
     ],
@@ -6129,12 +5871,6 @@
     "name": "netherite_pickaxe",
     "displayName": "Netherite Pickaxe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "netherite_ingot"
     ],
@@ -6145,14 +5881,6 @@
     "name": "netherite_axe",
     "displayName": "Netherite Axe",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "mining",
-      "mining_loot",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "netherite_ingot"
     ],
@@ -6163,12 +5891,6 @@
     "name": "netherite_hoe",
     "displayName": "Netherite Hoe",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "mining_loot",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "netherite_ingot"
     ],
@@ -6227,13 +5949,6 @@
     "name": "leather_helmet",
     "displayName": "Leather Cap",
     "stackSize": 1,
-    "enchantCategories": [
-      "head_armor",
-      "equippable",
-      "armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "leather"
     ],
@@ -6244,13 +5959,6 @@
     "name": "leather_chestplate",
     "displayName": "Leather Tunic",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "chest_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "leather"
     ],
@@ -6261,13 +5969,6 @@
     "name": "leather_leggings",
     "displayName": "Leather Pants",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "durability",
-      "leg_armor",
-      "vanishing"
-    ],
     "repairWith": [
       "leather"
     ],
@@ -6278,13 +5979,6 @@
     "name": "leather_boots",
     "displayName": "Leather Boots",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "foot_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "leather"
     ],
@@ -6295,13 +5989,6 @@
     "name": "copper_helmet",
     "displayName": "Copper Helmet",
     "stackSize": 1,
-    "enchantCategories": [
-      "head_armor",
-      "equippable",
-      "armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "copper_ingot"
     ],
@@ -6312,13 +5999,6 @@
     "name": "copper_chestplate",
     "displayName": "Copper Chestplate",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "chest_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "copper_ingot"
     ],
@@ -6329,13 +6009,6 @@
     "name": "copper_leggings",
     "displayName": "Copper Leggings",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "durability",
-      "leg_armor",
-      "vanishing"
-    ],
     "repairWith": [
       "copper_ingot"
     ],
@@ -6346,13 +6019,6 @@
     "name": "copper_boots",
     "displayName": "Copper Boots",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "foot_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "copper_ingot"
     ],
@@ -6363,13 +6029,6 @@
     "name": "chainmail_helmet",
     "displayName": "Chainmail Helmet",
     "stackSize": 1,
-    "enchantCategories": [
-      "head_armor",
-      "equippable",
-      "armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -6380,13 +6039,6 @@
     "name": "chainmail_chestplate",
     "displayName": "Chainmail Chestplate",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "chest_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -6397,13 +6049,6 @@
     "name": "chainmail_leggings",
     "displayName": "Chainmail Leggings",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "durability",
-      "leg_armor",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -6414,13 +6059,6 @@
     "name": "chainmail_boots",
     "displayName": "Chainmail Boots",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "foot_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -6431,13 +6069,6 @@
     "name": "iron_helmet",
     "displayName": "Iron Helmet",
     "stackSize": 1,
-    "enchantCategories": [
-      "head_armor",
-      "equippable",
-      "armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -6448,13 +6079,6 @@
     "name": "iron_chestplate",
     "displayName": "Iron Chestplate",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "chest_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -6465,13 +6089,6 @@
     "name": "iron_leggings",
     "displayName": "Iron Leggings",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "durability",
-      "leg_armor",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -6482,13 +6099,6 @@
     "name": "iron_boots",
     "displayName": "Iron Boots",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "foot_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -6499,13 +6109,6 @@
     "name": "diamond_helmet",
     "displayName": "Diamond Helmet",
     "stackSize": 1,
-    "enchantCategories": [
-      "head_armor",
-      "equippable",
-      "armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "diamond"
     ],
@@ -6516,13 +6119,6 @@
     "name": "diamond_chestplate",
     "displayName": "Diamond Chestplate",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "chest_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "diamond"
     ],
@@ -6533,13 +6129,6 @@
     "name": "diamond_leggings",
     "displayName": "Diamond Leggings",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "durability",
-      "leg_armor",
-      "vanishing"
-    ],
     "repairWith": [
       "diamond"
     ],
@@ -6550,13 +6139,6 @@
     "name": "diamond_boots",
     "displayName": "Diamond Boots",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "foot_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "diamond"
     ],
@@ -6567,13 +6149,6 @@
     "name": "golden_helmet",
     "displayName": "Golden Helmet",
     "stackSize": 1,
-    "enchantCategories": [
-      "head_armor",
-      "equippable",
-      "armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "gold_ingot"
     ],
@@ -6584,13 +6159,6 @@
     "name": "golden_chestplate",
     "displayName": "Golden Chestplate",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "chest_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "gold_ingot"
     ],
@@ -6601,13 +6169,6 @@
     "name": "golden_leggings",
     "displayName": "Golden Leggings",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "durability",
-      "leg_armor",
-      "vanishing"
-    ],
     "repairWith": [
       "gold_ingot"
     ],
@@ -6618,13 +6179,6 @@
     "name": "golden_boots",
     "displayName": "Golden Boots",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "foot_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "gold_ingot"
     ],
@@ -6635,13 +6189,6 @@
     "name": "netherite_helmet",
     "displayName": "Netherite Helmet",
     "stackSize": 1,
-    "enchantCategories": [
-      "head_armor",
-      "equippable",
-      "armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "netherite_ingot"
     ],
@@ -6652,13 +6199,6 @@
     "name": "netherite_chestplate",
     "displayName": "Netherite Chestplate",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "chest_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "netherite_ingot"
     ],
@@ -6669,13 +6209,6 @@
     "name": "netherite_leggings",
     "displayName": "Netherite Leggings",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "durability",
-      "leg_armor",
-      "vanishing"
-    ],
     "repairWith": [
       "netherite_ingot"
     ],
@@ -6686,13 +6219,6 @@
     "name": "netherite_boots",
     "displayName": "Netherite Boots",
     "stackSize": 1,
-    "enchantCategories": [
-      "equippable",
-      "armor",
-      "foot_armor",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "netherite_ingot"
     ],
@@ -7014,10 +6540,7 @@
     "id": 1034,
     "name": "compass",
     "displayName": "Compass",
-    "stackSize": 64,
-    "enchantCategories": [
-      "vanishing"
-    ]
+    "stackSize": 64
   },
   {
     "id": 1035,
@@ -7132,11 +6655,6 @@
     "name": "fishing_rod",
     "displayName": "Fishing Rod",
     "stackSize": 1,
-    "enchantCategories": [
-      "fishing",
-      "durability",
-      "vanishing"
-    ],
     "maxDurability": 64
   },
   {
@@ -7450,11 +6968,6 @@
     "name": "shears",
     "displayName": "Shears",
     "stackSize": 1,
-    "enchantCategories": [
-      "mining",
-      "durability",
-      "vanishing"
-    ],
     "maxDurability": 238
   },
   {
@@ -8164,13 +7677,6 @@
     "name": "mace",
     "displayName": "Mace",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "mace",
-      "fire_aspect",
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "breeze_rod"
     ],
@@ -8234,71 +7740,43 @@
     "id": 1233,
     "name": "skeleton_skull",
     "displayName": "Skeleton Skull",
-    "stackSize": 64,
-    "enchantCategories": [
-      "equippable",
-      "vanishing"
-    ]
+    "stackSize": 64
   },
   {
     "id": 1234,
     "name": "wither_skeleton_skull",
     "displayName": "Wither Skeleton Skull",
-    "stackSize": 64,
-    "enchantCategories": [
-      "equippable",
-      "vanishing"
-    ]
+    "stackSize": 64
   },
   {
     "id": 1235,
     "name": "player_head",
     "displayName": "Player Head",
-    "stackSize": 64,
-    "enchantCategories": [
-      "equippable",
-      "vanishing"
-    ]
+    "stackSize": 64
   },
   {
     "id": 1236,
     "name": "zombie_head",
     "displayName": "Zombie Head",
-    "stackSize": 64,
-    "enchantCategories": [
-      "equippable",
-      "vanishing"
-    ]
+    "stackSize": 64
   },
   {
     "id": 1237,
     "name": "creeper_head",
     "displayName": "Creeper Head",
-    "stackSize": 64,
-    "enchantCategories": [
-      "equippable",
-      "vanishing"
-    ]
+    "stackSize": 64
   },
   {
     "id": 1238,
     "name": "dragon_head",
     "displayName": "Dragon Head",
-    "stackSize": 64,
-    "enchantCategories": [
-      "equippable",
-      "vanishing"
-    ]
+    "stackSize": 64
   },
   {
     "id": 1239,
     "name": "piglin_head",
     "displayName": "Piglin Head",
-    "stackSize": 64,
-    "enchantCategories": [
-      "equippable",
-      "vanishing"
-    ]
+    "stackSize": 64
   },
   {
     "id": 1240,
@@ -8635,10 +8113,6 @@
     "name": "shield",
     "displayName": "Shield",
     "stackSize": 1,
-    "enchantCategories": [
-      "durability",
-      "vanishing"
-    ],
     "repairWith": [
       "oak_planks",
       "spruce_planks",
@@ -8660,15 +8134,6 @@
     "name": "wooden_spear",
     "displayName": "Wooden Spear",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "lunge",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "oak_planks",
       "spruce_planks",
@@ -8690,15 +8155,6 @@
     "name": "stone_spear",
     "displayName": "Stone Spear",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "lunge",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "cobbled_deepslate",
       "cobblestone",
@@ -8711,15 +8167,6 @@
     "name": "copper_spear",
     "displayName": "Copper Spear",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "lunge",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "copper_ingot"
     ],
@@ -8730,15 +8177,6 @@
     "name": "iron_spear",
     "displayName": "Iron Spear",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "lunge",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "iron_ingot"
     ],
@@ -8749,15 +8187,6 @@
     "name": "golden_spear",
     "displayName": "Golden Spear",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "lunge",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "gold_ingot"
     ],
@@ -8768,15 +8197,6 @@
     "name": "diamond_spear",
     "displayName": "Diamond Spear",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "lunge",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "diamond"
     ],
@@ -8787,15 +8207,6 @@
     "name": "netherite_spear",
     "displayName": "Netherite Spear",
     "stackSize": 1,
-    "enchantCategories": [
-      "weapon",
-      "fire_aspect",
-      "melee_weapon",
-      "lunge",
-      "durability",
-      "sharp_weapon",
-      "vanishing"
-    ],
     "repairWith": [
       "netherite_ingot"
     ],
@@ -8974,11 +8385,6 @@
     "name": "trident",
     "displayName": "Trident",
     "stackSize": 1,
-    "enchantCategories": [
-      "trident",
-      "durability",
-      "vanishing"
-    ],
     "maxDurability": 250
   },
   {
@@ -9028,11 +8434,6 @@
     "name": "crossbow",
     "displayName": "Crossbow",
     "stackSize": 1,
-    "enchantCategories": [
-      "durability",
-      "crossbow",
-      "vanishing"
-    ],
     "maxDurability": 465
   },
   {
@@ -9550,10 +8951,6 @@
     "name": "brush",
     "displayName": "Brush",
     "stackSize": 1,
-    "enchantCategories": [
-      "durability",
-      "vanishing"
-    ],
     "maxDurability": 64
   },
   {
