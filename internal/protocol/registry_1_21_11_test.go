@@ -47,6 +47,43 @@ func TestCraftingMenuRegistryID12111(t *testing.T) {
 	}
 }
 
+func TestEnchantmentRegistryOrder12111(t *testing.T) {
+	expected := []string{
+		"minecraft:protection", "minecraft:fire_protection", "minecraft:feather_falling", "minecraft:blast_protection",
+		"minecraft:projectile_protection", "minecraft:respiration", "minecraft:aqua_affinity", "minecraft:thorns",
+		"minecraft:depth_strider", "minecraft:frost_walker", "minecraft:binding_curse", "minecraft:soul_speed",
+		"minecraft:swift_sneak", "minecraft:sharpness", "minecraft:smite", "minecraft:bane_of_arthropods",
+		"minecraft:knockback", "minecraft:fire_aspect", "minecraft:looting", "minecraft:sweeping_edge",
+		"minecraft:efficiency", "minecraft:silk_touch", "minecraft:unbreaking", "minecraft:fortune",
+		"minecraft:power", "minecraft:punch", "minecraft:flame", "minecraft:infinity",
+		"minecraft:luck_of_the_sea", "minecraft:lure", "minecraft:loyalty", "minecraft:impaling",
+		"minecraft:riptide", "minecraft:lunge", "minecraft:channeling", "minecraft:multishot",
+		"minecraft:quick_charge", "minecraft:piercing", "minecraft:density", "minecraft:breach",
+		"minecraft:wind_burst", "minecraft:mending", "minecraft:vanishing_curse",
+	}
+
+	for _, registry := range ConfigurationRegistries {
+		if registry.ID != "minecraft:enchantment" {
+			continue
+		}
+
+		if !slices.Equal(registry.Entries, expected) {
+			t.Fatalf("enchantment registry entries = %v, want %v", registry.Entries, expected)
+		}
+
+		for index, name := range expected {
+			registryID, found := registry.EntryID(name)
+			if !found || registryID != int32(index) {
+				t.Fatalf("%s registry ID = %d, found %t; want %d, true", name, registryID, found, index)
+			}
+		}
+
+		return
+	}
+
+	t.Fatal("enchantment registry is missing")
+}
+
 func TestConfigurationBlockMiningTags12111(t *testing.T) {
 	var blockTags []RegistryTag
 
@@ -86,5 +123,73 @@ func TestConfigurationBlockMiningTags12111(t *testing.T) {
 
 	if !incorrectNetheriteFound {
 		t.Fatal("netherite incorrect-tool tag is missing")
+	}
+}
+
+func TestConfigurationEnchantmentDependencyTags12111(t *testing.T) {
+	registries := make(map[string]map[string][]int32)
+
+	for _, registry := range ConfigurationTags {
+		tags := make(map[string][]int32, len(registry.Tags))
+
+		for _, tag := range registry.Tags {
+			tags[tag.ID] = tag.Entries
+		}
+
+		registries[registry.RegistryID] = tags
+	}
+
+	itemTags := registries["minecraft:item"]
+	requiredItemTags := []string{
+		"armor", "bow", "chest_armor", "crossbow", "durability", "equippable", "fire_aspect", "fishing", "foot_armor", "head_armor",
+		"leg_armor", "lunge", "mace", "melee_weapon", "mining", "mining_loot", "sharp_weapon", "sweeping", "trident", "vanishing", "weapon",
+	}
+
+	for _, name := range requiredItemTags {
+		id := "minecraft:enchantable/" + name
+		entries, exists := itemTags[id]
+
+		if !exists || len(entries) == 0 {
+			t.Errorf("required item tag %s = %v, exists %t", id, entries, exists)
+		}
+	}
+
+	if !slices.Contains(itemTags["minecraft:enchantable/mace"], int32(game.ItemMace)) {
+		t.Fatal("mace enchantable tag does not contain the mace")
+	}
+
+	if !slices.Contains(itemTags["minecraft:enchantable/chest_armor"], int32(game.ItemLeatherChestplate)) {
+		t.Fatal("chest armor enchantable tag does not contain the leather chestplate")
+	}
+
+	enchantmentTags := registries["minecraft:enchantment"]
+	requiredEnchantmentTags := []string{"armor", "boots", "bow", "crossbow", "damage", "mining", "riptide"}
+
+	for _, name := range requiredEnchantmentTags {
+		id := "minecraft:exclusive_set/" + name
+		entries, exists := enchantmentTags[id]
+
+		if !exists || len(entries) == 0 {
+			t.Errorf("required enchantment tag %s = %v, exists %t", id, entries, exists)
+		}
+	}
+
+	miningExclusive := enchantmentTags["minecraft:exclusive_set/mining"]
+	if !slices.Equal(miningExclusive, []int32{23, 21}) {
+		t.Fatalf("mining exclusive enchantments = %v, want fortune and silk touch holder IDs", miningExclusive)
+	}
+
+	entityTypeTags := registries["minecraft:entity_type"]
+	expectedEntityTypeTags := map[string][]int32{
+		"minecraft:arrows":                          {6, 123},
+		"minecraft:sensitive_to_impaling":           {137, 7, 63, 40, 27, 107, 110, 136, 35, 127, 61, 130, 88, 152},
+		"minecraft:sensitive_to_bane_of_arthropods": {11, 42, 114, 124, 22},
+		"minecraft:sensitive_to_smite":              {115, 128, 146, 116, 16, 97, 151, 20, 150, 153, 154, 149, 38, 67, 152, 145, 99},
+	}
+
+	for id, expected := range expectedEntityTypeTags {
+		if !slices.Equal(entityTypeTags[id], expected) {
+			t.Errorf("required entity type tag %s = %v, want %v", id, entityTypeTags[id], expected)
+		}
 	}
 }

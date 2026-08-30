@@ -57,10 +57,84 @@ func registerBuiltinCommands(registry *commandRegistry) {
 	registry.registerTime()
 	registry.registerGameMode()
 	registry.registerGive()
+	registry.registerEnchant()
 	registry.registerClear()
 	registry.registerTeleport()
 	registry.registerSetBlock()
 	registry.registerFill()
+}
+
+func (registry *commandRegistry) registerEnchant() {
+	targets := registry.targetArgument("targets", true)
+	enchantment := enchantmentArgument()
+	level := integerArgument("level", 0, math.MaxInt32)
+
+	execute := func(source CommandSource, values []any) error {
+		resolved := values[0].([]*Session)
+		selected := values[1].(game.Enchantment)
+
+		definition, _ := selected.Definition()
+
+		selectedLevel := int32(1)
+
+		if len(values) > 2 {
+			selectedLevel = values[2].(int32)
+		}
+
+		if selectedLevel > definition.MaximumLevel {
+			return commandFailure{message: game.TranslatableText("commands.enchant.failed.level", integerText(int64(selectedLevel)), integerText(int64(definition.MaximumLevel)))}
+		}
+
+		affected := 0
+
+		for _, target := range resolved {
+			changed, reason, err := registry.runtime.EnchantHeldItem(target, selected, selectedLevel)
+			if err != nil {
+				return err
+			}
+
+			if changed {
+				affected++
+
+				continue
+			}
+
+			if len(resolved) != 1 {
+				continue
+			}
+
+			name := game.LiteralText(target.snapshotPlayer().Name)
+
+			if reason == enchantHeldItemEmpty {
+				return commandFailure{message: game.TranslatableText("commands.enchant.failed.itemless", name)}
+			}
+
+			player := target.snapshotPlayer()
+			item := player.Inventory.Hotbar[player.SelectedHotbarSlot].Item
+
+			return commandFailure{message: game.TranslatableText("commands.enchant.failed.incompatible", itemDisplayName(item))}
+		}
+
+		if affected == 0 {
+			return commandFailure{message: game.TranslatableText("commands.enchant.failed")}
+		}
+
+		enchantmentName := game.TranslatableText("enchantment.minecraft." + definition.Name)
+
+		if len(resolved) == 1 {
+			return source.Feedback(game.TranslatableText("commands.enchant.success.single", enchantmentName, game.LiteralText(resolved[0].snapshotPlayer().Name)))
+		}
+
+		return source.Feedback(game.TranslatableText("commands.enchant.success.multiple", enchantmentName, integerText(int64(affected))))
+	}
+
+	registry.register(&registeredCommand{
+		Name: "enchant",
+		Patterns: []commandPattern{
+			{Elements: []commandElement{targets, enchantment}, Execute: execute},
+			{Elements: []commandElement{targets, enchantment, level}, Execute: execute},
+		},
+	})
 }
 
 func (registry *commandRegistry) registerHelp() {
@@ -960,6 +1034,26 @@ func itemArgument() commandArgument {
 			}
 
 			return item, nil
+		},
+	}
+}
+
+func enchantmentArgument() commandArgument {
+	return commandArgument{
+		name:       "enchantment",
+		parser:     protocol.CommandParserResource,
+		properties: protocol.CommandResourceProperties{Registry: "minecraft:enchantment"},
+		width:      1,
+		parseValue: func(_ CommandSource, tokens []commandToken) (any, error) {
+			enchantment, valid := game.EnchantmentByName(tokens[0].value)
+			if !valid {
+				return nil, commandSyntaxError{
+					message: game.LiteralText("Unknown enchantment '" + tokens[0].value + "'"),
+					cursor:  tokens[0].start,
+				}
+			}
+
+			return enchantment, nil
 		},
 	}
 }

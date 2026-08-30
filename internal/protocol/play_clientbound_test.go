@@ -82,6 +82,35 @@ func TestContainerInventoryPacketsEncode(t *testing.T) {
 	}, []byte{0x03, 0x00, 0x02, 0x01, 0x2C})
 }
 
+func TestItemStackEncodesDamageAndEnchantments(t *testing.T) {
+	stack := game.ItemStack{Item: game.ItemDiamondPickaxe, Count: 1}
+
+	stack.SetDamage(300)
+	stack.SetEnchantments(map[game.Enchantment]int32{
+		game.EnchantmentFortune:    3,
+		game.EnchantmentEfficiency: 5,
+	})
+
+	var writer PacketWriter
+
+	encodeItemStack(&writer, stack)
+
+	err := writer.Err()
+	if err != nil {
+		t.Fatalf("encode item stack: %v", err)
+	}
+
+	expected := []byte{
+		0x01, 0xAA, 0x07, 0x02, 0x00,
+		0x03, 0xAC, 0x02,
+		0x0D, 0x02, 0x14, 0x05, 0x17, 0x03,
+	}
+
+	if !bytes.Equal(writer.Buffer.Bytes(), expected) {
+		t.Fatalf("encoded item stack = %x, want %x", writer.Buffer.Bytes(), expected)
+	}
+}
+
 func TestContainerOpenClosePacketsEncode(t *testing.T) {
 	if ClientboundOpenScreenID != 0x39 {
 		t.Fatalf("open screen packet id = %#x, want 0x39", ClientboundOpenScreenID)

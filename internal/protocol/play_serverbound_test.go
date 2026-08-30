@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
@@ -732,7 +733,39 @@ func TestDecodeContainerClickRejectsMalformedPredictions(t *testing.T) {
 	}
 }
 
-func TestDecodeSetCreativeModeSlotRejectsAddedComponents(t *testing.T) {
+func TestDecodeSetCreativeModeSlotAcceptsGameplayComponents(t *testing.T) {
+	var writer PacketWriter
+
+	writer.Short(36)
+	writer.VarInt(1)
+	writer.VarInt(1)
+	writer.VarInt(2)
+	writer.VarInt(0)
+	writer.VarInt(game.ItemComponentDamage)
+	writer.Bytes([]byte{16})
+	writer.VarInt(game.ItemComponentEnchantments)
+	writer.Bytes([]byte{1, byte(game.EnchantmentUnbreaking), 3})
+
+	update, err := DecodeSetCreativeModeSlot(writer.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode creative slot with gameplay components: %v", err)
+	}
+
+	expected := []game.ItemComponent{
+		{Type: game.ItemComponentDamage, Data: []byte{16}},
+		{Type: game.ItemComponentEnchantments, Data: []byte{1, byte(game.EnchantmentUnbreaking), 3}},
+	}
+
+	equalComponent := func(first, second game.ItemComponent) bool {
+		return first.Type == second.Type && slices.Equal(first.Data, second.Data)
+	}
+
+	if !slices.EqualFunc(update.Item.Components, expected, equalComponent) {
+		t.Fatalf("creative slot components = %v, want %v", update.Item.Components, expected)
+	}
+}
+
+func TestDecodeSetCreativeModeSlotRejectsUnsupportedAddedComponent(t *testing.T) {
 	var writer PacketWriter
 
 	writer.Short(36)
@@ -741,10 +774,10 @@ func TestDecodeSetCreativeModeSlotRejectsAddedComponents(t *testing.T) {
 	writer.VarInt(1)
 	writer.VarInt(0)
 	writer.VarInt(1)
-	writer.VarInt(16)
+	writer.Bytes([]byte{16})
 
 	_, err := DecodeSetCreativeModeSlot(writer.Buffer.Bytes())
-	if err == nil || err.Error() != "added slot component patches are unsupported" {
+	if err == nil || err.Error() != "unsupported added slot component type 1" {
 		t.Fatalf("decode creative slot with added max_stack_size component error = %v", err)
 	}
 }

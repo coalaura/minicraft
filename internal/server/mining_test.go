@@ -34,6 +34,13 @@ type doorMiningTestCase struct {
 	target game.BlockPosition
 }
 
+type miningUnbreakingTestCase struct {
+	level      int32
+	random     int
+	wantDamage int32
+	wantBound  int
+}
+
 func TestBaselineMiningSpeeds(t *testing.T) {
 	stone := game.Stone
 
@@ -91,6 +98,73 @@ func TestBaselineMiningSpeeds(t *testing.T) {
 
 	if !game.ItemDiamondPickaxe.IsCorrectToolForDrops(game.Obsidian) {
 		t.Fatal("diamond pickaxe is not correct for obsidian drops")
+	}
+}
+
+func TestEfficiencyMiningProgressAndTiming(t *testing.T) {
+	stone := game.Stone
+	hardness := float64(stone.MiningProperties().Hardness)
+
+	player := game.Player{SelectedHotbarSlot: 0}
+	player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemDiamondPickaxe, Count: 1}
+
+	base := destroyProgress(player, stone)
+	wantBase := 8 / hardness / 30
+
+	if math.Abs(base-wantBase) > 1e-9 {
+		t.Fatalf("base destroy progress = %.12f, want %.12f", base, wantBase)
+	}
+
+	player.Inventory.Hotbar[0].SetEnchantment(game.EnchantmentEfficiency, 2)
+
+	efficient := destroyProgress(player, stone)
+	wantEfficient := 12 / hardness / 30
+
+	if math.Abs(efficient-wantEfficient) > 1e-9 {
+		t.Fatalf("Efficiency II destroy progress = %.12f, want %.12f", efficient, wantEfficient)
+	}
+
+	player.Inventory.Hotbar[0].SetEnchantment(game.EnchantmentEfficiency, 0)
+	player.Inventory.Hotbar[0].SetEnchantment(game.EnchantmentUnbreaking, 3)
+
+	got := destroyProgress(player, stone)
+
+	if math.Abs(got-base) > 1e-9 {
+		t.Fatalf("Unbreaking destroy progress = %.12f, want %.12f", got, base)
+	}
+
+	plainWorld := &game.World{Generator: blockMutationTestGenerator{block: stone}}
+	plainRuntime := NewRuntime(plainWorld)
+	plainActor, _ := newMiningTestSession(t, plainRuntime, game.BlockPosition{Y: 70}, game.GameModeSurvival, game.ItemDiamondPickaxe)
+
+	startMining(t, plainActor, game.BlockPosition{Y: 70}, 1)
+
+	plainRuntime.Tick()
+	plainRuntime.Tick()
+
+	stopMining(t, plainActor, game.BlockPosition{Y: 70}, 2)
+
+	if plainWorld.BlockAt(game.BlockPosition{Y: 70}) != stone {
+		t.Fatal("unenchanted pickaxe completed stone after three mining units")
+	}
+
+	efficientWorld := &game.World{Generator: blockMutationTestGenerator{block: stone}}
+
+	efficientRuntime := NewRuntime(efficientWorld)
+
+	efficientActor, _ := newMiningTestSession(t, efficientRuntime, game.BlockPosition{Y: 70}, game.GameModeSurvival, game.ItemDiamondPickaxe)
+
+	efficientActor.Player.Inventory.Hotbar[0].SetEnchantment(game.EnchantmentEfficiency, 2)
+
+	startMining(t, efficientActor, game.BlockPosition{Y: 70}, 3)
+
+	efficientRuntime.Tick()
+	efficientRuntime.Tick()
+
+	stopMining(t, efficientActor, game.BlockPosition{Y: 70}, 4)
+
+	if efficientWorld.BlockAt(game.BlockPosition{Y: 70}) != game.Air {
+		t.Fatal("Efficiency II pickaxe did not complete stone after three mining units")
 	}
 }
 
@@ -534,6 +608,183 @@ func TestCreativeAndCommandBreakingDoNotDropOrdinaryLoot(t *testing.T) {
 	}
 }
 
+func TestMiningDurabilityOnlyChangesAfterCommittedSurvivalBreak(t *testing.T) {
+	position := game.BlockPosition{Y: 70}
+
+	world := &game.World{Generator: blockMutationTestGenerator{block: game.Dirt}}
+
+	runtime := NewRuntime(world)
+
+	actor, actorConnection := newMiningTestSession(t, runtime, position, game.GameModeSurvival, game.ItemDiamondPickaxe)
+	observer, observerConnection := newMiningTestSession(t, runtime, position, game.GameModeCreative, game.ItemAir)
+
+	actorConnection.reset()
+	observerConnection.reset()
+
+	startMining(t, actor, position, 1)
+
+	runtime.abortDestroyingBlock(actor)
+
+	damage := actor.snapshotPlayer().Inventory.Hotbar[0].Damage()
+
+	if damage != 0 {
+		t.Fatalf("damage after aborted mining = %d, want 0", damage)
+	}
+
+	startMining(t, actor, position, 2)
+
+	for range 10 {
+		runtime.Tick()
+	}
+
+	stopMining(t, actor, position, 3)
+
+	stack := actor.snapshotPlayer().Inventory.Hotbar[0]
+
+	damage = stack.Damage()
+
+	if damage != 1 {
+		t.Fatalf("damage after successful mining = %d, want 1", damage)
+	}
+
+	if len(packetsByID(t, actorConnection, protocol.ClientboundContainerSetContentID)) != 1 {
+		t.Fatal("successful mining did not synchronize the actor inventory")
+	}
+
+	if len(packetsByID(t, observerConnection, protocol.ClientboundEntityEquipmentID)) != 1 {
+		t.Fatal("successful mining did not synchronize held equipment to the observer")
+	}
+
+	creativePosition := game.BlockPosition{X: 1, Y: 70}
+
+	world.SetBlock(creativePosition, game.Dirt)
+
+	creative, _ := newMiningTestSession(t, runtime, creativePosition, game.GameModeCreative, game.ItemDiamondPickaxe)
+
+	startMining(t, creative, creativePosition, 4)
+
+	damage = creative.snapshotPlayer().Inventory.Hotbar[0].Damage()
+
+	if damage != 0 {
+		t.Fatalf("creative mining damage = %d, want 0", damage)
+	}
+
+	_ = observer
+}
+
+func TestMiningToolBreakUsesPreDamageToolAndSynchronizesEvent(t *testing.T) {
+	position := game.BlockPosition{Y: 70}
+
+	world := &game.World{Generator: blockMutationTestGenerator{block: game.Stone}}
+
+	runtime := NewRuntime(world)
+
+	actor, actorConnection := newMiningTestSession(t, runtime, position, game.GameModeSurvival, game.ItemWoodenPickaxe)
+	observer, observerConnection := newMiningTestSession(t, runtime, position, game.GameModeCreative, game.ItemAir)
+
+	definition, valid := game.ItemWoodenPickaxe.Definition()
+	if !valid {
+		t.Fatal("wooden pickaxe definition is missing")
+	}
+
+	actor.updatePlayerState(func(player *game.Player) bool {
+		player.Inventory.Hotbar[0].SetDamage(definition.MaxDurability - 1)
+
+		return true
+	})
+
+	actorConnection.reset()
+	observerConnection.reset()
+
+	startMining(t, actor, position, 1)
+
+	for range 30 {
+		runtime.Tick()
+	}
+
+	stopMining(t, actor, position, 2)
+
+	if !actor.snapshotPlayer().Inventory.Hotbar[0].Empty() {
+		t.Fatalf("held tool remained after reaching damage %d", definition.MaxDurability)
+	}
+
+	entities := runtime.snapshotRuntimeEntities()
+	if len(entities) != 1 {
+		t.Fatalf("stone drops = %d, want 1", len(entities))
+	}
+
+	drop := entities[0].(*runtimeItemEntity)
+	if !drop.Stack.Equal(game.ItemStack{Item: game.ItemCobblestone, Count: 1}) {
+		t.Fatalf("final-use drop = %+v, want one cobblestone", drop.Stack)
+	}
+
+	assertToolBreakEvent(t, packetsByID(t, actorConnection, protocol.ClientboundEntityEventID), actor.Player.EntityID)
+	assertToolBreakEvent(t, packetsByID(t, observerConnection, protocol.ClientboundEntityEventID), actor.Player.EntityID)
+
+	if len(packetsByID(t, observerConnection, protocol.ClientboundEntityEquipmentID)) != 1 {
+		t.Fatal("broken tool removal was not synchronized to the observer")
+	}
+
+	_ = observer
+}
+
+func TestMiningUnbreakingUsesDeterministicRuntimeRandomness(t *testing.T) {
+	tests := map[string]miningUnbreakingTestCase{
+		"level one damages":    {level: 1, random: 0, wantDamage: 1, wantBound: 2},
+		"level one prevents":   {level: 1, random: 1, wantDamage: 0, wantBound: 2},
+		"level three damages":  {level: 3, random: 0, wantDamage: 1, wantBound: 4},
+		"level three prevents": {level: 3, random: 3, wantDamage: 0, wantBound: 4},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			runtime := NewRuntime(&game.World{})
+
+			session, _ := newBlockMutationTestSession(runtime, commandTestBobUUID, "Miner", game.GameModeSurvival)
+
+			stack := game.ItemStack{Item: game.ItemDiamondPickaxe, Count: 1}
+
+			stack.SetEnchantment(game.EnchantmentUnbreaking, test.level)
+			session.Player.Inventory.Hotbar[0] = stack
+
+			joinTestSession(t, runtime, session)
+
+			calls := 0
+			runtime.miningRandomMu.Lock()
+
+			runtime.miningRandom = func(bound int) int {
+				calls++
+
+				if bound != test.wantBound {
+					t.Fatalf("random bound = %d, want %d", bound, test.wantBound)
+				}
+
+				return test.random
+			}
+
+			runtime.miningRandomMu.Unlock()
+
+			before, broke := runtime.damageMiningTool(session, miningTool{stack: stack, slot: 0}, game.Stone)
+			if broke {
+				t.Fatal("fresh pickaxe broke")
+			}
+
+			damage := session.snapshotPlayer().Inventory.Hotbar[0].Damage()
+			if damage != test.wantDamage {
+				t.Fatalf("damage = %d, want %d", damage, test.wantDamage)
+			}
+
+			if calls != 1 {
+				t.Fatalf("random calls = %d, want 1", calls)
+			}
+
+			if (before != nil) != (test.wantDamage != 0) {
+				t.Fatalf("inventory snapshot present = %v, want %v", before != nil, test.wantDamage != 0)
+			}
+		})
+	}
+}
+
 func TestSurvivalChestDropsBlockAndContents(t *testing.T) {
 	position := game.BlockPosition{Y: 70}
 
@@ -624,5 +875,30 @@ func assertMiningCrack(t *testing.T, packet protocol.Packet, entityID int32, pos
 	actualStage := int8(reader.Byte())
 	if actualStage != stage {
 		t.Fatalf("crack stage = %d, want %d", actualStage, stage)
+	}
+}
+
+func assertToolBreakEvent(t *testing.T, packets []protocol.Packet, entityID int32) {
+	t.Helper()
+
+	if len(packets) != 1 {
+		t.Fatalf("tool break event packets = %d, want 1", len(packets))
+	}
+
+	reader := protocol.NewPacketReader(packets[0].Data)
+
+	actual := reader.Int()
+	if actual != entityID {
+		t.Fatalf("tool break entity ID = %d, want %d", actual, entityID)
+	}
+
+	event := reader.Byte()
+	if event != 47 {
+		t.Fatalf("tool break event = %d, want 47", event)
+	}
+
+	err := reader.Err()
+	if err != nil {
+		t.Fatalf("decode tool break event: %v", err)
 	}
 }

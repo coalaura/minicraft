@@ -1,5 +1,9 @@
 package game
 
+import (
+	"sort"
+)
+
 const (
 	CraftingSlotCount      = 4
 	ArmorSlotCount         = 4
@@ -41,6 +45,37 @@ type Item uint16
 
 type ItemPlacementRule uint8
 
+type ItemEnchantCategory uint32
+
+const (
+	ItemEnchantCategoryArmor ItemEnchantCategory = 1 << iota
+	ItemEnchantCategoryBow
+	ItemEnchantCategoryChestArmor
+	ItemEnchantCategoryCrossbow
+	ItemEnchantCategoryDurability
+	ItemEnchantCategoryEquippable
+	ItemEnchantCategoryFireAspect
+	ItemEnchantCategoryFishing
+	ItemEnchantCategoryFootArmor
+	ItemEnchantCategoryHeadArmor
+	ItemEnchantCategoryLegArmor
+	ItemEnchantCategoryLunge
+	ItemEnchantCategoryMace
+	ItemEnchantCategoryMeleeWeapon
+	ItemEnchantCategoryMining
+	ItemEnchantCategoryMiningLoot
+	ItemEnchantCategorySharpWeapon
+	ItemEnchantCategorySweeping
+	ItemEnchantCategoryTrident
+	ItemEnchantCategoryVanishing
+	ItemEnchantCategoryWeapon
+)
+
+const (
+	ItemComponentDamage       int32 = 3
+	ItemComponentEnchantments int32 = 13
+)
+
 type ItemMiningRule struct {
 	Trait          BlockTrait
 	BlockID        BlockID
@@ -51,15 +86,18 @@ type ItemMiningRule struct {
 }
 
 type ItemMining struct {
-	Rules        []ItemMiningRule
-	DefaultSpeed float32
+	Rules          []ItemMiningRule
+	DefaultSpeed   float32
+	DamagePerBlock int32
 }
 
 type ItemDefinition struct {
-	ID        Item
-	Name      string
-	StackSize int32
-	Mining    ItemMining
+	ID                Item
+	Name              string
+	StackSize         int32
+	MaxDurability     int32
+	EnchantCategories ItemEnchantCategory
+	Mining            ItemMining
 }
 
 type ItemStack struct {
@@ -235,6 +273,195 @@ func (stack ItemStack) SameItem(other ItemStack) bool {
 	second.Count = 1
 
 	return first.Equal(second)
+}
+
+func (stack ItemStack) Damage() int32 {
+	data, exists := stack.component(ItemComponentDamage)
+	if !exists {
+		return 0
+	}
+
+	value, read, valid := readComponentVarInt(data, 0)
+	if !valid || read != len(data) || value < 0 {
+		return 0
+	}
+
+	return value
+}
+
+func (stack *ItemStack) SetDamage(damage int32) {
+	if damage <= 0 {
+		stack.replaceComponent(ItemComponentDamage, nil)
+
+		return
+	}
+
+	stack.replaceComponent(ItemComponentDamage, appendComponentVarInt(nil, damage))
+}
+
+func (stack ItemStack) EnchantmentLevel(enchantment Enchantment) int32 {
+	return stack.Enchantments()[enchantment]
+}
+
+func (stack ItemStack) Enchantments() map[Enchantment]int32 {
+	data, exists := stack.component(ItemComponentEnchantments)
+	if !exists {
+		return nil
+	}
+
+	count, offset, valid := readComponentVarInt(data, 0)
+	if !valid || count < 0 {
+		return nil
+	}
+
+	enchantments := make(map[Enchantment]int32, count)
+
+	for range count {
+		holder, next, holderValid := readComponentVarInt(data, offset)
+		if !holderValid {
+			return nil
+		}
+
+		level, end, levelValid := readComponentVarInt(data, next)
+		if !levelValid || level < 0 {
+			return nil
+		}
+
+		enchantment := Enchantment(holder)
+		if enchantment.Valid() {
+			enchantments[enchantment] = level
+		}
+
+		offset = end
+	}
+
+	if offset != len(data) {
+		return nil
+	}
+
+	return enchantments
+}
+
+func (stack *ItemStack) SetEnchantment(enchantment Enchantment, level int32) {
+	enchantments := stack.Enchantments()
+	if enchantments == nil {
+		enchantments = make(map[Enchantment]int32)
+	}
+
+	if level <= 0 {
+		delete(enchantments, enchantment)
+	} else {
+		enchantments[enchantment] = min(level, 255)
+	}
+
+	stack.SetEnchantments(enchantments)
+}
+
+func (stack *ItemStack) SetEnchantments(enchantments map[Enchantment]int32) {
+	identities := make([]int, 0, len(enchantments))
+
+	for enchantment, level := range enchantments {
+		if enchantment.Valid() && level > 0 {
+			identities = append(identities, int(enchantment))
+		}
+	}
+
+	if len(identities) == 0 {
+		stack.replaceComponent(ItemComponentEnchantments, nil)
+
+		return
+	}
+
+	sort.Ints(identities)
+
+	data := appendComponentVarInt(nil, int32(len(identities)))
+
+	for _, identity := range identities {
+		level := min(enchantments[Enchantment(identity)], 255)
+
+		data = appendComponentVarInt(data, int32(identity))
+		data = appendComponentVarInt(data, level)
+	}
+
+	stack.replaceComponent(ItemComponentEnchantments, data)
+}
+
+func (stack ItemStack) component(componentType int32) ([]byte, bool) {
+	for _, component := range stack.Components {
+		if component.Type == componentType {
+			return component.Data, true
+		}
+	}
+
+	return nil, false
+}
+
+func (stack *ItemStack) replaceComponent(componentType int32, data []byte) {
+	components := stack.Components[:0]
+	inserted := false
+
+	for _, component := range stack.Components {
+		if component.Type != componentType {
+			components = append(components, component)
+
+			continue
+		}
+
+		if data != nil && !inserted {
+			components = append(components, ItemComponent{Type: componentType, Data: append([]byte(nil), data...)})
+			inserted = true
+		}
+	}
+
+	if data != nil && !inserted {
+		components = append(components, ItemComponent{Type: componentType, Data: append([]byte(nil), data...)})
+	}
+
+	stack.Components = components
+
+	removed := stack.RemovedComponents[:0]
+
+	for _, removedType := range stack.RemovedComponents {
+		if removedType != componentType {
+			removed = append(removed, removedType)
+		}
+	}
+
+	stack.RemovedComponents = removed
+}
+
+func appendComponentVarInt(data []byte, value int32) []byte {
+	unsigned := uint32(value)
+
+	for {
+		current := byte(unsigned & 0x7f)
+		unsigned >>= 7
+
+		if unsigned != 0 {
+			current |= 0x80
+		}
+
+		data = append(data, current)
+
+		if unsigned == 0 {
+			return data
+		}
+	}
+}
+
+func readComponentVarInt(data []byte, offset int) (int32, int, bool) {
+	var value uint32
+
+	for index := 0; index < 5 && offset+index < len(data); index++ {
+		current := data[offset+index]
+		value |= uint32(current&0x7f) << (7 * index)
+
+		if current&0x80 == 0 {
+			return int32(value), offset + index + 1, true
+		}
+	}
+
+	return 0, offset, false
 }
 
 func (inventory PlayerInventory) Clone() PlayerInventory {

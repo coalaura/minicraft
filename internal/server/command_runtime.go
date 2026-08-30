@@ -10,6 +10,14 @@ import (
 
 const gameEventChangeGameMode = 3
 
+type enchantHeldItemResult uint8
+
+const (
+	enchantHeldItemSuccess enchantHeldItemResult = iota
+	enchantHeldItemEmpty
+	enchantHeldItemIncompatible
+)
+
 func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) (bool, error) {
 	r.worldMutationMu.Lock()
 	r.lifecycleMu.Lock()
@@ -64,6 +72,43 @@ func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) (bool, er
 
 func (r *Runtime) GiveItem(session *Session, item game.Item, count int32) error {
 	return r.GiveItems([]*Session{session}, item, count)
+}
+
+func (r *Runtime) EnchantHeldItem(session *Session, enchantment game.Enchantment, level int32) (bool, enchantHeldItemResult, error) {
+	result := enchantHeldItemSuccess
+
+	err := r.mutateCommandInventory(session, func(inventory *game.PlayerInventory, _ *menu) error {
+		player := session.snapshotPlayer()
+
+		stack := inventory.Held(player.SelectedHotbarSlot)
+		if stack == nil || stack.Empty() {
+			result = enchantHeldItemEmpty
+
+			return nil
+		}
+
+		if !enchantment.Supports(stack.Item) {
+			result = enchantHeldItemIncompatible
+
+			return nil
+		}
+
+		for existing := range stack.Enchantments() {
+			if !enchantment.Compatible(existing) {
+				result = enchantHeldItemIncompatible
+
+				return nil
+			}
+		}
+
+		current := stack.EnchantmentLevel(enchantment)
+
+		stack.SetEnchantment(enchantment, max(current, level))
+
+		return nil
+	})
+
+	return result == enchantHeldItemSuccess, result, err
 }
 
 func (r *Runtime) GiveItems(sessions []*Session, item game.Item, count int32) error {

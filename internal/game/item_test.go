@@ -1,6 +1,10 @@
 package game
 
-import "testing"
+import (
+	"bytes"
+	"slices"
+	"testing"
+)
 
 type itemPlacementBlockMappingTestCase struct {
 	item  Item
@@ -13,6 +17,14 @@ type copperChestTestCase struct {
 	item      Item
 	oxidation int
 	waxed     bool
+}
+
+type itemMetadataTestCase struct {
+	name              string
+	item              Item
+	maxDurability     int32
+	enchantCategories ItemEnchantCategory
+	damagePerBlock    int32
 }
 
 func TestGeneratedItemCatalogueCoversVanillaItems(t *testing.T) {
@@ -33,6 +45,171 @@ func TestGeneratedItemCatalogueCoversVanillaItems(t *testing.T) {
 
 	if (MaxItemID + 1).Valid() {
 		t.Fatal("item above catalogue is valid")
+	}
+}
+
+func TestGeneratedItemMetadata(t *testing.T) {
+	tests := []itemMetadataTestCase{
+		{
+			name:              "pickaxe",
+			item:              ItemDiamondPickaxe,
+			maxDurability:     1561,
+			enchantCategories: ItemEnchantCategoryMining | ItemEnchantCategoryMiningLoot | ItemEnchantCategoryDurability | ItemEnchantCategoryVanishing,
+			damagePerBlock:    1,
+		},
+		{
+			name:              "sword",
+			item:              ItemDiamondSword,
+			maxDurability:     1561,
+			enchantCategories: ItemEnchantCategoryWeapon | ItemEnchantCategoryFireAspect | ItemEnchantCategoryMeleeWeapon | ItemEnchantCategoryDurability | ItemEnchantCategorySharpWeapon | ItemEnchantCategorySweeping | ItemEnchantCategoryVanishing,
+			damagePerBlock:    2,
+		},
+		{
+			name:              "shears",
+			item:              ItemShears,
+			maxDurability:     238,
+			enchantCategories: ItemEnchantCategoryMining | ItemEnchantCategoryDurability | ItemEnchantCategoryVanishing,
+			damagePerBlock:    1,
+		},
+		{
+			name:              "chest armor",
+			item:              ItemLeatherChestplate,
+			maxDurability:     80,
+			enchantCategories: ItemEnchantCategoryEquippable | ItemEnchantCategoryArmor | ItemEnchantCategoryChestArmor | ItemEnchantCategoryDurability | ItemEnchantCategoryVanishing,
+		},
+		{
+			name: "non-tool",
+			item: ItemStone,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			definition, valid := test.item.Definition()
+			if !valid {
+				t.Fatal("item definition is missing")
+			}
+
+			if definition.MaxDurability != test.maxDurability {
+				t.Fatalf("max durability = %d, want %d", definition.MaxDurability, test.maxDurability)
+			}
+
+			if definition.EnchantCategories != test.enchantCategories {
+				t.Fatalf("enchant categories = %d, want %d", definition.EnchantCategories, test.enchantCategories)
+			}
+
+			if definition.Mining.DamagePerBlock != test.damagePerBlock {
+				t.Fatalf("damage per block = %d, want %d", definition.Mining.DamagePerBlock, test.damagePerBlock)
+			}
+		})
+	}
+}
+
+func TestItemStackTypedComponents(t *testing.T) {
+	stack := ItemStack{
+		Components: []ItemComponent{
+			{Type: ItemComponentDamage, Data: []byte{0xAC, 0x02}},
+			{Type: ItemComponentEnchantments, Data: []byte{0x02, 0x17, 0x03, 0x14, 0x05}},
+		},
+	}
+
+	if stack.Damage() != 300 {
+		t.Fatalf("damage = %d, want 300", stack.Damage())
+	}
+
+	if stack.EnchantmentLevel(EnchantmentEfficiency) != 5 || stack.EnchantmentLevel(EnchantmentFortune) != 3 {
+		t.Fatalf("enchantments = %v, want efficiency 5 and fortune 3", stack.Enchantments())
+	}
+
+	stack.SetEnchantment(EnchantmentEfficiency, 7)
+
+	expectedEnchantments := []byte{0x02, 0x14, 0x07, 0x17, 0x03}
+	data, exists := stack.component(ItemComponentEnchantments)
+
+	if !exists || !bytes.Equal(data, expectedEnchantments) {
+		t.Fatalf("upserted enchantments = %x, want %x", data, expectedEnchantments)
+	}
+
+	stack.SetEnchantment(EnchantmentEfficiency, 0)
+	stack.SetEnchantment(EnchantmentFortune, 0)
+	stack.SetDamage(0)
+
+	_, hasDamage := stack.component(ItemComponentDamage)
+	_, hasEnchantments := stack.component(ItemComponentEnchantments)
+
+	if hasDamage || hasEnchantments {
+		t.Fatalf("default components remain: %+v", stack.Components)
+	}
+}
+
+func TestItemStackTypedComponentsRejectInvalidPayloads(t *testing.T) {
+	invalidDamagePayloads := [][]byte{{0x80}, {0xFF, 0xFF, 0xFF, 0xFF, 0x0F}, {0x01, 0x00}}
+
+	for _, data := range invalidDamagePayloads {
+		stack := ItemStack{Components: []ItemComponent{{Type: ItemComponentDamage, Data: data}}}
+		if stack.Damage() != 0 {
+			t.Fatalf("damage from invalid payload %x = %d, want 0", data, stack.Damage())
+		}
+	}
+
+	invalidEnchantmentPayloads := [][]byte{{0x80}, {0x01, 0x14}, {0x01, 0x14, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F}, {0x00, 0x00}}
+
+	for _, data := range invalidEnchantmentPayloads {
+		stack := ItemStack{Components: []ItemComponent{{Type: ItemComponentEnchantments, Data: data}}}
+		if stack.Enchantments() != nil {
+			t.Fatalf("enchantments from invalid payload %x = %v, want nil", data, stack.Enchantments())
+		}
+	}
+}
+
+func TestItemStackComponentReplacementPreservesUnknownComponents(t *testing.T) {
+	stack := ItemStack{
+		Components: []ItemComponent{
+			{Type: 99, Data: []byte{0xAA}},
+			{Type: ItemComponentDamage, Data: []byte{0x01}},
+			{Type: 100, Data: []byte{0xBB}},
+			{Type: ItemComponentDamage, Data: []byte{0x02}},
+		},
+		RemovedComponents: []int32{99, ItemComponentDamage},
+	}
+
+	stack.SetDamage(5)
+
+	expectedComponents := []ItemComponent{
+		{Type: 99, Data: []byte{0xAA}},
+		{Type: ItemComponentDamage, Data: []byte{0x05}},
+		{Type: 100, Data: []byte{0xBB}},
+	}
+
+	if len(stack.Components) != len(expectedComponents) {
+		t.Fatalf("component count = %d, want %d", len(stack.Components), len(expectedComponents))
+	}
+
+	for index, expected := range expectedComponents {
+		actual := stack.Components[index]
+		if actual.Type != expected.Type || !bytes.Equal(actual.Data, expected.Data) {
+			t.Fatalf("component %d = %+v, want %+v", index, actual, expected)
+		}
+	}
+
+	if !slices.Equal(stack.RemovedComponents, []int32{99}) {
+		t.Fatalf("removed components = %v, want [99]", stack.RemovedComponents)
+	}
+}
+
+func TestItemStackEnchantmentsUseDeterministicHolderOrder(t *testing.T) {
+	stack := ItemStack{}
+
+	stack.SetEnchantments(map[Enchantment]int32{
+		EnchantmentFortune:    3,
+		EnchantmentEfficiency: 5,
+	})
+
+	data, exists := stack.component(ItemComponentEnchantments)
+	expected := []byte{0x02, 0x14, 0x05, 0x17, 0x03}
+
+	if !exists || !bytes.Equal(data, expected) {
+		t.Fatalf("enchantment holders = %x, want %x", data, expected)
 	}
 }
 

@@ -32,6 +32,7 @@ const (
 	BlockFaceEast  = 5
 
 	maxUntrustedSlotComponents = 1024
+	maxUntrustedComponentBytes = 1 << 20
 	maxContainerChangedSlots   = 128
 	maxChatMessageCharacters   = 256
 	chatMessageSignatureLength = 256
@@ -170,6 +171,7 @@ type SetHeldItem struct {
 type UntrustedSlot struct {
 	ItemCount         int32
 	ItemID            int32
+	Components        []game.ItemComponent
 	RemovedComponents []int32
 }
 
@@ -776,8 +778,15 @@ func decodeUntrustedSlot(rd *PacketReader) (UntrustedSlot, error) {
 		return UntrustedSlot{}, fmt.Errorf("invalid removed slot component count %d", removedComponentCount)
 	}
 
-	if addedComponentCount != 0 {
-		return UntrustedSlot{}, fmt.Errorf("added slot component patches are unsupported")
+	item.Components = make([]game.ItemComponent, addedComponentCount)
+
+	for index := range item.Components {
+		component, componentErr := decodeUntrustedSlotComponent(rd)
+		if componentErr != nil {
+			return UntrustedSlot{}, componentErr
+		}
+
+		item.Components[index] = component
 	}
 
 	item.RemovedComponents = make([]int32, removedComponentCount)
@@ -792,6 +801,59 @@ func decodeUntrustedSlot(rd *PacketReader) (UntrustedSlot, error) {
 	}
 
 	return item, nil
+}
+
+func decodeUntrustedSlotComponent(rd *PacketReader) (game.ItemComponent, error) {
+	componentType := rd.VarInt()
+	data := rd.BytesMax(maxUntrustedComponentBytes)
+
+	err := rd.Err()
+	if err != nil {
+		return game.ItemComponent{}, err
+	}
+
+	payload := NewPacketReader(data)
+
+	switch componentType {
+	case game.ItemComponentDamage:
+		damage := payload.VarInt()
+		if damage < 0 {
+			return game.ItemComponent{}, fmt.Errorf("invalid damage component value %d", damage)
+		}
+	case game.ItemComponentEnchantments:
+		count := payload.VarInt()
+		if count < 0 || count > 43 {
+			return game.ItemComponent{}, fmt.Errorf("invalid enchantment component count %d", count)
+		}
+
+		seen := make(map[int32]struct{}, count)
+
+		for range count {
+			holder := payload.VarInt()
+
+			level := payload.VarInt()
+			enchantment := game.Enchantment(holder)
+
+			if !enchantment.Valid() || level < 1 || level > 255 {
+				return game.ItemComponent{}, fmt.Errorf("invalid enchantment component entry %d level %d", holder, level)
+			}
+
+			if _, exists := seen[holder]; exists {
+				return game.ItemComponent{}, fmt.Errorf("duplicate enchantment component entry %d", holder)
+			}
+
+			seen[holder] = struct{}{}
+		}
+	default:
+		return game.ItemComponent{}, fmt.Errorf("unsupported added slot component type %d", componentType)
+	}
+
+	err = payload.Done("added slot component")
+	if err != nil {
+		return game.ItemComponent{}, err
+	}
+
+	return game.ItemComponent{Type: componentType, Data: data}, nil
 }
 
 func decodeOptionalHashedSlot(rd *PacketReader) (HashedSlot, error) {

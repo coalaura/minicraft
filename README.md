@@ -16,7 +16,8 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Chunk streaming with configurable render distance
 - Player movement and synchronization
 - Authoritative creative and timed survival block breaking with nearby crack animations
-- Generated 1.21.11 block hardness, tool speed, harvest-gating and baseline ordinary-drop metadata
+- Generated 1.21.11 block hardness, tool speed, durability, harvest-gating and baseline ordinary-drop metadata
+- Efficiency mining speed and deterministic Unbreaking durability behavior
 - Survival placement with exact main-hand/offhand item consumption and synchronized equipment
 - Stateful block placement for common structures such as slabs, stairs, doors, trapdoors, fences and walls
 - Full player inventory and creative inventory interactions
@@ -25,7 +26,7 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Stateful barrels and single/double normal, trapped and copper chest variants, including container contents drops on removal
 - Vanilla-like hoppers with sided container automation, item suction, persisted cooldowns and synchronized five-slot menus
 - Generic runtime entities, dropped items and item pickup
-- Basic commands with client-side declarations and suggestions
+- Basic commands, including `/enchant`, with client-side declarations and suggestions
 - Biomes, lighting, world time and a day/night cycle
 - Vanilla-like derived water and lava flow in active world chunks, with scheduled ticks intentionally paused in inactive chunks, waterlogging, buckets and item fluid motion
 - Deterministic, seeded procedural world generation
@@ -101,14 +102,14 @@ Fluid simulation covers vanilla-like derived water and lava flow in active world
 
 Generic block entities support procedural copy-on-write state, removal behavior and optional runtime interaction/ticking capabilities. Generic 9x1 through 9x6 storage menus are available, including barrels and single/double normal, trapped and copper chest variants. Hoppers automate those containers and the furnace family with sided access, active-chunk cooldown semantics and dropped-item collection. Furnace-family block entities process the generated 1.21.11 smelting, smoking and blasting catalogues with vanilla fuel durations, remainders, lit states and menu data. Manual crafting supports the generated ordinary shaped and shapeless recipe catalogue in the player inventory and at crafting tables. Recipe-book protocol, furnace XP payout, special/dynamic recipes and component-transforming recipes are not implemented yet.
 
-The survival block loop uses server-tick-authoritative START, STOP and ABORT handling, vanilla baseline hardness/tool progress, harvest gating, cause-specific ordinary loot, and exact-hand placement consumption. Fixed baseline drops are generated where they can be represented faithfully. Silk Touch, Fortune, Efficiency, tool durability, XP drops, potion/effect modifiers, underwater and airborne mining penalties, and conditional or random loot tables remain explicitly deferred.
+The survival block loop uses server-tick-authoritative START, STOP and ABORT handling, vanilla hardness/tool progress including Efficiency, harvest gating, post-commit tool durability with Unbreaking, cause-specific ordinary loot, and exact-hand placement consumption. `/enchant` supports Efficiency, Unbreaking, Silk Touch and Fortune; Silk Touch and Fortune loot effects remain deferred. Fixed baseline drops are generated where they can be represented faithfully. XP drops, potion/effect modifiers, underwater and airborne mining penalties, and conditional or random loot tables remain explicitly deferred.
 
 ## Todo
 
 - Broader block placement and interaction support
 - Other inventory blocks
 - Recipe-book and special crafting recipe parity
-- Broader survival mechanics such as health, hunger, effects and tool durability
+- Broader survival mechanics such as health, hunger and effects
 - Adventure map features
 
 

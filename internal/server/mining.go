@@ -23,6 +23,11 @@ type miningState struct {
 	delayed  bool
 }
 
+type miningTool struct {
+	stack game.ItemStack
+	slot  int
+}
+
 func (r *Runtime) startDestroyingBlock(session *Session, position game.BlockPosition) (BlockMutationResult, error) {
 	r.worldMutationMu.Lock()
 
@@ -266,20 +271,97 @@ func destroyProgress(player game.Player, block game.Block) float64 {
 
 	divisor := float64(100)
 
-	if tool.Item.IsCorrectToolForDrops(block) {
+	if tool.stack.Item.IsCorrectToolForDrops(block) {
 		divisor = 30
 	}
 
-	return float64(tool.Item.BaseDestroySpeed(block)) / float64(mining.Hardness) / divisor
-}
+	speed := tool.stack.Item.BaseDestroySpeed(block)
+	efficiency := tool.stack.EnchantmentLevel(game.EnchantmentEfficiency)
 
-func selectedMiningTool(player game.Player) game.ItemStack {
-	stack := player.Inventory.Held(player.SelectedHotbarSlot)
-	if stack == nil {
-		return game.ItemStack{Item: game.ItemAir}
+	if speed > 1 && efficiency > 0 {
+		speed += float32(efficiency * efficiency)
 	}
 
-	return stack.Clone()
+	return float64(speed) / float64(mining.Hardness) / divisor
+}
+
+func selectedMiningTool(player game.Player) miningTool {
+	stack := player.Inventory.Held(player.SelectedHotbarSlot)
+	if stack == nil {
+		return miningTool{stack: game.ItemStack{Item: game.ItemAir}, slot: player.SelectedHotbarSlot}
+	}
+
+	return miningTool{stack: stack.Clone(), slot: player.SelectedHotbarSlot}
+}
+
+func (r *Runtime) damageMiningTool(session *Session, tool miningTool, block game.Block) (*game.PlayerInventory, bool) {
+	definition, valid := tool.stack.Item.Definition()
+
+	mining := tool.stack.Item.MiningProperties()
+	blockMining := block.MiningProperties()
+
+	if !valid || definition.MaxDurability <= 0 || mining.DamagePerBlock <= 0 || blockMining.Hardness == 0 {
+		return nil, false
+	}
+
+	damage := int32(0)
+	unbreaking := tool.stack.EnchantmentLevel(game.EnchantmentUnbreaking)
+
+	for range mining.DamagePerBlock {
+		if unbreaking > 0 {
+			r.miningRandomMu.Lock()
+			prevented := r.miningRandom(int(unbreaking)+1) != 0
+			r.miningRandomMu.Unlock()
+
+			if prevented {
+				continue
+			}
+		}
+
+		damage++
+	}
+
+	if damage == 0 {
+		return nil, false
+	}
+
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+
+	before := session.snapshotPlayer().Inventory
+	broke := false
+
+	_, changed := session.updatePlayerState(func(player *game.Player) bool {
+		stack := player.Inventory.Held(tool.slot)
+		if stack == nil || !stack.SameItem(tool.stack) {
+			return false
+		}
+
+		newDamage := stack.Damage() + damage
+		if newDamage < definition.MaxDurability {
+			stack.SetDamage(newDamage)
+
+			return true
+		}
+
+		stack.Count--
+
+		if stack.Count <= 0 {
+			*stack = game.ItemStack{}
+		} else {
+			stack.SetDamage(0)
+		}
+
+		broke = true
+
+		return true
+	})
+
+	if !changed {
+		return nil, false
+	}
+
+	return &before, broke
 }
 
 func (r *Runtime) commitOrdinaryBlockDrops(records []blockMutationRecord) {

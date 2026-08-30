@@ -12,9 +12,11 @@ import (
 )
 
 type ItemDefinition struct {
-	ID        uint16 `json:"id"`
-	Name      string `json:"name"`
-	StackSize int32  `json:"stackSize"`
+	ID                uint16   `json:"id"`
+	Name              string   `json:"name"`
+	StackSize         int32    `json:"stackSize"`
+	MaxDurability     int32    `json:"maxDurability"`
+	EnchantCategories []string `json:"enchantCategories"`
 }
 
 type BlockProperty struct {
@@ -134,10 +136,12 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 	for _, item := range items {
 		fmt.Fprintf(
 			&output,
-			"\t{ID: Item%s, Name: %q, StackSize: %d, Mining: %s},\n",
+			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, EnchantCategories: %s, Mining: %s},\n",
 			goName(item.Name),
 			item.Name,
 			item.StackSize,
+			item.MaxDurability,
+			itemEnchantCategories(item.EnchantCategories),
 			itemMining(item.Name),
 		)
 	}
@@ -178,11 +182,25 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 	return formatted, nil
 }
 
+func itemEnchantCategories(categories []string) string {
+	if len(categories) == 0 {
+		return "0"
+	}
+
+	values := make([]string, len(categories))
+
+	for index, category := range categories {
+		values[index] = "ItemEnchantCategory" + goName(category)
+	}
+
+	return strings.Join(values, " | ")
+}
+
 func itemMining(name string) string {
 	parts := strings.Split(name, "_")
 
 	if name == "shears" {
-		return "ItemMining{Rules: []ItemMiningRule{{BlockID: CobwebID, Speed: 15, HasSpeed: true, Correct: true, HasCorrectness: true}, {Trait: BlockTraitLeaves, Speed: 15, HasSpeed: true}, {Trait: BlockTraitWool, Speed: 5, HasSpeed: true}, {BlockID: VineID, Speed: 2, HasSpeed: true}, {BlockID: GlowLichenID, Speed: 2, HasSpeed: true}}, DefaultSpeed: 1}"
+		return "ItemMining{Rules: []ItemMiningRule{{BlockID: CobwebID, Speed: 15, HasSpeed: true, Correct: true, HasCorrectness: true}, {Trait: BlockTraitLeaves, Speed: 15, HasSpeed: true}, {Trait: BlockTraitWool, Speed: 5, HasSpeed: true}, {BlockID: VineID, Speed: 2, HasSpeed: true}, {BlockID: GlowLichenID, Speed: 2, HasSpeed: true}}, DefaultSpeed: 1, DamagePerBlock: 1}"
 	}
 
 	if len(parts) != 2 {
@@ -190,7 +208,7 @@ func itemMining(name string) string {
 	}
 
 	if parts[1] == "sword" {
-		return "ItemMining{Rules: []ItemMiningRule{{BlockID: CobwebID, Speed: 15, HasSpeed: true, Correct: true, HasCorrectness: true}, {Trait: BlockTraitSwordInstantlyMines, Speed: 3.4028235e38, HasSpeed: true}, {Trait: BlockTraitSwordEfficient, Speed: 1.5, HasSpeed: true}}, DefaultSpeed: 1}"
+		return "ItemMining{Rules: []ItemMiningRule{{BlockID: CobwebID, Speed: 15, HasSpeed: true, Correct: true, HasCorrectness: true}, {Trait: BlockTraitSwordInstantlyMines, Speed: 3.4028235e38, HasSpeed: true}, {Trait: BlockTraitSwordEfficient, Speed: 1.5, HasSpeed: true}}, DefaultSpeed: 1, DamagePerBlock: 2}"
 	}
 
 	var mineableTrait string
@@ -237,7 +255,7 @@ func itemMining(name string) string {
 		return "ItemMining{}"
 	}
 
-	return fmt.Sprintf("ItemMining{Rules: []ItemMiningRule{{Trait: %s, Correct: false, HasCorrectness: true}, {Trait: %s, Speed: %g, HasSpeed: true, Correct: true, HasCorrectness: true}}, DefaultSpeed: 1}", incorrectTrait, mineableTrait, speed)
+	return fmt.Sprintf("ItemMining{Rules: []ItemMiningRule{{Trait: %s, Correct: false, HasCorrectness: true}, {Trait: %s, Speed: %g, HasSpeed: true, Correct: true, HasCorrectness: true}}, DefaultSpeed: 1, DamagePerBlock: 1}", incorrectTrait, mineableTrait, speed)
 }
 
 func blockPlacementRule(block BlockDefinition) string {

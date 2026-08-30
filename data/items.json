@@ -6247,6 +6247,7 @@
     "enchantCategories": [
       "equippable",
       "armor",
+      "chest_armor",
       "durability",
       "vanishing"
     ],
@@ -6314,6 +6315,7 @@
     "enchantCategories": [
       "equippable",
       "armor",
+      "chest_armor",
       "durability",
       "vanishing"
     ],
@@ -6381,6 +6383,7 @@
     "enchantCategories": [
       "equippable",
       "armor",
+      "chest_armor",
       "durability",
       "vanishing"
     ],
@@ -6448,6 +6451,7 @@
     "enchantCategories": [
       "equippable",
       "armor",
+      "chest_armor",
       "durability",
       "vanishing"
     ],
@@ -6515,6 +6519,7 @@
     "enchantCategories": [
       "equippable",
       "armor",
+      "chest_armor",
       "durability",
       "vanishing"
     ],
@@ -6582,6 +6587,7 @@
     "enchantCategories": [
       "equippable",
       "armor",
+      "chest_armor",
       "durability",
       "vanishing"
     ],
@@ -6649,6 +6655,7 @@
     "enchantCategories": [
       "equippable",
       "armor",
+      "chest_armor",
       "durability",
       "vanishing"
     ],

@@ -89,6 +89,29 @@ func TestCreativeSlotUpdatesTrackHotbarAndOffhand(t *testing.T) {
 	}
 }
 
+func TestCreativeSlotUpdatesPreserveGameplayComponents(t *testing.T) {
+	session, _ := newMovementTestSession(NewRuntime(&game.World{}), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+	session.Player.GameMode = game.GameModeCreative
+
+	stack := game.ItemStack{Item: game.ItemDiamondPickaxe, Count: 1}
+	stack.SetDamage(16)
+	stack.SetEnchantment(game.EnchantmentUnbreaking, 3)
+
+	session.handleSetCreativeModeSlot(protocol.SetCreativeModeSlot{
+		Slot: 36,
+		Item: protocol.UntrustedSlot{
+			ItemID:     int32(stack.Item),
+			ItemCount:  stack.Count,
+			Components: stack.Clone().Components,
+		},
+	})
+
+	actual := session.snapshotPlayer().Inventory.Hotbar[0]
+	if !actual.Equal(stack) {
+		t.Fatalf("creative gameplay component stack = %+v, want %+v", actual, stack)
+	}
+}
+
 func TestCreativeSlotUpdatesRejectInvalidOrNonCreativeChanges(t *testing.T) {
 	session, _ := newMovementTestSession(NewRuntime(&game.World{}), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
 

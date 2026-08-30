@@ -58,7 +58,7 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 		commandNames = append(commandNames, child.Name)
 	}
 
-	expectedCommands := []string{"help", "seed", "time", "gamemode", "give", "clear", "teleport", "tp", "setblock", "fill"}
+	expectedCommands := []string{"help", "seed", "time", "gamemode", "give", "enchant", "clear", "teleport", "tp", "setblock", "fill"}
 	if strings.Join(commandNames, ",") != strings.Join(expectedCommands, ",") {
 		t.Fatalf("root command literals = %v, want %v", commandNames, expectedCommands)
 	}
@@ -133,6 +133,28 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 	countProperties, validProperties := count.Properties.(protocol.CommandIntegerProperties)
 	if !validProperties || !countProperties.HasMin || countProperties.HasMax || countProperties.Min != 1 {
 		t.Fatalf("give count properties = %+v", count.Properties)
+	}
+
+	enchantLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "enchant")
+	enchantTargets := commandNodeChild(declaration.Nodes, enchantLiteral, protocol.CommandNodeArgument, "targets")
+	enchantment := commandNodeChild(declaration.Nodes, enchantTargets, protocol.CommandNodeArgument, "enchantment")
+	enchantLevel := commandNodeChild(declaration.Nodes, enchantment, protocol.CommandNodeArgument, "level")
+
+	if enchantTargets == nil || enchantTargets.Executable || enchantTargets.Parser != protocol.CommandParserEntity || enchantTargets.SuggestionType != "" {
+		t.Fatalf("enchant targets argument = %+v", enchantTargets)
+	}
+
+	if enchantment == nil || !enchantment.Executable || enchantment.Parser != protocol.CommandParserResource || enchantment.Properties != (protocol.CommandResourceProperties{Registry: "minecraft:enchantment"}) || enchantment.SuggestionType != "" {
+		t.Fatalf("enchant enchantment argument = %+v", enchantment)
+	}
+
+	if enchantLevel == nil || !enchantLevel.Executable || enchantLevel.Parser != protocol.CommandParserInteger || enchantLevel.SuggestionType != "" {
+		t.Fatalf("enchant level argument = %+v", enchantLevel)
+	}
+
+	enchantLevelProperties, validProperties := enchantLevel.Properties.(protocol.CommandIntegerProperties)
+	if !validProperties || !enchantLevelProperties.HasMin || enchantLevelProperties.HasMax || enchantLevelProperties.Min != 0 {
+		t.Fatalf("enchant level properties = %+v", enchantLevel.Properties)
 	}
 
 	clearLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "clear")
@@ -285,6 +307,7 @@ func TestCommandHelpUsageAndSeedFeedback(t *testing.T) {
 		"/time query daytime", "/time query gametime", "/time query day", "/time set day", "/time set noon", "/time set night", "/time set midnight", "/time set <time>", "/time add <time>",
 		"/gamemode <gamemode>", "/gamemode <gamemode> <targets>",
 		"/give <targets> <item>", "/give <targets> <item> <count>",
+		"/enchant <targets> <enchantment>", "/enchant <targets> <enchantment> <level>",
 		"/clear", "/clear <targets>", "/clear <targets> <item>", "/clear <targets> <item> <maxCount>",
 		"/teleport <location>", "/teleport <destination>", "/teleport <targets> <destination>", "/teleport <targets> <location>",
 		"/tp <location>", "/tp <destination>", "/tp <targets> <destination>", "/tp <targets> <location>",
@@ -614,13 +637,13 @@ func TestCommandSuggestions(t *testing.T) {
 
 	source := playerCommandSource{session: bob}
 
-	commandNames := []string{"clear", "fill", "gamemode", "give", "help", "seed", "setblock", "teleport", "time", "tp"}
+	commandNames := []string{"clear", "enchant", "fill", "gamemode", "give", "help", "seed", "setblock", "teleport", "time", "tp"}
 	targets := []string{"@a", "@p", "@r", "@s", "Alice", "Bob"}
 
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/"), 1, 0, commandNames)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/he"), 1, 2, []string{"help"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help"), 1, 4, []string{"help"})
-	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help "), 6, 0, []string{"clear", "fill", "gamemode", "give", "help", "seed", "setblock", "teleport", "time", "time add", "time query", "time query day", "time query daytime", "time query gametime", "time set", "time set day", "time set midnight", "time set night", "time set noon", "tp"})
+	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help "), 6, 0, []string{"clear", "enchant", "fill", "gamemode", "give", "help", "seed", "setblock", "teleport", "time", "time add", "time query", "time query day", "time query daytime", "time query gametime", "time set", "time set day", "time set midnight", "time set night", "time set noon", "tp"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/gamemode "), 10, 0, []string{"adventure", "creative", "spectator", "survival"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/gamemode creative "), 19, 0, targets)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/time set "), 10, 0, []string{"day", "midnight", "night", "noon"})
@@ -922,6 +945,229 @@ func TestCommandGiveSynchronizesHeldEquipment(t *testing.T) {
 
 	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundEntityEquipmentID})
 	assertEquipmentUpdate(t, observerConnection.packets(t)[0], bob.Player.EntityID, protocol.EquipmentSlotMainHand, game.ItemStone, 1)
+}
+
+func TestCommandEnchantAppliesHeldItemLevelsAndSynchronizes(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	bob, bobConnection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+	observer, observerConnection := newCommandTestSession(runtime, commandTestAliceUUID, "Alice")
+
+	bob.Player.SelectedHotbarSlot = 3
+	bob.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 1}
+	bob.Player.Inventory.Hotbar[3] = game.ItemStack{Item: game.ItemIronPickaxe, Count: 1}
+
+	joinTestSession(t, runtime, observer)
+	joinTestSession(t, runtime, bob)
+
+	bobConnection.reset()
+	observerConnection.reset()
+
+	executeCommand(t, bob, "enchant Bob efficiency")
+
+	player := bob.snapshotPlayer()
+	if player.Inventory.Hotbar[3].EnchantmentLevel(game.EnchantmentEfficiency) != 1 {
+		t.Fatalf("held enchantment level = %d, want 1", player.Inventory.Hotbar[3].EnchantmentLevel(game.EnchantmentEfficiency))
+	}
+
+	if !player.Inventory.Hotbar[0].Equal(game.ItemStack{Item: game.ItemStone, Count: 1}) {
+		t.Fatalf("unheld stack = %+v, want unchanged stone", player.Inventory.Hotbar[0])
+	}
+
+	reader := protocol.NewPacketReader(bobConnection.packets(t)[0].Data)
+	if reader.VarInt() != playerInventoryWindowID || reader.VarInt() != 1 || reader.VarInt() != game.PlayerInventorySlots {
+		t.Fatal("owner inventory update has an unexpected header")
+	}
+
+	for slot := range game.PlayerInventorySlots {
+		count := reader.VarInt()
+		if count == 0 {
+			continue
+		}
+
+		item := game.Item(reader.VarInt())
+		added := reader.VarInt()
+		removed := reader.VarInt()
+
+		if slot == 36 && count == 1 && item == game.ItemStone && added == 0 && removed == 0 {
+			continue
+		}
+
+		if slot != 39 || count != 1 || item != game.ItemIronPickaxe || added != 1 || removed != 0 || reader.VarInt() != game.ItemComponentEnchantments || reader.VarInt() != 1 || game.Enchantment(reader.VarInt()) != game.EnchantmentEfficiency || reader.VarInt() != 1 {
+			t.Fatalf("owner inventory update stack %d is not the enchanted held pickaxe", slot)
+		}
+	}
+
+	if reader.VarInt() != 0 {
+		t.Fatal("owner inventory update has a non-empty carried stack")
+	}
+
+	err := reader.Done("inventory update")
+	if err != nil {
+		t.Fatalf("decode inventory update: %v", err)
+	}
+
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.enchant.success.single", game.TranslatableText("enchantment.minecraft.efficiency"), game.LiteralText("Bob")))
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundEntityEquipmentID})
+
+	reader = protocol.NewPacketReader(observerConnection.packets(t)[0].Data)
+	if reader.VarInt() != bob.Player.EntityID || reader.Byte() != protocol.EquipmentSlotMainHand {
+		t.Fatal("observer equipment update does not describe Bob's main hand")
+	}
+
+	if reader.VarInt() != 1 || game.Item(reader.VarInt()) != game.ItemIronPickaxe || reader.VarInt() != 1 || reader.VarInt() != 0 {
+		t.Fatal("observer equipment update does not contain the enchanted pickaxe")
+	}
+
+	if reader.VarInt() != game.ItemComponentEnchantments || reader.VarInt() != 1 || game.Enchantment(reader.VarInt()) != game.EnchantmentEfficiency || reader.VarInt() != 1 {
+		t.Fatal("observer equipment update does not contain efficiency 1")
+	}
+
+	err = reader.Done("equipment update")
+	if err != nil {
+		t.Fatalf("decode equipment update: %v", err)
+	}
+
+	bobConnection.reset()
+	observerConnection.reset()
+
+	executeCommand(t, bob, "enchant Bob efficiency 4")
+
+	if bob.snapshotPlayer().Inventory.Hotbar[3].EnchantmentLevel(game.EnchantmentEfficiency) != 4 {
+		t.Fatal("explicit enchantment level did not upgrade the held item")
+	}
+
+	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundContainerSetContentID, protocol.ClientboundSystemChatID})
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundEntityEquipmentID})
+
+	bobConnection.reset()
+	observerConnection.reset()
+
+	executeCommand(t, bob, "enchant Bob efficiency 2")
+
+	if bob.snapshotPlayer().Inventory.Hotbar[3].EnchantmentLevel(game.EnchantmentEfficiency) != 4 {
+		t.Fatal("lower enchantment level downgraded the held item")
+	}
+
+	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundSystemChatID})
+	assertPacketIDs(t, observerConnection.packetIDs(t), nil)
+
+	bobConnection.reset()
+
+	executeCommand(t, bob, "enchant Bob efficiency 0")
+
+	if bob.snapshotPlayer().Inventory.Hotbar[3].EnchantmentLevel(game.EnchantmentEfficiency) != 4 {
+		t.Fatal("level zero changed the held item's enchantment")
+	}
+
+	assertPacketIDs(t, bobConnection.packetIDs(t), []int32{protocol.ClientboundSystemChatID})
+}
+
+func TestCommandEnchantRejectsInvalidTargetsAndArguments(t *testing.T) {
+	t.Run("empty held item", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		bob, connection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+
+		joinTestSession(t, runtime, bob)
+
+		executeCommand(t, bob, "enchant Bob efficiency")
+
+		assertSystemComponents(t, connection, game.TranslatableText("commands.enchant.failed.itemless", game.LiteralText("Bob")).WithColor(game.TextColorRed))
+	})
+
+	t.Run("unsupported item", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		bob, connection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+		bob.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 1}
+
+		joinTestSession(t, runtime, bob)
+
+		executeCommand(t, bob, "enchant Bob efficiency")
+
+		assertSystemComponents(t, connection, game.TranslatableText("commands.enchant.failed.incompatible", game.TranslatableText("block.minecraft.stone")).WithColor(game.TextColorRed))
+	})
+
+	t.Run("incompatible enchantments", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		bob, connection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+		stack := game.ItemStack{Item: game.ItemIronPickaxe, Count: 1}
+		stack.SetEnchantment(game.EnchantmentSilkTouch, 1)
+		bob.Player.Inventory.Hotbar[0] = stack
+
+		joinTestSession(t, runtime, bob)
+
+		executeCommand(t, bob, "enchant Bob fortune")
+
+		if bob.snapshotPlayer().Inventory.Hotbar[0].EnchantmentLevel(game.EnchantmentFortune) != 0 {
+			t.Fatal("incompatible fortune enchantment was applied")
+		}
+
+		assertSystemComponents(t, connection, game.TranslatableText("commands.enchant.failed.incompatible", game.TranslatableText("item.minecraft.iron_pickaxe")).WithColor(game.TextColorRed))
+	})
+
+	t.Run("above maximum level", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		bob, connection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+		bob.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemIronPickaxe, Count: 1}
+
+		joinTestSession(t, runtime, bob)
+
+		executeCommand(t, bob, "enchant Bob efficiency 6")
+
+		if bob.snapshotPlayer().Inventory.Hotbar[0].EnchantmentLevel(game.EnchantmentEfficiency) != 0 {
+			t.Fatal("above-maximum enchantment level was applied")
+		}
+
+		assertSystemComponents(t, connection, game.TranslatableText("commands.enchant.failed.level", game.LiteralText("6"), game.LiteralText("5")).WithColor(game.TextColorRed))
+	})
+
+	t.Run("invalid enchantment", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		bob, connection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+
+		joinTestSession(t, runtime, bob)
+
+		executeCommand(t, bob, "enchant Bob bogus")
+
+		assertSyntaxError(t, connection, "enchant Bob bogus", 12, game.LiteralText("Unknown enchantment 'bogus'"))
+	})
+}
+
+func TestCommandEnchantSkipsInvalidMultipleTargets(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	bob, bobConnection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+	alice, aliceConnection := newCommandTestSession(runtime, commandTestAliceUUID, "Alice")
+
+	bob.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemIronPickaxe, Count: 1}
+	alice.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 1}
+
+	joinTestSession(t, runtime, bob)
+	joinTestSession(t, runtime, alice)
+
+	bobConnection.reset()
+	aliceConnection.reset()
+
+	executeCommand(t, bob, "enchant @a efficiency 3")
+
+	if bob.snapshotPlayer().Inventory.Hotbar[0].EnchantmentLevel(game.EnchantmentEfficiency) != 3 {
+		t.Fatal("valid target did not receive the requested enchantment")
+	}
+
+	if alice.snapshotPlayer().Inventory.Hotbar[0].EnchantmentLevel(game.EnchantmentEfficiency) != 0 {
+		t.Fatal("invalid target received the requested enchantment")
+	}
+
+	if len(packetsByID(t, bobConnection, protocol.ClientboundContainerSetContentID)) != 1 || len(packetsByID(t, aliceConnection, protocol.ClientboundContainerSetContentID)) != 0 {
+		t.Fatal("multi-target enchantment did not synchronize only changed inventories")
+	}
+
+	assertSystemComponents(t, bobConnection, game.TranslatableText("commands.enchant.success.multiple", game.TranslatableText("enchantment.minecraft.efficiency"), game.LiteralText("1")))
 }
 
 func TestCommandGiveProcessesMultipleTargetsIndependently(t *testing.T) {

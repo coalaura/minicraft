@@ -1174,7 +1174,7 @@ func (s *Session) heldItem(hand int32) (game.ItemStack, bool) {
 
 func creativeItemStack(item protocol.UntrustedSlot) (game.ItemStack, bool) {
 	if item.ItemCount == 0 {
-		return game.ItemStack{}, len(item.RemovedComponents) == 0
+		return game.ItemStack{}, len(item.Components) == 0 && len(item.RemovedComponents) == 0
 	}
 
 	if item.ItemCount < 0 || item.ItemID < 0 || item.ItemID > int32(game.MaxItemID) {
@@ -1188,8 +1188,23 @@ func creativeItemStack(item protocol.UntrustedSlot) (game.ItemStack, bool) {
 		return game.ItemStack{}, false
 	}
 
+	components := make([]game.ItemComponent, len(item.Components))
+	seen := make(map[int32]struct{}, len(components)+len(item.RemovedComponents))
+
+	for index, component := range item.Components {
+		if component.Type != game.ItemComponentDamage && component.Type != game.ItemComponentEnchantments {
+			return game.ItemStack{}, false
+		}
+
+		if _, exists := seen[component.Type]; exists {
+			return game.ItemStack{}, false
+		}
+
+		seen[component.Type] = struct{}{}
+		components[index] = game.ItemComponent{Type: component.Type, Data: append([]byte(nil), component.Data...)}
+	}
+
 	removed := make([]int32, len(item.RemovedComponents))
-	seen := make(map[int32]struct{}, len(removed))
 
 	for index, componentType := range item.RemovedComponents {
 		if componentType < 0 || componentType > maxItemComponentType {
@@ -1204,8 +1219,12 @@ func creativeItemStack(item protocol.UntrustedSlot) (game.ItemStack, bool) {
 		removed[index] = componentType
 	}
 
-	stack := game.ItemStack{Item: itemID, Count: item.ItemCount, RemovedComponents: removed}
+	stack := game.ItemStack{Item: itemID, Count: item.ItemCount, Components: components, RemovedComponents: removed}
 	if stack.Empty() {
+		return game.ItemStack{}, false
+	}
+
+	if stack.Damage() > 0 && definition.MaxDurability == 0 {
 		return game.ItemStack{}, false
 	}
 

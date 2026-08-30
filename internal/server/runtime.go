@@ -34,6 +34,8 @@ type Runtime struct {
 	worldMutationMu           sync.Mutex
 	commandRandomMu           sync.Mutex
 	commandRandom             func(int) int
+	miningRandomMu            sync.Mutex
+	miningRandom              func(int) int
 	fluidRandomMu             sync.Mutex
 	fluidRandom               func(game.BlockPosition, int) int
 	commands                  *commandRegistry
@@ -83,6 +85,7 @@ func (r *Runtime) ReleasePlayerSlot() {
 func NewRuntime(world *game.World) *Runtime {
 	initialDelivery := make(chan struct{})
 	fluidRandom := rand.New(rand.NewPCG(uint64(world.Seed), uint64(world.Seed)^0x9e3779b97f4a7c15))
+	miningRandom := rand.New(rand.NewPCG(uint64(world.Seed)^0x243f6a8885a308d3, uint64(world.Seed)^0x13198a2e03707344))
 
 	close(initialDelivery)
 
@@ -93,6 +96,7 @@ func NewRuntime(world *game.World) *Runtime {
 		FluidRules:                FluidRules{WaterSourceConversion: true},
 		blockMutationDeliveryTail: initialDelivery,
 		commandRandom:             rand.IntN,
+		miningRandom:              miningRandom.IntN,
 		fluidRandom: func(_ game.BlockPosition, bound int) int {
 			return fluidRandom.IntN(bound)
 		},

@@ -79,6 +79,8 @@ type blockMutationDelivery struct {
 	deliveryComplete chan struct{}
 	runtimeSounds    []positionalBlockSound
 	runtimeEvents    []protocol.LevelEvent
+	miningInventory  *game.PlayerInventory
+	miningToolBroke  bool
 }
 
 type queuedBlockMutation struct {
@@ -135,7 +137,7 @@ func (r *Runtime) MutateBlock(session *Session, action BlockMutationAction, posi
 	return r.MutateBlocks(session, action, []game.BlockChange{{Position: position, Replacement: replacement}})
 }
 
-func (r *Runtime) mutateMinedBlockLocked(session *Session, position game.BlockPosition, tool game.ItemStack) (BlockMutationResult, blockMutationDelivery, error) {
+func (r *Runtime) mutateMinedBlockLocked(session *Session, position game.BlockPosition, tool miningTool) (BlockMutationResult, blockMutationDelivery, error) {
 	changes := r.breakChanges(position)
 	requiredChanges := len(changes)
 	physicalBreaks := make(map[game.BlockPosition]struct{}, requiredChanges)
@@ -157,10 +159,25 @@ func (r *Runtime) mutateMinedBlockLocked(session *Session, position game.BlockPo
 			continue
 		}
 
-		if tool.Item.IsCorrectToolForDrops(record.previous) {
+		if tool.stack.Item.IsCorrectToolForDrops(record.previous) {
 			record.lootContext = blockLootPlayer
 		}
 	}
+
+	minedBlock := game.Air
+
+	for _, record := range delivery.records {
+		if record.change.Position == position {
+			minedBlock = record.previous
+
+			break
+		}
+	}
+
+	miningInventory, broke := r.damageMiningTool(session, tool, minedBlock)
+
+	delivery.miningInventory = miningInventory
+	delivery.miningToolBroke = broke
 
 	return result, delivery, nil
 }
@@ -556,6 +573,30 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 
 	r.commitBlockEntityRemovalEffects(delivery.records)
 	r.commitOrdinaryBlockDrops(delivery.records)
+
+	if delivery.miningInventory != nil {
+		err := delivery.session.synchronizePlayerInventoryMutation(*delivery.miningInventory)
+		if err != nil {
+			return result, fmt.Errorf("synchronize mining tool: %w", err)
+		}
+	}
+
+	if delivery.miningToolBroke {
+		player := delivery.session.snapshotPlayer()
+
+		event := protocol.EntityEvent{EntityID: player.EntityID, Event: 47}
+
+		for _, other := range delivery.recipients {
+			if other != delivery.session && !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+				continue
+			}
+
+			err := other.writePacket(protocol.ClientboundEntityEventID, event)
+			if err != nil && other.Log != nil {
+				other.Log.Warnf("[play] failed to send tool break event: %v\n", err)
+			}
+		}
+	}
 
 	if lightingErr != nil {
 		return result, fmt.Errorf("recalculate lighting: %w", lightingErr)
