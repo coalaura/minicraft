@@ -947,6 +947,8 @@ func blockEntityType(name string) string {
 		return "BlockEntityTypeSmoker"
 	case "blast_furnace":
 		return "BlockEntityTypeBlastFurnace"
+	case "hopper":
+		return "BlockEntityTypeHopper"
 	}
 
 	if isCopperChest(name) {
@@ -1186,6 +1188,8 @@ func blockCollision(block BlockDefinition) string {
 	switch {
 	case block.Name == "chest" || block.Name == "trapped_chest" || isCopperChest(block.Name):
 		return "BlockCollisionChest"
+	case block.Name == "hopper":
+		return "BlockCollisionHopper"
 	case strings.HasSuffix(block.Name, "_slab"):
 		return "BlockCollisionSlab"
 	case strings.HasSuffix(block.Name, "_stairs"):

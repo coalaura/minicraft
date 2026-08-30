@@ -13,6 +13,7 @@ const (
 	MenuBlastFurnace int32 = 10
 	MenuCrafting     int32 = 12
 	MenuFurnace      int32 = 14
+	MenuHopper       int32 = 16
 	MenuSmoker       int32 = 22
 )
 

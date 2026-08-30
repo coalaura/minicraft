@@ -111,6 +111,7 @@ const (
 	BlockCollisionChain
 	BlockCollisionCake
 	BlockCollisionChest
+	BlockCollisionHopper
 )
 
 type BlockProperty struct {

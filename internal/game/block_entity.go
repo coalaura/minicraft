@@ -6,6 +6,7 @@ const (
 	BarrelSlotCount  = 27
 	ChestSlotCount   = 27
 	FurnaceSlotCount = 3
+	HopperSlotCount  = 5
 )
 
 type BlockEntityType uint8
@@ -18,6 +19,7 @@ const (
 	BlockEntityTypeFurnace
 	BlockEntityTypeSmoker
 	BlockEntityTypeBlastFurnace
+	BlockEntityTypeHopper
 )
 
 type BlockEntityRemovalBehavior uint8
@@ -33,6 +35,7 @@ const (
 	BlockEntityDataNone BlockEntityDataKind = iota
 	BlockEntityDataInventory
 	BlockEntityDataFurnace
+	BlockEntityDataHopper
 )
 
 type BlockEntityTypeDefinition struct {
@@ -59,6 +62,11 @@ type FurnaceBlockEntityData struct {
 	CookingProgress  int32
 	CookingTotalTime int32
 	RecipesUsed      map[string]int32
+}
+
+type HopperBlockEntityData struct {
+	Items            []ItemStack
+	TransferCooldown int32
 }
 
 type BlockEntity struct {
@@ -94,6 +102,7 @@ var blockEntityTypeDefinitions = [...]BlockEntityTypeDefinition{
 	BlockEntityTypeFurnace:      {Name: "furnace", ProtocolRegistryID12111: 0, InventorySlots: FurnaceSlotCount, DataKind: BlockEntityDataFurnace, RemovalBehavior: BlockEntityRemovalDropInventory},
 	BlockEntityTypeSmoker:       {Name: "smoker", ProtocolRegistryID12111: 28, InventorySlots: FurnaceSlotCount, DataKind: BlockEntityDataFurnace, RemovalBehavior: BlockEntityRemovalDropInventory},
 	BlockEntityTypeBlastFurnace: {Name: "blast_furnace", ProtocolRegistryID12111: 29, InventorySlots: FurnaceSlotCount, DataKind: BlockEntityDataFurnace, RemovalBehavior: BlockEntityRemovalDropInventory},
+	BlockEntityTypeHopper:       {Name: "hopper", ProtocolRegistryID12111: 18, InventorySlots: HopperSlotCount, DataKind: BlockEntityDataHopper, RemovalBehavior: BlockEntityRemovalDropInventory},
 }
 
 func NewBlockEntity(entityType BlockEntityType) BlockEntity {
@@ -109,6 +118,11 @@ func NewBlockEntity(entityType BlockEntityType) BlockEntity {
 		return BlockEntity{
 			Type: entityType,
 			Data: &FurnaceBlockEntityData{Items: make([]ItemStack, definition.InventorySlots)},
+		}
+	case BlockEntityDataHopper:
+		return BlockEntity{
+			Type: entityType,
+			Data: &HopperBlockEntityData{Items: make([]ItemStack, definition.InventorySlots), TransferCooldown: -1},
 		}
 	default:
 		return BlockEntity{Type: entityType}
@@ -135,6 +149,8 @@ func (entity *BlockEntity) Inventory() ([]ItemStack, bool) {
 	case *InventoryBlockEntityData:
 		return data.Items, true
 	case *FurnaceBlockEntityData:
+		return data.Items, true
+	case *HopperBlockEntityData:
 		return data.Items, true
 	default:
 		return nil, false
@@ -237,6 +253,34 @@ func (data *FurnaceBlockEntityData) EqualBlockEntityData(other BlockEntityData) 
 
 	for name, uses := range data.RecipesUsed {
 		if otherFurnace.RecipesUsed[name] != uses {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (data *HopperBlockEntityData) CloneBlockEntityData() BlockEntityData {
+	clone := &HopperBlockEntityData{
+		Items:            make([]ItemStack, len(data.Items)),
+		TransferCooldown: data.TransferCooldown,
+	}
+
+	for slot := range data.Items {
+		clone.Items[slot] = data.Items[slot].Clone()
+	}
+
+	return clone
+}
+
+func (data *HopperBlockEntityData) EqualBlockEntityData(other BlockEntityData) bool {
+	otherHopper, valid := other.(*HopperBlockEntityData)
+	if !valid || len(data.Items) != len(otherHopper.Items) || data.TransferCooldown != otherHopper.TransferCooldown {
+		return false
+	}
+
+	for slot := range data.Items {
+		if !data.Items[slot].Equal(otherHopper.Items[slot]) {
 			return false
 		}
 	}

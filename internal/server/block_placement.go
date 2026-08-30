@@ -493,6 +493,18 @@ func placementStateWithRotation(base game.Block, rule game.ItemPlacementRule, in
 			game.BlockPropertyValue{Name: "facing", Value: facing.opposite().name()},
 			game.BlockPropertyValue{Name: "lit", Value: "false"},
 		)
+	case game.ItemPlacementHopper:
+		hopperFacing := "down"
+
+		clickedDirection, horizontal := blockFaceDirection(interaction.Face)
+		if horizontal {
+			hopperFacing = clickedDirection.opposite().name()
+		}
+
+		return base.WithProperties(
+			game.BlockPropertyValue{Name: "enabled", Value: "true"},
+			game.BlockPropertyValue{Name: "facing", Value: hopperFacing},
+		)
 	case game.ItemPlacementSlab:
 		half := placementHalf(interaction.Face, interaction.CursorY)
 		return base.WithProperties(game.BlockPropertyValue{Name: "type", Value: half})

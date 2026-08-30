@@ -57,6 +57,7 @@ func TestBlockCollisionFamilies(t *testing.T) {
 		{name: "open fence gate", block: openGate, empty: true},
 		{name: "pane", block: GlassPane},
 		{name: "wall", block: CobblestoneWall},
+		{name: "hopper", block: Hopper},
 		{name: "air", block: Air, empty: true},
 	}
 
@@ -67,6 +68,37 @@ func TestBlockCollisionFamilies(t *testing.T) {
 				t.Fatalf("collision box count = %d, empty = %t", len(boxes), test.empty)
 			}
 		})
+	}
+}
+
+func TestHopperCollisionLeavesInputOpenAndFollowsFacing(t *testing.T) {
+	down, valid := Hopper.WithProperties(BlockPropertyValue{Name: "facing", Value: "down"})
+	if !valid {
+		t.Fatal("resolve downward hopper")
+	}
+
+	east, valid := Hopper.WithProperties(BlockPropertyValue{Name: "facing", Value: "east"})
+	if !valid {
+		t.Fatal("resolve eastward hopper")
+	}
+
+	downBoxes := down.CollisionBoxes(BlockPosition{})
+	eastBoxes := east.CollisionBoxes(BlockPosition{})
+
+	if len(downBoxes) != 7 || len(eastBoxes) != 7 {
+		t.Fatalf("hopper collision box counts = %d, %d; want 7", len(downBoxes), len(eastBoxes))
+	}
+
+	input := AABB{MinX: 0.25, MinY: 11.0 / 16.0, MinZ: 0.25, MaxX: 0.75, MaxY: 1, MaxZ: 0.75}
+
+	for _, box := range downBoxes {
+		if box.Intersects(input) {
+			t.Fatalf("hopper collision blocks input cavity: %+v", box)
+		}
+	}
+
+	if downBoxes[6] != unitBox(6, 0, 6, 10, 4, 10) || eastBoxes[6] != unitBox(12, 4, 6, 16, 8, 10) {
+		t.Fatalf("hopper spouts = down %+v east %+v", downBoxes[6], eastBoxes[6])
 	}
 }
 

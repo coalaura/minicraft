@@ -23,6 +23,7 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Manual 2x2 and crafting-table recipes, including shaped, shapeless and ordinary crafting remainders
 - Furnaces, smokers and blast furnaces with generated cooking recipes and fuel values, ticking, menus and synchronized progress
 - Stateful barrels and single/double normal, trapped and copper chest variants, including container contents drops on removal
+- Vanilla-like hoppers with sided container automation, item suction, persisted cooldowns and synchronized five-slot menus
 - Generic runtime entities, dropped items and item pickup
 - Basic commands with client-side declarations and suggestions
 - Biomes, lighting, world time and a day/night cycle
@@ -98,7 +99,7 @@ There are still gameplay systems and protocol features that are intentionally in
 
 Fluid simulation covers vanilla-like derived water and lava flow in active world chunks, while scheduled fluid ticks intentionally pause in inactive chunks. It also covers waterlogging, buckets and item movement through fluids. Health, drowning, lava damage and fire consequences, Nether water evaporation and broader fluid parity remain deferred or out of scope.
 
-Generic block entities support procedural copy-on-write state, removal behavior and optional runtime interaction/ticking capabilities. Generic 9x1 through 9x6 storage menus are available, including barrels and single/double normal, trapped and copper chest variants. Furnace-family block entities process the generated 1.21.11 smelting, smoking and blasting catalogues with vanilla fuel durations, remainders, lit states and menu data. Manual crafting supports the generated ordinary shaped and shapeless recipe catalogue in the player inventory and at crafting tables. Recipe-book protocol, furnace XP payout, special/dynamic recipes and component-transforming recipes are not implemented yet.
+Generic block entities support procedural copy-on-write state, removal behavior and optional runtime interaction/ticking capabilities. Generic 9x1 through 9x6 storage menus are available, including barrels and single/double normal, trapped and copper chest variants. Hoppers automate those containers and the furnace family with sided access, active-chunk cooldown semantics and dropped-item collection. Furnace-family block entities process the generated 1.21.11 smelting, smoking and blasting catalogues with vanilla fuel durations, remainders, lit states and menu data. Manual crafting supports the generated ordinary shaped and shapeless recipe catalogue in the player inventory and at crafting tables. Recipe-book protocol, furnace XP payout, special/dynamic recipes and component-transforming recipes are not implemented yet.
 
 The survival block loop uses server-tick-authoritative START, STOP and ABORT handling, vanilla baseline hardness/tool progress, harvest gating, cause-specific ordinary loot, and exact-hand placement consumption. Fixed baseline drops are generated where they can be represented faithfully. Silk Touch, Fortune, Efficiency, tool durability, XP drops, potion/effect modifiers, underwater and airborne mining penalties, and conditional or random loot tables remain explicitly deferred.
 

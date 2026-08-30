@@ -296,7 +296,7 @@ func (r *Runtime) chestBackingAt(position game.BlockPosition) (*runtimeChestBack
 	}
 
 	partnerBlock := r.World.BlockAt(partnerPosition)
-	if !sameBlockType(block, partnerBlock) || blockProperty(partnerBlock, "facing") != blockProperty(block, "facing") || blockProperty(partnerBlock, "type") != oppositeChestType(chestType) {
+	if !chestBlocksCanConnect(block, partnerBlock) || blockProperty(partnerBlock, "facing") != blockProperty(block, "facing") || blockProperty(partnerBlock, "type") != oppositeChestType(chestType) {
 		return nil, false
 	}
 

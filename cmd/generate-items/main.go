@@ -286,6 +286,8 @@ func blockPlacementRule(block BlockDefinition) string {
 		return "ItemPlacementPointedDripstone"
 	case block.Name == "furnace" || block.Name == "smoker" || block.Name == "blast_furnace":
 		return "ItemPlacementFurnace"
+	case block.Name == "hopper":
+		return "ItemPlacementHopper"
 	case isSimplePlant(block.Name):
 		return "ItemPlacementPlant"
 	case block.Name == "cobweb":
@@ -327,7 +329,7 @@ func isExcludedPlacementBlock(name string) bool {
 	case "beacon", "beehive", "bee_nest", "brewing_stand",
 		"campfire", "soul_campfire", "suspicious_gravel", "suspicious_sand",
 		"chiseled_bookshelf", "crafter", "decorated_pot", "dispenser", "dropper",
-		"enchanting_table", "ender_chest", "hopper", "jukebox", "lectern",
+		"enchanting_table", "ender_chest", "jukebox", "lectern",
 		"spawner", "trial_spawner", "vault":
 		return true
 	}

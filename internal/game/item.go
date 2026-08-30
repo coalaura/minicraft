@@ -34,6 +34,7 @@ const (
 	ItemPlacementDirectionalFacing
 	ItemPlacementChest
 	ItemPlacementFurnace
+	ItemPlacementHopper
 )
 
 type Item uint16

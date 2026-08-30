@@ -82,6 +82,7 @@ var runtimeBlockEntityFactories = map[game.BlockEntityType]runtimeBlockEntityFac
 	game.BlockEntityTypeFurnace:      newRuntimeFurnace,
 	game.BlockEntityTypeSmoker:       newRuntimeFurnace,
 	game.BlockEntityTypeBlastFurnace: newRuntimeFurnace,
+	game.BlockEntityTypeHopper:       newRuntimeHopper,
 }
 
 func (r *Runtime) newActiveChunk(position LoadedChunk) *ActiveChunk {
