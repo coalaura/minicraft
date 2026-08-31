@@ -7,8 +7,6 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
-type containerFace uint8
-
 const (
 	containerFaceDown containerFace = iota
 	containerFaceUp
@@ -17,6 +15,8 @@ const (
 	containerFaceWest
 	containerFaceEast
 )
+
+type containerFace uint8
 
 type automatedContainer struct {
 	slots          []*game.ItemStack

@@ -17,14 +17,6 @@ const (
 	MenuSmoker       int32 = 22
 )
 
-func Generic9xMenuType(rows int) (int32, bool) {
-	if rows < 1 || rows > 6 {
-		return 0, false
-	}
-
-	return MenuGeneric9x1 + int32(rows-1), true
-}
-
 var ConfigurationRegistries = []Registry{
 	{
 		ID:      "minecraft:dimension_type",
@@ -187,4 +179,12 @@ var ConfigurationTags = []RegistryTags{
 			},
 		},
 	},
+}
+
+func Generic9xMenuType(rows int) (int32, bool) {
+	if rows < 1 || rows > 6 {
+		return 0, false
+	}
+
+	return MenuGeneric9x1 + int32(rows-1), true
 }

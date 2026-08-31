@@ -85,41 +85,6 @@ func (r *Runtime) ReleasePlayerSlot() {
 	}
 }
 
-func NewRuntime(world *game.World) *Runtime {
-	initialDelivery := make(chan struct{})
-	fluidRandom := rand.New(rand.NewPCG(uint64(world.Seed), uint64(world.Seed)^0x9e3779b97f4a7c15))
-	miningRandom := rand.New(rand.NewPCG(uint64(world.Seed)^0x243f6a8885a308d3, uint64(world.Seed)^0x13198a2e03707344))
-	lootRandom := rand.New(rand.NewPCG(uint64(world.Seed)^0x9e3779b97f4a7c15, uint64(world.Seed)^0x243f6a8885a308d3))
-
-	close(initialDelivery)
-
-	runtime := &Runtime{
-		World:                     world,
-		AllowBlockBreaking:        true,
-		AllowBlockPlacing:         true,
-		FluidRules:                FluidRules{WaterSourceConversion: true},
-		blockMutationDeliveryTail: initialDelivery,
-		commandRandom:             rand.IntN,
-		miningRandom:              miningRandom.IntN,
-		lootRandomInt:             lootRandom.IntN,
-		lootRandomFloat:           lootRandom.Float32,
-		fluidRandom: func(_ game.BlockPosition, bound int) int {
-			return fluidRandom.IntN(bound)
-		},
-		activeChunks:        make(map[LoadedChunk]*activeChunkReference),
-		sessionActiveChunks: make(map[*Session]map[LoadedChunk]struct{}),
-		entities:            make(map[int32]RuntimeEntity),
-		entitiesByChunk:     make(map[LoadedChunk]map[int32]RuntimeEntity),
-		entityRandom:        rand.Float32,
-		sessions:            make(map[*Session]*game.Player),
-		connectedSessions:   make(map[*Session]struct{}),
-	}
-
-	runtime.commands = newCommandRegistry(runtime)
-
-	return runtime
-}
-
 func (r *Runtime) registerConnectedSession(session *Session) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -729,26 +694,6 @@ func (r *Runtime) sendPlayerMetadataUpdates(players []game.Player) {
 	}
 }
 
-func playersVisible(observer, target game.Player, renderDistance int32) bool {
-	observerX := int64(chunkCoordinate(observer.Position.X))
-	observerZ := int64(chunkCoordinate(observer.Position.Z))
-
-	targetX := int64(chunkCoordinate(target.Position.X))
-	targetZ := int64(chunkCoordinate(target.Position.Z))
-
-	distance := int64(renderDistance)
-
-	return abs64(observerX-targetX) <= distance && abs64(observerZ-targetZ) <= distance
-}
-
-func abs64(value int64) int64 {
-	if value < 0 {
-		return -value
-	}
-
-	return value
-}
-
 func (r *Runtime) snapshotSessions() []*Session {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -767,6 +712,61 @@ func (r *Runtime) PlayerCount() int {
 	defer r.mu.RUnlock()
 
 	return len(r.sessions)
+}
+
+func NewRuntime(world *game.World) *Runtime {
+	initialDelivery := make(chan struct{})
+	fluidRandom := rand.New(rand.NewPCG(uint64(world.Seed), uint64(world.Seed)^0x9e3779b97f4a7c15))
+	miningRandom := rand.New(rand.NewPCG(uint64(world.Seed)^0x243f6a8885a308d3, uint64(world.Seed)^0x13198a2e03707344))
+	lootRandom := rand.New(rand.NewPCG(uint64(world.Seed)^0x9e3779b97f4a7c15, uint64(world.Seed)^0x243f6a8885a308d3))
+
+	close(initialDelivery)
+
+	runtime := &Runtime{
+		World:                     world,
+		AllowBlockBreaking:        true,
+		AllowBlockPlacing:         true,
+		FluidRules:                FluidRules{WaterSourceConversion: true},
+		blockMutationDeliveryTail: initialDelivery,
+		commandRandom:             rand.IntN,
+		miningRandom:              miningRandom.IntN,
+		lootRandomInt:             lootRandom.IntN,
+		lootRandomFloat:           lootRandom.Float32,
+		fluidRandom: func(_ game.BlockPosition, bound int) int {
+			return fluidRandom.IntN(bound)
+		},
+		activeChunks:        make(map[LoadedChunk]*activeChunkReference),
+		sessionActiveChunks: make(map[*Session]map[LoadedChunk]struct{}),
+		entities:            make(map[int32]RuntimeEntity),
+		entitiesByChunk:     make(map[LoadedChunk]map[int32]RuntimeEntity),
+		entityRandom:        rand.Float32,
+		sessions:            make(map[*Session]*game.Player),
+		connectedSessions:   make(map[*Session]struct{}),
+	}
+
+	runtime.commands = newCommandRegistry(runtime)
+
+	return runtime
+}
+
+func playersVisible(observer, target game.Player, renderDistance int32) bool {
+	observerX := int64(chunkCoordinate(observer.Position.X))
+	observerZ := int64(chunkCoordinate(observer.Position.Z))
+
+	targetX := int64(chunkCoordinate(target.Position.X))
+	targetZ := int64(chunkCoordinate(target.Position.Z))
+
+	distance := int64(renderDistance)
+
+	return abs64(observerX-targetX) <= distance && abs64(observerZ-targetZ) <= distance
+}
+
+func abs64(value int64) int64 {
+	if value < 0 {
+		return -value
+	}
+
+	return value
 }
 
 func formatChatMessage(format, player, message string) string {

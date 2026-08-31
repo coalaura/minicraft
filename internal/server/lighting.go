@@ -48,6 +48,43 @@ var lightingBuffers = sync.Pool{
 	},
 }
 
+func (buffer *lightingBuffer) resetQueue() {
+	buffer.queueHead = 0
+	buffer.queueTail = 0
+	buffer.queueCount = 0
+}
+
+func (buffer *lightingBuffer) enqueue(index int) {
+	if buffer.queued[index] != 0 {
+		return
+	}
+
+	buffer.queued[index] = 1
+	buffer.queue[buffer.queueTail] = int32(index)
+
+	buffer.queueTail++
+
+	if buffer.queueTail == len(buffer.queue) {
+		buffer.queueTail = 0
+	}
+
+	buffer.queueCount++
+}
+
+func (buffer *lightingBuffer) dequeue() int {
+	index := int(buffer.queue[buffer.queueHead])
+
+	buffer.queueHead++
+
+	if buffer.queueHead == len(buffer.queue) {
+		buffer.queueHead = 0
+	}
+
+	buffer.queueCount--
+	buffer.queued[index] = 0
+
+	return index
+}
 func buildNormalLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChunkWithLight, error) {
 	if normalRegionIsOpen(world, chunkX, chunkZ) {
 		chunk, err := buildFullbrightLevelChunk(world, chunkX, chunkZ)
@@ -613,42 +650,4 @@ func lightingIndex(x, y, z int) int {
 
 func chunkBlockIndex(x, y, z int) int {
 	return (y*game.ChunkWidth+z)*game.ChunkWidth + x
-}
-
-func (buffer *lightingBuffer) resetQueue() {
-	buffer.queueHead = 0
-	buffer.queueTail = 0
-	buffer.queueCount = 0
-}
-
-func (buffer *lightingBuffer) enqueue(index int) {
-	if buffer.queued[index] != 0 {
-		return
-	}
-
-	buffer.queued[index] = 1
-	buffer.queue[buffer.queueTail] = int32(index)
-
-	buffer.queueTail++
-
-	if buffer.queueTail == len(buffer.queue) {
-		buffer.queueTail = 0
-	}
-
-	buffer.queueCount++
-}
-
-func (buffer *lightingBuffer) dequeue() int {
-	index := int(buffer.queue[buffer.queueHead])
-
-	buffer.queueHead++
-
-	if buffer.queueHead == len(buffer.queue) {
-		buffer.queueHead = 0
-	}
-
-	buffer.queueCount--
-	buffer.queued[index] = 0
-
-	return index
 }

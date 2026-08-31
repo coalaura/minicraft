@@ -80,14 +80,6 @@ var (
 	_ game.GeneratedChunk   = (*generatedChunk)(nil)
 )
 
-func init() {
-	generator.MustRegister(Name, newRegistered)
-}
-
-func New() game.Generator {
-	return Generator{}
-}
-
 func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	if position.Y < foundationMinY || position.Y > maxBuildY {
 		return game.Air
@@ -111,23 +103,6 @@ func (Generator) GenerateSection(seed int64, chunk game.ChunkPosition, sectionMi
 func (Generator) GenerateChunk(seed int64, chunk game.ChunkPosition) game.GeneratedChunk {
 	generated := generateChunk(seed, chunk)
 	return &generated
-}
-
-func generateChunk(seed int64, chunk game.ChunkPosition) generatedChunk {
-	generated := generatedChunk{seed: seed, chunk: chunk}
-	chunkMinX := chunk.X * game.ChunkWidth
-	chunkMinZ := chunk.Z * game.ChunkWidth
-
-	for localZ := range int32(game.ChunkWidth) {
-		worldZ := chunkMinZ + localZ
-
-		for localX := range int32(game.ChunkWidth) {
-			worldX := chunkMinX + localX
-			generated.columns[localZ*game.ChunkWidth+localX] = describeColumn(seed, worldX, worldZ)
-		}
-	}
-
-	return generated
 }
 
 func (generated *generatedChunk) GenerateSection(sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
@@ -177,6 +152,31 @@ func (Generator) Spawn(_ int64) game.Position {
 		Y: float64(surfaceY) + 1,
 		Z: 0.5,
 	}
+}
+
+func init() {
+	generator.MustRegister(Name, newRegistered)
+}
+
+func New() game.Generator {
+	return Generator{}
+}
+
+func generateChunk(seed int64, chunk game.ChunkPosition) generatedChunk {
+	generated := generatedChunk{seed: seed, chunk: chunk}
+	chunkMinX := chunk.X * game.ChunkWidth
+	chunkMinZ := chunk.Z * game.ChunkWidth
+
+	for localZ := range int32(game.ChunkWidth) {
+		worldZ := chunkMinZ + localZ
+
+		for localX := range int32(game.ChunkWidth) {
+			worldX := chunkMinX + localX
+			generated.columns[localZ*game.ChunkWidth+localX] = describeColumn(seed, worldX, worldZ)
+		}
+	}
+
+	return generated
 }
 
 func newRegistered() (game.Generator, error) {

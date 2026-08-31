@@ -34,29 +34,6 @@ type runtimeEntityLockedViewer interface {
 	runtimeEntityViewLocked() runtimeEntityView
 }
 
-func newRuntimeEntityTracker(view runtimeEntityView) runtimeEntityTracker {
-	return runtimeEntityTracker{
-		PositionBase: view.Position,
-		LastVelocity: view.Velocity,
-		LastYaw:      protocolAngle(view.Rotation.Yaw),
-		LastPitch:    protocolAngle(view.Rotation.Pitch),
-		LastHeadYaw:  protocolAngle(view.Rotation.HeadYaw),
-		WasOnGround:  view.OnGround,
-	}
-}
-
-func runtimeEntitySpawnSnapshotLocked(view runtimeEntityView, tracker runtimeEntityTracker) runtimeEntitySpawnSnapshot {
-	return runtimeEntitySpawnSnapshot{
-		ID:       view.ID,
-		UUID:     view.UUID,
-		Position: tracker.PositionBase,
-		Velocity: tracker.LastVelocity,
-		Yaw:      tracker.LastYaw,
-		Pitch:    tracker.LastPitch,
-		HeadYaw:  tracker.LastHeadYaw,
-	}
-}
-
 func (r *Runtime) synchronizeRuntimeEntity(entity RuntimeEntity) {
 	tracked, trackable := entity.(RuntimeEntityTracker)
 	lockedViewer, lockable := entity.(runtimeEntityLockedViewer)
@@ -95,6 +72,49 @@ func (r *Runtime) synchronizeRuntimeEntity(entity RuntimeEntity) {
 	}
 
 	r.synchronizeDirtyRuntimeEntityMetadataIfPresent(entity)
+}
+
+func (r *Runtime) broadcastRuntimeEntityPacket(entityID int32, packet runtimeEntityPacket) {
+	for _, session := range r.snapshotSessions() {
+		if !session.tracksRuntimeEntity(entityID) {
+			continue
+		}
+
+		err := session.writePacket(packet.ID, packet.Encoder)
+		if err != nil && session.Log != nil {
+			session.Log.Warnf("[play] failed to synchronize entity: %v\n", err)
+		}
+	}
+}
+
+func (r *Runtime) synchronizeDirtyRuntimeEntityMetadataIfPresent(entity RuntimeEntity) {
+	metadata, present := entity.(RuntimeEntityMetadata)
+	if present {
+		r.synchronizeDirtyRuntimeEntityMetadata(metadata)
+	}
+}
+
+func newRuntimeEntityTracker(view runtimeEntityView) runtimeEntityTracker {
+	return runtimeEntityTracker{
+		PositionBase: view.Position,
+		LastVelocity: view.Velocity,
+		LastYaw:      protocolAngle(view.Rotation.Yaw),
+		LastPitch:    protocolAngle(view.Rotation.Pitch),
+		LastHeadYaw:  protocolAngle(view.Rotation.HeadYaw),
+		WasOnGround:  view.OnGround,
+	}
+}
+
+func runtimeEntitySpawnSnapshotLocked(view runtimeEntityView, tracker runtimeEntityTracker) runtimeEntitySpawnSnapshot {
+	return runtimeEntitySpawnSnapshot{
+		ID:       view.ID,
+		UUID:     view.UUID,
+		Position: tracker.PositionBase,
+		Velocity: tracker.LastVelocity,
+		Yaw:      tracker.LastYaw,
+		Pitch:    tracker.LastPitch,
+		HeadYaw:  tracker.LastHeadYaw,
+	}
 }
 
 func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker, configuration RuntimeEntityTrackingConfig, forcedMovementSync bool) []runtimeEntityPacket {
@@ -218,26 +238,6 @@ func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker,
 	}
 
 	return packets
-}
-
-func (r *Runtime) broadcastRuntimeEntityPacket(entityID int32, packet runtimeEntityPacket) {
-	for _, session := range r.snapshotSessions() {
-		if !session.tracksRuntimeEntity(entityID) {
-			continue
-		}
-
-		err := session.writePacket(packet.ID, packet.Encoder)
-		if err != nil && session.Log != nil {
-			session.Log.Warnf("[play] failed to synchronize entity: %v\n", err)
-		}
-	}
-}
-
-func (r *Runtime) synchronizeDirtyRuntimeEntityMetadataIfPresent(entity RuntimeEntity) {
-	metadata, present := entity.(RuntimeEntityMetadata)
-	if present {
-		r.synchronizeDirtyRuntimeEntityMetadata(metadata)
-	}
 }
 
 func velocityDistanceSquared(first, second game.Velocity) float64 {

@@ -41,14 +41,6 @@ type Connection struct {
 	zlibWriter      *zlib.Writer
 }
 
-func NewConnection(conn net.Conn, log Logger) *Connection {
-	return &Connection{
-		conn: conn,
-		wbuf: bufio.NewWriter(conn),
-		log:  log,
-	}
-}
-
 func (c *Connection) EnableEncryption(secret []byte) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
@@ -191,33 +183,6 @@ func (c *Connection) ReadPacket() (*Packet, error) {
 	return pkt, nil
 }
 
-func readPacketFrameLength(rd io.ByteReader) (int, error) {
-	var frameLength int
-
-	for index := range 3 {
-		currentByte, err := rd.ReadByte()
-		if err != nil {
-			return 0, err
-		}
-
-		frameLength |= int(currentByte&VarSegmentBits) << (7 * index)
-
-		if currentByte&VarContinueBit == 0 {
-			if frameLength == 0 {
-				return 0, errors.New("packet frame length must be positive")
-			}
-
-			if frameLength > maxPacketFrameLength {
-				return 0, fmt.Errorf("packet frame length %d exceeds maximum %d", frameLength, maxPacketFrameLength)
-			}
-
-			return frameLength, nil
-		}
-	}
-
-	return 0, errors.New("packet frame length VarInt is too big")
-}
-
 func (c *Connection) WritePacket(packet Packet) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
@@ -355,4 +320,38 @@ func (c *Connection) logPacket(direction string, p *Packet) {
 		len(p.Data),
 		hex.EncodeToString(data),
 	)
+}
+func NewConnection(conn net.Conn, log Logger) *Connection {
+	return &Connection{
+		conn: conn,
+		wbuf: bufio.NewWriter(conn),
+		log:  log,
+	}
+}
+
+func readPacketFrameLength(rd io.ByteReader) (int, error) {
+	var frameLength int
+
+	for index := range 3 {
+		currentByte, err := rd.ReadByte()
+		if err != nil {
+			return 0, err
+		}
+
+		frameLength |= int(currentByte&VarSegmentBits) << (7 * index)
+
+		if currentByte&VarContinueBit == 0 {
+			if frameLength == 0 {
+				return 0, errors.New("packet frame length must be positive")
+			}
+
+			if frameLength > maxPacketFrameLength {
+				return 0, fmt.Errorf("packet frame length %d exceeds maximum %d", frameLength, maxPacketFrameLength)
+			}
+
+			return frameLength, nil
+		}
+	}
+
+	return 0, errors.New("packet frame length VarInt is too big")
 }

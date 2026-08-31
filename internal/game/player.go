@@ -2,8 +2,6 @@ package game
 
 import "math"
 
-type PlayerPose uint8
-
 const (
 	PlayerPoseStanding PlayerPose = iota
 	PlayerPoseCrouching
@@ -16,6 +14,8 @@ const (
 	crawlingPlayerEyeHeight      = 0.4
 	defaultBlockInteractionRange = 4.5
 )
+
+type PlayerPose uint8
 
 type ProfileProperty struct {
 	Name      string `json:"name"`

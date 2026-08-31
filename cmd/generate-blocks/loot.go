@@ -34,86 +34,6 @@ func (err deferredLootError) Error() string {
 	return err.reason
 }
 
-func readBlockLootPrograms(root string, blocks []BlockDefinition, itemIDs map[string]uint16) (BlockLootPrograms, error) {
-	result := BlockLootPrograms{Indexes: make(map[string]uint16, len(blocks)), Programs: []string{"{}"}, Deferred: make(map[string]string)}
-
-	for _, block := range blocks {
-		if !block.Diggable {
-			continue
-		}
-
-		path := filepath.Join(root, block.Name+".json")
-
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				if len(block.Drops) != 0 {
-					result.Deferred[block.Name] = "missing canonical loot table"
-				}
-
-				continue
-			}
-
-			return BlockLootPrograms{}, fmt.Errorf("read loot table for %s: %w", block.Name, err)
-		}
-
-		compiler := newLootCompiler(block, itemIDs)
-
-		program, err := compiler.compileTable(raw)
-		if err != nil {
-			var deferred deferredLootError
-
-			if !asDeferred(err, &deferred) {
-				return BlockLootPrograms{}, fmt.Errorf("compile loot table for %s: %w", block.Name, err)
-			}
-
-			result.Deferred[block.Name] = deferred.reason
-
-			continue
-		}
-
-		if program == "{}" {
-			continue
-		}
-
-		if len(result.Programs) > int(^uint16(0)) {
-			return BlockLootPrograms{}, fmt.Errorf("too many block loot programs")
-		}
-
-		result.Indexes[block.Name] = uint16(len(result.Programs))
-
-		result.Programs = append(result.Programs, program)
-	}
-
-	return result, nil
-}
-
-func asDeferred(err error, target *deferredLootError) bool {
-	return errors.As(err, target)
-}
-
-func newLootCompiler(block BlockDefinition, itemIDs map[string]uint16) lootCompiler {
-	properties := make(map[string]map[string]bool, len(block.Properties))
-
-	for _, property := range block.Properties {
-		values := property.Values
-
-		if property.Type == "bool" {
-			values = []string{"true", "false"}
-		}
-
-		validValues := make(map[string]bool, len(values))
-
-		for _, value := range values {
-			validValues[value] = true
-		}
-
-		properties[property.Name] = validValues
-	}
-
-	return lootCompiler{block: block, itemIDs: itemIDs, properties: properties}
-}
-
 func (compiler lootCompiler) compileTable(raw []byte) (string, error) {
 	object, err := lootObject(raw)
 	if err != nil {
@@ -565,6 +485,86 @@ func (compiler lootCompiler) compileNumber(raw json.RawMessage) (string, error) 
 	}
 
 	return "blockLootNumberProvider{Kind: blockLootNumberUniform, MinProvider: &" + min + ", MaxProvider: &" + max + "}", nil
+}
+
+func readBlockLootPrograms(root string, blocks []BlockDefinition, itemIDs map[string]uint16) (BlockLootPrograms, error) {
+	result := BlockLootPrograms{Indexes: make(map[string]uint16, len(blocks)), Programs: []string{"{}"}, Deferred: make(map[string]string)}
+
+	for _, block := range blocks {
+		if !block.Diggable {
+			continue
+		}
+
+		path := filepath.Join(root, block.Name+".json")
+
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				if len(block.Drops) != 0 {
+					result.Deferred[block.Name] = "missing canonical loot table"
+				}
+
+				continue
+			}
+
+			return BlockLootPrograms{}, fmt.Errorf("read loot table for %s: %w", block.Name, err)
+		}
+
+		compiler := newLootCompiler(block, itemIDs)
+
+		program, err := compiler.compileTable(raw)
+		if err != nil {
+			var deferred deferredLootError
+
+			if !asDeferred(err, &deferred) {
+				return BlockLootPrograms{}, fmt.Errorf("compile loot table for %s: %w", block.Name, err)
+			}
+
+			result.Deferred[block.Name] = deferred.reason
+
+			continue
+		}
+
+		if program == "{}" {
+			continue
+		}
+
+		if len(result.Programs) > int(^uint16(0)) {
+			return BlockLootPrograms{}, fmt.Errorf("too many block loot programs")
+		}
+
+		result.Indexes[block.Name] = uint16(len(result.Programs))
+
+		result.Programs = append(result.Programs, program)
+	}
+
+	return result, nil
+}
+
+func asDeferred(err error, target *deferredLootError) bool {
+	return errors.As(err, target)
+}
+
+func newLootCompiler(block BlockDefinition, itemIDs map[string]uint16) lootCompiler {
+	properties := make(map[string]map[string]bool, len(block.Properties))
+
+	for _, property := range block.Properties {
+		values := property.Values
+
+		if property.Type == "bool" {
+			values = []string{"true", "false"}
+		}
+
+		validValues := make(map[string]bool, len(values))
+
+		for _, value := range values {
+			validValues[value] = true
+		}
+
+		properties[property.Name] = validValues
+	}
+
+	return lootCompiler{block: block, itemIDs: itemIDs, properties: properties}
 }
 
 func emitBlockLootPrograms(output *bytes.Buffer, programs BlockLootPrograms) {

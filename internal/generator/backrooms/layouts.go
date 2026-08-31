@@ -2,6 +2,12 @@ package backrooms
 
 import "github.com/coalaura/minicraft/internal/game"
 
+const dividerCellSize = int64(16)
+
+const pillarCellSize = int64(8)
+
+const sparseCellSize = int64(16)
+
 func structureBlock(seed, worldX, worldY, worldZ int64, current zone, blocks paletteBlocks, profile structure) game.Block {
 	currentCeilingY := zoneCeilingY(current)
 
@@ -236,8 +242,6 @@ func classicStructureAt(seed int64, current zone) structure {
 
 	return mergeStructure(base, divider)
 }
-
-const dividerCellSize = int64(16)
 
 func classicDividerStructureAt(seed int64, current zone) structure {
 	cellX := current.localX / dividerCellSize
@@ -525,8 +529,6 @@ func cubicleStructureAt(seed int64, current zone) structure {
 	return structureOpen
 }
 
-const pillarCellSize = int64(8)
-
 func pillarStructureAt(seed int64, current zone) structure {
 	cellX := current.localX / pillarCellSize
 	cellZ := current.localZ / pillarCellSize
@@ -567,8 +569,6 @@ func pillarStructureAt(seed int64, current zone) structure {
 
 	return structureOpen
 }
-
-const sparseCellSize = int64(16)
 
 func sparseStructureAt(seed int64, current zone) structure {
 	cellX := current.localX / sparseCellSize

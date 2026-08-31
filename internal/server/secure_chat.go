@@ -73,80 +73,6 @@ type verifiedPlayerChat struct {
 	previousSignatures [][chatSignatureLength]byte
 }
 
-func NewMinecraftCertificateVerifier(trustedKeys []*rsa.PublicKey) (*MinecraftCertificateVerifier, error) {
-	if len(trustedKeys) == 0 {
-		return nil, errors.New("no Minecraft player-certificate keys")
-	}
-
-	keys := append([]*rsa.PublicKey(nil), trustedKeys...)
-
-	return &MinecraftCertificateVerifier{trustedKeys: keys}, nil
-}
-
-func LoadMinecraftCertificateVerifier(ctx context.Context, client *http.Client) (*MinecraftCertificateVerifier, error) {
-	if client == nil {
-		client = &http.Client{Timeout: certificateFetchTimeout}
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, certificateFetchTimeout)
-	defer cancel()
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, minecraftCertificateKeysURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create Minecraft certificate-key request: %w", err)
-	}
-
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("fetch Minecraft certificate keys: %w", err)
-	}
-
-	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch Minecraft certificate keys: unexpected HTTP status %s", response.Status)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxCertificateResponseBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("read Minecraft certificate keys: %w", err)
-	}
-
-	if len(body) > maxCertificateResponseBytes {
-		return nil, fmt.Errorf("minecraft certificate-key response exceeds %d bytes", maxCertificateResponseBytes)
-	}
-
-	var payload minecraftPublicKeysResponse
-
-	err = json.Unmarshal(body, &payload)
-	if err != nil {
-		return nil, fmt.Errorf("decode Minecraft certificate keys: %w", err)
-	}
-
-	trustedKeys := make([]*rsa.PublicKey, 0, len(payload.PlayerCertificateKeys))
-
-	for _, entry := range payload.PlayerCertificateKeys {
-		keyDER, decodeErr := base64.StdEncoding.DecodeString(entry.PublicKey)
-		if decodeErr != nil {
-			return nil, fmt.Errorf("decode Minecraft player-certificate key: %w", decodeErr)
-		}
-
-		parsed, parseErr := x509.ParsePKIXPublicKey(keyDER)
-		if parseErr != nil {
-			return nil, fmt.Errorf("parse Minecraft player-certificate key: %w", parseErr)
-		}
-
-		publicKey, ok := parsed.(*rsa.PublicKey)
-		if !ok {
-			return nil, fmt.Errorf("minecraft player-certificate key has type %T, want RSA", parsed)
-		}
-
-		trustedKeys = append(trustedKeys, publicKey)
-	}
-
-	return NewMinecraftCertificateVerifier(trustedKeys)
-}
-
 func (v *MinecraftCertificateVerifier) Verify(playerUUID string, expiresAt int64, publicKeyDER, certificateSignature []byte, now time.Time) (*rsa.PublicKey, error) {
 	if expiresAt <= now.UnixMilli() {
 		return nil, errors.New("chat certificate has expired")
@@ -457,6 +383,80 @@ func (s *Session) disconnectChatViolation(reason string) error {
 	}
 
 	return errors.New(reason)
+}
+
+func NewMinecraftCertificateVerifier(trustedKeys []*rsa.PublicKey) (*MinecraftCertificateVerifier, error) {
+	if len(trustedKeys) == 0 {
+		return nil, errors.New("no Minecraft player-certificate keys")
+	}
+
+	keys := append([]*rsa.PublicKey(nil), trustedKeys...)
+
+	return &MinecraftCertificateVerifier{trustedKeys: keys}, nil
+}
+
+func LoadMinecraftCertificateVerifier(ctx context.Context, client *http.Client) (*MinecraftCertificateVerifier, error) {
+	if client == nil {
+		client = &http.Client{Timeout: certificateFetchTimeout}
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, certificateFetchTimeout)
+	defer cancel()
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, minecraftCertificateKeysURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create Minecraft certificate-key request: %w", err)
+	}
+
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("fetch Minecraft certificate keys: %w", err)
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch Minecraft certificate keys: unexpected HTTP status %s", response.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxCertificateResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read Minecraft certificate keys: %w", err)
+	}
+
+	if len(body) > maxCertificateResponseBytes {
+		return nil, fmt.Errorf("minecraft certificate-key response exceeds %d bytes", maxCertificateResponseBytes)
+	}
+
+	var payload minecraftPublicKeysResponse
+
+	err = json.Unmarshal(body, &payload)
+	if err != nil {
+		return nil, fmt.Errorf("decode Minecraft certificate keys: %w", err)
+	}
+
+	trustedKeys := make([]*rsa.PublicKey, 0, len(payload.PlayerCertificateKeys))
+
+	for _, entry := range payload.PlayerCertificateKeys {
+		keyDER, decodeErr := base64.StdEncoding.DecodeString(entry.PublicKey)
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode Minecraft player-certificate key: %w", decodeErr)
+		}
+
+		parsed, parseErr := x509.ParsePKIXPublicKey(keyDER)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse Minecraft player-certificate key: %w", parseErr)
+		}
+
+		publicKey, ok := parsed.(*rsa.PublicKey)
+		if !ok {
+			return nil, fmt.Errorf("minecraft player-certificate key has type %T, want RSA", parsed)
+		}
+
+		trustedKeys = append(trustedKeys, publicKey)
+	}
+
+	return NewMinecraftCertificateVerifier(trustedKeys)
 }
 
 func newSessionChatState() *sessionChatState {

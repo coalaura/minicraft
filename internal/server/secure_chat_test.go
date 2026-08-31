@@ -104,6 +104,36 @@ func (l *chatTestLogger) chatPrints() []string {
 	return prints
 }
 
+func (f secureChatTestFixture) signedMessage(t *testing.T, index int32, text string, salt int64, offset int32, acknowledged [3]byte, checksum byte, previous [][chatSignatureLength]byte) protocol.ChatMessage {
+	t.Helper()
+
+	message := protocol.ChatMessage{
+		Message:      text,
+		Timestamp:    f.now.UnixMilli(),
+		Salt:         salt,
+		HasSignature: true,
+		Offset:       offset,
+		Acknowledged: acknowledged,
+		Checksum:     checksum,
+	}
+
+	payload, err := signedChatPayload(f.sender.Player.UUID, f.chatSession.UUID, index, message, previous)
+	if err != nil {
+		t.Fatalf("build signed chat payload: %v", err)
+	}
+
+	digest := sha256.Sum256(payload)
+
+	signature, err := rsa.SignPKCS1v15(rand.Reader, f.chatKey, crypto.SHA256, digest[:])
+	if err != nil {
+		t.Fatalf("sign chat message: %v", err)
+	}
+
+	copy(message.Signature[:], signature)
+
+	return message
+}
+
 func TestMinecraftCertificateVerifierBindsPlayerAndExpiry(t *testing.T) {
 	trustedKey := generateRSAKey(t)
 	chatKey := generateRSAKey(t)
@@ -551,36 +581,6 @@ func newSecureChatTestFixture(t *testing.T, format string) secureChatTestFixture
 		chatKey:             chatKey,
 		chatSession:         chatSession,
 	}
-}
-
-func (f secureChatTestFixture) signedMessage(t *testing.T, index int32, text string, salt int64, offset int32, acknowledged [3]byte, checksum byte, previous [][chatSignatureLength]byte) protocol.ChatMessage {
-	t.Helper()
-
-	message := protocol.ChatMessage{
-		Message:      text,
-		Timestamp:    f.now.UnixMilli(),
-		Salt:         salt,
-		HasSignature: true,
-		Offset:       offset,
-		Acknowledged: acknowledged,
-		Checksum:     checksum,
-	}
-
-	payload, err := signedChatPayload(f.sender.Player.UUID, f.chatSession.UUID, index, message, previous)
-	if err != nil {
-		t.Fatalf("build signed chat payload: %v", err)
-	}
-
-	digest := sha256.Sum256(payload)
-
-	signature, err := rsa.SignPKCS1v15(rand.Reader, f.chatKey, crypto.SHA256, digest[:])
-	if err != nil {
-		t.Fatalf("sign chat message: %v", err)
-	}
-
-	copy(message.Signature[:], signature)
-
-	return message
 }
 
 func signTestCertificate(t *testing.T, trustedKey *rsa.PrivateKey, playerUUID string, expiresAt int64, chatKey *rsa.PublicKey) ([]byte, []byte) {

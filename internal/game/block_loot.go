@@ -1,11 +1,5 @@
 package game
 
-type blockLootEntryKind uint8
-type blockLootConditionKind uint8
-type blockLootFunctionKind uint8
-type blockLootNumberKind uint8
-type blockLootBonusKind uint8
-
 const (
 	blockLootEntryItem blockLootEntryKind = iota
 	blockLootEntryAlternatives
@@ -42,6 +36,12 @@ const (
 	blockLootBonusUniformCount
 	blockLootBonusBinomialCount
 )
+
+type blockLootEntryKind uint8
+type blockLootConditionKind uint8
+type blockLootFunctionKind uint8
+type blockLootNumberKind uint8
+type blockLootBonusKind uint8
 
 type BlockLootContext struct {
 	Block    Block

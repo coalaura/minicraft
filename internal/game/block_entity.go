@@ -9,8 +9,6 @@ const (
 	HopperSlotCount  = 5
 )
 
-type BlockEntityType uint8
-
 const (
 	BlockEntityTypeNone BlockEntityType = iota
 	BlockEntityTypeChest
@@ -22,14 +20,10 @@ const (
 	BlockEntityTypeHopper
 )
 
-type BlockEntityRemovalBehavior uint8
-
 const (
 	BlockEntityRemovalNone BlockEntityRemovalBehavior = iota
 	BlockEntityRemovalDropInventory
 )
-
-type BlockEntityDataKind uint8
 
 const (
 	BlockEntityDataNone BlockEntityDataKind = iota
@@ -37,6 +31,12 @@ const (
 	BlockEntityDataFurnace
 	BlockEntityDataHopper
 )
+
+type BlockEntityType uint8
+
+type BlockEntityRemovalBehavior uint8
+
+type BlockEntityDataKind uint8
 
 type BlockEntityTypeDefinition struct {
 	Name                    string
@@ -105,37 +105,6 @@ var blockEntityTypeDefinitions = [...]BlockEntityTypeDefinition{
 	BlockEntityTypeHopper:       {Name: "hopper", ProtocolRegistryID12111: 18, InventorySlots: HopperSlotCount, DataKind: BlockEntityDataHopper, RemovalBehavior: BlockEntityRemovalDropInventory},
 }
 
-func NewBlockEntity(entityType BlockEntityType) BlockEntity {
-	definition, valid := entityType.Definition()
-	if !valid {
-		return BlockEntity{Type: entityType}
-	}
-
-	switch definition.DataKind {
-	case BlockEntityDataInventory:
-		return NewInventoryBlockEntity(entityType, definition.InventorySlots)
-	case BlockEntityDataFurnace:
-		return BlockEntity{
-			Type: entityType,
-			Data: &FurnaceBlockEntityData{Items: make([]ItemStack, definition.InventorySlots)},
-		}
-	case BlockEntityDataHopper:
-		return BlockEntity{
-			Type: entityType,
-			Data: &HopperBlockEntityData{Items: make([]ItemStack, definition.InventorySlots), TransferCooldown: -1},
-		}
-	default:
-		return BlockEntity{Type: entityType}
-	}
-}
-
-func NewInventoryBlockEntity(entityType BlockEntityType, slots int) BlockEntity {
-	return BlockEntity{
-		Type: entityType,
-		Data: &InventoryBlockEntityData{Items: make([]ItemStack, slots)},
-	}
-}
-
 func (entityType BlockEntityType) Definition() (BlockEntityTypeDefinition, bool) {
 	if entityType == BlockEntityTypeNone || int(entityType) >= len(blockEntityTypeDefinitions) {
 		return BlockEntityTypeDefinition{}, false
@@ -177,15 +146,6 @@ func (entity BlockEntity) Equal(other BlockEntity) bool {
 	}
 
 	return entity.Data.EqualBlockEntityData(other.Data)
-}
-
-func BlockEntityTypeForBlock(block Block) BlockEntityType {
-	definition, valid := block.Definition()
-	if !valid {
-		return BlockEntityTypeNone
-	}
-
-	return definition.BlockEntityType
 }
 
 func (data *InventoryBlockEntityData) CloneBlockEntityData() BlockEntityData {
@@ -286,4 +246,43 @@ func (data *HopperBlockEntityData) EqualBlockEntityData(other BlockEntityData) b
 	}
 
 	return true
+}
+func NewBlockEntity(entityType BlockEntityType) BlockEntity {
+	definition, valid := entityType.Definition()
+	if !valid {
+		return BlockEntity{Type: entityType}
+	}
+
+	switch definition.DataKind {
+	case BlockEntityDataInventory:
+		return NewInventoryBlockEntity(entityType, definition.InventorySlots)
+	case BlockEntityDataFurnace:
+		return BlockEntity{
+			Type: entityType,
+			Data: &FurnaceBlockEntityData{Items: make([]ItemStack, definition.InventorySlots)},
+		}
+	case BlockEntityDataHopper:
+		return BlockEntity{
+			Type: entityType,
+			Data: &HopperBlockEntityData{Items: make([]ItemStack, definition.InventorySlots), TransferCooldown: -1},
+		}
+	default:
+		return BlockEntity{Type: entityType}
+	}
+}
+
+func NewInventoryBlockEntity(entityType BlockEntityType, slots int) BlockEntity {
+	return BlockEntity{
+		Type: entityType,
+		Data: &InventoryBlockEntityData{Items: make([]ItemStack, slots)},
+	}
+}
+
+func BlockEntityTypeForBlock(block Block) BlockEntityType {
+	definition, valid := block.Definition()
+	if !valid {
+		return BlockEntityTypeNone
+	}
+
+	return definition.BlockEntityType
 }

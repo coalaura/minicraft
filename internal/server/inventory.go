@@ -324,6 +324,242 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	return nil
 }
 
+func (s *Session) handleDropHeldItem(dropAll bool) {
+	s.Runtime.worldMutationMu.Lock()
+	defer s.Runtime.worldMutationMu.Unlock()
+
+	s.Runtime.lifecycleMu.Lock()
+	defer s.Runtime.lifecycleMu.Unlock()
+
+	var (
+		before  game.PlayerInventory
+		dropped game.ItemStack
+	)
+
+	player, changed := s.updatePlayerState(func(player *game.Player) bool {
+		stack := player.Inventory.Held(player.SelectedHotbarSlot)
+		if stack == nil || stack.Empty() {
+			return false
+		}
+
+		before = player.Inventory.Clone()
+
+		if dropAll || stack.Count == 1 {
+			dropped = stack.Clone()
+
+			*stack = game.ItemStack{}
+		} else {
+			dropped = stack.Clone()
+
+			dropped.Count = 1
+
+			stack.Count--
+		}
+
+		return true
+	})
+
+	if changed {
+		s.Runtime.spawnPlayerDroppedItem(player, dropped, false, true)
+
+		err := s.synchronizePlayerInventoryMutation(before)
+		if err != nil {
+			s.Log.Warnf("[play] failed to synchronize dropped held item: %v\n", err)
+		}
+	}
+
+}
+
+func (s *Session) handleSwapWithOffhand() {
+	s.Runtime.lifecycleMu.Lock()
+	defer s.Runtime.lifecycleMu.Unlock()
+
+	var before game.PlayerInventory
+
+	_, changed := s.updatePlayerState(func(player *game.Player) bool {
+		held := player.Inventory.Held(player.SelectedHotbarSlot)
+		if held == nil {
+			return false
+		}
+
+		before = player.Inventory.Clone()
+
+		heldClone := held.Clone()
+		offhandClone := player.Inventory.Offhand.Clone()
+
+		*held = offhandClone
+		player.Inventory.Offhand = heldClone
+
+		return true
+	})
+
+	if changed {
+		err := s.synchronizePlayerInventoryMutation(before)
+		if err != nil {
+			s.Log.Warnf("[play] failed to synchronize offhand swap: %v\n", err)
+		}
+	}
+
+}
+
+func (s *Session) sendPlayerInventory() error {
+	return s.sendMenuSnapshot(s.activeMenu().snapshot())
+}
+
+func (s *Session) sendMenuSnapshot(snapshot menuSnapshot) error {
+	return s.writePacket(protocol.ClientboundContainerSetContentID, protocol.ContainerSetContent{
+		WindowID:    snapshot.windowID,
+		StateID:     snapshot.stateID,
+		Items:       snapshot.items,
+		CarriedItem: snapshot.carried,
+	})
+}
+
+func (s *Session) sendChangedMenuData(current *menu, all bool) error {
+	if len(current.data) == 0 {
+		return nil
+	}
+
+	if len(current.lastData) != len(current.data) {
+		current.lastData = make([]int32, len(current.data))
+		current.dataInitialized = false
+	}
+
+	for id, value := range current.data {
+		if value == nil {
+			continue
+		}
+
+		currentValue := *value
+		if !all && current.dataInitialized && current.lastData[id] == currentValue {
+			continue
+		}
+
+		err := s.writePacket(protocol.ClientboundContainerSetDataID, protocol.ContainerSetData{
+			ContainerID: current.windowID,
+			ID:          int16(id),
+			Value:       int16(currentValue),
+		})
+
+		if err != nil {
+			return err
+		}
+
+		current.lastData[id] = currentValue
+	}
+
+	current.dataInitialized = true
+
+	return nil
+}
+
+func (s *Session) synchronizePlayerInventoryMutation(before game.PlayerInventory) error {
+	return s.synchronizePlayerInventoryMutationSlot(before, nil)
+}
+
+func (s *Session) synchronizePlayerInventoryMutationSlot(before game.PlayerInventory, preferredPlayerSlot *int) error {
+	player := s.snapshotPlayer()
+
+	changedSlots := inventoryChanges(before, player.Inventory)
+
+	currentMenu := s.activeMenu()
+
+	equipment := changedEquipmentSlots(before, player.Inventory, player.SelectedHotbarSlot)
+
+	if len(changedSlots) > 0 && !currentMenu.exposesPlayerSlots(changedSlots) {
+		if len(equipment) > 0 {
+			s.Runtime.broadcastPlayerEquipment(s, player, equipment...)
+		}
+
+		return nil
+	}
+
+	currentMenu.incrementStateID()
+
+	var err error
+
+	if preferredPlayerSlot != nil && len(changedSlots) == 1 {
+		menuSlot := noMenuSlot
+
+		for slot, definition := range currentMenu.slots {
+			if definition.hasPlayerSlot && definition.playerSlot == *preferredPlayerSlot {
+				menuSlot = slot
+
+				break
+			}
+		}
+
+		if menuSlot != noMenuSlot {
+			err = s.writePacket(protocol.ClientboundContainerSetSlotID, protocol.ContainerSetSlot{
+				WindowID: currentMenu.windowID,
+				StateID:  currentMenu.stateID,
+				Slot:     int16(menuSlot),
+				Item:     currentMenu.slots[menuSlot].stack.Clone(),
+			})
+		} else {
+			err = s.sendMenuSnapshot(currentMenu.snapshot())
+		}
+	} else {
+		err = s.sendMenuSnapshot(currentMenu.snapshot())
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if len(equipment) > 0 {
+		s.Runtime.broadcastPlayerEquipment(s, player, equipment...)
+	}
+
+	return nil
+}
+
+func (s *Session) resynchronizePlayerInventory() {
+	err := s.sendPlayerInventory()
+	if err != nil {
+		s.Log.Warnf("[play] failed to resynchronize player inventory: %v\n", err)
+	}
+}
+
+func (r *Runtime) broadcastPlayerEquipment(session *Session, player game.Player, slots ...byte) {
+	r.mu.RLock()
+	_, active := r.sessions[session]
+	r.mu.RUnlock()
+
+	if !active {
+		return
+	}
+
+	for _, other := range r.snapshotSessions() {
+		if other == session || !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+			continue
+		}
+
+		err := other.sendPlayerEquipment(player, slots...)
+		if err != nil {
+			other.Log.Warnf("[play] failed to update player equipment: %v\n", err)
+		}
+	}
+}
+
+func (s *Session) heldItem(hand int32) (game.ItemStack, bool) {
+	player := s.snapshotPlayer()
+
+	switch hand {
+	case protocol.MainHand:
+		stack := player.Inventory.Held(player.SelectedHotbarSlot)
+		if stack == nil {
+			return game.ItemStack{}, false
+		}
+
+		return stack.Clone(), true
+	case protocol.OffHand:
+		return player.Inventory.Offhand.Clone(), true
+	default:
+		return game.ItemStack{}, false
+	}
+}
+
 func applyMenuClick(candidate *menuCandidate, mode game.GameMode, click protocol.ContainerClick) bool {
 	var applied bool
 
@@ -932,242 +1168,6 @@ func moveIntoSlots(candidate *menuCandidate, stack *game.ItemStack, slots []int)
 		if stack.Count == 0 {
 			return
 		}
-	}
-}
-
-func (s *Session) handleDropHeldItem(dropAll bool) {
-	s.Runtime.worldMutationMu.Lock()
-	defer s.Runtime.worldMutationMu.Unlock()
-
-	s.Runtime.lifecycleMu.Lock()
-	defer s.Runtime.lifecycleMu.Unlock()
-
-	var (
-		before  game.PlayerInventory
-		dropped game.ItemStack
-	)
-
-	player, changed := s.updatePlayerState(func(player *game.Player) bool {
-		stack := player.Inventory.Held(player.SelectedHotbarSlot)
-		if stack == nil || stack.Empty() {
-			return false
-		}
-
-		before = player.Inventory.Clone()
-
-		if dropAll || stack.Count == 1 {
-			dropped = stack.Clone()
-
-			*stack = game.ItemStack{}
-		} else {
-			dropped = stack.Clone()
-
-			dropped.Count = 1
-
-			stack.Count--
-		}
-
-		return true
-	})
-
-	if changed {
-		s.Runtime.spawnPlayerDroppedItem(player, dropped, false, true)
-
-		err := s.synchronizePlayerInventoryMutation(before)
-		if err != nil {
-			s.Log.Warnf("[play] failed to synchronize dropped held item: %v\n", err)
-		}
-	}
-
-}
-
-func (s *Session) handleSwapWithOffhand() {
-	s.Runtime.lifecycleMu.Lock()
-	defer s.Runtime.lifecycleMu.Unlock()
-
-	var before game.PlayerInventory
-
-	_, changed := s.updatePlayerState(func(player *game.Player) bool {
-		held := player.Inventory.Held(player.SelectedHotbarSlot)
-		if held == nil {
-			return false
-		}
-
-		before = player.Inventory.Clone()
-
-		heldClone := held.Clone()
-		offhandClone := player.Inventory.Offhand.Clone()
-
-		*held = offhandClone
-		player.Inventory.Offhand = heldClone
-
-		return true
-	})
-
-	if changed {
-		err := s.synchronizePlayerInventoryMutation(before)
-		if err != nil {
-			s.Log.Warnf("[play] failed to synchronize offhand swap: %v\n", err)
-		}
-	}
-
-}
-
-func (s *Session) sendPlayerInventory() error {
-	return s.sendMenuSnapshot(s.activeMenu().snapshot())
-}
-
-func (s *Session) sendMenuSnapshot(snapshot menuSnapshot) error {
-	return s.writePacket(protocol.ClientboundContainerSetContentID, protocol.ContainerSetContent{
-		WindowID:    snapshot.windowID,
-		StateID:     snapshot.stateID,
-		Items:       snapshot.items,
-		CarriedItem: snapshot.carried,
-	})
-}
-
-func (s *Session) sendChangedMenuData(current *menu, all bool) error {
-	if len(current.data) == 0 {
-		return nil
-	}
-
-	if len(current.lastData) != len(current.data) {
-		current.lastData = make([]int32, len(current.data))
-		current.dataInitialized = false
-	}
-
-	for id, value := range current.data {
-		if value == nil {
-			continue
-		}
-
-		currentValue := *value
-		if !all && current.dataInitialized && current.lastData[id] == currentValue {
-			continue
-		}
-
-		err := s.writePacket(protocol.ClientboundContainerSetDataID, protocol.ContainerSetData{
-			ContainerID: current.windowID,
-			ID:          int16(id),
-			Value:       int16(currentValue),
-		})
-
-		if err != nil {
-			return err
-		}
-
-		current.lastData[id] = currentValue
-	}
-
-	current.dataInitialized = true
-
-	return nil
-}
-
-func (s *Session) synchronizePlayerInventoryMutation(before game.PlayerInventory) error {
-	return s.synchronizePlayerInventoryMutationSlot(before, nil)
-}
-
-func (s *Session) synchronizePlayerInventoryMutationSlot(before game.PlayerInventory, preferredPlayerSlot *int) error {
-	player := s.snapshotPlayer()
-
-	changedSlots := inventoryChanges(before, player.Inventory)
-
-	currentMenu := s.activeMenu()
-
-	equipment := changedEquipmentSlots(before, player.Inventory, player.SelectedHotbarSlot)
-
-	if len(changedSlots) > 0 && !currentMenu.exposesPlayerSlots(changedSlots) {
-		if len(equipment) > 0 {
-			s.Runtime.broadcastPlayerEquipment(s, player, equipment...)
-		}
-
-		return nil
-	}
-
-	currentMenu.incrementStateID()
-
-	var err error
-
-	if preferredPlayerSlot != nil && len(changedSlots) == 1 {
-		menuSlot := noMenuSlot
-
-		for slot, definition := range currentMenu.slots {
-			if definition.hasPlayerSlot && definition.playerSlot == *preferredPlayerSlot {
-				menuSlot = slot
-
-				break
-			}
-		}
-
-		if menuSlot != noMenuSlot {
-			err = s.writePacket(protocol.ClientboundContainerSetSlotID, protocol.ContainerSetSlot{
-				WindowID: currentMenu.windowID,
-				StateID:  currentMenu.stateID,
-				Slot:     int16(menuSlot),
-				Item:     currentMenu.slots[menuSlot].stack.Clone(),
-			})
-		} else {
-			err = s.sendMenuSnapshot(currentMenu.snapshot())
-		}
-	} else {
-		err = s.sendMenuSnapshot(currentMenu.snapshot())
-	}
-
-	if err != nil {
-		return err
-	}
-
-	if len(equipment) > 0 {
-		s.Runtime.broadcastPlayerEquipment(s, player, equipment...)
-	}
-
-	return nil
-}
-
-func (s *Session) resynchronizePlayerInventory() {
-	err := s.sendPlayerInventory()
-	if err != nil {
-		s.Log.Warnf("[play] failed to resynchronize player inventory: %v\n", err)
-	}
-}
-
-func (r *Runtime) broadcastPlayerEquipment(session *Session, player game.Player, slots ...byte) {
-	r.mu.RLock()
-	_, active := r.sessions[session]
-	r.mu.RUnlock()
-
-	if !active {
-		return
-	}
-
-	for _, other := range r.snapshotSessions() {
-		if other == session || !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
-			continue
-		}
-
-		err := other.sendPlayerEquipment(player, slots...)
-		if err != nil {
-			other.Log.Warnf("[play] failed to update player equipment: %v\n", err)
-		}
-	}
-}
-
-func (s *Session) heldItem(hand int32) (game.ItemStack, bool) {
-	player := s.snapshotPlayer()
-
-	switch hand {
-	case protocol.MainHand:
-		stack := player.Inventory.Held(player.SelectedHotbarSlot)
-		if stack == nil {
-			return game.ItemStack{}, false
-		}
-
-		return stack.Clone(), true
-	case protocol.OffHand:
-		return player.Inventory.Offhand.Clone(), true
-	default:
-		return game.ItemStack{}, false
 	}
 }
 

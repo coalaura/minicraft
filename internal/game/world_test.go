@@ -14,15 +14,6 @@ type blockIndexTest struct {
 
 type coordinateGenerator struct{}
 
-func (coordinateGenerator) BlockAt(seed int64, position BlockPosition) Block {
-	value := seed + int64(position.X)*3 + int64(position.Y)*5 + int64(position.Z)*7
-	if value&1 == 0 {
-		return Stone
-	}
-
-	return Air
-}
-
 type solidGenerator struct {
 	block Block
 }
@@ -41,6 +32,15 @@ type countingOrdinaryBlockEntityGenerator struct {
 
 type countingRemovalBlockEntityGenerator struct {
 	entityCalls int
+}
+
+func (coordinateGenerator) BlockAt(seed int64, position BlockPosition) Block {
+	value := seed + int64(position.X)*3 + int64(position.Y)*5 + int64(position.Z)*7
+	if value&1 == 0 {
+		return Stone
+	}
+
+	return Air
 }
 
 func (g *spawningGenerator) BlockAt(_ int64, _ BlockPosition) Block {

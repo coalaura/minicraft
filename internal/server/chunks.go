@@ -58,27 +58,6 @@ func (s *Session) sendGameEvent(event byte, value float32) error {
 	})
 }
 
-func chunkPacket(world *game.World, chunkX, chunkZ int32) (protocol.Packet, error) {
-	chunk, err := buildLevelChunk(world, chunkX, chunkZ)
-	if err != nil {
-		return protocol.Packet{}, err
-	}
-
-	var wr protocol.PacketWriter
-
-	chunk.Encode(&wr)
-
-	err = wr.Err()
-	if err != nil {
-		return protocol.Packet{}, err
-	}
-
-	return protocol.Packet{
-		ID:   protocol.ClientboundLevelChunkWithLightID,
-		Data: wr.Buffer.Bytes(),
-	}, nil
-}
-
 func (s *Session) sendChunkBatch(chunks []LoadedChunk) (int, error) {
 	if len(chunks) == 0 {
 		return 0, nil
@@ -434,40 +413,6 @@ func (s *Session) updateVisibleChunks(center LoadedChunk) error {
 	return nil
 }
 
-func chunksInView(center LoadedChunk, radius int32) []LoadedChunk {
-	chunkCount := int((radius*2 + 1) * (radius*2 + 1))
-	chunks := make([]LoadedChunk, 0, chunkCount)
-
-	for chunkZ := center.Z - radius; chunkZ <= center.Z+radius; chunkZ++ {
-		for chunkX := center.X - radius; chunkX <= center.X+radius; chunkX++ {
-			chunks = append(chunks, LoadedChunk{X: chunkX, Z: chunkZ})
-		}
-	}
-
-	sort.Slice(chunks, func(first, second int) bool {
-		firstX := chunks[first].X - center.X
-		firstZ := chunks[first].Z - center.Z
-
-		secondX := chunks[second].X - center.X
-		secondZ := chunks[second].Z - center.Z
-
-		firstDistance := firstX*firstX + firstZ*firstZ
-		secondDistance := secondX*secondX + secondZ*secondZ
-
-		if firstDistance != secondDistance {
-			return firstDistance < secondDistance
-		}
-
-		if chunks[first].Z != chunks[second].Z {
-			return chunks[first].Z < chunks[second].Z
-		}
-
-		return chunks[first].X < chunks[second].X
-	})
-
-	return chunks
-}
-
 func (s *Session) startChunkStream(ctx context.Context) {
 	s.chunkMx.Lock()
 	s.ensureChunkStreamLocked()
@@ -653,6 +598,61 @@ func (s *Session) ensureChunkStreamLocked() {
 	if s.chunkStreamNotify == nil {
 		s.chunkStreamNotify = make(chan struct{}, 1)
 	}
+}
+
+func chunkPacket(world *game.World, chunkX, chunkZ int32) (protocol.Packet, error) {
+	chunk, err := buildLevelChunk(world, chunkX, chunkZ)
+	if err != nil {
+		return protocol.Packet{}, err
+	}
+
+	var wr protocol.PacketWriter
+
+	chunk.Encode(&wr)
+
+	err = wr.Err()
+	if err != nil {
+		return protocol.Packet{}, err
+	}
+
+	return protocol.Packet{
+		ID:   protocol.ClientboundLevelChunkWithLightID,
+		Data: wr.Buffer.Bytes(),
+	}, nil
+}
+
+func chunksInView(center LoadedChunk, radius int32) []LoadedChunk {
+	chunkCount := int((radius*2 + 1) * (radius*2 + 1))
+	chunks := make([]LoadedChunk, 0, chunkCount)
+
+	for chunkZ := center.Z - radius; chunkZ <= center.Z+radius; chunkZ++ {
+		for chunkX := center.X - radius; chunkX <= center.X+radius; chunkX++ {
+			chunks = append(chunks, LoadedChunk{X: chunkX, Z: chunkZ})
+		}
+	}
+
+	sort.Slice(chunks, func(first, second int) bool {
+		firstX := chunks[first].X - center.X
+		firstZ := chunks[first].Z - center.Z
+
+		secondX := chunks[second].X - center.X
+		secondZ := chunks[second].Z - center.Z
+
+		firstDistance := firstX*firstX + firstZ*firstZ
+		secondDistance := secondX*secondX + secondZ*secondZ
+
+		if firstDistance != secondDistance {
+			return firstDistance < secondDistance
+		}
+
+		if chunks[first].Z != chunks[second].Z {
+			return chunks[first].Z < chunks[second].Z
+		}
+
+		return chunks[first].X < chunks[second].X
+	})
+
+	return chunks
 }
 
 func buildChunkPackets(ctx context.Context, world *game.World, chunks []LoadedChunk) ([]protocol.Packet, error) {

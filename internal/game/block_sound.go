@@ -1,7 +1,5 @@
 package game
 
-type SoundEvent string
-
 const (
 	BlockSoundEmpty BlockSoundType = iota
 	BlockSoundStone
@@ -120,6 +118,8 @@ const (
 	SoundBlockWoolPlace SoundEvent = "minecraft:block.wool.place"
 	SoundBlockWoolStep  SoundEvent = "minecraft:block.wool.step"
 )
+
+type SoundEvent string
 
 type BlockSound struct {
 	Volume float32

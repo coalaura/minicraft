@@ -30,6 +30,31 @@ func (table *craftingTableBacking) StillValid(runtime *Runtime, session *Session
 	return containerWithinRange(player, table.position)
 }
 
+func (r *Runtime) openCraftingTableLocked(session *Session, position game.BlockPosition) error {
+	r.closeMenuLocked(session, false)
+
+	table := &craftingTableBacking{position: position}
+
+	menu := newCraftingTableMenu(session.allocateWindowID(), table, &session.Player.Inventory)
+
+	session.containerMenu = menu
+
+	table.Attach(r, session)
+
+	err := session.writePacket(protocol.ClientboundOpenScreenID, protocol.OpenScreen{
+		ContainerID: menu.windowID,
+		MenuType:    menu.protocolMenuType,
+		Title:       game.TranslatableText("container.crafting"),
+	})
+
+	if err != nil {
+		r.closeMenuLocked(session, false)
+
+		return err
+	}
+
+	return session.sendMenuSnapshot(menu.snapshot())
+}
 func newCraftingTableMenu(windowID int32, table *craftingTableBacking, inventory *game.PlayerInventory) *menu {
 	slots := make([]menuSlot, 0, 46)
 
@@ -86,30 +111,4 @@ func newCraftingTableMenu(windowID int32, table *craftingTableBacking, inventory
 	craftingMenu.commit(candidate)
 
 	return craftingMenu
-}
-
-func (r *Runtime) openCraftingTableLocked(session *Session, position game.BlockPosition) error {
-	r.closeMenuLocked(session, false)
-
-	table := &craftingTableBacking{position: position}
-
-	menu := newCraftingTableMenu(session.allocateWindowID(), table, &session.Player.Inventory)
-
-	session.containerMenu = menu
-
-	table.Attach(r, session)
-
-	err := session.writePacket(protocol.ClientboundOpenScreenID, protocol.OpenScreen{
-		ContainerID: menu.windowID,
-		MenuType:    menu.protocolMenuType,
-		Title:       game.TranslatableText("container.crafting"),
-	})
-
-	if err != nil {
-		r.closeMenuLocked(session, false)
-
-		return err
-	}
-
-	return session.sendMenuSnapshot(menu.snapshot())
 }

@@ -19,10 +19,6 @@ type runtimeChestBacking struct {
 	chests []*runtimeChest
 }
 
-func newRuntimeChest(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
-	return &runtimeChest{position: position, entity: entity}
-}
-
 func (chest *runtimeChest) BlockEntityType() game.BlockEntityType {
 	return chest.entity.Type
 }
@@ -328,6 +324,10 @@ func (r *Runtime) chestBackingBlocked(backing *runtimeChestBacking) bool {
 	}
 
 	return false
+}
+
+func newRuntimeChest(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
+	return &runtimeChest{position: position, entity: entity}
 }
 
 func horizontalSoundOffset(direction horizontalDirection) (float64, float64) {

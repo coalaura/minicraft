@@ -16,10 +16,6 @@ type runtimeHopper struct {
 	tickedGameTime int64
 }
 
-func newRuntimeHopper(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
-	return &runtimeHopper{position: position, entity: entity}
-}
-
 func (hopper *runtimeHopper) BlockEntityType() game.BlockEntityType {
 	return game.BlockEntityTypeHopper
 }
@@ -330,34 +326,6 @@ func (r *Runtime) openHopperLocked(session *Session, hopper *runtimeHopper) erro
 	return session.sendMenuSnapshot(menu.snapshot())
 }
 
-func newHopperMenu(windowID int32, items []game.ItemStack, inventory *game.PlayerInventory) *menu {
-	slots := make([]menuSlot, 0, game.HopperSlotCount+36)
-
-	for slot := range items {
-		slots = append(slots, menuSlot{stack: &items[slot], limit: 64, storage: menuStorageBacking})
-	}
-
-	for playerSlot := 9; playerSlot <= 44; playerSlot++ {
-		slots = append(slots, menuSlot{
-			stack: inventory.Slot(playerSlot), limit: 64, playerSlot: playerSlot,
-			hasPlayerSlot: true, storage: menuStoragePlayer,
-		})
-	}
-
-	current := &menu{
-		windowID: windowID, protocolMenuType: protocol.MenuHopper, slots: slots,
-		hiddenOffhand: inventory.Slot(45), quickMove: quickMoveGenericContainer,
-		containerSlots: game.HopperSlotCount,
-	}
-
-	for hotbar := range game.HotbarSlotCount {
-		current.hotbarSlots[hotbar] = game.HopperSlotCount + 27 + hotbar
-		current.hasHotbarSlots[hotbar] = true
-	}
-
-	return current
-}
-
 func (r *Runtime) hopperSuctionBlocked(position game.BlockPosition) bool {
 	block := r.World.BlockAt(position)
 
@@ -412,6 +380,38 @@ func (r *Runtime) itemEntitiesInBox(box game.AABB) []*runtimeItemEntity {
 	})
 
 	return items
+}
+
+func newRuntimeHopper(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
+	return &runtimeHopper{position: position, entity: entity}
+}
+
+func newHopperMenu(windowID int32, items []game.ItemStack, inventory *game.PlayerInventory) *menu {
+	slots := make([]menuSlot, 0, game.HopperSlotCount+36)
+
+	for slot := range items {
+		slots = append(slots, menuSlot{stack: &items[slot], limit: 64, storage: menuStorageBacking})
+	}
+
+	for playerSlot := 9; playerSlot <= 44; playerSlot++ {
+		slots = append(slots, menuSlot{
+			stack: inventory.Slot(playerSlot), limit: 64, playerSlot: playerSlot,
+			hasPlayerSlot: true, storage: menuStoragePlayer,
+		})
+	}
+
+	current := &menu{
+		windowID: windowID, protocolMenuType: protocol.MenuHopper, slots: slots,
+		hiddenOffhand: inventory.Slot(45), quickMove: quickMoveGenericContainer,
+		containerSlots: game.HopperSlotCount,
+	}
+
+	for hotbar := range game.HotbarSlotCount {
+		current.hotbarSlots[hotbar] = game.HopperSlotCount + 27 + hotbar
+		current.hasHotbarSlots[hotbar] = true
+	}
+
+	return current
 }
 
 func hopperSuctionBox(position game.BlockPosition) game.AABB {

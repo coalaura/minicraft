@@ -18,17 +18,6 @@ type runtimeFurnace struct {
 	lastInput game.ItemStack
 }
 
-func newRuntimeFurnace(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
-	furnace := &runtimeFurnace{position: position, entity: entity}
-
-	data, valid := entity.Data.(*game.FurnaceBlockEntityData)
-	if valid && len(data.Items) == game.FurnaceSlotCount {
-		furnace.lastInput = data.Items[furnaceInputSlot].Clone()
-	}
-
-	return furnace
-}
-
 func (furnace *runtimeFurnace) BlockEntityType() game.BlockEntityType {
 	return furnace.entity.Type
 }
@@ -226,6 +215,77 @@ func (furnace *runtimeFurnace) synchronizeInventory(_ *Runtime, actor *Session) 
 	}
 }
 
+func (r *Runtime) openFurnaceLocked(session *Session, furnace *runtimeFurnace) error {
+	data, valid := furnace.entity.Data.(*game.FurnaceBlockEntityData)
+	if !valid || len(data.Items) != game.FurnaceSlotCount {
+		return nil
+	}
+
+	r.closeMenuLocked(session, false)
+
+	menu := newFurnaceMenu(session.allocateWindowID(), furnace, data, &session.Player.Inventory)
+
+	menu.backing = furnace
+
+	session.containerMenu = menu
+
+	furnace.Attach(r, session)
+
+	menuType, title := furnaceMenuIdentity(furnace.entity.Type)
+
+	menu.protocolMenuType = menuType
+
+	err := session.writePacket(protocol.ClientboundOpenScreenID, protocol.OpenScreen{
+		ContainerID: menu.windowID,
+		MenuType:    menu.protocolMenuType,
+		Title:       game.TranslatableText(title),
+	})
+
+	if err != nil {
+		r.closeMenuLocked(session, false)
+
+		return err
+	}
+
+	err = session.sendMenuSnapshot(menu.snapshot())
+	if err != nil {
+		return err
+	}
+
+	return session.sendChangedMenuData(menu, true)
+}
+
+func (r *Runtime) setFurnaceLitStateLocked(furnace *runtimeFurnace, lit bool) {
+	block := r.World.BlockAt(furnace.position)
+	if game.BlockEntityTypeForBlock(block) != furnace.entity.Type {
+		return
+	}
+
+	replacement := withBlockProperties(block, game.BlockPropertyValue{Name: "lit", Value: boolProperty(lit)})
+	if replacement == block {
+		return
+	}
+
+	change := game.BlockChange{Position: furnace.position, Replacement: replacement}
+
+	result, delivery, err := r.mutateBlocksLocked(nil, BlockMutationInteract, []game.BlockChange{change}, 1, true, false, true, false)
+	if err != nil || !result.Changed {
+		return
+	}
+
+	r.runtimeBlockMutations = append(r.runtimeBlockMutations, queuedBlockMutation{result: result, delivery: delivery})
+}
+func newRuntimeFurnace(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
+	furnace := &runtimeFurnace{position: position, entity: entity}
+
+	data, valid := entity.Data.(*game.FurnaceBlockEntityData)
+	if valid && len(data.Items) == game.FurnaceSlotCount {
+		furnace.lastInput = data.Items[furnaceInputSlot].Clone()
+	}
+
+	return furnace
+}
+
 func furnaceCanBurn(recipe game.CookingRecipe, items []game.ItemStack) bool {
 	if len(items) != game.FurnaceSlotCount || items[furnaceInputSlot].Empty() {
 		return false
@@ -278,46 +338,6 @@ func furnaceBurn(recipe game.CookingRecipe, items []game.ItemStack) {
 	input.Count--
 
 	normalizeStack(input)
-}
-
-func (r *Runtime) openFurnaceLocked(session *Session, furnace *runtimeFurnace) error {
-	data, valid := furnace.entity.Data.(*game.FurnaceBlockEntityData)
-	if !valid || len(data.Items) != game.FurnaceSlotCount {
-		return nil
-	}
-
-	r.closeMenuLocked(session, false)
-
-	menu := newFurnaceMenu(session.allocateWindowID(), furnace, data, &session.Player.Inventory)
-
-	menu.backing = furnace
-
-	session.containerMenu = menu
-
-	furnace.Attach(r, session)
-
-	menuType, title := furnaceMenuIdentity(furnace.entity.Type)
-
-	menu.protocolMenuType = menuType
-
-	err := session.writePacket(protocol.ClientboundOpenScreenID, protocol.OpenScreen{
-		ContainerID: menu.windowID,
-		MenuType:    menu.protocolMenuType,
-		Title:       game.TranslatableText(title),
-	})
-
-	if err != nil {
-		r.closeMenuLocked(session, false)
-
-		return err
-	}
-
-	err = session.sendMenuSnapshot(menu.snapshot())
-	if err != nil {
-		return err
-	}
-
-	return session.sendChangedMenuData(menu, true)
 }
 
 func newFurnaceMenu(windowID int32, furnace *runtimeFurnace, data *game.FurnaceBlockEntityData, inventory *game.PlayerInventory) *menu {
@@ -404,25 +424,4 @@ func furnaceMenuIdentity(entityType game.BlockEntityType) (int32, string) {
 	default:
 		return protocol.MenuFurnace, "container.furnace"
 	}
-}
-
-func (r *Runtime) setFurnaceLitStateLocked(furnace *runtimeFurnace, lit bool) {
-	block := r.World.BlockAt(furnace.position)
-	if game.BlockEntityTypeForBlock(block) != furnace.entity.Type {
-		return
-	}
-
-	replacement := withBlockProperties(block, game.BlockPropertyValue{Name: "lit", Value: boolProperty(lit)})
-	if replacement == block {
-		return
-	}
-
-	change := game.BlockChange{Position: furnace.position, Replacement: replacement}
-
-	result, delivery, err := r.mutateBlocksLocked(nil, BlockMutationInteract, []game.BlockChange{change}, 1, true, false, true, false)
-	if err != nil || !result.Changed {
-		return
-	}
-
-	r.runtimeBlockMutations = append(r.runtimeBlockMutations, queuedBlockMutation{result: result, delivery: delivery})
 }

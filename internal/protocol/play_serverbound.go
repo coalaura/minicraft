@@ -43,12 +43,12 @@ const (
 	maxCommandArgumentCount    = 256
 )
 
-type MovementFlags byte
-
 const (
 	MovementFlagOnGround MovementFlags = 1 << iota
 	MovementFlagHorizontalCollision
 )
+
+type MovementFlags byte
 
 type ConfirmTeleport struct {
 	TeleportID int32

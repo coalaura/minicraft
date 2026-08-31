@@ -7,6 +7,10 @@ import (
 	"github.com/coalaura/minicraft/internal/generator"
 )
 
+var spawnSeeds = []int64{-123456789, -1, 0, 1, 123456789}
+
+var layoutSeeds = []int64{-17, 0, 1, 42, 999999}
+
 func TestGeneratorIsRegistered(t *testing.T) {
 	registered, err := generator.New(Name)
 	if err != nil {
@@ -17,10 +21,6 @@ func TestGeneratorIsRegistered(t *testing.T) {
 		t.Fatalf("registered generator type = %T", registered)
 	}
 }
-
-var spawnSeeds = []int64{-123456789, -1, 0, 1, 123456789}
-
-var layoutSeeds = []int64{-17, 0, 1, 42, 999999}
 
 func TestSpawnIsOpenAndSupported(t *testing.T) {
 	generated := Generator{}

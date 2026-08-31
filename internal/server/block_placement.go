@@ -184,17 +184,6 @@ func (r *Runtime) InteractBlock(session *Session, position game.BlockPosition) (
 	return handled, result, affected, err
 }
 
-func secondaryUseActive(player game.Player) bool {
-	if !player.Sneaking {
-		return false
-	}
-
-	selected := player.SelectedHotbarSlot
-
-	mainHandHasItem := selected >= 0 && selected < len(player.Inventory.Hotbar) && !player.Inventory.Hotbar[selected].Empty()
-	return mainHandHasItem || !player.Inventory.Offhand.Empty()
-}
-
 func (r *Runtime) PlaceItem(session *Session, interaction protocol.UseItemOn, item game.Item) (BlockMutationResult, []game.BlockPosition, error) {
 	return r.placeItem(session, interaction, item, false)
 }
@@ -383,6 +372,57 @@ func (r *Runtime) consumePlacedItemLocked(session *Session, hand int32, item gam
 	})
 
 	return changed
+}
+
+func (s *Session) resynchronizePlacement(position game.BlockPosition, sequence int32) error {
+	return s.resynchronizeBlocks([]game.BlockPosition{position}, sequence)
+}
+
+func (s *Session) resynchronizeBlocks(positions []game.BlockPosition, sequence int32) error {
+	states := make([]int32, len(positions))
+
+	s.Runtime.worldMutationMu.Lock()
+
+	for index, position := range positions {
+		state, err := protocolBlockState(s.Runtime.World.BlockAt(position))
+		if err != nil {
+			s.Runtime.worldMutationMu.Unlock()
+
+			return err
+		}
+
+		states[index] = state
+	}
+
+	waitForDelivery := s.Runtime.blockMutationDeliveryTail
+
+	deliveryComplete := make(chan struct{})
+
+	s.Runtime.blockMutationDeliveryTail = deliveryComplete
+	s.Runtime.worldMutationMu.Unlock()
+
+	<-waitForDelivery
+	defer close(deliveryComplete)
+
+	for index, position := range positions {
+		err := s.sendBlockUpdate(position, states[index])
+		if err != nil {
+			return err
+		}
+	}
+
+	return s.sendBlockChangedAck(sequence)
+}
+
+func secondaryUseActive(player game.Player) bool {
+	if !player.Sneaking {
+		return false
+	}
+
+	selected := player.SelectedHotbarSlot
+
+	mainHandHasItem := selected >= 0 && selected < len(player.Inventory.Hotbar) && !player.Inventory.Hotbar[selected].Empty()
+	return mainHandHasItem || !player.Inventory.Offhand.Empty()
 }
 
 func heldItemFromPlayer(player game.Player, hand int32) (game.ItemStack, bool) {
@@ -920,46 +960,6 @@ func blockFaceDirection(face int32) (horizontalDirection, bool) {
 	default:
 		return 0, false
 	}
-}
-
-func (s *Session) resynchronizePlacement(position game.BlockPosition, sequence int32) error {
-	return s.resynchronizeBlocks([]game.BlockPosition{position}, sequence)
-}
-
-func (s *Session) resynchronizeBlocks(positions []game.BlockPosition, sequence int32) error {
-	states := make([]int32, len(positions))
-
-	s.Runtime.worldMutationMu.Lock()
-
-	for index, position := range positions {
-		state, err := protocolBlockState(s.Runtime.World.BlockAt(position))
-		if err != nil {
-			s.Runtime.worldMutationMu.Unlock()
-
-			return err
-		}
-
-		states[index] = state
-	}
-
-	waitForDelivery := s.Runtime.blockMutationDeliveryTail
-
-	deliveryComplete := make(chan struct{})
-
-	s.Runtime.blockMutationDeliveryTail = deliveryComplete
-	s.Runtime.worldMutationMu.Unlock()
-
-	<-waitForDelivery
-	defer close(deliveryComplete)
-
-	for index, position := range positions {
-		err := s.sendBlockUpdate(position, states[index])
-		if err != nil {
-			return err
-		}
-	}
-
-	return s.sendBlockChangedAck(sequence)
 }
 
 func validPlacementInteraction(interaction protocol.UseItemOn) bool {

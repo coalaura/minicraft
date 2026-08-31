@@ -14,6 +14,8 @@ type sectionBlocksToSectionBenchmarkCase struct {
 
 type benchmarkConnection struct{}
 
+type benchmarkAddress struct{}
+
 func (benchmarkConnection) Read(_ []byte) (int, error) {
 	return 0, io.EOF
 }
@@ -45,8 +47,6 @@ func (benchmarkConnection) SetReadDeadline(time.Time) error {
 func (benchmarkConnection) SetWriteDeadline(time.Time) error {
 	return nil
 }
-
-type benchmarkAddress struct{}
 
 func (benchmarkAddress) Network() string {
 	return "benchmark"

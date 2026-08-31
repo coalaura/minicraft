@@ -51,8 +51,6 @@ const (
 	saltAtrium    uint64 = 0xca61d932f84b705e
 )
 
-type layout uint8
-
 const (
 	layoutClassic layout = iota
 	layoutMaze
@@ -63,16 +61,12 @@ const (
 	layoutSparse
 )
 
-type palette uint8
-
 const (
 	paletteClassic palette = iota
 	paletteFaded
 	paletteOffice
 	paletteMaintenance
 )
-
-type zoneFeature uint8
 
 const (
 	featureNone zoneFeature = iota
@@ -91,16 +85,12 @@ const (
 	featureMachineRoom
 )
 
-type verticalFeature uint8
-
 const (
 	verticalNone verticalFeature = iota
 	verticalUpperAnnex
 	verticalLowerAnnex
 	verticalStack
 )
-
-type structure uint8
 
 const (
 	structureOpen structure = iota
@@ -110,6 +100,23 @@ const (
 	structureWall
 	structurePillar
 )
+
+const (
+	featureNorth featureSide = iota
+	featureEast
+	featureSouth
+	featureWest
+)
+
+type layout uint8
+
+type palette uint8
+
+type zoneFeature uint8
+
+type verticalFeature uint8
+
+type structure uint8
 
 type paletteBlocks struct {
 	wall    game.Block
@@ -145,13 +152,6 @@ type openingSpec struct {
 }
 
 type featureSide uint8
-
-const (
-	featureNorth featureSide = iota
-	featureEast
-	featureSouth
-	featureWest
-)
 
 type featureRoom struct {
 	x0           int64

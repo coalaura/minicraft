@@ -6,9 +6,9 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
-type scheduledTickPriority int
-
 const scheduledTickPriorityNormal scheduledTickPriority = 0
+
+type scheduledTickPriority int
 
 type scheduledTickKey[T comparable] struct {
 	position game.BlockPosition

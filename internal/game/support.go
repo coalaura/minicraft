@@ -38,6 +38,30 @@ func (block Block) SupportsRigid(face BlockFace) bool {
 	return block.coversFace(face, targets)
 }
 
+func (block Block) CombinedFaceOccludes(other Block, face BlockFace) bool {
+	return CombinedFaceOccludes(block, other, face)
+}
+
+func (block Block) coversFace(face BlockFace, targets []supportRectangle) bool {
+	boxes := block.CollisionBoxes(BlockPosition{})
+	rectangles := make([]supportRectangle, 0, len(boxes))
+
+	for _, box := range boxes {
+		rectangle, touches := boxFaceRectangle(box, face)
+		if touches {
+			rectangles = append(rectangles, rectangle)
+		}
+	}
+
+	for _, target := range targets {
+		if !rectangleCovered(target, rectangles) {
+			return false
+		}
+	}
+
+	return len(targets) != 0
+}
+
 // CombinedFaceOccludes reports whether the collision faces shared by block and
 // other completely cover their common face.
 func CombinedFaceOccludes(block, other Block, face BlockFace) bool {
@@ -63,30 +87,6 @@ func CombinedFaceOccludes(block, other Block, face BlockFace) bool {
 	}
 
 	return rectangleCovered(supportRectangle{maxFirst: 1, maxSecond: 1}, rectangles)
-}
-
-func (block Block) CombinedFaceOccludes(other Block, face BlockFace) bool {
-	return CombinedFaceOccludes(block, other, face)
-}
-
-func (block Block) coversFace(face BlockFace, targets []supportRectangle) bool {
-	boxes := block.CollisionBoxes(BlockPosition{})
-	rectangles := make([]supportRectangle, 0, len(boxes))
-
-	for _, box := range boxes {
-		rectangle, touches := boxFaceRectangle(box, face)
-		if touches {
-			rectangles = append(rectangles, rectangle)
-		}
-	}
-
-	for _, target := range targets {
-		if !rectangleCovered(target, rectangles) {
-			return false
-		}
-	}
-
-	return len(targets) != 0
 }
 
 func boxFaceRectangle(box AABB, face BlockFace) (supportRectangle, bool) {

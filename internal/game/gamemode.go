@@ -2,14 +2,14 @@ package game
 
 import "fmt"
 
-type GameMode byte
-
 const (
 	GameModeSurvival GameMode = iota
 	GameModeCreative
 	GameModeAdventure
 	GameModeSpectator
 )
+
+type GameMode byte
 
 func ParseGameMode(value string) (GameMode, error) {
 	switch value {

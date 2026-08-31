@@ -9,10 +9,6 @@ import (
 
 const noMenuSlot = -1
 
-type menuSlotRole uint8
-
-type menuStorage uint8
-
 const (
 	menuSlotNormal menuSlotRole = iota
 	menuSlotResult
@@ -24,6 +20,10 @@ const (
 	menuStoragePlayer
 	menuStorageBacking
 )
+
+type menuSlotRole uint8
+
+type menuStorage uint8
 
 type menuBacking interface {
 	ContainsPosition(game.BlockPosition) bool
@@ -99,108 +99,6 @@ type menuSnapshot struct {
 	stateID  int32
 	items    []game.ItemStack
 	carried  game.ItemStack
-}
-
-func newPlayerInventoryMenu(inventory *game.PlayerInventory) *menu {
-	slots := make([]menuSlot, game.PlayerInventorySlots)
-
-	for slot := range slots {
-		slots[slot] = menuSlot{
-			stack:         inventory.Slot(slot),
-			limit:         64,
-			playerSlot:    slot,
-			hasPlayerSlot: true,
-			storage:       menuStoragePlayer,
-		}
-	}
-
-	slots[0].role = menuSlotResult
-	slots[0].derived = true
-	slots[0].onTake = takeCraftingResult
-
-	for slot := 5; slot <= 8; slot++ {
-		slots[slot].role = menuSlotArmor
-		slots[slot].armorIndex = slot
-		slots[slot].limit = 1
-	}
-
-	playerMenu := &menu{
-		windowID:       playerInventoryWindowID,
-		slots:          slots,
-		offhandSlot:    45,
-		hasOffhandSlot: true,
-		quickMove:      quickMovePlayerInventory,
-		derive:         derivePlayerCraftingResult,
-	}
-
-	for hotbar := range game.HotbarSlotCount {
-		playerMenu.hotbarSlots[hotbar] = 36 + hotbar
-		playerMenu.hasHotbarSlots[hotbar] = true
-	}
-
-	candidate := playerMenu.candidate()
-
-	candidate.deriveSlots()
-
-	playerMenu.commit(candidate)
-
-	return playerMenu
-}
-
-func newGenericContainerMenu(windowID int32, rows int, container []game.ItemStack, inventory *game.PlayerInventory) *menu {
-	return newComposedGenericContainerMenu(windowID, rows, []menuInventoryBacking{{items: container}}, inventory)
-}
-
-func newComposedGenericContainerMenu(windowID int32, rows int, backings []menuInventoryBacking, inventory *game.PlayerInventory) *menu {
-	containerSlots := rows * 9
-
-	menuType, validMenuType := protocol.Generic9xMenuType(rows)
-	if !validMenuType {
-		return nil
-	}
-
-	slots := make([]menuSlot, 0, containerSlots+36)
-
-	for _, backing := range backings {
-		for slot := range backing.items {
-			slots = append(slots, menuSlot{
-				stack:        &backing.items[slot],
-				limit:        64,
-				storage:      menuStorageBacking,
-				backingIndex: backing.index,
-			})
-		}
-	}
-
-	if len(slots) != containerSlots {
-		return nil
-	}
-
-	for playerSlot := 9; playerSlot <= 44; playerSlot++ {
-		slots = append(slots, menuSlot{
-			stack:         inventory.Slot(playerSlot),
-			limit:         64,
-			playerSlot:    playerSlot,
-			hasPlayerSlot: true,
-			storage:       menuStoragePlayer,
-		})
-	}
-
-	containerMenu := &menu{
-		windowID:         windowID,
-		protocolMenuType: menuType,
-		slots:            slots,
-		hiddenOffhand:    inventory.Slot(45),
-		quickMove:        quickMoveGenericContainer,
-		containerSlots:   containerSlots,
-	}
-
-	for hotbar := range game.HotbarSlotCount {
-		containerMenu.hotbarSlots[hotbar] = containerSlots + 27 + hotbar
-		containerMenu.hasHotbarSlots[hotbar] = true
-	}
-
-	return containerMenu
 }
 
 func (candidate *menuCandidate) changedBackings() []int {
@@ -372,6 +270,121 @@ func (candidate *menuCandidate) changedSlots() []int {
 	}
 
 	return changed
+}
+
+func (candidate *menuCandidate) playerStack(playerSlot int) *game.ItemStack {
+	if playerSlot == 45 && candidate.menu.hiddenOffhand != nil {
+		return &candidate.hiddenOffhand
+	}
+
+	for slot, definition := range candidate.menu.slots {
+		if definition.hasPlayerSlot && definition.playerSlot == playerSlot {
+			return &candidate.slots[slot]
+		}
+	}
+
+	return nil
+}
+func newPlayerInventoryMenu(inventory *game.PlayerInventory) *menu {
+	slots := make([]menuSlot, game.PlayerInventorySlots)
+
+	for slot := range slots {
+		slots[slot] = menuSlot{
+			stack:         inventory.Slot(slot),
+			limit:         64,
+			playerSlot:    slot,
+			hasPlayerSlot: true,
+			storage:       menuStoragePlayer,
+		}
+	}
+
+	slots[0].role = menuSlotResult
+	slots[0].derived = true
+	slots[0].onTake = takeCraftingResult
+
+	for slot := 5; slot <= 8; slot++ {
+		slots[slot].role = menuSlotArmor
+		slots[slot].armorIndex = slot
+		slots[slot].limit = 1
+	}
+
+	playerMenu := &menu{
+		windowID:       playerInventoryWindowID,
+		slots:          slots,
+		offhandSlot:    45,
+		hasOffhandSlot: true,
+		quickMove:      quickMovePlayerInventory,
+		derive:         derivePlayerCraftingResult,
+	}
+
+	for hotbar := range game.HotbarSlotCount {
+		playerMenu.hotbarSlots[hotbar] = 36 + hotbar
+		playerMenu.hasHotbarSlots[hotbar] = true
+	}
+
+	candidate := playerMenu.candidate()
+
+	candidate.deriveSlots()
+
+	playerMenu.commit(candidate)
+
+	return playerMenu
+}
+
+func newGenericContainerMenu(windowID int32, rows int, container []game.ItemStack, inventory *game.PlayerInventory) *menu {
+	return newComposedGenericContainerMenu(windowID, rows, []menuInventoryBacking{{items: container}}, inventory)
+}
+
+func newComposedGenericContainerMenu(windowID int32, rows int, backings []menuInventoryBacking, inventory *game.PlayerInventory) *menu {
+	containerSlots := rows * 9
+
+	menuType, validMenuType := protocol.Generic9xMenuType(rows)
+	if !validMenuType {
+		return nil
+	}
+
+	slots := make([]menuSlot, 0, containerSlots+36)
+
+	for _, backing := range backings {
+		for slot := range backing.items {
+			slots = append(slots, menuSlot{
+				stack:        &backing.items[slot],
+				limit:        64,
+				storage:      menuStorageBacking,
+				backingIndex: backing.index,
+			})
+		}
+	}
+
+	if len(slots) != containerSlots {
+		return nil
+	}
+
+	for playerSlot := 9; playerSlot <= 44; playerSlot++ {
+		slots = append(slots, menuSlot{
+			stack:         inventory.Slot(playerSlot),
+			limit:         64,
+			playerSlot:    playerSlot,
+			hasPlayerSlot: true,
+			storage:       menuStoragePlayer,
+		})
+	}
+
+	containerMenu := &menu{
+		windowID:         windowID,
+		protocolMenuType: menuType,
+		slots:            slots,
+		hiddenOffhand:    inventory.Slot(45),
+		quickMove:        quickMoveGenericContainer,
+		containerSlots:   containerSlots,
+	}
+
+	for hotbar := range game.HotbarSlotCount {
+		containerMenu.hotbarSlots[hotbar] = containerSlots + 27 + hotbar
+		containerMenu.hasHotbarSlots[hotbar] = true
+	}
+
+	return containerMenu
 }
 
 func quickMovePlayerInventory(candidate *menuCandidate, slot int) {
@@ -578,18 +591,4 @@ func moveIntoPlayerInventory(candidate *menuCandidate, stack *game.ItemStack) {
 			return
 		}
 	}
-}
-
-func (candidate *menuCandidate) playerStack(playerSlot int) *game.ItemStack {
-	if playerSlot == 45 && candidate.menu.hiddenOffhand != nil {
-		return &candidate.hiddenOffhand
-	}
-
-	for slot, definition := range candidate.menu.slots {
-		if definition.hasPlayerSlot && definition.playerSlot == playerSlot {
-			return &candidate.slots[slot]
-		}
-	}
-
-	return nil
 }

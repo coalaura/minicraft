@@ -15,14 +15,6 @@ const (
 
 type Generator struct{}
 
-func init() {
-	generator.MustRegister(Name, newRegistered)
-}
-
-func New() game.Generator {
-	return Generator{}
-}
-
 func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	originX, originZ := origins(seed)
 
@@ -88,6 +80,24 @@ func (Generator) GenerationBounds(_ int64, _ game.ChunkPosition) (int32, int32, 
 	return floorY, floorY + int32(wallHeight(maxHierarchyLevel)), true
 }
 
+func (Generator) Spawn(seed int64) game.Position {
+	originX, originZ := origins(seed)
+
+	return game.Position{
+		X: float64(originX) + 4.5,
+		Y: floorY + 1,
+		Z: float64(originZ) + 4.5,
+	}
+}
+
+func init() {
+	generator.MustRegister(Name, newRegistered)
+}
+
+func New() game.Generator {
+	return Generator{}
+}
+
 func blockAtLevels(worldX, worldY, worldZ int32, originX, originZ int64, levelX, levelZ int) game.Block {
 
 	if worldY == floorY {
@@ -132,16 +142,6 @@ func blockAtLevels(worldX, worldY, worldZ int32, originX, originZ int64, levelX,
 	}
 
 	return game.Stone
-}
-
-func (Generator) Spawn(seed int64) game.Position {
-	originX, originZ := origins(seed)
-
-	return game.Position{
-		X: float64(originX) + 4.5,
-		Y: floorY + 1,
-		Z: float64(originZ) + 4.5,
-	}
 }
 
 func newRegistered() (game.Generator, error) {

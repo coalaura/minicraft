@@ -5,23 +5,6 @@ import (
 	"testing"
 )
 
-func TestCombinedFaceOccludes(t *testing.T) {
-	bottom := collisionBlockForTest(t, StoneSlab, BlockPropertyValue{Name: "type", Value: "bottom"})
-	top := collisionBlockForTest(t, StoneSlab, BlockPropertyValue{Name: "type", Value: "top"})
-
-	if !CombinedFaceOccludes(bottom, top, BlockFaceEast) {
-		t.Fatal("combined slab faces should occlude")
-	}
-
-	if CombinedFaceOccludes(bottom, Air, BlockFaceEast) {
-		t.Fatal("single half slab face should not occlude")
-	}
-
-	if !Stone.CombinedFaceOccludes(Air, BlockFaceNorth) {
-		t.Fatal("full block face should occlude")
-	}
-}
-
 type blockCollisionTestCase struct {
 	name  string
 	block Block
@@ -37,6 +20,23 @@ type chestCollisionTestCase struct {
 	name  string
 	block Block
 	want  AABB
+}
+
+func TestCombinedFaceOccludes(t *testing.T) {
+	bottom := collisionBlockForTest(t, StoneSlab, BlockPropertyValue{Name: "type", Value: "bottom"})
+	top := collisionBlockForTest(t, StoneSlab, BlockPropertyValue{Name: "type", Value: "top"})
+
+	if !CombinedFaceOccludes(bottom, top, BlockFaceEast) {
+		t.Fatal("combined slab faces should occlude")
+	}
+
+	if CombinedFaceOccludes(bottom, Air, BlockFaceEast) {
+		t.Fatal("single half slab face should not occlude")
+	}
+
+	if !Stone.CombinedFaceOccludes(Air, BlockFaceNorth) {
+		t.Fatal("full block face should occlude")
+	}
 }
 
 func TestBlockCollisionFamilies(t *testing.T) {

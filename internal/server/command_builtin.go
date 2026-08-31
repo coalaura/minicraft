@@ -13,9 +13,12 @@ import (
 
 const maxFillVolume int64 = 32768
 
-var (
-	supportedSelectors = []string{"@a", "@p", "@r", "@s"}
-	gameModeNames      = []string{"adventure", "creative", "spectator", "survival"}
+const (
+	fillModeReplace fillMode = iota
+	fillModeKeep
+	fillModeOutline
+	fillModeHollow
+	fillModeStrict
 )
 
 type commandPosition struct {
@@ -43,26 +46,10 @@ type commandFillMode struct {
 
 type fillMode uint8
 
-const (
-	fillModeReplace fillMode = iota
-	fillModeKeep
-	fillModeOutline
-	fillModeHollow
-	fillModeStrict
+var (
+	supportedSelectors = []string{"@a", "@p", "@r", "@s"}
+	gameModeNames      = []string{"adventure", "creative", "spectator", "survival"}
 )
-
-func registerBuiltinCommands(registry *commandRegistry) {
-	registry.registerHelp()
-	registry.registerSeed()
-	registry.registerTime()
-	registry.registerGameMode()
-	registry.registerGive()
-	registry.registerEnchant()
-	registry.registerClear()
-	registry.registerTeleport()
-	registry.registerSetBlock()
-	registry.registerFill()
-}
 
 func (registry *commandRegistry) registerEnchant() {
 	targets := registry.targetArgument("targets", true)
@@ -778,47 +765,6 @@ func (registry *commandRegistry) helpLines(source CommandSource, path string) []
 	return lines
 }
 
-func commandUsageLines(name string, command *registeredCommand) []string {
-	if command.Redirect != nil {
-		command = command.Redirect
-	}
-
-	lines := make([]string, len(command.Patterns))
-
-	for index, pattern := range command.Patterns {
-		lines[index] = patternUsage(name, pattern)
-	}
-
-	return lines
-}
-
-func helpPathMatches(pattern commandPattern, path []string) bool {
-	if len(path) > len(pattern.Elements) {
-		return false
-	}
-
-	for index, value := range path {
-		literal, ok := pattern.Elements[index].(commandLiteral)
-		if !ok || literal.value != value {
-			return false
-		}
-	}
-
-	return true
-}
-
-func patternUsage(name string, pattern commandPattern) string {
-	parts := make([]string, 1, len(pattern.Elements)+1)
-
-	parts[0] = "/" + name
-
-	for _, element := range pattern.Elements {
-		parts = append(parts, element.usage())
-	}
-
-	return strings.Join(parts, " ")
-}
-
 func (registry *commandRegistry) helpSuggestions(CommandSource) []string {
 	var values []string
 
@@ -974,6 +920,60 @@ func (registry *commandRegistry) targetSuggestions(CommandSource) []string {
 	}
 
 	return values
+}
+
+func registerBuiltinCommands(registry *commandRegistry) {
+	registry.registerHelp()
+	registry.registerSeed()
+	registry.registerTime()
+	registry.registerGameMode()
+	registry.registerGive()
+	registry.registerEnchant()
+	registry.registerClear()
+	registry.registerTeleport()
+	registry.registerSetBlock()
+	registry.registerFill()
+}
+
+func commandUsageLines(name string, command *registeredCommand) []string {
+	if command.Redirect != nil {
+		command = command.Redirect
+	}
+
+	lines := make([]string, len(command.Patterns))
+
+	for index, pattern := range command.Patterns {
+		lines[index] = patternUsage(name, pattern)
+	}
+
+	return lines
+}
+
+func helpPathMatches(pattern commandPattern, path []string) bool {
+	if len(path) > len(pattern.Elements) {
+		return false
+	}
+
+	for index, value := range path {
+		literal, ok := pattern.Elements[index].(commandLiteral)
+		if !ok || literal.value != value {
+			return false
+		}
+	}
+
+	return true
+}
+
+func patternUsage(name string, pattern commandPattern) string {
+	parts := make([]string, 1, len(pattern.Elements)+1)
+
+	parts[0] = "/" + name
+
+	for _, element := range pattern.Elements {
+		parts = append(parts, element.usage())
+	}
+
+	return strings.Join(parts, " ")
 }
 
 func validPlayerName(name string) bool {

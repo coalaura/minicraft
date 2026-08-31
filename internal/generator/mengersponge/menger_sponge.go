@@ -27,14 +27,6 @@ var (
 	_ game.GeneratedChunk   = (*generatedChunk)(nil)
 )
 
-func init() {
-	generator.MustRegister(Name, newRegistered)
-}
-
-func New() game.Generator {
-	return Generator{}
-}
-
 func (Generator) BlockAt(_ int64, position game.BlockPosition) game.Block {
 	if position.Y < minBuildY || position.Y > maxBuildY {
 		return game.Air
@@ -59,20 +51,6 @@ func (Generator) GenerateSection(_ int64, chunk game.ChunkPosition, sectionMinY 
 func (Generator) GenerateChunk(_ int64, chunk game.ChunkPosition) game.GeneratedChunk {
 	generated := generateChunk(chunk)
 	return &generated
-}
-
-func generateChunk(chunk game.ChunkPosition) generatedChunk {
-	generated := generatedChunk{}
-
-	chunkMinX := chunk.X * game.ChunkWidth
-	chunkMinZ := chunk.Z * game.ChunkWidth
-
-	for local := range int32(game.ChunkWidth) {
-		generated.xMasks[local] = ternaryCenterMask(absoluteCoordinate(chunkMinX + local))
-		generated.zMasks[local] = ternaryCenterMask(absoluteCoordinate(chunkMinZ + local))
-	}
-
-	return generated
 }
 
 func (generated *generatedChunk) GenerateSection(sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
@@ -138,6 +116,28 @@ func (Generator) Spawn(_ int64) game.Position {
 		Y: 80,
 		Z: 0.5,
 	}
+}
+
+func init() {
+	generator.MustRegister(Name, newRegistered)
+}
+
+func New() game.Generator {
+	return Generator{}
+}
+
+func generateChunk(chunk game.ChunkPosition) generatedChunk {
+	generated := generatedChunk{}
+
+	chunkMinX := chunk.X * game.ChunkWidth
+	chunkMinZ := chunk.Z * game.ChunkWidth
+
+	for local := range int32(game.ChunkWidth) {
+		generated.xMasks[local] = ternaryCenterMask(absoluteCoordinate(chunkMinX + local))
+		generated.zMasks[local] = ternaryCenterMask(absoluteCoordinate(chunkMinZ + local))
+	}
+
+	return generated
 }
 
 func newRegistered() (game.Generator, error) {

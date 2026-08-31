@@ -28,6 +28,10 @@ type miningTool struct {
 	slot  int
 }
 
+type runtimeBlockLootRandom struct {
+	runtime *Runtime
+}
+
 func (r *Runtime) startDestroyingBlock(session *Session, position game.BlockPosition) (BlockMutationResult, error) {
 	r.worldMutationMu.Lock()
 
@@ -257,43 +261,6 @@ func (r *Runtime) broadcastMiningCrack(session *Session, position game.BlockPosi
 	}
 }
 
-func destroyProgress(player game.Player, block game.Block) float64 {
-	mining := block.MiningProperties()
-	if !mining.Destroyable || mining.Hardness < 0 {
-		return 0
-	}
-
-	if mining.Hardness == 0 {
-		return 1
-	}
-
-	tool := selectedMiningTool(player)
-
-	divisor := float64(100)
-
-	if tool.stack.Item.IsCorrectToolForDrops(block) {
-		divisor = 30
-	}
-
-	speed := tool.stack.Item.BaseDestroySpeed(block)
-	efficiency := tool.stack.EnchantmentLevel(game.EnchantmentEfficiency)
-
-	if speed > 1 && efficiency > 0 {
-		speed += float32(efficiency*efficiency + 1)
-	}
-
-	return float64(speed) / float64(mining.Hardness) / divisor
-}
-
-func selectedMiningTool(player game.Player) miningTool {
-	stack := player.Inventory.Held(player.SelectedHotbarSlot)
-	if stack == nil {
-		return miningTool{stack: game.ItemStack{Item: game.ItemAir}, slot: player.SelectedHotbarSlot}
-	}
-
-	return miningTool{stack: stack.Clone(), slot: player.SelectedHotbarSlot}
-}
-
 func (r *Runtime) damageMiningTool(session *Session, tool miningTool, block game.Block) (*game.PlayerInventory, bool) {
 	definition, valid := tool.stack.Item.Definition()
 
@@ -395,10 +362,6 @@ func (r *Runtime) commitOrdinaryBlockDrops(records []blockMutationRecord) {
 	}
 }
 
-type runtimeBlockLootRandom struct {
-	runtime *Runtime
-}
-
 func (random runtimeBlockLootRandom) IntN(bound int) int {
 	return random.runtime.lootRandomInt(bound)
 }
@@ -421,4 +384,40 @@ func (r *Runtime) popBlockResource(blockPosition game.BlockPosition, stack game.
 	}
 
 	r.SpawnItemEntity(stack, position, velocity, 10)
+}
+func destroyProgress(player game.Player, block game.Block) float64 {
+	mining := block.MiningProperties()
+	if !mining.Destroyable || mining.Hardness < 0 {
+		return 0
+	}
+
+	if mining.Hardness == 0 {
+		return 1
+	}
+
+	tool := selectedMiningTool(player)
+
+	divisor := float64(100)
+
+	if tool.stack.Item.IsCorrectToolForDrops(block) {
+		divisor = 30
+	}
+
+	speed := tool.stack.Item.BaseDestroySpeed(block)
+	efficiency := tool.stack.EnchantmentLevel(game.EnchantmentEfficiency)
+
+	if speed > 1 && efficiency > 0 {
+		speed += float32(efficiency*efficiency + 1)
+	}
+
+	return float64(speed) / float64(mining.Hardness) / divisor
+}
+
+func selectedMiningTool(player game.Player) miningTool {
+	stack := player.Inventory.Held(player.SelectedHotbarSlot)
+	if stack == nil {
+		return miningTool{stack: game.ItemStack{Item: game.ItemAir}, slot: player.SelectedHotbarSlot}
+	}
+
+	return miningTool{stack: stack.Clone(), slot: player.SelectedHotbarSlot}
 }

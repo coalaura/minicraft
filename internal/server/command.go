@@ -131,17 +131,6 @@ func (source playerCommandSource) PlayerSession() (*Session, bool) {
 	return source.session, true
 }
 
-func newCommandRegistry(runtime *Runtime) *commandRegistry {
-	registry := &commandRegistry{
-		runtime: runtime,
-		byName:  make(map[string]*registeredCommand),
-	}
-
-	registerBuiltinCommands(registry)
-
-	return registry
-}
-
 func (registry *commandRegistry) register(command *registeredCommand) {
 	registry.commands = append(registry.commands, command)
 	registry.byName[command.Name] = command
@@ -446,41 +435,6 @@ func (registry *commandRegistry) declaration() protocol.DeclareCommands {
 	return protocol.DeclareCommands{Nodes: nodes, RootIndex: 0}
 }
 
-func findOrAppendTreeChild(parent *commandTreeNode, node protocol.CommandNode, key string) *commandTreeNode {
-	for _, child := range parent.children {
-		if child.key == key {
-			mergeCommandTreeNode(&child.node, node)
-
-			return child
-		}
-	}
-
-	child := &commandTreeNode{node: node, key: key}
-	parent.children = append(parent.children, child)
-
-	return child
-}
-
-func mergeCommandTreeNode(existing *protocol.CommandNode, incoming protocol.CommandNode) {
-	compatible := existing.Type == incoming.Type &&
-		existing.Name == incoming.Name &&
-		existing.Parser == incoming.Parser &&
-		reflect.DeepEqual(existing.Properties, incoming.Properties) &&
-		existing.SuggestionType == incoming.SuggestionType
-
-	if !compatible {
-		panic(fmt.Sprintf("incompatible command nodes share a declaration key: existing=%+v incoming=%+v", *existing, incoming))
-	}
-}
-
-func flattenCommandTree(node *commandTreeNode, nodes *[]*commandTreeNode) {
-	*nodes = append(*nodes, node)
-
-	for _, child := range node.children {
-		flattenCommandTree(child, nodes)
-	}
-}
-
 func (registry *commandRegistry) suggestions(source CommandSource, text string) protocol.CommandSuggestions {
 	commandText := text
 	offset := 0
@@ -541,10 +495,6 @@ func (registry *commandRegistry) suggestions(source CommandSource, text string) 
 	}
 }
 
-func utf16Length(value string) int32 {
-	return int32(len(utf16.Encode([]rune(value))))
-}
-
 func (registry *commandRegistry) argumentSuggestions(source CommandSource, command *registeredCommand, completed []string, prefix string) []string {
 	tokens := make([]commandToken, len(completed))
 
@@ -582,6 +532,56 @@ func (registry *commandRegistry) argumentSuggestions(source CommandSource, comma
 	}
 
 	return suggestions
+}
+
+func newCommandRegistry(runtime *Runtime) *commandRegistry {
+	registry := &commandRegistry{
+		runtime: runtime,
+		byName:  make(map[string]*registeredCommand),
+	}
+
+	registerBuiltinCommands(registry)
+
+	return registry
+}
+
+func findOrAppendTreeChild(parent *commandTreeNode, node protocol.CommandNode, key string) *commandTreeNode {
+	for _, child := range parent.children {
+		if child.key == key {
+			mergeCommandTreeNode(&child.node, node)
+
+			return child
+		}
+	}
+
+	child := &commandTreeNode{node: node, key: key}
+	parent.children = append(parent.children, child)
+
+	return child
+}
+
+func mergeCommandTreeNode(existing *protocol.CommandNode, incoming protocol.CommandNode) {
+	compatible := existing.Type == incoming.Type &&
+		existing.Name == incoming.Name &&
+		existing.Parser == incoming.Parser &&
+		reflect.DeepEqual(existing.Properties, incoming.Properties) &&
+		existing.SuggestionType == incoming.SuggestionType
+
+	if !compatible {
+		panic(fmt.Sprintf("incompatible command nodes share a declaration key: existing=%+v incoming=%+v", *existing, incoming))
+	}
+}
+
+func flattenCommandTree(node *commandTreeNode, nodes *[]*commandTreeNode) {
+	*nodes = append(*nodes, node)
+
+	for _, child := range node.children {
+		flattenCommandTree(child, nodes)
+	}
+}
+
+func utf16Length(value string) int32 {
+	return int32(len(utf16.Encode([]rune(value))))
 }
 
 func filterSuggestions(values []string, prefix string) []string {

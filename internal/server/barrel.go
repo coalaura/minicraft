@@ -13,10 +13,6 @@ type runtimeBarrel struct {
 	viewers  map[*Session]struct{}
 }
 
-func newRuntimeBarrel(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
-	return &runtimeBarrel{position: position, entity: entity}
-}
-
 func (barrel *runtimeBarrel) BlockEntityType() game.BlockEntityType {
 	return game.BlockEntityTypeBarrel
 }
@@ -157,6 +153,10 @@ func (r *Runtime) setBarrelOpenStateLocked(barrel *runtimeBarrel, open bool) {
 	delivery.runtimeSounds = []positionalBlockSound{{position: barrel.position, sound: sound}}
 
 	r.runtimeBlockMutations = append(r.runtimeBlockMutations, queuedBlockMutation{result: result, delivery: delivery})
+}
+
+func newRuntimeBarrel(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
+	return &runtimeBarrel{position: position, entity: entity}
 }
 
 func barrelSound(block game.Block, position game.BlockPosition, event game.SoundEvent) protocol.Sound {

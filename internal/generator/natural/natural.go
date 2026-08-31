@@ -70,14 +70,6 @@ type tree struct {
 	kind   treeKind
 }
 
-func init() {
-	generator.MustRegister(Name, newRegistered)
-}
-
-func New() game.Generator {
-	return Generator{}
-}
-
 func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	if position.Y < minimumY || position.Y > maximumY {
 		return game.Air
@@ -212,6 +204,14 @@ func (Generator) WorldMetadata(_ int64) game.WorldMetadata {
 
 func (Generator) GenerationBounds(_ int64, _ game.ChunkPosition) (int32, int32, bool) {
 	return minimumY, maximumY, true
+}
+
+func init() {
+	generator.MustRegister(Name, newRegistered)
+}
+
+func New() game.Generator {
+	return Generator{}
 }
 
 func newRegistered() (game.Generator, error) {

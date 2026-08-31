@@ -11,16 +11,8 @@ import (
 
 type denyBlockMutationPolicy struct{}
 
-func (denyBlockMutationPolicy) AllowBlockMutation(BlockMutation) bool {
-	return false
-}
-
 type denyPositionBlockMutationPolicy struct {
 	position game.BlockPosition
-}
-
-func (policy denyPositionBlockMutationPolicy) AllowBlockMutation(mutation BlockMutation) bool {
-	return mutation.Position != policy.position
 }
 
 type blockMutationTestGenerator struct {
@@ -32,6 +24,14 @@ type blockingConnection struct {
 	writeStarted chan struct{}
 	releaseWrite chan struct{}
 	writeOnce    sync.Once
+}
+
+func (denyBlockMutationPolicy) AllowBlockMutation(BlockMutation) bool {
+	return false
+}
+
+func (policy denyPositionBlockMutationPolicy) AllowBlockMutation(mutation BlockMutation) bool {
+	return mutation.Position != policy.position
 }
 
 func (c *blockingConnection) Write(data []byte) (int, error) {

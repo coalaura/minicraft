@@ -2,17 +2,11 @@ package game
 
 import "strconv"
 
-type FluidType uint8
-
 const (
 	FluidTypeEmpty FluidType = iota
 	FluidTypeWater
 	FluidTypeLava
 )
-
-// FluidStateType identifies the concrete vanilla fluid that owns a state.
-// Source and flowing fluids have distinct scheduled-tick identities.
-type FluidStateType uint8
 
 const (
 	FluidStateTypeEmpty FluidStateType = iota
@@ -21,6 +15,12 @@ const (
 	FluidStateTypeFlowingLava
 	FluidStateTypeLava
 )
+
+type FluidType uint8
+
+// FluidStateType identifies the concrete vanilla fluid that owns a state.
+// Source and flowing fluids have distinct scheduled-tick identities.
+type FluidStateType uint8
 
 type fluidStateData struct {
 	fluidType FluidType
@@ -44,16 +44,6 @@ func (block Block) FluidState() FluidState {
 	}
 
 	return FluidState(data)
-}
-
-func FluidStateForBlock(block Block) FluidState {
-	return block.FluidState()
-}
-
-// FluidStateFromLegacyBlock converts a water, lava, or waterlogged block state
-// to its derived fluid state.
-func FluidStateFromLegacyBlock(block Block) FluidState {
-	return block.FluidState()
 }
 
 func (state FluidState) Type() FluidType {
@@ -164,6 +154,16 @@ func (state FluidState) LegacyBlock() Block {
 
 func (state FluidState) Block() Block {
 	return state.LegacyBlock()
+}
+
+func FluidStateForBlock(block Block) FluidState {
+	return block.FluidState()
+}
+
+// FluidStateFromLegacyBlock converts a water, lava, or waterlogged block state
+// to its derived fluid state.
+func FluidStateFromLegacyBlock(block Block) FluidState {
+	return block.FluidState()
 }
 
 func fluidLevelString(level uint8) string {

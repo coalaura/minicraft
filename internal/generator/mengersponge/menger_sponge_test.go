@@ -9,6 +9,8 @@ import (
 	"github.com/coalaura/minicraft/internal/generator"
 )
 
+const farScale = int32(387420489) // 3^18
+
 type generatedChunkSnapshot struct {
 	sections [7][game.SectionVolume]game.Block
 }
@@ -126,8 +128,6 @@ func TestGeneratorBuildsMengerPattern(t *testing.T) {
 		})
 	}
 }
-
-const farScale = int32(387420489) // 3^18
 
 func TestGeneratorExtendsToArbitrarilyLargeCoordinates(t *testing.T) {
 	generated := Generator{}

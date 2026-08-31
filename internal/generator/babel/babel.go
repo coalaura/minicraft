@@ -32,13 +32,13 @@ const (
 	skywayBeamY  = int32(91)
 )
 
-type lotKind uint8
-
 const (
 	lotTower lotKind = iota
 	lotCourtyard
 	lotPlaza
 )
+
+type lotKind uint8
 
 type cityPalette struct {
 	wall   game.Block
@@ -170,14 +170,6 @@ var (
 	_ game.GeneratedChunk   = (*generatedChunk)(nil)
 )
 
-func init() {
-	generator.MustRegister(Name, newRegistered)
-}
-
-func New() game.Generator {
-	return Generator{}
-}
-
 func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	originX, originZ := cityOrigins(seed)
 
@@ -238,6 +230,14 @@ func (Generator) Spawn(seed int64) game.Position {
 		Y: float64(baseFloorY) + 1,
 		Z: float64(originZ) + 0.5,
 	}
+}
+
+func init() {
+	generator.MustRegister(Name, newRegistered)
+}
+
+func New() game.Generator {
+	return Generator{}
 }
 
 func newRegistered() (game.Generator, error) {

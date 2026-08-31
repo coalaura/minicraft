@@ -43,15 +43,15 @@ const (
 	ItemPlacementHopper
 )
 
-type Item uint16
-
-type ItemPlacementRule uint8
-
 const (
 	ItemComponentDamage       int32 = 3
 	ItemComponentEnchantments int32 = 13
 	MaxItemComponentType      int32 = 103
 )
+
+type Item uint16
+
+type ItemPlacementRule uint8
 
 type ItemMiningRule struct {
 	Trait          BlockTrait
@@ -179,25 +179,6 @@ func (rule ItemMiningRule) matches(block Block) bool {
 	}
 
 	return rule.Trait != 0 && block.HasTrait(rule.Trait)
-}
-
-func ItemForBlock(block Block) (Item, bool) {
-	if block == Air {
-		return 0, false
-	}
-
-	blockDefinition, valid := block.Definition()
-	if !valid {
-		return 0, false
-	}
-
-	for item, itemDefinition := range itemDefinitions {
-		if itemDefinition.Name == blockDefinition.Name && Item(item) != ItemAir {
-			return Item(item), true
-		}
-	}
-
-	return 0, false
 }
 
 func (stack ItemStack) Empty() bool {
@@ -422,6 +403,73 @@ func (stack *ItemStack) NormalizeComponents() {
 	stack.Components, stack.RemovedComponents = normalizedComponentPatch(stack.Components, stack.RemovedComponents)
 }
 
+func (inventory PlayerInventory) Clone() PlayerInventory {
+	clone := inventory
+
+	for slot := range PlayerInventorySlots {
+		*clone.Slot(slot) = inventory.Slot(slot).Clone()
+	}
+
+	return clone
+}
+
+func (inventory *PlayerInventory) Slot(slot int) *ItemStack {
+	switch {
+	case slot == 0:
+		return &inventory.CraftingResult
+	case slot >= 1 && slot <= 4:
+		return &inventory.Crafting[slot-1]
+	case slot >= 5 && slot <= 8:
+		return &inventory.Armor[slot-5]
+	case slot >= 9 && slot <= 35:
+		return &inventory.Main[slot-9]
+	case slot >= 36 && slot <= 44:
+		return &inventory.Hotbar[slot-36]
+	case slot == 45:
+		return &inventory.Offhand
+	default:
+		return nil
+	}
+}
+
+func (inventory *PlayerInventory) Held(selected int) *ItemStack {
+	if selected < 0 || selected >= HotbarSlotCount {
+		return nil
+	}
+
+	return &inventory.Hotbar[selected]
+}
+
+func (inventory PlayerInventory) Contents() []ItemStack {
+	contents := make([]ItemStack, PlayerInventorySlots)
+
+	for slot := range contents {
+		contents[slot] = inventory.Slot(slot).Clone()
+	}
+
+	return contents
+}
+
+//go:generate go run ../../cmd/generate-items -items ../../data/items.json -blocks ../../data/blocks.json -output items_generated.go
+func ItemForBlock(block Block) (Item, bool) {
+	if block == Air {
+		return 0, false
+	}
+
+	blockDefinition, valid := block.Definition()
+	if !valid {
+		return 0, false
+	}
+
+	for item, itemDefinition := range itemDefinitions {
+		if itemDefinition.Name == blockDefinition.Name && Item(item) != ItemAir {
+			return Item(item), true
+		}
+	}
+
+	return 0, false
+}
+
 func normalizedComponentPatch(components []ItemComponent, removedComponents []int32) ([]ItemComponent, []int32) {
 	removedTypes := make(map[int32]struct{}, len(removedComponents))
 
@@ -504,52 +552,3 @@ func readComponentVarInt(data []byte, offset int) (int32, int, bool) {
 
 	return 0, offset, false
 }
-
-func (inventory PlayerInventory) Clone() PlayerInventory {
-	clone := inventory
-
-	for slot := range PlayerInventorySlots {
-		*clone.Slot(slot) = inventory.Slot(slot).Clone()
-	}
-
-	return clone
-}
-
-func (inventory *PlayerInventory) Slot(slot int) *ItemStack {
-	switch {
-	case slot == 0:
-		return &inventory.CraftingResult
-	case slot >= 1 && slot <= 4:
-		return &inventory.Crafting[slot-1]
-	case slot >= 5 && slot <= 8:
-		return &inventory.Armor[slot-5]
-	case slot >= 9 && slot <= 35:
-		return &inventory.Main[slot-9]
-	case slot >= 36 && slot <= 44:
-		return &inventory.Hotbar[slot-36]
-	case slot == 45:
-		return &inventory.Offhand
-	default:
-		return nil
-	}
-}
-
-func (inventory *PlayerInventory) Held(selected int) *ItemStack {
-	if selected < 0 || selected >= HotbarSlotCount {
-		return nil
-	}
-
-	return &inventory.Hotbar[selected]
-}
-
-func (inventory PlayerInventory) Contents() []ItemStack {
-	contents := make([]ItemStack, PlayerInventorySlots)
-
-	for slot := range contents {
-		contents[slot] = inventory.Slot(slot).Clone()
-	}
-
-	return contents
-}
-
-//go:generate go run ../../cmd/generate-items -items ../../data/items.json -blocks ../../data/blocks.json -output items_generated.go

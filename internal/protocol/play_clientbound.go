@@ -676,30 +676,6 @@ func (p SetHeldSlot) Encode(wr *PacketWriter) {
 	wr.VarInt(p.Slot)
 }
 
-func encodeItemStack(wr *PacketWriter, stack game.ItemStack) {
-	if stack.Empty() {
-		wr.VarInt(0)
-
-		return
-	}
-
-	stack.NormalizeComponents()
-
-	wr.VarInt(stack.Count)
-	wr.VarInt(int32(stack.Item))
-	wr.VarInt(int32(len(stack.Components)))
-	wr.VarInt(int32(len(stack.RemovedComponents)))
-
-	for _, component := range stack.Components {
-		wr.VarInt(component.Type)
-		wr.Raw(component.Data)
-	}
-
-	for _, componentType := range stack.RemovedComponents {
-		wr.VarInt(componentType)
-	}
-}
-
 func (p SynchronizeEntityPosition) Encode(wr *PacketWriter) {
 	wr.VarInt(p.EntityID)
 
@@ -1310,6 +1286,30 @@ func (p CommandSuggestions) Encode(wr *PacketWriter) {
 		if match.HasTooltip {
 			wr.AnonymousNBTString(match.Tooltip)
 		}
+	}
+}
+
+func encodeItemStack(wr *PacketWriter, stack game.ItemStack) {
+	if stack.Empty() {
+		wr.VarInt(0)
+
+		return
+	}
+
+	stack.NormalizeComponents()
+
+	wr.VarInt(stack.Count)
+	wr.VarInt(int32(stack.Item))
+	wr.VarInt(int32(len(stack.Components)))
+	wr.VarInt(int32(len(stack.RemovedComponents)))
+
+	for _, component := range stack.Components {
+		wr.VarInt(component.Type)
+		wr.Raw(component.Data)
+	}
+
+	for _, componentType := range stack.RemovedComponents {
+		wr.VarInt(componentType)
 	}
 }
 

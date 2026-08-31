@@ -7,14 +7,6 @@ import (
 
 type Generator struct{}
 
-func init() {
-	generator.MustRegister(Name, newRegistered)
-}
-
-func New() game.Generator {
-	return Generator{}
-}
-
 func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	if position.Y < worldMinY || position.Y > worldMaxY {
 		return game.Air
@@ -38,52 +30,6 @@ func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	profile := structureAt(seed, current)
 
 	return blockAtLayerColumn(seed, worldX, worldY, worldZ, current, blocks, profile)
-}
-
-func blockAtLayerColumn(seed, worldX, worldY, worldZ int64, current zone, blocks paletteBlocks, profile structure) game.Block {
-	block, handled := grandAtriumBlockAt(seed, worldX, worldY, worldZ, current)
-	if handled {
-		return block
-	}
-
-	block, handled = layerConnectorBlockAt(seed, worldX, worldY, worldZ, current)
-	if handled {
-		return block
-	}
-
-	layerFloor := int64(layerFloorY(current.layer))
-
-	templateY := int64(floorY) + (worldY - layerFloor)
-	currentCeilingY := int64(zoneCeilingY(current))
-
-	if templateY > currentCeilingY {
-		return interstitialBlock(current.palette)
-	}
-
-	if templateY < int64(foundationY) {
-		return game.Air
-	}
-
-	switch int32(templateY) {
-	case foundationY:
-		return foundationBlock(current.palette)
-	case floorY:
-		return floorBlock(seed, worldX, worldZ, current, blocks)
-	case int32(currentCeilingY):
-		return ceilingBlock(seed, worldX, worldZ, current, blocks)
-	}
-
-	block, ok := featureBlockAt(seed, worldX, templateY, worldZ, current)
-	if ok {
-		return block
-	}
-
-	block, ok = ambientDoorBlockAt(seed, templateY, current)
-	if ok {
-		return block
-	}
-
-	return structureBlock(seed, worldX, templateY, worldZ, current, blocks, profile)
 }
 
 func (generated Generator) GenerateSection(seed int64, chunk game.ChunkPosition, sectionMinY int32, output *[game.SectionVolume]game.Block) (game.Block, bool) {
@@ -212,6 +158,60 @@ func (generated Generator) spawnOpen(seed int64, x, z int32) bool {
 	}
 
 	return generated.BlockAt(seed, game.BlockPosition{X: x, Y: floorY, Z: z}) != game.Air
+}
+
+func init() {
+	generator.MustRegister(Name, newRegistered)
+}
+
+func New() game.Generator {
+	return Generator{}
+}
+
+func blockAtLayerColumn(seed, worldX, worldY, worldZ int64, current zone, blocks paletteBlocks, profile structure) game.Block {
+	block, handled := grandAtriumBlockAt(seed, worldX, worldY, worldZ, current)
+	if handled {
+		return block
+	}
+
+	block, handled = layerConnectorBlockAt(seed, worldX, worldY, worldZ, current)
+	if handled {
+		return block
+	}
+
+	layerFloor := int64(layerFloorY(current.layer))
+
+	templateY := int64(floorY) + (worldY - layerFloor)
+	currentCeilingY := int64(zoneCeilingY(current))
+
+	if templateY > currentCeilingY {
+		return interstitialBlock(current.palette)
+	}
+
+	if templateY < int64(foundationY) {
+		return game.Air
+	}
+
+	switch int32(templateY) {
+	case foundationY:
+		return foundationBlock(current.palette)
+	case floorY:
+		return floorBlock(seed, worldX, worldZ, current, blocks)
+	case int32(currentCeilingY):
+		return ceilingBlock(seed, worldX, worldZ, current, blocks)
+	}
+
+	block, ok := featureBlockAt(seed, worldX, templateY, worldZ, current)
+	if ok {
+		return block
+	}
+
+	block, ok = ambientDoorBlockAt(seed, templateY, current)
+	if ok {
+		return block
+	}
+
+	return structureBlock(seed, worldX, templateY, worldZ, current, blocks, profile)
 }
 
 func newRegistered() (game.Generator, error) {

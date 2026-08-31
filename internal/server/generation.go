@@ -9,20 +9,6 @@ type preparedChunkGeneration struct {
 	position  game.ChunkPosition
 }
 
-func prepareChunkGeneration(world *game.World, position game.ChunkPosition) preparedChunkGeneration {
-	prepared := preparedChunkGeneration{
-		generator: world.Generator,
-		seed:      world.Seed,
-		position:  position,
-	}
-
-	if generator, ok := world.Generator.(game.ChunkGenerator); ok {
-		prepared.generated = generator.GenerateChunk(world.Seed, position)
-	}
-
-	return prepared
-}
-
 func (prepared preparedChunkGeneration) GenerateSection(sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
 	if prepared.generated != nil {
 		return prepared.generated.GenerateSection(sectionMinY, blocks)
@@ -45,4 +31,17 @@ func (prepared preparedChunkGeneration) BiomeAt(x, y, z int32) (game.Biome, bool
 	}
 
 	return 0, false
+}
+func prepareChunkGeneration(world *game.World, position game.ChunkPosition) preparedChunkGeneration {
+	prepared := preparedChunkGeneration{
+		generator: world.Generator,
+		seed:      world.Seed,
+		position:  position,
+	}
+
+	if generator, ok := world.Generator.(game.ChunkGenerator); ok {
+		prepared.generated = generator.GenerateChunk(world.Seed, position)
+	}
+
+	return prepared
 }

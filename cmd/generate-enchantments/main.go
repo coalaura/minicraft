@@ -50,6 +50,84 @@ type inputPaths struct {
 	ItemsPath           string
 }
 
+type tagResolver struct {
+	root  string
+	cache map[string][]string
+}
+
+func (resolver *tagResolver) expand(name string) ([]string, error) {
+	if resolver.cache == nil {
+		resolver.cache = make(map[string][]string)
+	}
+
+	return resolver.expandPath(name, make(map[string]bool))
+}
+
+func (resolver *tagResolver) expandPath(name string, visiting map[string]bool) ([]string, error) {
+	name = tagName(name)
+	cachedValues, exists := resolver.cache[name]
+
+	if exists {
+		return cachedValues, nil
+	}
+
+	if visiting[name] {
+		return nil, fmt.Errorf("tag cycle at %s", name)
+	}
+
+	visiting[name] = true
+	defer delete(visiting, name)
+
+	raw, err := os.ReadFile(filepath.Join(resolver.root, filepath.FromSlash(name)+".json"))
+	if err != nil {
+		return nil, fmt.Errorf("read tag %s: %w", name, err)
+	}
+
+	var definition tagDefinition
+
+	err = json.Unmarshal(raw, &definition)
+	if err != nil {
+		return nil, fmt.Errorf("parse tag %s: %w", name, err)
+	}
+
+	values := make([]string, 0, len(definition.Values))
+	seen := make(map[string]bool)
+
+	for _, rawValue := range definition.Values {
+		value, err := parseTagValue(rawValue)
+		if err != nil {
+			return nil, fmt.Errorf("parse tag %s: %w", name, err)
+		}
+
+		if strings.HasPrefix(value, "#") {
+			expanded, err := resolver.expandPath(value, visiting)
+
+			if err != nil {
+				return nil, err
+			}
+
+			for _, entry := range expanded {
+				if !seen[entry] {
+					values = append(values, entry)
+					seen[entry] = true
+				}
+			}
+
+			continue
+		}
+
+		value = tagName(value)
+		if !seen[value] {
+			values = append(values, value)
+			seen[value] = true
+		}
+	}
+
+	resolver.cache[name] = values
+
+	return values, nil
+}
+
 func main() {
 	paths := inputPaths{}
 
@@ -281,84 +359,6 @@ func readEnchantments(root string) (map[string]enchantmentDefinition, error) {
 	}
 
 	return definitions, nil
-}
-
-type tagResolver struct {
-	root  string
-	cache map[string][]string
-}
-
-func (resolver *tagResolver) expand(name string) ([]string, error) {
-	if resolver.cache == nil {
-		resolver.cache = make(map[string][]string)
-	}
-
-	return resolver.expandPath(name, make(map[string]bool))
-}
-
-func (resolver *tagResolver) expandPath(name string, visiting map[string]bool) ([]string, error) {
-	name = tagName(name)
-	cachedValues, exists := resolver.cache[name]
-
-	if exists {
-		return cachedValues, nil
-	}
-
-	if visiting[name] {
-		return nil, fmt.Errorf("tag cycle at %s", name)
-	}
-
-	visiting[name] = true
-	defer delete(visiting, name)
-
-	raw, err := os.ReadFile(filepath.Join(resolver.root, filepath.FromSlash(name)+".json"))
-	if err != nil {
-		return nil, fmt.Errorf("read tag %s: %w", name, err)
-	}
-
-	var definition tagDefinition
-
-	err = json.Unmarshal(raw, &definition)
-	if err != nil {
-		return nil, fmt.Errorf("parse tag %s: %w", name, err)
-	}
-
-	values := make([]string, 0, len(definition.Values))
-	seen := make(map[string]bool)
-
-	for _, rawValue := range definition.Values {
-		value, err := parseTagValue(rawValue)
-		if err != nil {
-			return nil, fmt.Errorf("parse tag %s: %w", name, err)
-		}
-
-		if strings.HasPrefix(value, "#") {
-			expanded, err := resolver.expandPath(value, visiting)
-
-			if err != nil {
-				return nil, err
-			}
-
-			for _, entry := range expanded {
-				if !seen[entry] {
-					values = append(values, entry)
-					seen[entry] = true
-				}
-			}
-
-			continue
-		}
-
-		value = tagName(value)
-		if !seen[value] {
-			values = append(values, value)
-			seen[value] = true
-		}
-	}
-
-	resolver.cache[name] = values
-
-	return values, nil
 }
 
 func parseTagValue(raw json.RawMessage) (string, error) {

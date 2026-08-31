@@ -23,14 +23,6 @@ var (
 	_ game.SpawnGenerator   = Generator{}
 )
 
-func init() {
-	generator.MustRegister(Name, newRegistered)
-}
-
-func New() game.Generator {
-	return Generator{}
-}
-
 func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	switch {
 	case position.Y < minimumY || position.Y > decorY:
@@ -86,6 +78,14 @@ func (Generator) GenerationBounds(_ int64, _ game.ChunkPosition) (int32, int32, 
 
 func (Generator) Spawn(_ int64) game.Position {
 	return game.Position{X: 0.5, Y: 70, Z: 0.5}
+}
+
+func init() {
+	generator.MustRegister(Name, newRegistered)
+}
+
+func New() game.Generator {
+	return Generator{}
 }
 
 func newRegistered() (game.Generator, error) {

@@ -7,6 +7,8 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
+const registryTestName = "registry-test-valid"
+
 type testGenerator struct{}
 
 type pointerGenerator struct{}
@@ -18,8 +20,6 @@ func (testGenerator) BlockAt(_ int64, _ game.BlockPosition) game.Block {
 func (*pointerGenerator) BlockAt(_ int64, _ game.BlockPosition) game.Block {
 	return game.Air
 }
-
-const registryTestName = "registry-test-valid"
 
 func TestRegisterAndCreate(t *testing.T) {
 	err := Register(registryTestName, func() (game.Generator, error) {

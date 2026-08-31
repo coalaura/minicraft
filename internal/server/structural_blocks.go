@@ -8,8 +8,6 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
-type horizontalDirection uint8
-
 const (
 	directionNorth horizontalDirection = iota
 	directionSouth
@@ -17,12 +15,9 @@ const (
 	directionEast
 )
 
-var horizontalDirections = [...]horizontalDirection{directionNorth, directionSouth, directionWest, directionEast}
+type horizontalDirection uint8
 
-func horizontalFacing(yaw float32) horizontalDirection {
-	index := int(math.Floor(float64(yaw/90)+0.5)) & 3
-	return [...]horizontalDirection{directionSouth, directionWest, directionNorth, directionEast}[index]
-}
+var horizontalDirections = [...]horizontalDirection{directionNorth, directionSouth, directionWest, directionEast}
 
 func (direction horizontalDirection) name() string {
 	return [...]string{"north", "south", "west", "east"}[direction]
@@ -71,62 +66,6 @@ func (direction horizontalDirection) offset(position game.BlockPosition) (game.B
 	return position, true
 }
 
-func directionFromName(name string) (horizontalDirection, bool) {
-	for _, direction := range horizontalDirections {
-		if direction.name() == name {
-			return direction, true
-		}
-	}
-
-	return 0, false
-}
-
-func sameBlockType(first, second game.Block) bool {
-	firstDefinition, firstOK := first.Definition()
-	secondDefinition, secondOK := second.Definition()
-
-	return firstOK && secondOK && firstDefinition.ID == secondDefinition.ID
-}
-
-func blockProperty(block game.Block, name string) string {
-	value, _ := block.Property(name)
-	return value
-}
-
-func blockPropertyInt(block game.Block, name string) int {
-	value, err := strconv.Atoi(blockProperty(block, name))
-	if err != nil {
-		return 0
-	}
-
-	return value
-}
-
-func withBlockProperties(block game.Block, values ...game.BlockPropertyValue) game.Block {
-	state, ok := block.WithProperties(values...)
-	if !ok {
-		return block
-	}
-
-	return state
-}
-
-func waterloggedMutationReplacement(current, replacement game.Block, cause blockMutationCause) game.Block {
-	currentFluid := current.FluidState()
-
-	doubleSlab := replacement.Behavior() == game.BlockBehaviorSlab && blockProperty(replacement, "type") == "double"
-	if (cause == blockMutationDirectPlace || cause == blockMutationStructural) && currentFluid.Type() == game.FluidTypeWater && replacement.Waterloggable() && !doubleSlab {
-		return withBlockProperties(replacement, game.BlockPropertyValue{Name: "waterlogged", Value: "true"})
-	}
-
-	waterlogged, valid := current.Property("waterlogged")
-	if (cause == blockMutationDirectBreak || cause == blockMutationSupportLoss || cause == blockMutationStructural) && replacement == game.Air && valid && waterlogged == "true" {
-		return game.Water
-	}
-
-	return replacement
-}
-
 func (r *Runtime) breakChanges(position game.BlockPosition) []game.BlockChange {
 	block := r.World.BlockAt(position)
 
@@ -151,10 +90,6 @@ func (r *Runtime) breakChanges(position game.BlockPosition) []game.BlockChange {
 	}
 
 	return changes
-}
-
-func isTwoBlockDoor(block game.Block) bool {
-	return block.Behavior() == game.BlockBehaviorDoor
 }
 
 func (r *Runtime) withAuthoritativeDoorChanges(primary []game.BlockChange) []game.BlockChange {
@@ -282,6 +217,71 @@ func (r *Runtime) withStructuralNeighborChanges(primary []game.BlockChange) []ga
 	}
 
 	return changes
+}
+
+func horizontalFacing(yaw float32) horizontalDirection {
+	index := int(math.Floor(float64(yaw/90)+0.5)) & 3
+	return [...]horizontalDirection{directionSouth, directionWest, directionNorth, directionEast}[index]
+}
+
+func directionFromName(name string) (horizontalDirection, bool) {
+	for _, direction := range horizontalDirections {
+		if direction.name() == name {
+			return direction, true
+		}
+	}
+
+	return 0, false
+}
+
+func sameBlockType(first, second game.Block) bool {
+	firstDefinition, firstOK := first.Definition()
+	secondDefinition, secondOK := second.Definition()
+
+	return firstOK && secondOK && firstDefinition.ID == secondDefinition.ID
+}
+
+func blockProperty(block game.Block, name string) string {
+	value, _ := block.Property(name)
+	return value
+}
+
+func blockPropertyInt(block game.Block, name string) int {
+	value, err := strconv.Atoi(blockProperty(block, name))
+	if err != nil {
+		return 0
+	}
+
+	return value
+}
+
+func withBlockProperties(block game.Block, values ...game.BlockPropertyValue) game.Block {
+	state, ok := block.WithProperties(values...)
+	if !ok {
+		return block
+	}
+
+	return state
+}
+
+func waterloggedMutationReplacement(current, replacement game.Block, cause blockMutationCause) game.Block {
+	currentFluid := current.FluidState()
+
+	doubleSlab := replacement.Behavior() == game.BlockBehaviorSlab && blockProperty(replacement, "type") == "double"
+	if (cause == blockMutationDirectPlace || cause == blockMutationStructural) && currentFluid.Type() == game.FluidTypeWater && replacement.Waterloggable() && !doubleSlab {
+		return withBlockProperties(replacement, game.BlockPropertyValue{Name: "waterlogged", Value: "true"})
+	}
+
+	waterlogged, valid := current.Property("waterlogged")
+	if (cause == blockMutationDirectBreak || cause == blockMutationSupportLoss || cause == blockMutationStructural) && replacement == game.Air && valid && waterlogged == "true" {
+		return game.Water
+	}
+
+	return replacement
+}
+
+func isTwoBlockDoor(block game.Block) bool {
+	return block.Behavior() == game.BlockBehaviorDoor
 }
 
 func enqueueStructuralNeighborhood(position game.BlockPosition, enqueue func(game.BlockPosition)) {

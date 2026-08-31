@@ -2,8 +2,6 @@ package game
 
 import "strconv"
 
-type TextColor string
-
 const (
 	TextColorGray  TextColor = "gray"
 	TextColorRed   TextColor = "red"
@@ -11,12 +9,14 @@ const (
 	TextColorGreen TextColor = "green"
 )
 
-type ClickAction string
-
 const (
 	ClickSuggestCommand  ClickAction = "suggest_command"
 	ClickCopyToClipboard ClickAction = "copy_to_clipboard"
 )
+
+type TextColor string
+
+type ClickAction string
 
 type ClickEvent struct {
 	Action ClickAction
@@ -36,14 +36,6 @@ type TextComponent struct {
 	Arguments []TextComponent
 	Siblings  []TextComponent
 	Style     TextStyle
-}
-
-func LiteralText(value string) TextComponent {
-	return TextComponent{Text: value}
-}
-
-func TranslatableText(key string, arguments ...TextComponent) TextComponent {
-	return TextComponent{Translate: key, Arguments: arguments}
 }
 
 func (component TextComponent) Append(siblings ...TextComponent) TextComponent {
@@ -74,6 +66,14 @@ func (component TextComponent) WithClickEvent(action ClickAction, value string) 
 	component.Style.ClickEvent = &ClickEvent{Action: action, Value: value}
 
 	return component
+}
+
+func LiteralText(value string) TextComponent {
+	return TextComponent{Text: value}
+}
+
+func TranslatableText(key string, arguments ...TextComponent) TextComponent {
+	return TextComponent{Translate: key, Arguments: arguments}
 }
 
 func formatInt32(value int32) string {

@@ -88,16 +88,6 @@ func (s *Session) allocateWindowID() int32 {
 	return s.nextWindowID
 }
 
-func NewSession(conn *protocol.Connection, cfg *config.Config, runtime *Runtime, log Logger) *Session {
-	return &Session{
-		Conn:            conn,
-		Config:          cfg,
-		Log:             log,
-		Runtime:         runtime,
-		offlineProfiles: defaultOfflineProfileResolver,
-	}
-}
-
 func (s *Session) Run(ctx context.Context) error {
 	if !s.Runtime.registerConnectedSession(s) {
 		return s.Conn.Close()
@@ -211,19 +201,6 @@ func (s *Session) sendSetCompression(threshold int) error {
 	return nil
 }
 
-func encodeDisconnectPacket(packetID int32, reason string) (protocol.Packet, error) {
-	var writer protocol.PacketWriter
-
-	protocol.PlayDisconnect{Reason: reason}.Encode(&writer)
-
-	err := writer.Err()
-	if err != nil {
-		return protocol.Packet{}, err
-	}
-
-	return protocol.Packet{ID: packetID, Data: writer.Buffer.Bytes()}, nil
-}
-
 func (s *Session) renderDistance() int32 {
 	if s.Config == nil {
 		return config.DefaultRenderDistance
@@ -289,4 +266,26 @@ func (s *Session) updatePlayerState(update func(*game.Player) bool) (game.Player
 	changed := update(s.Player)
 
 	return *s.Player, changed
+}
+func NewSession(conn *protocol.Connection, cfg *config.Config, runtime *Runtime, log Logger) *Session {
+	return &Session{
+		Conn:            conn,
+		Config:          cfg,
+		Log:             log,
+		Runtime:         runtime,
+		offlineProfiles: defaultOfflineProfileResolver,
+	}
+}
+
+func encodeDisconnectPacket(packetID int32, reason string) (protocol.Packet, error) {
+	var writer protocol.PacketWriter
+
+	protocol.PlayDisconnect{Reason: reason}.Encode(&writer)
+
+	err := writer.Err()
+	if err != nil {
+		return protocol.Packet{}, err
+	}
+
+	return protocol.Packet{ID: packetID, Data: writer.Buffer.Bytes()}, nil
 }

@@ -111,6 +111,15 @@ type itemEscapeDirection struct {
 	AxisPosition float64
 }
 
+type itemEntityMovement struct {
+	Position             game.Position
+	OnGround             bool
+	HorizontalCollisionX bool
+	HorizontalCollisionZ bool
+	VerticalCollision    bool
+	SlimeBounce          bool
+}
+
 func (entity *runtimeItemEntity) RuntimeEntityState() *RuntimeEntityState {
 	return &entity.State
 }
@@ -449,16 +458,6 @@ func (r *Runtime) spawnPlayerDroppedItem(player game.Player, stack game.ItemStac
 	}
 
 	return entity
-}
-
-func minecraftSin(value float64) float32 {
-	index := int64(value*10430.378350470453) & 65535
-	return float32(math.Sin(float64(index) / 10430.378350470453))
-}
-
-func minecraftCos(value float64) float32 {
-	index := int64(value*10430.378350470453+16384) & 65535
-	return float32(math.Sin(float64(index) / 10430.378350470453))
 }
 
 func (r *Runtime) nextEntityRandom() float32 {
@@ -985,67 +984,6 @@ func (r *Runtime) itemMergeCandidates(view runtimeEntityView) []*runtimeItemEnti
 	return candidates
 }
 
-func mergeItemEntities(entity, other *runtimeItemEntity) (bool, *runtimeItemEntity, *runtimeItemEntity) {
-	first := entity
-	second := other
-
-	if first.State.ID > second.State.ID {
-		swap := first
-		first = second
-		second = swap
-	}
-
-	first.State.mu.Lock()
-	second.State.mu.Lock()
-
-	defer first.State.mu.Unlock()
-	defer second.State.mu.Unlock()
-
-	if !entity.itemMergableLocked() || !other.itemMergableLocked() || entity.TargetUUID != other.TargetUUID {
-		return false, nil, nil
-	}
-
-	searchBox := itemEntityBox(entity.State.Position)
-
-	searchBox.MinX -= itemEntityMergeRadius
-	searchBox.MaxX += itemEntityMergeRadius
-	searchBox.MinZ -= itemEntityMergeRadius
-	searchBox.MaxZ += itemEntityMergeRadius
-
-	if !searchBox.Intersects(itemEntityBox(other.State.Position)) || !entity.Stack.SameItem(other.Stack) {
-		return false, nil, nil
-	}
-
-	definition, valid := entity.Stack.Item.Definition()
-	if !valid || entity.Stack.Count+other.Stack.Count > definition.StackSize {
-		return false, nil, nil
-	}
-
-	receiver := other
-	consumed := entity
-
-	if other.Stack.Count < entity.Stack.Count {
-		receiver = entity
-		consumed = other
-	}
-
-	maximum := min(definition.StackSize, int32(64))
-
-	transfer := min(maximum-receiver.Stack.Count, consumed.Stack.Count)
-	if transfer <= 0 {
-		return false, nil, nil
-	}
-
-	receiver.Stack.Count += transfer
-	consumed.Stack.Count -= transfer
-
-	receiver.PickupDelay = max(receiver.PickupDelay, consumed.PickupDelay)
-	receiver.Age = min(receiver.Age, consumed.Age)
-	receiver.State.metadataDirty = true
-
-	return consumed == entity, receiver, consumed
-}
-
 func (r *Runtime) itemEntityInsideCollision(position game.Position) bool {
 	box := itemEntityBox(position)
 
@@ -1116,30 +1054,6 @@ func (r *Runtime) itemVelocityTowardsClosestSpace(position game.Position, veloci
 	}
 
 	return velocity
-}
-
-func blockCollisionShapeFull(block game.Block, position game.BlockPosition) bool {
-	boxes := block.CollisionBoxes(position)
-	if len(boxes) != 1 {
-		return false
-	}
-
-	box := boxes[0]
-	return box.MinX == float64(position.X) && box.MinY == float64(position.Y) && box.MinZ == float64(position.Z) &&
-		box.MaxX == float64(position.X+1) && box.MaxY == float64(position.Y+1) && box.MaxZ == float64(position.Z+1)
-}
-
-func itemEntityBlockPosition(position game.Position) game.BlockPosition {
-	return game.BlockPosition{X: int32(math.Floor(position.X)), Y: int32(math.Floor(position.Y)), Z: int32(math.Floor(position.Z))}
-}
-
-type itemEntityMovement struct {
-	Position             game.Position
-	OnGround             bool
-	HorizontalCollisionX bool
-	HorizontalCollisionZ bool
-	VerticalCollision    bool
-	SlimeBounce          bool
 }
 
 func (r *Runtime) moveItemEntity(position game.Position, velocity game.Velocity) itemEntityMovement {
@@ -1213,6 +1127,102 @@ func (r *Runtime) blockFrictionBelow(position game.Position) float32 {
 	}
 }
 
+func (r *Runtime) blockBelowItem(position game.Position) game.Block {
+	blockPosition := game.BlockPosition{
+		X: int32(math.Floor(position.X)),
+		Y: int32(math.Floor(position.Y - 0.999999)),
+		Z: int32(math.Floor(position.Z)),
+	}
+
+	return r.World.BlockAt(blockPosition)
+}
+
+func minecraftSin(value float64) float32 {
+	index := int64(value*10430.378350470453) & 65535
+	return float32(math.Sin(float64(index) / 10430.378350470453))
+}
+
+func minecraftCos(value float64) float32 {
+	index := int64(value*10430.378350470453+16384) & 65535
+	return float32(math.Sin(float64(index) / 10430.378350470453))
+}
+
+func mergeItemEntities(entity, other *runtimeItemEntity) (bool, *runtimeItemEntity, *runtimeItemEntity) {
+	first := entity
+	second := other
+
+	if first.State.ID > second.State.ID {
+		swap := first
+		first = second
+		second = swap
+	}
+
+	first.State.mu.Lock()
+	second.State.mu.Lock()
+
+	defer first.State.mu.Unlock()
+	defer second.State.mu.Unlock()
+
+	if !entity.itemMergableLocked() || !other.itemMergableLocked() || entity.TargetUUID != other.TargetUUID {
+		return false, nil, nil
+	}
+
+	searchBox := itemEntityBox(entity.State.Position)
+
+	searchBox.MinX -= itemEntityMergeRadius
+	searchBox.MaxX += itemEntityMergeRadius
+	searchBox.MinZ -= itemEntityMergeRadius
+	searchBox.MaxZ += itemEntityMergeRadius
+
+	if !searchBox.Intersects(itemEntityBox(other.State.Position)) || !entity.Stack.SameItem(other.Stack) {
+		return false, nil, nil
+	}
+
+	definition, valid := entity.Stack.Item.Definition()
+	if !valid || entity.Stack.Count+other.Stack.Count > definition.StackSize {
+		return false, nil, nil
+	}
+
+	receiver := other
+	consumed := entity
+
+	if other.Stack.Count < entity.Stack.Count {
+		receiver = entity
+		consumed = other
+	}
+
+	maximum := min(definition.StackSize, int32(64))
+
+	transfer := min(maximum-receiver.Stack.Count, consumed.Stack.Count)
+	if transfer <= 0 {
+		return false, nil, nil
+	}
+
+	receiver.Stack.Count += transfer
+	consumed.Stack.Count -= transfer
+
+	receiver.PickupDelay = max(receiver.PickupDelay, consumed.PickupDelay)
+	receiver.Age = min(receiver.Age, consumed.Age)
+	receiver.State.metadataDirty = true
+
+	return consumed == entity, receiver, consumed
+}
+
+func blockCollisionShapeFull(block game.Block, position game.BlockPosition) bool {
+	boxes := block.CollisionBoxes(position)
+	if len(boxes) != 1 {
+		return false
+	}
+
+	box := boxes[0]
+	return box.MinX == float64(position.X) && box.MinY == float64(position.Y) && box.MinZ == float64(position.Z) &&
+		box.MaxX == float64(position.X+1) && box.MaxY == float64(position.Y+1) && box.MaxZ == float64(position.Z+1)
+}
+
+func itemEntityBlockPosition(position game.Position) game.BlockPosition {
+	return game.BlockPosition{X: int32(math.Floor(position.X)), Y: int32(math.Floor(position.Y)), Z: int32(math.Floor(position.Z))}
+}
+
 func collideAABBWithBlocks(box game.AABB, blocks []game.AABB, movement game.Velocity) game.Velocity {
 	movement.Y = collideY(box, blocks, movement.Y)
 	box = box.Translate(0, movement.Y, 0)
@@ -1230,16 +1240,6 @@ func collideAABBWithBlocks(box game.AABB, blocks []game.AABB, movement game.Velo
 	movement.Z = collideZ(box, blocks, movement.Z)
 
 	return movement
-}
-
-func (r *Runtime) blockBelowItem(position game.Position) game.Block {
-	blockPosition := game.BlockPosition{
-		X: int32(math.Floor(position.X)),
-		Y: int32(math.Floor(position.Y - 0.999999)),
-		Z: int32(math.Floor(position.Z)),
-	}
-
-	return r.World.BlockAt(blockPosition)
 }
 
 func itemEntityBox(position game.Position) game.AABB {

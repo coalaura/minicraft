@@ -6,12 +6,12 @@ import (
 	"sync/atomic"
 )
 
-type LightingMode uint8
-
 const (
 	LightingFullbright LightingMode = iota
 	LightingNormal
 )
+
+type LightingMode uint8
 
 type TimeState struct {
 	Age      int64
@@ -437,14 +437,6 @@ func (w *World) generatedBlockEntityAt(position BlockPosition) (BlockEntity, boo
 	return entity, present
 }
 
-func resolvedBlockEntityOverride(override blockEntityOverride) (BlockEntity, bool) {
-	if override.suppressed {
-		return BlockEntity{}, false
-	}
-
-	return override.entity.Clone(), true
-}
-
 func (w *World) updateBlockEntityForBlockChange(position BlockPosition, current, replacement Block, generated bool) {
 	currentType := BlockEntityTypeForBlock(current)
 	replacementType := BlockEntityTypeForBlock(replacement)
@@ -514,14 +506,6 @@ func (w *World) setBlock(position BlockPosition, block, generated Block) {
 	blocks[local] = block
 }
 
-func blockEntityRemovalNeedsGeneratedEntity(current, replacement Block) bool {
-	return BlockEntityTypeForBlock(current) != BlockEntityTypeNone && BlockEntityTypeForBlock(replacement) == BlockEntityTypeNone
-}
-
-func blockEntityMatchesBlock(entity BlockEntity, block Block) bool {
-	return entity.Type != BlockEntityTypeNone && entity.Type == BlockEntityTypeForBlock(block)
-}
-
 func (w *World) clearBlockOverride(chunk ChunkPosition, local LocalBlockPosition) {
 	blocks := w.overrides[chunk]
 	delete(blocks, local)
@@ -529,6 +513,22 @@ func (w *World) clearBlockOverride(chunk ChunkPosition, local LocalBlockPosition
 	if len(blocks) == 0 {
 		delete(w.overrides, chunk)
 	}
+}
+
+func resolvedBlockEntityOverride(override blockEntityOverride) (BlockEntity, bool) {
+	if override.suppressed {
+		return BlockEntity{}, false
+	}
+
+	return override.entity.Clone(), true
+}
+
+func blockEntityRemovalNeedsGeneratedEntity(current, replacement Block) bool {
+	return BlockEntityTypeForBlock(current) != BlockEntityTypeNone && BlockEntityTypeForBlock(replacement) == BlockEntityTypeNone
+}
+
+func blockEntityMatchesBlock(entity BlockEntity, block Block) bool {
+	return entity.Type != BlockEntityTypeNone && entity.Type == BlockEntityTypeForBlock(block)
 }
 
 func NewOverworld(generator Generator, seed ...int64) *World {

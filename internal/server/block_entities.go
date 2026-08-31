@@ -23,6 +23,18 @@ type RuntimeBlockEntityInteraction interface {
 	InteractBlock(*Runtime, *Session) error
 }
 
+type runtimeBlockEntityFactory func(game.BlockPosition, game.BlockEntity) RuntimeBlockEntity
+
+var runtimeBlockEntityFactories = map[game.BlockEntityType]runtimeBlockEntityFactory{
+	game.BlockEntityTypeChest:        newRuntimeChest,
+	game.BlockEntityTypeTrappedChest: newRuntimeChest,
+	game.BlockEntityTypeBarrel:       newRuntimeBarrel,
+	game.BlockEntityTypeFurnace:      newRuntimeFurnace,
+	game.BlockEntityTypeSmoker:       newRuntimeFurnace,
+	game.BlockEntityTypeBlastFurnace: newRuntimeFurnace,
+	game.BlockEntityTypeHopper:       newRuntimeHopper,
+}
+
 func (r *Runtime) commitBlockEntityRemovalEffects(records []blockMutationRecord) {
 	for _, record := range records {
 		if !record.hadPreviousEntity || record.previousEntity.Type == game.BlockEntityTypeForBlock(record.change.Replacement) {
@@ -73,18 +85,6 @@ func (r *Runtime) dropContainerContents(position game.BlockPosition, items []gam
 	}
 }
 
-type runtimeBlockEntityFactory func(game.BlockPosition, game.BlockEntity) RuntimeBlockEntity
-
-var runtimeBlockEntityFactories = map[game.BlockEntityType]runtimeBlockEntityFactory{
-	game.BlockEntityTypeChest:        newRuntimeChest,
-	game.BlockEntityTypeTrappedChest: newRuntimeChest,
-	game.BlockEntityTypeBarrel:       newRuntimeBarrel,
-	game.BlockEntityTypeFurnace:      newRuntimeFurnace,
-	game.BlockEntityTypeSmoker:       newRuntimeFurnace,
-	game.BlockEntityTypeBlastFurnace: newRuntimeFurnace,
-	game.BlockEntityTypeHopper:       newRuntimeHopper,
-}
-
 func (r *Runtime) newActiveChunk(position LoadedChunk) *ActiveChunk {
 	chunk := &ActiveChunk{Position: position}
 
@@ -108,15 +108,6 @@ func (r *Runtime) newActiveChunk(position LoadedChunk) *ActiveChunk {
 	}
 
 	return chunk
-}
-
-func realizeRuntimeBlockEntity(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
-	factory := runtimeBlockEntityFactories[entity.Type]
-	if factory == nil {
-		return nil
-	}
-
-	return factory(position, entity.Clone())
 }
 
 func (r *Runtime) runtimeBlockEntityAt(position game.BlockPosition) (RuntimeBlockEntity, bool) {
@@ -254,18 +245,6 @@ func (r *Runtime) closeMenuWithRemovalStateLocked(session *Session, notify, disc
 	}
 }
 
-func moveStackIntoPlayerInventory(playerMenu *menu, stack *game.ItemStack) bool {
-	before := stack.Clone()
-
-	candidate := playerMenu.candidate()
-
-	moveIntoSlots(candidate, stack, slotRange(9, 44))
-
-	playerMenu.commit(candidate)
-
-	return !stack.Equal(before)
-}
-
 func (r *Runtime) reconcileRuntimeBlockEntities(records []blockMutationRecord) {
 	for _, record := range records {
 		previousType := game.BlockEntityTypeForBlock(record.previous)
@@ -368,4 +347,24 @@ func (r *Runtime) tickOpenMenus() {
 	r.worldMutationMu.Unlock()
 
 	r.completeRuntimeBlockMutations(deliveries)
+}
+func realizeRuntimeBlockEntity(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
+	factory := runtimeBlockEntityFactories[entity.Type]
+	if factory == nil {
+		return nil
+	}
+
+	return factory(position, entity.Clone())
+}
+
+func moveStackIntoPlayerInventory(playerMenu *menu, stack *game.ItemStack) bool {
+	before := stack.Clone()
+
+	candidate := playerMenu.candidate()
+
+	moveIntoSlots(candidate, stack, slotRange(9, 44))
+
+	playerMenu.commit(candidate)
+
+	return !stack.Equal(before)
 }

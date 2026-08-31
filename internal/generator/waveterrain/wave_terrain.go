@@ -24,14 +24,6 @@ var (
 	_ game.GeneratedChunk   = (*generatedChunk)(nil)
 )
 
-func init() {
-	generator.MustRegister(Name, newRegistered)
-}
-
-func New() game.Generator {
-	return Generator{}
-}
-
 func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	if position.Y <= surfaceHeight(seed, position.X, position.Z) {
 		return game.Stone
@@ -48,29 +40,6 @@ func (Generator) GenerateSection(seed int64, chunk game.ChunkPosition, sectionMi
 func (Generator) GenerateChunk(seed int64, chunk game.ChunkPosition) game.GeneratedChunk {
 	generated := generateChunk(seed, chunk)
 	return &generated
-}
-
-func generateChunk(seed int64, chunk game.ChunkPosition) generatedChunk {
-	generated := generatedChunk{
-		minHeight: int32(1<<31 - 1),
-		maxHeight: int32(-1 << 31),
-	}
-
-	chunkMinX := chunk.X * game.ChunkWidth
-	chunkMinZ := chunk.Z * game.ChunkWidth
-
-	for localZ := range int32(game.ChunkWidth) {
-		for localX := range int32(game.ChunkWidth) {
-			height := surfaceHeight(seed, chunkMinX+localX, chunkMinZ+localZ)
-
-			generated.heights[localZ*game.ChunkWidth+localX] = height
-
-			generated.minHeight = min(generated.minHeight, height)
-			generated.maxHeight = max(generated.maxHeight, height)
-		}
-	}
-
-	return generated
 }
 
 func (generated *generatedChunk) GenerateSection(sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
@@ -108,6 +77,37 @@ func (Generator) GenerationBounds(_ int64, _ game.ChunkPosition) (int32, int32, 
 
 func (Generator) Spawn(_ int64) game.Position {
 	return game.Position{X: 0.5, Y: 70, Z: 0.5}
+}
+
+func init() {
+	generator.MustRegister(Name, newRegistered)
+}
+
+func New() game.Generator {
+	return Generator{}
+}
+
+func generateChunk(seed int64, chunk game.ChunkPosition) generatedChunk {
+	generated := generatedChunk{
+		minHeight: int32(1<<31 - 1),
+		maxHeight: int32(-1 << 31),
+	}
+
+	chunkMinX := chunk.X * game.ChunkWidth
+	chunkMinZ := chunk.Z * game.ChunkWidth
+
+	for localZ := range int32(game.ChunkWidth) {
+		for localX := range int32(game.ChunkWidth) {
+			height := surfaceHeight(seed, chunkMinX+localX, chunkMinZ+localZ)
+
+			generated.heights[localZ*game.ChunkWidth+localX] = height
+
+			generated.minHeight = min(generated.minHeight, height)
+			generated.maxHeight = max(generated.maxHeight, height)
+		}
+	}
+
+	return generated
 }
 
 func newRegistered() (game.Generator, error) {

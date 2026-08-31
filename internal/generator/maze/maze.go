@@ -19,14 +19,14 @@ const (
 	passageEnd   = walkwayWidth
 )
 
-type direction uint8
-
 const (
 	directionNorth direction = iota
 	directionEast
 	directionSouth
 	directionWest
 )
+
+type direction uint8
 
 type orientation struct {
 	horizontal direction
@@ -48,14 +48,6 @@ var (
 	_ game.SpawnGenerator   = Generator{}
 	_ game.GeneratedChunk   = (*generatedChunk)(nil)
 )
-
-func init() {
-	generator.MustRegister(Name, newRegistered)
-}
-
-func New() game.Generator {
-	return Generator{}
-}
 
 func (Generator) BlockAt(seed int64, position game.BlockPosition) game.Block {
 	if position.Y < floorY || position.Y > wallMaxY {
@@ -97,28 +89,6 @@ func (Generator) Spawn(_ int64) game.Position {
 		Y: float64(wallMinY),
 		Z: center,
 	}
-}
-
-func newRegistered() (game.Generator, error) {
-	return New(), nil
-}
-
-func generateChunk(seed int64, chunk game.ChunkPosition) generatedChunk {
-	generated := generatedChunk{chunk: chunk}
-
-	chunkMinX := chunk.X * game.ChunkWidth
-	chunkMinZ := chunk.Z * game.ChunkWidth
-
-	for localZ := range int32(game.ChunkWidth) {
-		worldZ := chunkMinZ + localZ
-
-		for localX := range int32(game.ChunkWidth) {
-			worldX := chunkMinX + localX
-			generated.walls[localZ*game.ChunkWidth+localX] = isWall(seed, worldX, worldZ)
-		}
-	}
-
-	return generated
 }
 
 func (generated *generatedChunk) GenerateSection(sectionMinY int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
@@ -168,6 +138,36 @@ func (generated *generatedChunk) GenerateSection(sectionMinY int32, blocks *[gam
 	}
 
 	return first, uniform
+}
+
+func init() {
+	generator.MustRegister(Name, newRegistered)
+}
+
+func New() game.Generator {
+	return Generator{}
+}
+
+func newRegistered() (game.Generator, error) {
+	return New(), nil
+}
+
+func generateChunk(seed int64, chunk game.ChunkPosition) generatedChunk {
+	generated := generatedChunk{chunk: chunk}
+
+	chunkMinX := chunk.X * game.ChunkWidth
+	chunkMinZ := chunk.Z * game.ChunkWidth
+
+	for localZ := range int32(game.ChunkWidth) {
+		worldZ := chunkMinZ + localZ
+
+		for localX := range int32(game.ChunkWidth) {
+			worldX := chunkMinX + localX
+			generated.walls[localZ*game.ChunkWidth+localX] = isWall(seed, worldX, worldZ)
+		}
+	}
+
+	return generated
 }
 
 func blockForColumn(worldY int32, wall bool) game.Block {

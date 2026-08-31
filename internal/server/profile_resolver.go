@@ -49,16 +49,6 @@ var defaultOfflineProfileResolver = newOfflineProfileResolver(
 	defaultProfileCacheTTL,
 )
 
-func newOfflineProfileResolver(client *http.Client, profileLookupURL, sessionProfileURL string, cacheTTL time.Duration) *offlineProfileResolver {
-	return &offlineProfileResolver{
-		client:            client,
-		profileLookupURL:  strings.TrimRight(profileLookupURL, "/"),
-		sessionProfileURL: strings.TrimRight(sessionProfileURL, "/"),
-		cacheTTL:          cacheTTL,
-		cache:             make(map[string]profileCacheEntry),
-	}
-}
-
 func (resolver *offlineProfileResolver) resolve(ctx context.Context, username string) ([]game.ProfileProperty, error) {
 	cacheKey := strings.ToLower(username)
 
@@ -190,6 +180,16 @@ func (resolver *offlineProfileResolver) store(cacheKey string, properties []game
 	resolver.cache[cacheKey] = profileCacheEntry{
 		properties: cloneProfileProperties(properties),
 		expiresAt:  time.Now().Add(resolver.cacheTTL),
+	}
+}
+
+func newOfflineProfileResolver(client *http.Client, profileLookupURL, sessionProfileURL string, cacheTTL time.Duration) *offlineProfileResolver {
+	return &offlineProfileResolver{
+		client:            client,
+		profileLookupURL:  strings.TrimRight(profileLookupURL, "/"),
+		sessionProfileURL: strings.TrimRight(sessionProfileURL, "/"),
+		cacheTTL:          cacheTTL,
+		cache:             make(map[string]profileCacheEntry),
 	}
 }
 

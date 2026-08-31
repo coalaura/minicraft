@@ -7,20 +7,6 @@ const (
 	SectionVolume = ChunkWidth * ChunkWidth * ChunkWidth
 )
 
-type Block uint16
-
-type BlockID uint16
-
-type BlockBehavior uint8
-
-type BlockCollision uint8
-
-type BlockSoundType uint8
-
-type BlockTrait uint32
-
-type BlockFace uint8
-
 const (
 	BlockFaceDown BlockFace = iota
 	BlockFaceUp
@@ -52,13 +38,6 @@ const (
 	BlockTraitWool
 	BlockTraitFluidExcluded
 )
-
-type BlockMining struct {
-	Hardness     float32
-	LootProgram  uint16
-	RequiresTool bool
-	Destroyable  bool
-}
 
 const (
 	BlockBehaviorNone BlockBehavior = iota
@@ -98,6 +77,27 @@ const (
 	BlockCollisionChest
 	BlockCollisionHopper
 )
+
+type Block uint16
+
+type BlockID uint16
+
+type BlockBehavior uint8
+
+type BlockCollision uint8
+
+type BlockSoundType uint8
+
+type BlockTrait uint32
+
+type BlockFace uint8
+
+type BlockMining struct {
+	Hardness     float32
+	LootProgram  uint16
+	RequiresTool bool
+	Destroyable  bool
+}
 
 type BlockProperty struct {
 	Name   string
@@ -213,23 +213,6 @@ func (block Block) IsRedstoneConductor() bool {
 
 	box := boxes[0]
 	return box.MinX == 0 && box.MinY == 0 && box.MinZ == 0 && box.MaxX == 1 && box.MaxY == 1 && box.MaxZ == 1
-}
-
-func redstoneConductorNever(name string) bool {
-	if strings.HasSuffix(name, "_leaves") || strings.HasSuffix(name, "_stained_glass") {
-		return true
-	}
-
-	if strings.HasSuffix(name, "copper_grate") || strings.HasSuffix(name, "copper_bulb") {
-		return true
-	}
-
-	switch name {
-	case "glass", "sticky_piston", "piston", "moving_piston", "tnt", "ice", "glowstone", "beacon", "redstone_block", "sea_lantern", "chorus_flower", "frosted_ice", "observer", "bamboo", "scaffolding", "tinted_glass", "powder_snow", "pointed_dripstone":
-		return true
-	default:
-		return false
-	}
 }
 
 func (block Block) Behavior() BlockBehavior {
@@ -380,14 +363,6 @@ func (block Block) WithProperties(values ...BlockPropertyValue) (Block, bool) {
 	return definition.StateForProperties(indices...)
 }
 
-func BlockByID(id BlockID) (BlockDefinition, bool) {
-	if id > MaxBlockID {
-		return BlockDefinition{}, false
-	}
-
-	return blockDefinitions[id], true
-}
-
 func (property BlockProperty) ValueIndex(value string) int {
 	for index, candidate := range property.Values {
 		if candidate == value {
@@ -457,3 +432,27 @@ func (definition BlockDefinition) propertyIndices(block Block) []int {
 }
 
 //go:generate go run ../../cmd/generate-blocks -input ../../data/blocks.json -items ../../data/items.json -tags ../../data/block_tags -loot ../../data/block_loot -output blocks_generated.go -protocol-output ../protocol/block_tags_generated.go
+func redstoneConductorNever(name string) bool {
+	if strings.HasSuffix(name, "_leaves") || strings.HasSuffix(name, "_stained_glass") {
+		return true
+	}
+
+	if strings.HasSuffix(name, "copper_grate") || strings.HasSuffix(name, "copper_bulb") {
+		return true
+	}
+
+	switch name {
+	case "glass", "sticky_piston", "piston", "moving_piston", "tnt", "ice", "glowstone", "beacon", "redstone_block", "sea_lantern", "chorus_flower", "frosted_ice", "observer", "bamboo", "scaffolding", "tinted_glass", "powder_snow", "pointed_dripstone":
+		return true
+	default:
+		return false
+	}
+}
+
+func BlockByID(id BlockID) (BlockDefinition, bool) {
+	if id > MaxBlockID {
+		return BlockDefinition{}, false
+	}
+
+	return blockDefinitions[id], true
+}

@@ -4,6 +4,12 @@ import "slices"
 
 //go:generate go run ../../cmd/generate-recipes -items ../../data/items.json -recipes ../../data/recipes -tags ../../data/item_tags -output recipes_generated.go
 
+const (
+	CookingRecipeSmelting CookingRecipeType = iota
+	CookingRecipeSmoking
+	CookingRecipeBlasting
+)
+
 type Ingredient struct {
 	alternatives []Item
 }
@@ -22,12 +28,6 @@ type Recipe struct {
 }
 
 type CookingRecipeType uint8
-
-const (
-	CookingRecipeSmelting CookingRecipeType = iota
-	CookingRecipeSmoking
-	CookingRecipeBlasting
-)
 
 type CookingRecipe struct {
 	name        string
@@ -78,6 +78,22 @@ func (recipe Recipe) Shaped() (ShapedRecipe, bool) {
 
 func (recipe Recipe) Shapeless() []Ingredient {
 	return cloneIngredients(recipe.shapeless)
+}
+
+func (recipe CookingRecipe) Name() string {
+	return recipe.name
+}
+
+func (recipe CookingRecipe) Result() ItemStack {
+	return recipe.result.Clone()
+}
+
+func (recipe CookingRecipe) Experience() float32 {
+	return recipe.experience
+}
+
+func (recipe CookingRecipe) CookingTime() int32 {
+	return recipe.cookingTime
 }
 
 // CraftingRecipes returns copies so callers cannot alter the generated catalogue.
@@ -168,22 +184,6 @@ func CookingRecipeInputs(recipeType CookingRecipeType) []Item {
 	slices.Sort(inputs)
 
 	return inputs
-}
-
-func (recipe CookingRecipe) Name() string {
-	return recipe.name
-}
-
-func (recipe CookingRecipe) Result() ItemStack {
-	return recipe.result.Clone()
-}
-
-func (recipe CookingRecipe) Experience() float32 {
-	return recipe.experience
-}
-
-func (recipe CookingRecipe) CookingTime() int32 {
-	return recipe.cookingTime
 }
 
 func FuelDuration(item Item) int32 {

@@ -28,6 +28,23 @@ type SetCompression struct {
 	Threshold int32
 }
 
+func (p EncryptionRequest) Encode(wr *PacketWriter) {
+	wr.String(p.ServerID)
+	wr.Bytes(p.PublicKey)
+	wr.Bytes(p.VerifyToken)
+	wr.Bool(true)
+}
+
+func (p LoginSuccess) Encode(wr *PacketWriter) {
+	wr.UUID(p.UUID)
+	wr.String(p.Username)
+	encodeProfileProperties(wr, p.Properties)
+}
+
+func (p SetCompression) Encode(wr *PacketWriter) {
+	wr.VarInt(p.Threshold)
+}
+
 func DecodeLoginStart(data []byte) (LoginStart, error) {
 	rd := NewPacketReader(data)
 
@@ -58,23 +75,6 @@ func DecodeEncryptionResponse(data []byte) (EncryptionResponse, error) {
 	}
 
 	return response, nil
-}
-
-func (p EncryptionRequest) Encode(wr *PacketWriter) {
-	wr.String(p.ServerID)
-	wr.Bytes(p.PublicKey)
-	wr.Bytes(p.VerifyToken)
-	wr.Bool(true)
-}
-
-func (p LoginSuccess) Encode(wr *PacketWriter) {
-	wr.UUID(p.UUID)
-	wr.String(p.Username)
-	encodeProfileProperties(wr, p.Properties)
-}
-
-func (p SetCompression) Encode(wr *PacketWriter) {
-	wr.VarInt(p.Threshold)
 }
 
 func encodeProfileProperties(wr *PacketWriter, properties []game.ProfileProperty) {

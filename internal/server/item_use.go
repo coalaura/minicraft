@@ -47,55 +47,6 @@ func (s *Session) handleUseItem(interaction protocol.UseItem) (err error) {
 	return err
 }
 
-func validItemUse(interaction protocol.UseItem) bool {
-	if interaction.Hand != protocol.MainHand && interaction.Hand != protocol.OffHand {
-		return false
-	}
-
-	return validPlayerRotation(interaction.Yaw, interaction.Pitch)
-}
-
-func useBucketItem(session *Session, stack game.ItemStack, hand int32) (bool, error) {
-	player := session.snapshotPlayer()
-
-	if stack.Item == game.ItemBucket {
-		hit, found := session.Runtime.raycastItemGrid(player, itemUseRange, bucketFillTarget)
-		if !found || !sourceFluid(session.Runtime.World.BlockAt(hit.position)) || !blockWithinInteractionRange(player, hit.position) {
-			return false, nil
-		}
-
-		return session.Runtime.fillBucket(session, hand, stack, hit.position)
-	}
-
-	fluid, filled := bucketFluid(stack.Item)
-	if !filled {
-		return false, nil
-	}
-
-	hit, found := session.Runtime.raycastItemGrid(player, itemUseRange, bucketPlacementTarget)
-	if !found || !blockWithinInteractionRange(player, hit.position) {
-		return false, nil
-	}
-
-	target := hit.position
-
-	clicked := session.Runtime.World.BlockAt(hit.position)
-	if fluid == game.Water && canWaterlog(clicked) {
-		return session.Runtime.waterlogBucket(session, hand, stack, target, clicked)
-	}
-
-	if hit.face < protocol.BlockFaceDown || hit.face > protocol.BlockFaceEast {
-		return false, nil
-	}
-
-	target, found = placementTarget(hit.position, hit.face)
-	if !found {
-		return false, nil
-	}
-
-	return session.Runtime.emptyBucket(session, hand, stack, target, fluid)
-}
-
 func (r *Runtime) useBucketOn(session *Session, interaction protocol.UseItemOn, stack game.ItemStack) (bool, error) {
 	if !worldPositionValid(interaction.Position) || !blockWithinInteractionRange(session.snapshotPlayer(), interaction.Position) {
 		return false, nil
@@ -321,6 +272,55 @@ func (r *Runtime) transformBucketHeldStack(session *Session, hand int32, expecte
 	}
 
 	return true, nil
+}
+
+func validItemUse(interaction protocol.UseItem) bool {
+	if interaction.Hand != protocol.MainHand && interaction.Hand != protocol.OffHand {
+		return false
+	}
+
+	return validPlayerRotation(interaction.Yaw, interaction.Pitch)
+}
+
+func useBucketItem(session *Session, stack game.ItemStack, hand int32) (bool, error) {
+	player := session.snapshotPlayer()
+
+	if stack.Item == game.ItemBucket {
+		hit, found := session.Runtime.raycastItemGrid(player, itemUseRange, bucketFillTarget)
+		if !found || !sourceFluid(session.Runtime.World.BlockAt(hit.position)) || !blockWithinInteractionRange(player, hit.position) {
+			return false, nil
+		}
+
+		return session.Runtime.fillBucket(session, hand, stack, hit.position)
+	}
+
+	fluid, filled := bucketFluid(stack.Item)
+	if !filled {
+		return false, nil
+	}
+
+	hit, found := session.Runtime.raycastItemGrid(player, itemUseRange, bucketPlacementTarget)
+	if !found || !blockWithinInteractionRange(player, hit.position) {
+		return false, nil
+	}
+
+	target := hit.position
+
+	clicked := session.Runtime.World.BlockAt(hit.position)
+	if fluid == game.Water && canWaterlog(clicked) {
+		return session.Runtime.waterlogBucket(session, hand, stack, target, clicked)
+	}
+
+	if hit.face < protocol.BlockFaceDown || hit.face > protocol.BlockFaceEast {
+		return false, nil
+	}
+
+	target, found = placementTarget(hit.position, hit.face)
+	if !found {
+		return false, nil
+	}
+
+	return session.Runtime.emptyBucket(session, hand, stack, target, fluid)
 }
 
 func bucketInventoryResult(player game.Player, hand int32, expected game.ItemStack, result game.Item) (game.PlayerInventory, game.ItemStack, bool) {

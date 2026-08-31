@@ -9,6 +9,8 @@ import (
 	"github.com/coalaura/minicraft/internal/generator"
 )
 
+const terrainSeed = int64(1234)
+
 type sectionTestCase struct {
 	seed        int64
 	chunk       game.ChunkPosition
@@ -56,8 +58,6 @@ func TestTerrainIsDeterministicAndSeeded(t *testing.T) {
 		t.Fatal("different seeds produced the same test surface height")
 	}
 }
-
-const terrainSeed = int64(1234)
 
 func TestTerrainFillsThroughItsSurface(t *testing.T) {
 	generated := Generator{}

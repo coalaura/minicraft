@@ -130,27 +130,6 @@ func (s *Session) sendPlayerEquipment(player game.Player, slots ...byte) error {
 	})
 }
 
-func visibleEquipmentSlots(player game.Player) []byte {
-	var slots []byte
-
-	held := player.Inventory.Held(player.SelectedHotbarSlot)
-	if held != nil && !held.Empty() {
-		slots = append(slots, protocol.EquipmentSlotMainHand)
-	}
-
-	if !player.Inventory.Offhand.Empty() {
-		slots = append(slots, protocol.EquipmentSlotOffHand)
-	}
-
-	for index := len(player.Inventory.Armor) - 1; index >= 0; index-- {
-		if !player.Inventory.Armor[index].Empty() {
-			slots = append(slots, protocol.EquipmentSlotFeet+byte(len(player.Inventory.Armor)-1-index))
-		}
-	}
-
-	return slots
-}
-
 func (s *Session) sendPlayerMovement(previous, current game.Player) error {
 	deltaX, xRelative := protocolPositionDelta(previous.Position.X, current.Position.X)
 	deltaY, yRelative := protocolPositionDelta(previous.Position.Y, current.Position.Y)
@@ -312,6 +291,27 @@ func (s *Session) writePacket(packetID int32, encoder PacketEncoder) error {
 		ID:   packetID,
 		Data: wr.Buffer.Bytes(),
 	})
+}
+
+func visibleEquipmentSlots(player game.Player) []byte {
+	var slots []byte
+
+	held := player.Inventory.Held(player.SelectedHotbarSlot)
+	if held != nil && !held.Empty() {
+		slots = append(slots, protocol.EquipmentSlotMainHand)
+	}
+
+	if !player.Inventory.Offhand.Empty() {
+		slots = append(slots, protocol.EquipmentSlotOffHand)
+	}
+
+	for index := len(player.Inventory.Armor) - 1; index >= 0; index-- {
+		if !player.Inventory.Armor[index].Empty() {
+			slots = append(slots, protocol.EquipmentSlotFeet+byte(len(player.Inventory.Armor)-1-index))
+		}
+	}
+
+	return slots
 }
 
 func protocolAngle(angle float32) byte {

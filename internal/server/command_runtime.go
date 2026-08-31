@@ -10,13 +10,13 @@ import (
 
 const gameEventChangeGameMode = 3
 
-type enchantHeldItemResult uint8
-
 const (
 	enchantHeldItemSuccess enchantHeldItemResult = iota
 	enchantHeldItemEmpty
 	enchantHeldItemIncompatible
 )
+
+type enchantHeldItemResult uint8
 
 func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) (bool, error) {
 	r.worldMutationMu.Lock()

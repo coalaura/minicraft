@@ -16,24 +16,6 @@ type Handshake struct {
 	NextState       int32
 }
 
-func decodeHandshake(data []byte) (Handshake, error) {
-	rd := protocol.NewPacketReader(data)
-
-	handshake := Handshake{
-		ProtocolVersion: rd.VarInt(),
-		ServerAddress:   rd.String(255),
-		ServerPort:      uint16(rd.Short()),
-		NextState:       rd.VarInt(),
-	}
-
-	err := rd.Done("handshake")
-	if err != nil {
-		return Handshake{}, err
-	}
-
-	return handshake, nil
-}
-
 func (s *Session) handleHandshake(ctx context.Context) error {
 	s.Log.Printf("[handshake] %s - new connection\n", s.Conn.RemoteAddr())
 
@@ -69,4 +51,21 @@ func (s *Session) handleHandshake(ctx context.Context) error {
 	default:
 		return fmt.Errorf("invalid next state %d", handshake.NextState)
 	}
+}
+func decodeHandshake(data []byte) (Handshake, error) {
+	rd := protocol.NewPacketReader(data)
+
+	handshake := Handshake{
+		ProtocolVersion: rd.VarInt(),
+		ServerAddress:   rd.String(255),
+		ServerPort:      uint16(rd.Short()),
+		NextState:       rd.VarInt(),
+	}
+
+	err := rd.Done("handshake")
+	if err != nil {
+		return Handshake{}, err
+	}
+
+	return handshake, nil
 }

@@ -590,23 +590,6 @@ func (s *Session) handlePlayerInput(input protocol.PlayerInput) {
 	s.Runtime.UpdateSneaking(s, input.Flags&protocol.PlayerInputSneak != 0)
 }
 
-func validPlayerPosition(x, y, z float64) bool {
-	coordinates := [...]float64{x, y, z}
-
-	for _, coordinate := range coordinates {
-		if math.IsNaN(coordinate) || math.IsInf(coordinate, 0) || math.Abs(coordinate) > MaxPlayerCoordinate {
-			return false
-		}
-	}
-
-	return true
-}
-
-func validPlayerRotation(yaw, pitch float32) bool {
-	return !math.IsNaN(float64(yaw)) && !math.IsInf(float64(yaw), 0) &&
-		!math.IsNaN(float64(pitch)) && !math.IsInf(float64(pitch), 0)
-}
-
 func (s *Session) handleSwingArm(swing protocol.SwingArm) {
 	animation := byte(protocol.EntityAnimationSwingMainHand)
 
@@ -623,4 +606,20 @@ func (s *Session) handleSwingArm(swing protocol.SwingArm) {
 
 func (s *Session) handlePlayerLoaded() {
 	s.Log.Printf("[play] player loaded\n")
+}
+func validPlayerPosition(x, y, z float64) bool {
+	coordinates := [...]float64{x, y, z}
+
+	for _, coordinate := range coordinates {
+		if math.IsNaN(coordinate) || math.IsInf(coordinate, 0) || math.Abs(coordinate) > MaxPlayerCoordinate {
+			return false
+		}
+	}
+
+	return true
+}
+
+func validPlayerRotation(yaw, pitch float32) bool {
+	return !math.IsNaN(float64(yaw)) && !math.IsInf(float64(yaw), 0) &&
+		!math.IsNaN(float64(pitch)) && !math.IsInf(float64(pitch), 0)
 }

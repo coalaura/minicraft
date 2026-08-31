@@ -43,40 +43,6 @@ var (
 	fluidSides = []game.BlockPosition{{X: -1}, {X: 1}, {Z: -1}, {Z: 1}}
 )
 
-func fluidForBlock(block game.Block) (FlowingFluid, bool) {
-	state := block.FluidState()
-
-	switch state.Type() {
-	case game.FluidTypeWater:
-		return waterFluid, true
-	case game.FluidTypeLava:
-		return lavaFluid, true
-	default:
-		return FlowingFluid{}, false
-	}
-}
-
-func fluidBlock(fluid FlowingFluid, level int) game.Block {
-	block, valid := fluid.block.WithProperties(game.BlockPropertyValue{Name: "level", Value: strconv.Itoa(level)})
-	if !valid {
-		return fluid.block
-	}
-
-	return block
-}
-
-func fluidBlockForAmount(fluid FlowingFluid, amount int, falling bool) game.Block {
-	if amount < 1 {
-		return game.Air
-	}
-
-	if falling {
-		return fluidBlock(fluid, 8)
-	}
-
-	return fluidBlock(fluid, 8-amount)
-}
-
 func (r *Runtime) scheduleFluidNeighborsLocked(changes []game.BlockChange) {
 	for _, change := range changes {
 		positions := [7]game.BlockPosition{
@@ -639,38 +605,6 @@ func (r *Runtime) fluidSlopeDistance(position game.BlockPosition, fluid FlowingF
 	return bestDistance
 }
 
-func fluidFace(offset game.BlockPosition) game.BlockFace {
-	if offset.X < 0 {
-		return game.BlockFaceWest
-	}
-
-	if offset.X > 0 {
-		return game.BlockFaceEast
-	}
-
-	if offset.Z < 0 {
-		return game.BlockFaceNorth
-	}
-
-	return game.BlockFaceSouth
-}
-
-func oppositeFluidFace(offset game.BlockPosition) game.BlockFace {
-	if offset.X < 0 {
-		return game.BlockFaceEast
-	}
-
-	if offset.X > 0 {
-		return game.BlockFaceWest
-	}
-
-	if offset.Z < 0 {
-		return game.BlockFaceSouth
-	}
-
-	return game.BlockFaceNorth
-}
-
 func (r *Runtime) mutateFluidLocked(changes []game.BlockChange, fluidType game.FluidType) {
 	fizzPositions := make([]game.BlockPosition, 0)
 
@@ -735,4 +669,69 @@ func (r *Runtime) queueFluidFizzLocked(position game.BlockPosition) {
 	r.blockMutationDeliveryTail = deliveryComplete
 
 	r.runtimeBlockMutations = append(r.runtimeBlockMutations, queuedBlockMutation{result: BlockMutationResult{Changed: true}, delivery: delivery})
+}
+func fluidForBlock(block game.Block) (FlowingFluid, bool) {
+	state := block.FluidState()
+
+	switch state.Type() {
+	case game.FluidTypeWater:
+		return waterFluid, true
+	case game.FluidTypeLava:
+		return lavaFluid, true
+	default:
+		return FlowingFluid{}, false
+	}
+}
+
+func fluidBlock(fluid FlowingFluid, level int) game.Block {
+	block, valid := fluid.block.WithProperties(game.BlockPropertyValue{Name: "level", Value: strconv.Itoa(level)})
+	if !valid {
+		return fluid.block
+	}
+
+	return block
+}
+
+func fluidBlockForAmount(fluid FlowingFluid, amount int, falling bool) game.Block {
+	if amount < 1 {
+		return game.Air
+	}
+
+	if falling {
+		return fluidBlock(fluid, 8)
+	}
+
+	return fluidBlock(fluid, 8-amount)
+}
+
+func fluidFace(offset game.BlockPosition) game.BlockFace {
+	if offset.X < 0 {
+		return game.BlockFaceWest
+	}
+
+	if offset.X > 0 {
+		return game.BlockFaceEast
+	}
+
+	if offset.Z < 0 {
+		return game.BlockFaceNorth
+	}
+
+	return game.BlockFaceSouth
+}
+
+func oppositeFluidFace(offset game.BlockPosition) game.BlockFace {
+	if offset.X < 0 {
+		return game.BlockFaceEast
+	}
+
+	if offset.X > 0 {
+		return game.BlockFaceWest
+	}
+
+	if offset.Z < 0 {
+		return game.BlockFaceSouth
+	}
+
+	return game.BlockFaceNorth
 }

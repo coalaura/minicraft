@@ -89,6 +89,107 @@ type tagResolver struct {
 	resolving map[string]bool
 }
 
+func (source *ingredientSource) UnmarshalJSON(raw []byte) error {
+	var single string
+
+	err := json.Unmarshal(raw, &single)
+	if err == nil {
+		*source = []string{single}
+
+		return nil
+	}
+
+	var alternatives []string
+
+	err = json.Unmarshal(raw, &alternatives)
+	if err != nil {
+		return err
+	}
+
+	*source = alternatives
+
+	return nil
+}
+
+func (resolver *tagResolver) resolveIngredient(source ingredientSource) (generatedIngredient, error) {
+	if len(source) == 0 {
+		return generatedIngredient{}, fmt.Errorf("empty ingredient")
+	}
+
+	ingredient := generatedIngredient{}
+
+	for _, value := range source {
+		alternatives, err := resolver.resolveValue(value)
+		if err != nil {
+			return generatedIngredient{}, err
+		}
+
+		ingredient.Alternatives = append(ingredient.Alternatives, alternatives...)
+	}
+
+	slices.Sort(ingredient.Alternatives)
+	ingredient.Alternatives = slices.Compact(ingredient.Alternatives)
+
+	return ingredient, nil
+}
+
+func (resolver *tagResolver) resolveValue(value string) ([]uint16, error) {
+	if strings.HasPrefix(value, "#") {
+		return resolver.resolveTag(bareName(value[1:]))
+	}
+
+	item, ok := resolver.items[bareName(value)]
+	if !ok {
+		return nil, fmt.Errorf("unknown item %q", value)
+	}
+
+	return []uint16{item}, nil
+}
+
+func (resolver *tagResolver) resolveTag(name string) ([]uint16, error) {
+	cached, ok := resolver.resolved[name]
+	if ok {
+		return cached, nil
+	}
+
+	if resolver.resolving[name] {
+		return nil, fmt.Errorf("cyclic tag %q", name)
+	}
+
+	resolver.resolving[name] = true
+	defer delete(resolver.resolving, name)
+
+	raw, err := os.ReadFile(filepath.Join(resolver.tagsPath, name+".json"))
+	if err != nil {
+		return nil, fmt.Errorf("read tag %q: %w", name, err)
+	}
+
+	var source tagSource
+
+	err = json.Unmarshal(raw, &source)
+	if err != nil {
+		return nil, fmt.Errorf("parse tag %q: %w", name, err)
+	}
+
+	var alternatives []uint16
+
+	for _, value := range source.Values {
+		resolved, resolveErr := resolver.resolveValue(value)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+
+		alternatives = append(alternatives, resolved...)
+	}
+
+	slices.Sort(alternatives)
+	alternatives = slices.Compact(alternatives)
+
+	resolver.resolved[name] = alternatives
+
+	return alternatives, nil
+}
+
 func main() {
 	itemsPath := flag.String("items", "", "path to items.json")
 	recipesPath := flag.String("recipes", "", "path to minecraft recipe directory")
@@ -127,28 +228,6 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-}
-
-func (source *ingredientSource) UnmarshalJSON(raw []byte) error {
-	var single string
-
-	err := json.Unmarshal(raw, &single)
-	if err == nil {
-		*source = []string{single}
-
-		return nil
-	}
-
-	var alternatives []string
-
-	err = json.Unmarshal(raw, &alternatives)
-	if err != nil {
-		return err
-	}
-
-	*source = alternatives
-
-	return nil
 }
 
 func readItems(path string) (map[string]uint16, error) {
@@ -329,85 +408,6 @@ func convertRecipe(name string, source recipeSource, resolver *tagResolver) (gen
 	}
 
 	return recipe, nil
-}
-
-func (resolver *tagResolver) resolveIngredient(source ingredientSource) (generatedIngredient, error) {
-	if len(source) == 0 {
-		return generatedIngredient{}, fmt.Errorf("empty ingredient")
-	}
-
-	ingredient := generatedIngredient{}
-
-	for _, value := range source {
-		alternatives, err := resolver.resolveValue(value)
-		if err != nil {
-			return generatedIngredient{}, err
-		}
-
-		ingredient.Alternatives = append(ingredient.Alternatives, alternatives...)
-	}
-
-	slices.Sort(ingredient.Alternatives)
-	ingredient.Alternatives = slices.Compact(ingredient.Alternatives)
-
-	return ingredient, nil
-}
-
-func (resolver *tagResolver) resolveValue(value string) ([]uint16, error) {
-	if strings.HasPrefix(value, "#") {
-		return resolver.resolveTag(bareName(value[1:]))
-	}
-
-	item, ok := resolver.items[bareName(value)]
-	if !ok {
-		return nil, fmt.Errorf("unknown item %q", value)
-	}
-
-	return []uint16{item}, nil
-}
-
-func (resolver *tagResolver) resolveTag(name string) ([]uint16, error) {
-	cached, ok := resolver.resolved[name]
-	if ok {
-		return cached, nil
-	}
-
-	if resolver.resolving[name] {
-		return nil, fmt.Errorf("cyclic tag %q", name)
-	}
-
-	resolver.resolving[name] = true
-	defer delete(resolver.resolving, name)
-
-	raw, err := os.ReadFile(filepath.Join(resolver.tagsPath, name+".json"))
-	if err != nil {
-		return nil, fmt.Errorf("read tag %q: %w", name, err)
-	}
-
-	var source tagSource
-
-	err = json.Unmarshal(raw, &source)
-	if err != nil {
-		return nil, fmt.Errorf("parse tag %q: %w", name, err)
-	}
-
-	var alternatives []uint16
-
-	for _, value := range source.Values {
-		resolved, resolveErr := resolver.resolveValue(value)
-		if resolveErr != nil {
-			return nil, resolveErr
-		}
-
-		alternatives = append(alternatives, resolved...)
-	}
-
-	slices.Sort(alternatives)
-	alternatives = slices.Compact(alternatives)
-
-	resolver.resolved[name] = alternatives
-
-	return alternatives, nil
 }
 
 func generateFuels(resolver *tagResolver) (map[uint16]int32, error) {

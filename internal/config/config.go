@@ -77,47 +77,6 @@ type Config struct {
 	Chat    ChatConfig    `toml:"chat"`
 }
 
-func LoadConfig() (*Config, error) {
-	file, err := os.OpenFile("config.toml", os.O_RDONLY, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	defer file.Close()
-
-	cfg, err := decodeConfig(file)
-	if err != nil {
-		return nil, err
-	}
-
-	key, err := crypto.CreateKeyPair()
-	if err != nil {
-		return nil, err
-	}
-
-	cfg.Key = key
-
-	return cfg, nil
-}
-
-func decodeConfig(reader io.Reader) (*Config, error) {
-	var cfg Config
-
-	err := toml.NewDecoder(reader).DisallowUnknownFields().Decode(&cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg.SetDefaults()
-
-	err = cfg.Validate()
-	if err != nil {
-		return nil, err
-	}
-
-	return &cfg, nil
-}
-
 func (c *Config) SetDefaults() {
 	if c.Server.Hostname == "" {
 		c.Server.Hostname = "localhost"
@@ -341,6 +300,47 @@ func (c *Config) GetLogLevel() plain.Level {
 
 func (c *Config) ListenAddr() string {
 	return fmt.Sprintf("%s:%d", c.Server.Hostname, c.Server.Port)
+}
+
+func LoadConfig() (*Config, error) {
+	file, err := os.OpenFile("config.toml", os.O_RDONLY, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	defer file.Close()
+
+	cfg, err := decodeConfig(file)
+	if err != nil {
+		return nil, err
+	}
+
+	key, err := crypto.CreateKeyPair()
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.Key = key
+
+	return cfg, nil
+}
+
+func decodeConfig(reader io.Reader) (*Config, error) {
+	var cfg Config
+
+	err := toml.NewDecoder(reader).DisallowUnknownFields().Decode(&cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.SetDefaults()
+
+	err = cfg.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
 }
 
 func isFinite(value float64) bool {

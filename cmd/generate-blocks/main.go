@@ -235,8 +235,6 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, lootPrograms Bloc
 	fmt.Fprintln(&output, "package game")
 	fmt.Fprintln(&output)
 
-	emitBlockLootPrograms(&output, lootPrograms)
-
 	fmt.Fprintf(&output, "const MaxBlockID BlockID = %d\n", blocks[len(blocks)-1].ID)
 	fmt.Fprintf(&output, "const MaxBlockState Block = %d\n\n", blocks[len(blocks)-1].MaxState)
 
@@ -257,6 +255,8 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, lootPrograms Bloc
 
 	fmt.Fprintln(&output, ")")
 	fmt.Fprintln(&output)
+
+	emitBlockLootPrograms(&output, lootPrograms)
 
 	fmt.Fprintln(&output, "var blockDefinitions = [...]BlockDefinition{")
 

@@ -14,12 +14,6 @@ type PacketReader struct {
 	err error
 }
 
-func NewPacketReader(b []byte) *PacketReader {
-	return &PacketReader{
-		Reader: bytes.NewReader(b),
-	}
-}
-
 func (r *PacketReader) VarInt() int32 {
 	if r.err != nil {
 		return 0
@@ -259,6 +253,12 @@ func (r *PacketReader) Done(packetName string) error {
 	}
 
 	return nil
+}
+
+func NewPacketReader(b []byte) *PacketReader {
+	return &PacketReader{
+		Reader: bytes.NewReader(b),
+	}
 }
 
 func DecodeEmptyPacket(data []byte, packetName string) error {

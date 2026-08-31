@@ -11,15 +11,6 @@ type CFB8 struct {
 	decrypt  bool
 }
 
-func NewCFB8(block cipher.Block, iv []byte, decrypt bool) cipher.Stream {
-	return &CFB8{
-		block:    block,
-		iv:       append([]byte{}, iv...),
-		outBlock: make([]byte, block.BlockSize()),
-		decrypt:  decrypt,
-	}
-}
-
 func (x *CFB8) XORKeyStream(dst, src []byte) {
 	for i := range src {
 		x.block.Encrypt(x.outBlock, x.iv)
@@ -40,5 +31,13 @@ func (x *CFB8) XORKeyStream(dst, src []byte) {
 		copy(x.iv, x.iv[1:])
 
 		x.iv[len(x.iv)-1] = feedback
+	}
+}
+func NewCFB8(block cipher.Block, iv []byte, decrypt bool) cipher.Stream {
+	return &CFB8{
+		block:    block,
+		iv:       append([]byte{}, iv...),
+		outBlock: make([]byte, block.BlockSize()),
+		decrypt:  decrypt,
 	}
 }

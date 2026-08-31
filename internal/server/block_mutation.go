@@ -15,14 +15,28 @@ const (
 	sectionBlockUpdateThreshold = 8
 )
 
-type BlockMutationAction uint8
-
 const (
 	BlockMutationBreak BlockMutationAction = iota
 	BlockMutationPlace
 	BlockMutationInteract
 	blockMutationLiteral
 )
+
+const (
+	blockMutationStructural blockMutationCause = iota
+	blockMutationDirectPlace
+	blockMutationDirectBreak
+	blockMutationInteract
+	blockMutationSupportLoss
+)
+
+const (
+	blockLootNone blockLootContext = iota
+	blockLootPlayer
+	blockLootNoBreaker
+)
+
+type BlockMutationAction uint8
 
 type BlockMutation struct {
 	Player      game.Player
@@ -41,14 +55,6 @@ type BlockMutationResult struct {
 
 type blockMutationCause uint8
 
-const (
-	blockMutationStructural blockMutationCause = iota
-	blockMutationDirectPlace
-	blockMutationDirectBreak
-	blockMutationInteract
-	blockMutationSupportLoss
-)
-
 type blockMutationRecord struct {
 	change            game.BlockChange
 	previous          game.Block
@@ -61,12 +67,6 @@ type blockMutationRecord struct {
 }
 
 type blockLootContext uint8
-
-const (
-	blockLootNone blockLootContext = iota
-	blockLootPlayer
-	blockLootNoBreaker
-)
 
 type blockMutationDelivery struct {
 	session          *Session
@@ -107,31 +107,6 @@ type CreativeBlockMutationPolicy struct{}
 
 func (CreativeBlockMutationPolicy) AllowBlockMutation(mutation BlockMutation) bool {
 	return mutation.Player.GameMode == game.GameModeSurvival || mutation.Player.GameMode == game.GameModeCreative
-}
-
-func blockWithinInteractionRange(player game.Player, position game.BlockPosition) bool {
-	eyePosition := player.EyePosition()
-
-	distanceX := distanceToInterval(eyePosition.X, float64(position.X), float64(position.X)+1)
-	distanceY := distanceToInterval(eyePosition.Y, float64(position.Y), float64(position.Y)+1)
-	distanceZ := distanceToInterval(eyePosition.Z, float64(position.Z), float64(position.Z)+1)
-
-	distanceSquared := distanceX*distanceX + distanceY*distanceY + distanceZ*distanceZ
-	maximum := blockInteractionRange + blockInteractionBuffer
-
-	return distanceSquared < maximum*maximum
-}
-
-func distanceToInterval(value, minimum, maximum float64) float64 {
-	if value < minimum {
-		return minimum - value
-	}
-
-	if value > maximum {
-		return value - maximum
-	}
-
-	return 0
 }
 
 func (r *Runtime) MutateBlock(session *Session, action BlockMutationAction, position game.BlockPosition, replacement game.Block) (BlockMutationResult, error) {
@@ -625,6 +600,31 @@ func (r *Runtime) completeRuntimeBlockMutations(mutations []queuedBlockMutation)
 			}
 		}
 	}
+}
+
+func blockWithinInteractionRange(player game.Player, position game.BlockPosition) bool {
+	eyePosition := player.EyePosition()
+
+	distanceX := distanceToInterval(eyePosition.X, float64(position.X), float64(position.X)+1)
+	distanceY := distanceToInterval(eyePosition.Y, float64(position.Y), float64(position.Y)+1)
+	distanceZ := distanceToInterval(eyePosition.Z, float64(position.Z), float64(position.Z)+1)
+
+	distanceSquared := distanceX*distanceX + distanceY*distanceY + distanceZ*distanceZ
+	maximum := blockInteractionRange + blockInteractionBuffer
+
+	return distanceSquared < maximum*maximum
+}
+
+func distanceToInterval(value, minimum, maximum float64) float64 {
+	if value < minimum {
+		return minimum - value
+	}
+
+	if value > maximum {
+		return value - maximum
+	}
+
+	return 0
 }
 
 func blockPlacementSound(records []blockMutationRecord) (positionalBlockSound, bool) {
