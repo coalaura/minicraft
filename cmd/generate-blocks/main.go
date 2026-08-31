@@ -42,76 +42,6 @@ type ItemDefinition struct {
 	Name string `json:"name"`
 }
 
-type LootTable struct {
-	Type  string     `json:"type"`
-	Pools []LootPool `json:"pools"`
-}
-
-type LootPool struct {
-	BonusRolls float64         `json:"bonus_rolls"`
-	Conditions []LootCondition `json:"conditions"`
-	Entries    []LootEntry     `json:"entries"`
-	Functions  []LootFunction  `json:"functions"`
-	Rolls      float64         `json:"rolls"`
-}
-
-type LootEntry struct {
-	Type       string          `json:"type"`
-	Name       string          `json:"name"`
-	Children   []LootEntry     `json:"children"`
-	Conditions []LootCondition `json:"conditions"`
-	Functions  []LootFunction  `json:"functions"`
-	Weight     int             `json:"weight"`
-	Quality    int             `json:"quality"`
-}
-
-type LootCondition struct {
-	Block      string            `json:"block"`
-	Condition  string            `json:"condition"`
-	Entity     string            `json:"entity"`
-	Predicate  LootItemPredicate `json:"predicate"`
-	Properties map[string]string `json:"properties"`
-	Term       json.RawMessage   `json:"term"`
-}
-
-type LootItemPredicate struct {
-	Predicates map[string]json.RawMessage `json:"predicates"`
-}
-
-type LootEnchantmentRequirement struct {
-	Enchantments string         `json:"enchantments"`
-	Levels       LootLevelRange `json:"levels"`
-}
-
-type LootLevelRange struct {
-	Min int `json:"min"`
-}
-
-type LootFunction struct {
-	Count       json.RawMessage `json:"count"`
-	Enchantment string          `json:"enchantment"`
-	Formula     string          `json:"formula"`
-	Function    string          `json:"function"`
-	Conditions  []LootCondition `json:"conditions"`
-}
-
-type BlockDrop struct {
-	Kind          string
-	Item          string
-	MinCount      int32
-	MaxCount      int32
-	Property      string
-	Value         string
-	CountProperty string
-	Counts        []BlockDropCount
-	RequiresActor bool
-}
-
-type BlockDropCount struct {
-	Value string
-	Count int32
-}
-
 type TagDefinition struct {
 	Values []json.RawMessage `json:"values"`
 }
@@ -167,12 +97,12 @@ func main() {
 		fail(err)
 	}
 
-	drops, err := readBlockDrops(*lootPath, blocks, itemIDs)
+	lootPrograms, err := readBlockLootPrograms(*lootPath, blocks, itemIDs)
 	if err != nil {
 		fail(err)
 	}
 
-	generated, err := generate(blocks, miningTags, drops)
+	generated, err := generate(blocks, miningTags, lootPrograms)
 	if err != nil {
 		fail(err)
 	}
@@ -283,7 +213,7 @@ func blockTagNames(root string) ([]string, error) {
 	return names, nil
 }
 
-func generate(blocks []BlockDefinition, miningTags MiningTags, drops map[string]BlockDrop) ([]byte, error) {
+func generate(blocks []BlockDefinition, miningTags MiningTags, lootPrograms BlockLootPrograms) ([]byte, error) {
 	if len(blocks) == 0 {
 		return nil, fmt.Errorf("block catalogue is empty")
 	}
@@ -304,6 +234,9 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, drops map[string]
 	fmt.Fprintln(&output)
 	fmt.Fprintln(&output, "package game")
 	fmt.Fprintln(&output)
+
+	emitBlockLootPrograms(&output, lootPrograms)
+
 	fmt.Fprintf(&output, "const MaxBlockID BlockID = %d\n", blocks[len(blocks)-1].ID)
 	fmt.Fprintf(&output, "const MaxBlockState Block = %d\n\n", blocks[len(blocks)-1].MaxState)
 
@@ -343,7 +276,7 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, drops map[string]
 			blockSoundType(block),
 			blockTraits(miningTags, block.Name),
 			blockEntityType(block.Name),
-			blockMining(block, miningTags, drops[block.Name]),
+			blockMining(block, miningTags, lootPrograms.Indexes[block.Name]),
 			hasBlockProperty(block.Properties, "waterlogged"),
 		)
 
@@ -575,362 +508,8 @@ func readItemIDs(path string) (map[string]uint16, error) {
 	return result, nil
 }
 
-func readBlockDrops(root string, blocks []BlockDefinition, itemIDs map[string]uint16) (map[string]BlockDrop, error) {
-	result := make(map[string]BlockDrop, len(blocks))
-
-	for _, block := range blocks {
-		if !block.Diggable {
-			result[block.Name] = noBlockDrop()
-
-			continue
-		}
-
-		path := filepath.Join(root, block.Name+".json")
-
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				drop := deferredBlockDrop()
-
-				if len(block.Drops) == 0 {
-					drop = noBlockDrop()
-				}
-
-				result[block.Name] = drop
-
-				continue
-			}
-
-			return nil, fmt.Errorf("read loot table for %s: %w", block.Name, err)
-		}
-
-		var table LootTable
-
-		err = json.Unmarshal(raw, &table)
-		if err != nil {
-			return nil, fmt.Errorf("decode loot table for %s: %w", block.Name, err)
-		}
-
-		drop, valid := classifyBlockDrop(block.Name, table, itemIDs)
-		if !valid {
-			drop = deferredBlockDrop()
-		}
-
-		result[block.Name] = drop
-	}
-
-	return result, nil
-}
-
-func classifyBlockDrop(blockName string, table LootTable, itemIDs map[string]uint16) (BlockDrop, bool) {
-	if table.Type != "minecraft:block" {
-		return BlockDrop{}, false
-	}
-
-	if len(table.Pools) == 0 {
-		return noBlockDrop(), true
-	}
-
-	if len(table.Pools) != 1 {
-		return BlockDrop{}, false
-	}
-
-	pool := table.Pools[0]
-	if pool.Rolls != 1 || pool.BonusRolls != 0 || len(pool.Entries) != 1 || len(pool.Functions) != 0 {
-		return BlockDrop{}, false
-	}
-
-	property, value, requiresActor, valid := classifyPoolConditions(pool.Conditions, blockName)
-	if !valid {
-		return BlockDrop{}, false
-	}
-
-	entry := pool.Entries[0]
-	if entry.Type == "minecraft:alternatives" {
-		if len(entry.Children) == 2 && invertedSilkAlternatives(entry.Children[0]) {
-			drop, alternativesValid := classifyStateAlternatives(entry.Children[0].Children, blockName, itemIDs)
-			if !alternativesValid {
-				return BlockDrop{}, false
-			}
-
-			drop.RequiresActor = requiresActor
-
-			return drop, true
-		}
-
-		if len(entry.Children) != 2 || len(entry.Conditions) != 0 || len(entry.Functions) != 0 || entry.Weight != 0 || entry.Quality != 0 {
-			return BlockDrop{}, false
-		}
-
-		if !silkTouchEntry(entry.Children[0]) {
-			return BlockDrop{}, false
-		}
-
-		entry = entry.Children[1]
-	}
-
-	drop, valid := classifyLootItem(entry, blockName, itemIDs)
-	if !valid {
-		return BlockDrop{}, false
-	}
-
-	property, value, valid = mergeDropGate(property, value, drop.Property, drop.Value)
-	if !valid {
-		return BlockDrop{}, false
-	}
-
-	drop.Property = property
-	drop.Value = value
-	drop.RequiresActor = requiresActor
-
-	if property != "" {
-		drop.Kind = "BlockDropStateExact"
-	}
-
-	return drop, true
-}
-
-func classifyPoolConditions(conditions []LootCondition, blockName string) (string, string, bool, bool) {
-	filtered := make([]LootCondition, 0, len(conditions))
-	requiresActor := false
-
-	for _, condition := range conditions {
-		if condition.Condition == "minecraft:entity_properties" && condition.Entity == "this" {
-			requiresActor = true
-
-			continue
-		}
-
-		filtered = append(filtered, condition)
-	}
-
-	property, value, valid := classifyLootConditions(filtered, blockName)
-	return property, value, requiresActor, valid
-}
-
-func invertedSilkAlternatives(entry LootEntry) bool {
-	if entry.Type != "minecraft:alternatives" || len(entry.Children) == 0 || len(entry.Conditions) != 1 {
-		return false
-	}
-
-	condition := entry.Conditions[0]
-	return condition.Condition == "minecraft:inverted" && len(condition.Term) != 0
-}
-
-func classifyStateAlternatives(entries []LootEntry, blockName string, itemIDs map[string]uint16) (BlockDrop, bool) {
-	if len(entries) == 0 {
-		return BlockDrop{}, false
-	}
-
-	var result BlockDrop
-
-	for index, entry := range entries {
-		drop, valid := classifyLootItem(entry, blockName, itemIDs)
-		if !valid || drop.Property == "" || drop.Value == "" || drop.MinCount != drop.MaxCount {
-			return BlockDrop{}, false
-		}
-
-		if index == 0 {
-			result = drop
-			result.Property = ""
-			result.Value = ""
-			result.CountProperty = drop.Property
-			result.Counts = nil
-		} else if drop.Item != result.Item || drop.Property != result.CountProperty {
-			return BlockDrop{}, false
-		}
-
-		result.Counts = append(result.Counts, BlockDropCount{Value: drop.Value, Count: drop.MinCount})
-	}
-
-	result.MinCount = 1
-	result.MaxCount = 1
-
-	return result, true
-}
-
-func classifyLootItem(entry LootEntry, blockName string, itemIDs map[string]uint16) (BlockDrop, bool) {
-	if entry.Type != "minecraft:item" || entry.Name == "" || len(entry.Children) != 0 || entry.Weight != 0 || entry.Quality != 0 {
-		return BlockDrop{}, false
-	}
-
-	property, value, valid := classifyLootConditions(entry.Conditions, blockName)
-	if !valid {
-		return BlockDrop{}, false
-	}
-
-	count := int32(1)
-	countProperty := ""
-	counts := make([]BlockDropCount, 0)
-	deferred := false
-
-	for _, function := range entry.Functions {
-		switch function.Function {
-		case "minecraft:explosion_decay":
-			if len(function.Conditions) != 0 {
-				return BlockDrop{}, false
-			}
-		case "minecraft:copy_components", "minecraft:copy_state":
-			deferred = true
-		case "minecraft:apply_bonus":
-			if len(function.Conditions) != 0 {
-				return BlockDrop{}, false
-			}
-
-			if function.Enchantment != "minecraft:fortune" || function.Formula != "minecraft:ore_drops" {
-				return BlockDrop{}, false
-			}
-		case "minecraft:set_count":
-			var value float64
-
-			err := json.Unmarshal(function.Count, &value)
-			if err != nil || value < 1 || value != float64(int32(value)) {
-				return BlockDrop{}, false
-			}
-
-			if len(function.Conditions) == 0 {
-				count = int32(value)
-
-				continue
-			}
-
-			functionProperty, functionValue, conditionValid := classifyLootConditions(function.Conditions, blockName)
-			if !conditionValid || functionProperty == "" || countProperty != "" && countProperty != functionProperty {
-				return BlockDrop{}, false
-			}
-
-			countProperty = functionProperty
-			counts = append(counts, BlockDropCount{Value: functionValue, Count: int32(value)})
-		default:
-			return BlockDrop{}, false
-		}
-	}
-
-	itemName := strings.TrimPrefix(entry.Name, "minecraft:")
-
-	itemID, valid := itemIDs[itemName]
-	if !valid {
-		return BlockDrop{}, false
-	}
-
-	kind := "BlockDropExact"
-
-	if deferred {
-		kind = "BlockDropDeferred"
-	}
-
-	return BlockDrop{
-		Kind:          kind,
-		Item:          fmt.Sprintf("Item(%d)", itemID),
-		MinCount:      count,
-		MaxCount:      count,
-		Property:      property,
-		Value:         value,
-		CountProperty: countProperty,
-		Counts:        counts,
-	}, true
-}
-
-func classifyLootConditions(conditions []LootCondition, blockName string) (string, string, bool) {
-	var (
-		property string
-		value    string
-	)
-
-	for _, condition := range conditions {
-		switch condition.Condition {
-		case "minecraft:survives_explosion":
-		case "minecraft:block_state_property":
-			if strings.TrimPrefix(condition.Block, "minecraft:") != blockName || len(condition.Properties) != 1 {
-				return "", "", false
-			}
-
-			for candidateProperty, candidateValue := range condition.Properties {
-				var valid bool
-
-				property, value, valid = mergeDropGate(property, value, candidateProperty, candidateValue)
-				if !valid {
-					return "", "", false
-				}
-			}
-		default:
-			return "", "", false
-		}
-	}
-
-	return property, value, true
-}
-
-func mergeDropGate(property, value, candidateProperty, candidateValue string) (string, string, bool) {
-	if candidateProperty == "" {
-		return property, value, true
-	}
-
-	if property == "" {
-		return candidateProperty, candidateValue, true
-	}
-
-	return property, value, property == candidateProperty && value == candidateValue
-}
-
-func silkTouchEntry(entry LootEntry) bool {
-	if entry.Type != "minecraft:item" || len(entry.Conditions) != 1 || len(entry.Functions) != 0 || len(entry.Children) != 0 || entry.Weight != 0 || entry.Quality != 0 {
-		return false
-	}
-
-	condition := entry.Conditions[0]
-	if condition.Condition != "minecraft:match_tool" || len(condition.Predicate.Predicates) != 1 {
-		return false
-	}
-
-	raw, valid := condition.Predicate.Predicates["minecraft:enchantments"]
-	if !valid {
-		return false
-	}
-
-	var requirements []LootEnchantmentRequirement
-
-	err := json.Unmarshal(raw, &requirements)
-	if err != nil || len(requirements) != 1 {
-		return false
-	}
-
-	requirement := requirements[0]
-
-	return requirement.Enchantments == "minecraft:silk_touch" && requirement.Levels.Min >= 1
-}
-
-func noBlockDrop() BlockDrop {
-	return BlockDrop{Kind: "BlockDropNone", Item: "0"}
-}
-
-func deferredBlockDrop() BlockDrop {
-	return BlockDrop{Kind: "BlockDropDeferred", Item: "0"}
-}
-
-func blockMining(block BlockDefinition, tags MiningTags, drop BlockDrop) string {
-	dropRules := "nil"
-
-	if (drop.Kind == "BlockDropExact" || drop.Kind == "BlockDropStateExact" || drop.Kind == "BlockDropDeferred") && drop.Item != "0" {
-		var rules strings.Builder
-
-		fmt.Fprintf(&rules, "[]BlockDropRule{{Item: %s, Count: %d, CountProperty: %q, GateProperty: %q, GateValue: %q, RequiresActor: %t", drop.Item, drop.MinCount, drop.CountProperty, drop.Property, drop.Value, drop.RequiresActor)
-
-		if len(drop.Counts) != 0 {
-			rules.WriteString(", Counts: []BlockDropCount{")
-
-			for _, count := range drop.Counts {
-				fmt.Fprintf(&rules, "{Value: %q, Count: %d},", count.Value, count.Count)
-			}
-
-			rules.WriteString("}")
-		}
-
-		rules.WriteString("}}")
-		dropRules = rules.String()
-	}
-
-	return fmt.Sprintf("BlockMining{Hardness: %g, DropRules: %s, RequiresTool: %t, Destroyable: %t}", block.Hardness, dropRules, len(block.HarvestTools) != 0, block.Diggable && block.Hardness >= 0)
+func blockMining(block BlockDefinition, tags MiningTags, lootProgram uint16) string {
+	return fmt.Sprintf("BlockMining{Hardness: %g, LootProgram: %d, RequiresTool: %t, Destroyable: %t}", block.Hardness, lootProgram, len(block.HarvestTools) != 0, block.Diggable && block.Hardness >= 0)
 }
 
 func blockEntityType(name string) string {

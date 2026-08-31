@@ -57,6 +57,7 @@ type blockMutationRecord struct {
 	hadPreviousEntity bool
 	cause             blockMutationCause
 	lootContext       blockLootContext
+	lootTool          game.ItemStack
 }
 
 type blockLootContext uint8
@@ -161,6 +162,7 @@ func (r *Runtime) mutateMinedBlockLocked(session *Session, position game.BlockPo
 
 		if tool.stack.Item.IsCorrectToolForDrops(record.previous) {
 			record.lootContext = blockLootPlayer
+			record.lootTool = tool.stack.Clone()
 		}
 	}
 

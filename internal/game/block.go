@@ -53,24 +53,9 @@ const (
 	BlockTraitFluidExcluded
 )
 
-type BlockDropCount struct {
-	Value string
-	Count int32
-}
-
-type BlockDropRule struct {
-	Item          Item
-	Count         int32
-	CountProperty string
-	Counts        []BlockDropCount
-	GateProperty  string
-	GateValue     string
-	RequiresActor bool
-}
-
 type BlockMining struct {
 	Hardness     float32
-	DropRules    []BlockDropRule
+	LootProgram  uint16
 	RequiresTool bool
 	Destroyable  bool
 }

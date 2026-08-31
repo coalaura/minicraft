@@ -36,6 +36,9 @@ type Runtime struct {
 	commandRandom             func(int) int
 	miningRandomMu            sync.Mutex
 	miningRandom              func(int) int
+	lootRandomMu              sync.Mutex
+	lootRandomInt             func(int) int
+	lootRandomFloat           func() float32
 	fluidRandomMu             sync.Mutex
 	fluidRandom               func(game.BlockPosition, int) int
 	commands                  *commandRegistry
@@ -86,6 +89,7 @@ func NewRuntime(world *game.World) *Runtime {
 	initialDelivery := make(chan struct{})
 	fluidRandom := rand.New(rand.NewPCG(uint64(world.Seed), uint64(world.Seed)^0x9e3779b97f4a7c15))
 	miningRandom := rand.New(rand.NewPCG(uint64(world.Seed)^0x243f6a8885a308d3, uint64(world.Seed)^0x13198a2e03707344))
+	lootRandom := rand.New(rand.NewPCG(uint64(world.Seed)^0x9e3779b97f4a7c15, uint64(world.Seed)^0x243f6a8885a308d3))
 
 	close(initialDelivery)
 
@@ -97,6 +101,8 @@ func NewRuntime(world *game.World) *Runtime {
 		blockMutationDeliveryTail: initialDelivery,
 		commandRandom:             rand.IntN,
 		miningRandom:              miningRandom.IntN,
+		lootRandomInt:             lootRandom.IntN,
+		lootRandomFloat:           lootRandom.Float32,
 		fluidRandom: func(_ game.BlockPosition, bound int) int {
 			return fluidRandom.IntN(bound)
 		},

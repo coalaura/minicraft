@@ -335,6 +335,52 @@ func TestGeneratedBaselineBlockDrops(t *testing.T) {
 	}
 }
 
+func TestBlockLootUsesDedicatedAdvancingRandom(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	values := []float32{0, 0.5}
+	index := 0
+
+	runtime.lootRandomFloat = func() float32 {
+		value := values[index]
+
+		index++
+
+		return value
+	}
+
+	records := []blockMutationRecord{
+		{
+			change:      game.BlockChange{Position: game.BlockPosition{Y: 70}, Replacement: game.Air},
+			previous:    game.Gravel,
+			lootContext: blockLootPlayer,
+		},
+		{
+			change:      game.BlockChange{Position: game.BlockPosition{X: 1, Y: 70}, Replacement: game.Air},
+			previous:    game.Gravel,
+			lootContext: blockLootPlayer,
+		},
+	}
+
+	runtime.commitOrdinaryBlockDrops(records)
+
+	entities := runtime.snapshotRuntimeEntities()
+	if len(entities) != 2 {
+		t.Fatalf("ordinary drops = %d, want 2", len(entities))
+	}
+
+	first := entities[0].(*runtimeItemEntity)
+	second := entities[1].(*runtimeItemEntity)
+
+	if first.Stack.Item != game.ItemFlint || second.Stack.Item != game.ItemGravel {
+		t.Fatalf("ordinary drops = %d then %d, want flint then gravel", first.Stack.Item, second.Stack.Item)
+	}
+
+	if index != len(values) {
+		t.Fatalf("loot random draws = %d, want %d", index, len(values))
+	}
+}
+
 func TestGeneratedStateCountBlockDrops(t *testing.T) {
 	tests := map[string]baselineBlockDropTestCase{}
 
@@ -708,22 +754,23 @@ func TestMiningDurabilityOnlyChangesAfterCommittedSurvivalBreak(t *testing.T) {
 	_ = observer
 }
 
-func TestMiningToolBreakUsesPreDamageToolAndSynchronizesEvent(t *testing.T) {
+func TestMiningToolBreakUsesPreDamageSilkTouchToolAndSynchronizesEvent(t *testing.T) {
 	position := game.BlockPosition{Y: 70}
 
-	world := &game.World{Generator: blockMutationTestGenerator{block: game.Stone}}
+	world := &game.World{Generator: blockMutationTestGenerator{block: game.DiamondOre}}
 
 	runtime := NewRuntime(world)
 
-	actor, actorConnection := newMiningTestSession(t, runtime, position, game.GameModeSurvival, game.ItemWoodenPickaxe)
+	actor, actorConnection := newMiningTestSession(t, runtime, position, game.GameModeSurvival, game.ItemIronPickaxe)
 	observer, observerConnection := newMiningTestSession(t, runtime, position, game.GameModeCreative, game.ItemAir)
 
-	definition, valid := game.ItemWoodenPickaxe.Definition()
+	definition, valid := game.ItemIronPickaxe.Definition()
 	if !valid {
-		t.Fatal("wooden pickaxe definition is missing")
+		t.Fatal("iron pickaxe definition is missing")
 	}
 
 	actor.updatePlayerState(func(player *game.Player) bool {
+		player.Inventory.Hotbar[0].SetEnchantment(game.EnchantmentSilkTouch, 1)
 		player.Inventory.Hotbar[0].SetDamage(definition.MaxDurability - 1)
 
 		return true
@@ -750,8 +797,8 @@ func TestMiningToolBreakUsesPreDamageToolAndSynchronizesEvent(t *testing.T) {
 	}
 
 	drop := entities[0].(*runtimeItemEntity)
-	if !drop.Stack.Equal(game.ItemStack{Item: game.ItemCobblestone, Count: 1}) {
-		t.Fatalf("final-use drop = %+v, want one cobblestone", drop.Stack)
+	if !drop.Stack.Equal(game.ItemStack{Item: game.ItemDiamondOre, Count: 1}) {
+		t.Fatalf("final-use drop = %+v, want one diamond ore", drop.Stack)
 	}
 
 	assertToolBreakEvent(t, packetsByID(t, actorConnection, protocol.ClientboundEntityEventID), actor.Player.EntityID)

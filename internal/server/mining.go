@@ -379,48 +379,32 @@ func (r *Runtime) commitOrdinaryBlockDrops(records []blockMutationRecord) {
 			continue
 		}
 
-		mining := record.previous.MiningProperties()
-		if len(mining.DropRules) == 0 {
-			continue
+		context := game.BlockLootContext{
+			Block:    record.previous,
+			Tool:     record.lootTool.Clone(),
+			HasActor: record.lootContext == blockLootPlayer,
 		}
 
-		for _, rule := range mining.DropRules {
-			if rule.RequiresActor && record.lootContext != blockLootPlayer {
-				continue
-			}
+		r.lootRandomMu.Lock()
+		drops := game.EvaluateBlockLoot(context, runtimeBlockLootRandom{runtime: r})
+		r.lootRandomMu.Unlock()
 
-			if rule.GateProperty != "" {
-				value, valid := record.previous.Property(rule.GateProperty)
-				if !valid || value != rule.GateValue {
-					continue
-				}
-			}
-
-			count := rule.Count
-			if count <= 0 {
-				count = 1
-			}
-
-			if rule.CountProperty != "" {
-				value, valid := record.previous.Property(rule.CountProperty)
-				if !valid {
-					continue
-				}
-
-				for _, candidate := range rule.Counts {
-					if candidate.Value == value {
-						count = candidate.Count
-
-						break
-					}
-				}
-			}
-
-			if rule.Item != game.ItemAir && count > 0 {
-				r.popBlockResource(record.change.Position, game.ItemStack{Item: rule.Item, Count: count})
-			}
+		for _, drop := range drops {
+			r.popBlockResource(record.change.Position, drop)
 		}
 	}
+}
+
+type runtimeBlockLootRandom struct {
+	runtime *Runtime
+}
+
+func (random runtimeBlockLootRandom) IntN(bound int) int {
+	return random.runtime.lootRandomInt(bound)
+}
+
+func (random runtimeBlockLootRandom) Float32() float32 {
+	return random.runtime.lootRandomFloat()
 }
 
 func (r *Runtime) popBlockResource(blockPosition game.BlockPosition, stack game.ItemStack) {
