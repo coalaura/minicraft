@@ -39,12 +39,22 @@ func (r *Runtime) RunGameLoop(ctx context.Context) {
 
 func (r *Runtime) Tick() game.TimeState {
 	state := r.World.AdvanceTime()
+	survivalUpdates := make(map[*Session][]playerSurvivalUpdate)
 
 	r.worldMutationMu.Lock()
 	r.lifecycleMu.Lock()
 
 	r.tickActiveChunks()
+
 	swimmingChanges := r.updateActivePlayerSwimmingLocked()
+
+	for _, session := range r.snapshotSessions() {
+		updates := r.tickPlayerSurvivalLocked(session)
+		if len(updates) > 0 {
+			survivalUpdates[session] = updates
+		}
+	}
+
 	r.lifecycleMu.Unlock()
 
 	r.tickScheduledBlocksLocked()
@@ -60,6 +70,10 @@ func (r *Runtime) Tick() game.TimeState {
 
 	r.completeRuntimeBlockMutations(deliveries)
 	r.sendPlayerMetadataUpdates(swimmingChanges)
+
+	for session, updates := range survivalUpdates {
+		r.sendPlayerSurvivalUpdates(session, updates)
+	}
 
 	r.tickOpenMenus()
 

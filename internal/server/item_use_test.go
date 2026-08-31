@@ -413,7 +413,7 @@ func TestBucketsDropReplacedBlocks(t *testing.T) {
 
 			runtime := NewRuntime(world)
 
-			actor, _ := newBlockMutationTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Actor", game.GameModeSurvival)
+			actor, connection := newBlockMutationTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Actor", game.GameModeSurvival)
 
 			position := game.BlockPosition{X: 0, Y: 70, Z: 0}
 
@@ -433,6 +433,29 @@ func TestBucketsDropReplacedBlocks(t *testing.T) {
 
 			if world.BlockAt(position) != test.fluid {
 				t.Fatalf("block = %d, want %d", world.BlockAt(position), test.fluid)
+			}
+
+			state, err := protocolBlockState(test.fluid)
+			if err != nil {
+				t.Fatalf("encode bucket fluid: %v", err)
+			}
+
+			foundUpdate := false
+
+			for _, packet := range connection.packets(t) {
+				if packet.ID != protocol.ClientboundBlockUpdateID {
+					continue
+				}
+
+				assertBlockUpdate(t, packet, position, state)
+
+				foundUpdate = true
+
+				break
+			}
+
+			if !foundUpdate {
+				t.Fatal("missing bucket fluid block update")
 			}
 
 			drops := countDroppedItem(runtime, game.ItemWarpedRoots)

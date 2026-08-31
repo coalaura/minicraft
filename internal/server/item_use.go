@@ -25,6 +25,10 @@ func (s *Session) handleUseItem(interaction protocol.UseItem) (err error) {
 		}
 	}()
 
+	if !s.playerAlive() {
+		return nil
+	}
+
 	if !validItemUse(interaction) {
 		return nil
 	}

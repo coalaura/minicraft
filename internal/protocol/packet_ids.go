@@ -65,6 +65,7 @@ const (
 	ServerboundChatMessageID                = 0x08
 	ServerboundChatSessionUpdateID          = 0x09
 	ServerboundChunkBatchReceivedID         = 0x0A
+	ServerboundClientCommandID              = 0x0B
 	ServerboundClientTickEndID              = 0x0C
 	ServerboundPlayClientInformationID      = 0x0D
 	ServerboundCommandSuggestionsID         = 0x0E
@@ -97,6 +98,7 @@ const (
 	ClientboundContainerSetContentID          = 0x12
 	ClientboundContainerSetDataID             = 0x13
 	ClientboundContainerSetSlotID             = 0x14
+	ClientboundDamageEventID                  = 0x19
 	ClientboundCloseContainerID               = 0x11
 	ClientboundCommandSuggestionsID           = 0x0F
 	ClientboundDeclareCommandsID              = 0x10
@@ -115,16 +117,19 @@ const (
 	ClientboundUpdateEntityRotationID         = 0x36
 	ClientboundOpenScreenID                   = 0x39
 	ClientboundPlayerChatID                   = 0x3F
+	ClientboundCombatKillID                   = 0x42
 	ClientboundPlayerInfoRemoveID             = 0x43
 	ClientboundPlayerInfoUpdateID             = 0x44
 	ClientboundPlayerPositionID               = 0x46
 	ClientboundRemoveEntitiesID               = 0x4B
+	ClientboundRespawnID                      = 0x50
 	ClientboundSetHeadRotationID              = 0x51
 	ClientboundSectionBlocksUpdateID          = 0x52
 	ClientboundSetCenterChunkID               = 0x5C
 	ClientboundEntityMetadataID               = 0x61
 	ClientboundSetEntityMotionID              = 0x63
 	ClientboundEntityEquipmentID              = 0x64
+	ClientboundSetHealthID                    = 0x66
 	ClientboundSetHeldSlotID                  = 0x67
 	ClientboundUpdateTimeID                   = 0x6F
 	ClientboundSoundID                        = 0x73

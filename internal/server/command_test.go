@@ -58,7 +58,7 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 		commandNames = append(commandNames, child.Name)
 	}
 
-	expectedCommands := []string{"help", "seed", "time", "gamemode", "give", "enchant", "clear", "teleport", "tp", "setblock", "fill"}
+	expectedCommands := []string{"help", "seed", "time", "kill", "gamemode", "give", "enchant", "clear", "teleport", "tp", "setblock", "fill"}
 	if strings.Join(commandNames, ",") != strings.Join(expectedCommands, ",") {
 		t.Fatalf("root command literals = %v, want %v", commandNames, expectedCommands)
 	}
@@ -305,6 +305,7 @@ func TestCommandHelpUsageAndSeedFeedback(t *testing.T) {
 	assertSystemMessages(t, connection,
 		"/help", "/help <command>", "/seed",
 		"/time query daytime", "/time query gametime", "/time query day", "/time set day", "/time set noon", "/time set night", "/time set midnight", "/time set <time>", "/time add <time>",
+		"/kill", "/kill <targets>",
 		"/gamemode <gamemode>", "/gamemode <gamemode> <targets>",
 		"/give <targets> <item>", "/give <targets> <item> <count>",
 		"/enchant <targets> <enchantment>", "/enchant <targets> <enchantment> <level>",
@@ -637,13 +638,13 @@ func TestCommandSuggestions(t *testing.T) {
 
 	source := playerCommandSource{session: bob}
 
-	commandNames := []string{"clear", "enchant", "fill", "gamemode", "give", "help", "seed", "setblock", "teleport", "time", "tp"}
+	commandNames := []string{"clear", "enchant", "fill", "gamemode", "give", "help", "kill", "seed", "setblock", "teleport", "time", "tp"}
 	targets := []string{"@a", "@p", "@r", "@s", "Alice", "Bob"}
 
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/"), 1, 0, commandNames)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/he"), 1, 2, []string{"help"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help"), 1, 4, []string{"help"})
-	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help "), 6, 0, []string{"clear", "enchant", "fill", "gamemode", "give", "help", "seed", "setblock", "teleport", "time", "time add", "time query", "time query day", "time query daytime", "time query gametime", "time set", "time set day", "time set midnight", "time set night", "time set noon", "tp"})
+	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help "), 6, 0, []string{"clear", "enchant", "fill", "gamemode", "give", "help", "kill", "seed", "setblock", "teleport", "time", "time add", "time query", "time query day", "time query daytime", "time query gametime", "time set", "time set day", "time set midnight", "time set night", "time set noon", "tp"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/gamemode "), 10, 0, []string{"adventure", "creative", "spectator", "survival"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/gamemode creative "), 19, 0, targets)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/time set "), 10, 0, []string{"day", "midnight", "night", "noon"})

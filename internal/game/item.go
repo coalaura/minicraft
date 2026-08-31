@@ -101,6 +101,30 @@ func (item Item) Valid() bool {
 	return item <= MaxItemID
 }
 
+func (item Item) FireResistant() bool {
+	switch item {
+	case ItemAncientDebris,
+		ItemNetheriteBlock,
+		ItemNetheriteIngot,
+		ItemNetheriteScrap,
+		ItemNetheriteSword,
+		ItemNetheriteShovel,
+		ItemNetheritePickaxe,
+		ItemNetheriteAxe,
+		ItemNetheriteHoe,
+		ItemNetheriteHelmet,
+		ItemNetheriteChestplate,
+		ItemNetheriteLeggings,
+		ItemNetheriteBoots,
+		ItemNetheriteHorseArmor,
+		ItemNetheriteSpear,
+		ItemNetheriteNautilusArmor:
+		return true
+	default:
+		return false
+	}
+}
+
 func (item Item) Definition() (ItemDefinition, bool) {
 	if !item.Valid() {
 		return ItemDefinition{}, false

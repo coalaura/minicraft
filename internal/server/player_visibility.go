@@ -226,6 +226,10 @@ func (s *Session) sendPlayerMovement(previous, current game.Player) error {
 func (s *Session) sendPlayerMetadata(player game.Player) error {
 	flags := byte(0)
 
+	if player.RemainingFireTicks > 0 {
+		flags |= protocol.EntityFlagOnFire
+	}
+
 	if player.Sneaking {
 		flags |= protocol.EntityFlagSneaking
 	}
@@ -253,6 +257,8 @@ func (s *Session) sendPlayerMetadata(player game.Player) error {
 			{Index: protocol.EntityFlagsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(flags)},
 			{Index: protocol.EntityPoseMetadataIndex, Type: protocol.MetadataTypePose, Value: protocol.MetadataVarInt(pose)},
 			{Index: protocol.PlayerSkinPartsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(player.SkinParts)},
+			{Index: protocol.EntityAirMetadataIndex, Type: protocol.MetadataTypeInt, Value: protocol.MetadataVarInt(player.AirSupply)},
+			{Index: protocol.LivingHealthMetadataIndex, Type: protocol.MetadataTypeFloat, Value: protocol.MetadataFloat(player.Health)},
 		},
 	}
 

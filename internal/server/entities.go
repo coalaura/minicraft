@@ -1,10 +1,11 @@
 package server
 
 import (
-	"crypto/rand"
+	cryptorand "crypto/rand"
 	"fmt"
 	"maps"
 	"math"
+	"math/rand/v2"
 	"slices"
 	"sync"
 
@@ -92,6 +93,7 @@ type runtimeItemEntity struct {
 	State        RuntimeEntityState
 	Stack        game.ItemStack
 	Velocity     game.Velocity
+	Health       int32
 	Age          int32
 	PickupDelay  int32
 	TargetUUID   string
@@ -309,6 +311,22 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		fluidContact = lavaContact
 	}
 
+	if fluidType == game.FluidTypeLava && !entity.Stack.Item.FireResistant() {
+		entity.Health -= 4
+
+		if entity.Health <= 0 {
+			entityID := entity.State.ID
+			position := entity.State.Position
+
+			entity.State.mu.Unlock()
+
+			runtime.playItemBurnSound(position)
+			runtime.removeRuntimeEntity(entityID)
+
+			return
+		}
+	}
+
 	impulse := game.Velocity{}
 
 	switch fluidType {
@@ -397,6 +415,7 @@ func (r *Runtime) SpawnItemEntity(stack game.ItemStack, position game.Position, 
 		},
 		Stack:       stack.Clone(),
 		Velocity:    velocity,
+		Health:      5,
 		PickupDelay: pickupDelay,
 	}
 	entity.State.tracker = newRuntimeEntityTracker(entity.runtimeEntityViewLocked())
@@ -415,6 +434,28 @@ func (r *Runtime) SpawnItemEntity(stack game.ItemStack, position game.Position, 
 	r.reconcileRuntimeEntityTracking(entity)
 
 	return entity
+}
+
+func (r *Runtime) playItemBurnSound(position game.Position) {
+	sound := protocol.Sound{
+		Event:  protocol.SoundEventHolder{Name: "minecraft:entity.generic.burn"},
+		Source: protocol.SoundSourceNeutral,
+		X:      position.X,
+		Y:      position.Y,
+		Z:      position.Z,
+		Volume: 0.4,
+		Pitch:  2 + rand.Float32()*0.4,
+		Seed:   rand.Int64(),
+	}
+
+	blockPosition := itemEntityBlockPosition(position)
+
+	for _, viewer := range r.snapshotSessions() {
+		err := viewer.sendSoundIfLoaded(sound, blockPosition)
+		if err != nil && viewer.Log != nil {
+			viewer.Log.Warnf("[play] failed to send item burn sound: %v\n", err)
+		}
+	}
 }
 
 func (r *Runtime) spawnPlayerDroppedItem(player game.Player, stack game.ItemStack, randomly, thrownFromHand bool) *runtimeItemEntity {
@@ -794,7 +835,7 @@ func (r *Runtime) pickUpItemEntity(entity *runtimeItemEntity) bool {
 
 	for _, session := range r.snapshotSessions() {
 		player := session.snapshotPlayer()
-		if targetUUID != "" && targetUUID != player.UUID || !pickupBox.Intersects(player.CollisionBox()) {
+		if player.Dead || targetUUID != "" && targetUUID != player.UUID || !pickupBox.Intersects(player.CollisionBox()) {
 			continue
 		}
 
@@ -1302,7 +1343,7 @@ func positionLoadedChunk(position game.Position) LoadedChunk {
 func randomEntityUUID() string {
 	var uuid [16]byte
 
-	_, err := rand.Read(uuid[:])
+	_, err := cryptorand.Read(uuid[:])
 	if err != nil {
 		panic(fmt.Sprintf("generate entity UUID: %v", err))
 	}

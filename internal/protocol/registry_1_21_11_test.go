@@ -117,6 +117,36 @@ func TestConfigurationBlockMiningTags12111(t *testing.T) {
 	}
 }
 
+func TestConfigurationFluidTags12111(t *testing.T) {
+	var fluidTags []RegistryTag
+
+	for _, registry := range ConfigurationTags {
+		if registry.RegistryID == "minecraft:fluid" {
+			fluidTags = registry.Tags
+
+			break
+		}
+	}
+
+	if len(fluidTags) != 2 {
+		t.Fatalf("configuration fluid tags = %v, want water and lava", fluidTags)
+	}
+
+	tags := make(map[string][]int32, len(fluidTags))
+
+	for _, tag := range fluidTags {
+		tags[tag.ID] = tag.Entries
+	}
+
+	if !slices.Equal(tags["minecraft:water"], []int32{2, 1}) {
+		t.Errorf("water fluid tag = %v, want source and flowing water", tags["minecraft:water"])
+	}
+
+	if !slices.Equal(tags["minecraft:lava"], []int32{4, 3}) {
+		t.Errorf("lava fluid tag = %v, want source and flowing lava", tags["minecraft:lava"])
+	}
+}
+
 func TestConfigurationEnchantmentDependencyTags12111(t *testing.T) {
 	registries := make(map[string]map[string][]int32)
 

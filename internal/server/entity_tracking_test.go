@@ -399,6 +399,111 @@ func TestItemEntityFluidBuoyancyAndLavaSurvival(t *testing.T) {
 	}
 }
 
+func TestItemEntityLavaDamage(t *testing.T) {
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{}, game.Lava)
+
+	runtime := NewRuntime(world)
+
+	viewer, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Viewer")
+
+	viewer.loadedChunks = map[LoadedChunk]struct{}{{}: {}}
+
+	joinTestSession(t, runtime, viewer)
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+	item := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: 1}, game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 32767)
+
+	connection.reset()
+
+	runtime.Tick()
+
+	if item.State.Removed || item.Health != 1 {
+		t.Fatalf("item after first lava tick = removed %t, health %d", item.State.Removed, item.Health)
+	}
+
+	connection.reset()
+
+	runtime.Tick()
+
+	if !item.State.Removed || len(runtime.snapshotRuntimeEntities()) != 0 {
+		t.Fatalf("item after second lava tick = removed %t, entities %d", item.State.Removed, len(runtime.snapshotRuntimeEntities()))
+	}
+
+	assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundSoundID, protocol.ClientboundRemoveEntitiesID})
+	assertItemBurnSound(t, connection.packets(t)[0], item.State.Position)
+}
+
+func TestFireResistantItemSurvivesLava(t *testing.T) {
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{}, game.Lava)
+
+	runtime := NewRuntime(world)
+
+	viewer := &Session{}
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+	item := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemNetheriteIngot, Count: 1}, game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 32767)
+
+	for range 10 {
+		runtime.Tick()
+	}
+
+	if item.State.Removed || item.Health != 5 {
+		t.Fatalf("fire-resistant item state = removed %t, health %d", item.State.Removed, item.Health)
+	}
+}
+
+func assertItemBurnSound(t *testing.T, packet protocol.Packet, position game.Position) {
+	t.Helper()
+
+	reader := protocol.NewPacketReader(packet.Data)
+
+	reader.VarInt()
+
+	event := reader.String(32767)
+
+	if reader.Bool() {
+		reader.Float()
+	}
+
+	source := reader.VarInt()
+
+	x := reader.Int()
+	y := reader.Int()
+	z := reader.Int()
+
+	volume := reader.Float()
+	pitch := reader.Float()
+
+	reader.Long()
+
+	err := reader.Err()
+	if err != nil {
+		t.Fatalf("decode item burn sound: %v", err)
+	}
+
+	if event != "minecraft:entity.generic.burn" || source != protocol.SoundSourceNeutral {
+		t.Fatalf("item burn sound = event %q source %d", event, source)
+	}
+
+	wantX := int32(position.X * 8)
+	wantY := int32(position.Y * 8)
+	wantZ := int32(position.Z * 8)
+
+	if x != wantX || y != wantY || z != wantZ {
+		t.Fatalf("item burn sound position = %d, %d, %d; want %d, %d, %d", x, y, z, wantX, wantY, wantZ)
+	}
+
+	if volume != 0.4 || pitch < 2 || pitch >= 2.4 {
+		t.Fatalf("item burn sound = volume %g pitch %g", volume, pitch)
+	}
+}
+
 func TestItemEntityFlowingWaterPush(t *testing.T) {
 	world := &game.World{}
 

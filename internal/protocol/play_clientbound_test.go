@@ -27,6 +27,7 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 		"container set content":        {actual: ClientboundContainerSetContentID, expected: 0x12},
 		"container set data":           {actual: ClientboundContainerSetDataID, expected: 0x13},
 		"container set slot":           {actual: ClientboundContainerSetSlotID, expected: 0x14},
+		"damage event":                 {actual: ClientboundDamageEventID, expected: 0x19},
 		"synchronize entity position":  {actual: ClientboundSynchronizeEntityPositionID, expected: 0x23},
 		"update entity position":       {actual: ClientboundUpdateEntityPositionID, expected: 0x33},
 		"update position and rotation": {actual: ClientboundUpdateEntityPositionRotationID, expected: 0x34},
@@ -36,6 +37,9 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 		"entity equipment":             {actual: ClientboundEntityEquipmentID, expected: 0x64},
 		"take item entity":             {actual: ClientboundTakeItemEntityID, expected: 0x7A},
 		"update recipes":               {actual: ClientboundUpdateRecipesID, expected: 0x83},
+		"combat kill":                  {actual: ClientboundCombatKillID, expected: 0x42},
+		"respawn":                      {actual: ClientboundRespawnID, expected: 0x50},
+		"set health":                   {actual: ClientboundSetHealthID, expected: 0x66},
 	}
 
 	for name, packetID := range packetIDs {
@@ -85,6 +89,54 @@ func TestContainerInventoryPacketsEncode(t *testing.T) {
 		ID:          2,
 		Value:       300,
 	}, []byte{0x03, 0x00, 0x02, 0x01, 0x2C})
+}
+
+func TestSetHealthEncode(t *testing.T) {
+	assertPacketEncoding(t, SetHealth{Health: 20, Food: 20, Saturation: 5}, []byte{
+		0x41, 0xA0, 0x00, 0x00,
+		0x14,
+		0x40, 0xA0, 0x00, 0x00,
+	})
+}
+
+func TestDamageEventEncode(t *testing.T) {
+	assertPacketEncoding(t, DamageEvent{
+		EntityID:          300,
+		DamageType:        5,
+		CauseEntityID:     300,
+		DirectEntityID:    301,
+		HasSourcePosition: true,
+		SourcePositionX:   1.5,
+		SourcePositionY:   -2.25,
+		SourcePositionZ:   3,
+	}, decodeTestHex(t, "ac0205ac02ad02013ff8000000000000c0020000000000004008000000000000"))
+}
+
+func TestCombatKillEncode(t *testing.T) {
+	assertPacketEncoding(t, CombatKill{PlayerID: 300, Message: game.LiteralText("bye")}, []byte{
+		0xAC, 0x02,
+		0x0A, 0x08, 0x00, 0x04, 't', 'e', 'x', 't', 0x00, 0x03, 'b', 'y', 'e', 0x00,
+	})
+}
+
+func TestRespawnEncode(t *testing.T) {
+	assertPacketEncoding(t, Respawn{
+		Spawn: SpawnInfo{
+			DimensionType:    2,
+			Dimension:        "minecraft:overworld",
+			Seed:             3,
+			GameMode:         1,
+			PreviousGameMode: 0xFF,
+			Flat:             true,
+			PortalCooldown:   300,
+			SeaLevel:         63,
+		},
+		DataToKeep: 3,
+	}, []byte{
+		0x02, 0x13, 'm', 'i', 'n', 'e', 'c', 'r', 'a', 'f', 't', ':', 'o', 'v', 'e', 'r', 'w', 'o', 'r', 'l', 'd',
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
+		0x01, 0xFF, 0x00, 0x01, 0x00, 0xAC, 0x02, 0x3F, 0x03,
+	})
 }
 
 func TestContainerSetSlotEncodesItemStackReferenceFixtures(t *testing.T) {

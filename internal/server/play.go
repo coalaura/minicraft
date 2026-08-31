@@ -146,6 +146,15 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		}
 
 		s.handleChunkBatchReceived(batch)
+	case protocol.ServerboundClientCommandID:
+		command, err := protocol.DecodeClientCommand(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		if command.Action == protocol.ClientCommandPerformRespawn {
+			return s.Runtime.RespawnPlayer(s)
+		}
 	case protocol.ServerboundClientTickEndID:
 		return protocol.DecodeEmptyPacket(packet.Data, "client tick end")
 	case protocol.ServerboundPlayClientInformationID:
@@ -341,6 +350,11 @@ func (s *Session) sendInitialPlayState() error {
 		return err
 	}
 
+	err = s.sendHealth()
+	if err != nil {
+		return err
+	}
+
 	return s.Runtime.JoinSession(s)
 }
 
@@ -377,6 +391,7 @@ func (s *Session) sendPlayLogin() error {
 			SeaLevel:         s.Runtime.World.SeaLevel,
 		},
 
+		ShowDeathScreen:    true,
 		EnforcesSecureChat: s.secureChatEnforced(),
 	}
 
@@ -527,6 +542,10 @@ func (s *Session) handleMovePlayerStatus(move protocol.MovePlayerStatus) {
 }
 
 func (s *Session) handlePlayerCommand(command protocol.PlayerCommand) {
+	if !s.playerAlive() {
+		return
+	}
+
 	switch command.Action {
 	case protocol.PlayerCommandStartSprinting:
 		s.Runtime.UpdateSprinting(s, true)
@@ -536,6 +555,10 @@ func (s *Session) handlePlayerCommand(command protocol.PlayerCommand) {
 }
 
 func (s *Session) handlePlayerAction(action protocol.PlayerAction) error {
+	if !s.playerAlive() {
+		return s.sendBlockChangedAck(action.Sequence)
+	}
+
 	switch action.Status {
 	case protocol.PlayerActionStartDestroyBlock:
 		result, err := s.Runtime.startDestroyingBlock(s, action.Position)
@@ -587,10 +610,18 @@ func (s *Session) sendBlockChangedAck(sequence int32) error {
 }
 
 func (s *Session) handlePlayerInput(input protocol.PlayerInput) {
+	if !s.playerAlive() {
+		return
+	}
+
 	s.Runtime.UpdateSneaking(s, input.Flags&protocol.PlayerInputSneak != 0)
 }
 
 func (s *Session) handleSwingArm(swing protocol.SwingArm) {
+	if !s.playerAlive() {
+		return
+	}
+
 	animation := byte(protocol.EntityAnimationSwingMainHand)
 
 	switch swing.Hand {

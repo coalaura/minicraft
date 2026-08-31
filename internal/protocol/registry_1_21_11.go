@@ -150,6 +150,19 @@ var ConfigurationTags = []RegistryTags{
 		Tags:       generatedEnchantmentTags,
 	},
 	{
+		RegistryID: "minecraft:fluid",
+		Tags: []RegistryTag{
+			{
+				ID:      "minecraft:water",
+				Entries: []int32{2, 1},
+			},
+			{
+				ID:      "minecraft:lava",
+				Entries: []int32{4, 3},
+			},
+		},
+	},
+	{
 		RegistryID: "minecraft:entity_type",
 		Tags: []RegistryTag{
 			{

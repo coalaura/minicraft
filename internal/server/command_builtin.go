@@ -169,6 +169,45 @@ func (registry *commandRegistry) registerHelp() {
 	})
 }
 
+func (registry *commandRegistry) registerKill() {
+	targets := registry.targetArgument("targets", true)
+
+	execute := func(source CommandSource, resolved []*Session) error {
+		if len(resolved) == 0 {
+			return commandFailure{message: game.TranslatableText("argument.entity.notfound.player")}
+		}
+
+		for _, target := range resolved {
+			registry.runtime.DamagePlayer(target, PlayerDamage{Type: PlayerDamageGenericKill, Amount: math.MaxFloat32})
+		}
+
+		if len(resolved) == 1 {
+			name := game.LiteralText(resolved[0].snapshotPlayer().Name)
+
+			return source.Feedback(game.TranslatableText("commands.kill.success.single", name))
+		}
+
+		return source.Feedback(game.TranslatableText("commands.kill.success.multiple", integerText(int64(len(resolved)))))
+	}
+
+	registry.register(&registeredCommand{
+		Name: "kill",
+		Patterns: []commandPattern{
+			{
+				Execute: func(source CommandSource, _ []any) error {
+					return execute(source, registry.sourceTargets(source))
+				},
+			},
+			{
+				Elements: []commandElement{targets},
+				Execute: func(source CommandSource, values []any) error {
+					return execute(source, values[0].([]*Session))
+				},
+			},
+		},
+	})
+}
+
 func (registry *commandRegistry) registerSeed() {
 	registry.register(&registeredCommand{
 		Name: "seed",
@@ -926,6 +965,7 @@ func registerBuiltinCommands(registry *commandRegistry) {
 	registry.registerHelp()
 	registry.registerSeed()
 	registry.registerTime()
+	registry.registerKill()
 	registry.registerGameMode()
 	registry.registerGive()
 	registry.registerEnchant()

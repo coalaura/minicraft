@@ -315,6 +315,22 @@ func (s *Session) updatePlayerChunks() error {
 	return s.updateVisibleChunks(center)
 }
 
+func (s *Session) resetChunksForRespawn() {
+	s.chunkMx.Lock()
+
+	s.hasChunkCenter = false
+	s.loadedChunks = nil
+	s.queuedChunks = nil
+	s.chunkRevision++
+	s.chunkQueueReady = false
+	s.chunkBatchAwaiting = false
+	s.chunkFeedbackTimedOut = false
+
+	s.chunkMx.Unlock()
+
+	s.clearTrackedEntities()
+}
+
 func (s *Session) updateVisibleChunks(center LoadedChunk) error {
 	s.chunkMx.Lock()
 

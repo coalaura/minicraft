@@ -187,6 +187,8 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 	player.Position = s.Runtime.World.Spawn
 	player.GameMode = s.Config.GameMode()
 
+	player.ResetSurvivalState()
+
 	s.Player = player
 
 	s.Log.Printf("[login] %s - verified login (uuid=%s)\n", s.Conn.RemoteAddr(), player.UUID)
@@ -229,6 +231,8 @@ func (s *Session) handleOfflineLogin(ctx context.Context, start protocol.LoginSt
 
 		GameMode: s.Config.GameMode(),
 	}
+
+	player.ResetSurvivalState()
 
 	if s.offlineProfiles != nil && s.Config.ResolveOfflineSkinsEnabled() {
 		properties, _ := s.offlineProfiles.resolve(ctx, start.Name)

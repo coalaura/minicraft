@@ -19,6 +19,8 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Generated 1.21.11 block hardness, tool speed, durability, harvest gating and compiled canonical ordinary block loot
 - Canonical 1.21.11 enchantment registry, tags and item applicability, with Efficiency, Unbreaking, Silk Touch and Fortune gameplay behavior
 - Survival placement with exact main-hand/offhand item consumption and synchronized equipment
+- Authoritative player health, repeated-hit timing, air and drowning, fire and lava, fall and void damage
+- Idempotent death with inventory loss, `/kill`, and client-requested respawn at the world spawn
 - Stateful block placement for common structures such as slabs, stairs, doors, trapdoors, fences and walls
 - Full player inventory and creative inventory interactions
 - Manual 2x2 and crafting-table recipes, including shaped, shapeless and ordinary crafting remainders
@@ -98,18 +100,20 @@ Minicraft is not intended to be a drop-in replacement for a full vanilla server.
 
 There are still gameplay systems and protocol features that are intentionally incomplete or outside that scope.
 
-Fluid simulation covers vanilla-like derived water and lava flow in active world chunks, while scheduled fluid ticks intentionally pause in inactive chunks. It also covers waterlogging, buckets and item movement through fluids. Health, drowning, lava damage and fire consequences, Nether water evaporation and broader fluid parity remain deferred or out of scope.
+Fluid simulation covers vanilla-like derived water and lava flow in active world chunks, while scheduled fluid ticks intentionally pause in inactive chunks. It also covers waterlogging, buckets, item movement through fluids, player drowning, lava damage and extinguishing. Nether water evaporation and broader fluid parity remain deferred or out of scope.
 
 Generic block entities support procedural copy-on-write state, removal behavior and optional runtime interaction/ticking capabilities. Generic 9x1 through 9x6 storage menus are available, including barrels and single/double normal, trapped and copper chest variants. Hoppers automate those containers and the furnace family with sided access, active-chunk cooldown semantics and dropped-item collection. Furnace-family block entities process the generated 1.21.11 smelting, smoking and blasting catalogues with vanilla fuel durations, remainders, lit states and menu data. Manual crafting supports the generated ordinary shaped and shapeless recipe catalogue in the player inventory and at crafting tables. Recipe-book protocol, furnace XP payout, special/dynamic recipes and component-transforming recipes are not implemented yet.
 
 The survival block loop uses server-tick-authoritative START, STOP and ABORT handling, vanilla hardness/tool progress including Efficiency, harvest gating, post-commit tool durability with Unbreaking, cause-specific ordinary loot, and exact-hand placement consumption. `/enchant` can place all ordinary vanilla enchantments on their canonical supported items with exact exclusive-set compatibility, but intentionally targets players only. Canonical 1.21.11 block loot is compiled into Go during generation and supports ordered alternatives, independent pools, state and tool conditions, shears, Silk Touch, Fortune formulas and random counts or chances. Tables that require unavailable location, block-state copying or block-entity component contexts remain visibly deferred rather than approximated. Loot uses a dedicated advancing runtime random stream; unlike Java, Minicraft does not yet persist a separate named `random_sequence` stream for each table. XP drops, potion/effect modifiers, underwater and airborne mining penalties remain explicitly deferred.
+
+Player survival state includes vanilla health, food and saturation defaults, air supply, hurt cooldown behavior, environmental damage, death inventory drops and respawn. Food and saturation do not tick yet: hunger, exhaustion, eating, natural regeneration and starvation remain deferred, along with status effects, armor and enchantment mitigation, combat, mobs, projectiles, XP, beds, respawn anchors, gamerules and persistent player data.
 
 ## Todo
 
 - Broader block placement and interaction support
 - Other inventory blocks
 - Recipe-book and special crafting recipe parity
-- Broader survival mechanics such as health, hunger and effects
+- Broader survival mechanics such as hunger, effects, mitigation and combat
 - Adventure map features
 
 

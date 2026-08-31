@@ -17,6 +17,10 @@ type blockPlacementContext struct {
 }
 
 func (s *Session) handleUseItemOn(interaction protocol.UseItemOn) error {
+	if !s.playerAlive() {
+		return s.resynchronizePlacement(interaction.Position, interaction.Sequence)
+	}
+
 	inventoryBefore := s.snapshotPlayer().Inventory
 
 	if !validPlacementInteraction(interaction) {

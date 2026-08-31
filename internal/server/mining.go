@@ -190,7 +190,7 @@ func (r *Runtime) tickMiningAttemptsLocked() []queuedBlockMutation {
 }
 
 func (r *Runtime) validMiningTarget(session *Session, player game.Player, position game.BlockPosition, block game.Block) bool {
-	if !r.AllowBlockBreaking || !session.hasLoadedBlock(position) || block == game.Air {
+	if player.Dead || !r.AllowBlockBreaking || !session.hasLoadedBlock(position) || block == game.Air {
 		return false
 	}
 

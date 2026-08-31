@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"math"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -572,20 +573,65 @@ func (r *Runtime) updatePlayerMetadata(session *Session, update func(*game.Playe
 }
 
 func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Player)) {
-	r.worldMutationMu.Lock()
-	defer r.worldMutationMu.Unlock()
+	var (
+		survivalUpdate playerSurvivalUpdate
+		damaged        bool
+	)
 
+	r.worldMutationMu.Lock()
 	r.lifecycleMu.Lock()
-	defer r.lifecycleMu.Unlock()
+
+	defer func() {
+		r.lifecycleMu.Unlock()
+		r.worldMutationMu.Unlock()
+
+		if damaged {
+			r.sendPlayerSurvivalUpdate(session, survivalUpdate)
+		}
+	}()
 
 	session.playerMx.Lock()
+
 	previous := *session.Player
+	if previous.Dead {
+		session.playerMx.Unlock()
+
+		return
+	}
 
 	update(session.Player)
 
 	r.updatePlayerSwimmingState(session.Player)
 
 	session.Player.Pose = r.calculatedPlayerPose(*session.Player)
+
+	currentBox := session.Player.CollisionBox()
+
+	inWater := r.fluidContact(currentBox, game.FluidTypeWater, true).Depth > 0
+	inLava := r.fluidContact(currentBox, game.FluidTypeLava, true).Depth > 0
+
+	verticalDelta := session.Player.Position.Y - previous.Position.Y
+
+	switch {
+	case inWater:
+		session.Player.FallDistance = 0
+	case inLava:
+		session.Player.FallDistance *= 0.5
+	case session.Player.OnGround:
+		fallDistance := session.Player.FallDistance
+		session.Player.FallDistance = 0
+
+		damage := float32(math.Floor(float64(fallDistance + 0.000001 - 3)))
+		if damage > 0 {
+			session.playerMx.Unlock()
+
+			survivalUpdate, damaged = r.damagePlayerLocked(session, PlayerDamage{Type: PlayerDamageFall, Amount: damage})
+
+			session.playerMx.Lock()
+		}
+	case verticalDelta < 0:
+		session.Player.FallDistance -= float32(verticalDelta)
+	}
 
 	current := *session.Player
 	session.playerMx.Unlock()

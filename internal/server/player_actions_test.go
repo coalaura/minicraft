@@ -71,6 +71,12 @@ func TestJoiningPlayerReceivesCurrentPlayerState(t *testing.T) {
 	bob.handlePlayerInput(protocol.PlayerInput{Flags: protocol.PlayerInputSneak})
 	bob.handlePlayerCommand(protocol.PlayerCommand{Action: protocol.PlayerCommandStartSprinting})
 
+	bob.updatePlayerState(func(player *game.Player) bool {
+		player.RemainingFireTicks = 10
+
+		return true
+	})
+
 	alice, aliceConnection := newMovementTestSession(runtime, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Alice")
 
 	joinTestSession(t, runtime, alice)
@@ -85,7 +91,7 @@ func TestJoiningPlayerReceivesCurrentPlayerState(t *testing.T) {
 			continue
 		}
 
-		assertPlayerMetadata(t, packet, bob.Player.EntityID, protocol.EntityFlagSneaking|protocol.EntityFlagSprinting, protocol.EntityPoseCrouching)
+		assertPlayerMetadata(t, packet, bob.Player.EntityID, protocol.EntityFlagOnFire|protocol.EntityFlagSneaking|protocol.EntityFlagSprinting, protocol.EntityPoseCrouching)
 
 		return
 	}

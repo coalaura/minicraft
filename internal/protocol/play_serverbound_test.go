@@ -68,6 +68,23 @@ func TestDecodeClientInformation(t *testing.T) {
 	}
 }
 
+func TestDecodeClientCommand(t *testing.T) {
+	if ServerboundClientCommandID != 0x0B {
+		t.Fatalf("client command packet id = %#x, want 0x0B", ServerboundClientCommandID)
+	}
+
+	command, err := DecodeClientCommand([]byte{ClientCommandPerformRespawn})
+	if err != nil {
+		t.Fatalf("decode client command: %v", err)
+	}
+
+	if command.Action != ClientCommandPerformRespawn {
+		t.Fatalf("client command action = %d, want %d", command.Action, ClientCommandPerformRespawn)
+	}
+
+	assertTrailingRejected(t, "client command", []byte{ClientCommandPerformRespawn}, DecodeClientCommand)
+}
+
 func TestDecodeClientInformationRejectsTruncatedPacket(t *testing.T) {
 	_, err := DecodeClientInformation([]byte{0x05, 'e', 'n'})
 	if err == nil {

@@ -15,6 +15,13 @@ const (
 	defaultBlockInteractionRange = 4.5
 )
 
+const (
+	DefaultPlayerHealth     = 20
+	DefaultPlayerFoodLevel  = 20
+	DefaultPlayerSaturation = 5
+	DefaultPlayerAirSupply  = 300
+)
+
 type PlayerPose uint8
 
 type ProfileProperty struct {
@@ -36,7 +43,18 @@ type Player struct {
 	Rotation Rotation
 	Velocity Velocity
 
-	GameMode  GameMode
+	GameMode            GameMode
+	Health              float32
+	FoodLevel           int32
+	Saturation          float32
+	AirSupply           int32
+	FallDistance        float32
+	RemainingFireTicks  int32
+	InvulnerableTime    int32
+	LastHurt            float32
+	Dead                bool
+	SurvivalInitialized bool
+
 	OnGround  bool
 	Sneaking  bool
 	Sprinting bool
@@ -45,6 +63,19 @@ type Player struct {
 
 	SelectedHotbarSlot int
 	Inventory          PlayerInventory
+}
+
+func (player *Player) ResetSurvivalState() {
+	player.Health = DefaultPlayerHealth
+	player.FoodLevel = DefaultPlayerFoodLevel
+	player.Saturation = DefaultPlayerSaturation
+	player.AirSupply = DefaultPlayerAirSupply
+	player.FallDistance = 0
+	player.RemainingFireTicks = 0
+	player.InvulnerableTime = 0
+	player.LastHurt = 0
+	player.Dead = false
+	player.SurvivalInitialized = true
 }
 
 func (player Player) EyeHeight() float64 {

@@ -11,6 +11,8 @@ const (
 	PlayerCommandStartSprinting = 1
 	PlayerCommandStopSprinting  = 2
 
+	ClientCommandPerformRespawn = 0
+
 	PlayerInputSneak  = 0x20
 	PlayerInputSprint = 0x40
 
@@ -56,6 +58,10 @@ type ConfirmTeleport struct {
 
 type ChunkBatchReceived struct {
 	ChunksPerTick float32
+}
+
+type ClientCommand struct {
+	Action int32
 }
 
 type ChatMessage struct {
@@ -267,6 +273,19 @@ func DecodeChunkBatchReceived(data []byte) (ChunkBatchReceived, error) {
 	}
 
 	return ChunkBatchReceived{ChunksPerTick: chunksPerTick}, nil
+}
+
+func DecodeClientCommand(data []byte) (ClientCommand, error) {
+	rd := NewPacketReader(data)
+
+	command := ClientCommand{Action: rd.VarInt()}
+
+	err := rd.Done("client command")
+	if err != nil {
+		return ClientCommand{}, err
+	}
+
+	return command, nil
 }
 
 func DecodeCloseContainer(data []byte) (CloseContainer, error) {

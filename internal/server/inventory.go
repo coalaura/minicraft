@@ -37,7 +37,7 @@ type equipmentSlotChange struct {
 }
 
 func (s *Session) handleSetHeldItem(selection protocol.SetHeldItem) {
-	if selection.Slot < 0 || selection.Slot >= game.HotbarSlotCount {
+	if !s.playerAlive() || selection.Slot < 0 || selection.Slot >= game.HotbarSlotCount {
 		return
 	}
 
@@ -61,6 +61,12 @@ func (s *Session) handleSetHeldItem(selection protocol.SetHeldItem) {
 }
 
 func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot) {
+	if !s.playerAlive() {
+		s.resynchronizePlayerInventory()
+
+		return
+	}
+
 	stack, valid := creativeItemStack(update.Item)
 	if !valid {
 		s.resynchronizePlayerInventory()
@@ -133,7 +139,7 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 }
 
 func (s *Session) handlePickItemFromBlock(pick protocol.PickItemFromBlock) {
-	if !s.hasLoadedBlock(pick.Position) {
+	if !s.playerAlive() || !s.hasLoadedBlock(pick.Position) {
 		return
 	}
 
@@ -240,6 +246,10 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
 
+	if !s.playerAlive() {
+		return nil
+	}
+
 	currentMenu := s.activeMenu()
 	if currentMenu.backing != nil && !currentMenu.backing.StillValid(s.Runtime, s) {
 		s.Runtime.closeMenuLocked(s, true)
@@ -331,6 +341,10 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
 
+	if !s.playerAlive() {
+		return
+	}
+
 	var (
 		before  game.PlayerInventory
 		dropped game.ItemStack
@@ -373,6 +387,10 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 func (s *Session) handleSwapWithOffhand() {
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
+
+	if !s.playerAlive() {
+		return
+	}
 
 	var before game.PlayerInventory
 

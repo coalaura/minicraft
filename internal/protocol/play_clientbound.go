@@ -17,16 +17,21 @@ const (
 	ItemEntityType   = 71
 
 	EntityFlagsMetadataIndex     = 0
+	EntityAirMetadataIndex       = 1
 	EntityPoseMetadataIndex      = 6
+	LivingHealthMetadataIndex    = 9
 	ItemEntityItemMetadataIndex  = 8
 	PlayerSkinPartsMetadataIndex = 16
 
 	MetadataTypeByte      = 0
+	MetadataTypeInt       = 1
+	MetadataTypeFloat     = 3
 	MetadataTypeItemStack = 7
 	MetadataTypePose      = 20
 
 	MetadataTerminator = 0xFF
 
+	EntityFlagOnFire    = 0x01
 	EntityFlagSneaking  = 0x02
 	EntityFlagSprinting = 0x08
 	EntityFlagSwimming  = 0x10
@@ -48,6 +53,7 @@ const (
 	LevelEventLavaFizz   = 1501
 	LevelEventBlockBreak = 2001
 	SoundSourceBlock     = 4
+	SoundSourceNeutral   = 6
 
 	maxCommandTreeNodes       = 32767
 	maxCommandNodeChildren    = 32767
@@ -105,6 +111,8 @@ type MetadataValue interface {
 type MetadataByte byte
 
 type MetadataVarInt int32
+
+type MetadataFloat float32
 
 type MetadataItemStack struct {
 	Stack game.ItemStack
@@ -193,6 +201,12 @@ type SetHeldSlot struct {
 	Slot int32
 }
 
+type SetHealth struct {
+	Health     float32
+	Food       int32
+	Saturation float32
+}
+
 type SynchronizeEntityPosition struct {
 	EntityID int32
 
@@ -279,6 +293,11 @@ type SpawnInfo struct {
 	Flat             bool
 	PortalCooldown   int32
 	SeaLevel         int32
+}
+
+type Respawn struct {
+	Spawn      SpawnInfo
+	DataToKeep byte
 }
 
 type PlayerPosition struct {
@@ -388,6 +407,22 @@ type GameEvent struct {
 type EntityEvent struct {
 	EntityID int32
 	Event    byte
+}
+
+type DamageEvent struct {
+	EntityID          int32
+	DamageType        int32
+	CauseEntityID     int32
+	DirectEntityID    int32
+	HasSourcePosition bool
+	SourcePositionX   float64
+	SourcePositionY   float64
+	SourcePositionZ   float64
+}
+
+type CombatKill struct {
+	PlayerID int32
+	Message  game.TextComponent
 }
 
 type PlayKeepAlive struct {
@@ -574,6 +609,10 @@ func (p MetadataVarInt) EncodeMetadata(wr *PacketWriter) {
 	wr.VarInt(int32(p))
 }
 
+func (p MetadataFloat) EncodeMetadata(wr *PacketWriter) {
+	wr.Float(float32(p))
+}
+
 func (p MetadataItemStack) EncodeMetadata(wr *PacketWriter) {
 	encodeItemStack(wr, p.Stack)
 }
@@ -674,6 +713,12 @@ func (p OpenScreen) Encode(wr *PacketWriter) {
 
 func (p SetHeldSlot) Encode(wr *PacketWriter) {
 	wr.VarInt(p.Slot)
+}
+
+func (p SetHealth) Encode(wr *PacketWriter) {
+	wr.Float(p.Health)
+	wr.VarInt(p.Food)
+	wr.Float(p.Saturation)
 }
 
 func (p SynchronizeEntityPosition) Encode(wr *PacketWriter) {
@@ -781,6 +826,11 @@ func (p SpawnInfo) Encode(wr *PacketWriter) {
 
 	wr.VarInt(p.PortalCooldown)
 	wr.VarInt(p.SeaLevel)
+}
+
+func (p Respawn) Encode(wr *PacketWriter) {
+	p.Spawn.Encode(wr)
+	wr.Byte(p.DataToKeep)
 }
 
 func (p PlayerPosition) Encode(wr *PacketWriter) {
@@ -946,6 +996,25 @@ func (p GameEvent) Encode(wr *PacketWriter) {
 func (p EntityEvent) Encode(wr *PacketWriter) {
 	wr.Int(p.EntityID)
 	wr.Byte(p.Event)
+}
+
+func (p DamageEvent) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+	wr.VarInt(p.DamageType)
+	wr.VarInt(p.CauseEntityID)
+	wr.VarInt(p.DirectEntityID)
+	wr.Bool(p.HasSourcePosition)
+
+	if p.HasSourcePosition {
+		wr.Double(p.SourcePositionX)
+		wr.Double(p.SourcePositionY)
+		wr.Double(p.SourcePositionZ)
+	}
+}
+
+func (p CombatKill) Encode(wr *PacketWriter) {
+	wr.VarInt(p.PlayerID)
+	wr.AnonymousNBTText(p.Message)
 }
 
 func (p PlayKeepAlive) Encode(wr *PacketWriter) {
