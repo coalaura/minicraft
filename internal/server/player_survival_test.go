@@ -395,8 +395,8 @@ func TestPlayerDeathDropsInventoryOnlyOnce(t *testing.T) {
 	}
 
 	entities := runtime.snapshotRuntimeEntities()
-	if len(entities) != 3 {
-		t.Fatalf("death drops = %d, want 3", len(entities))
+	if len(entities) != 4 {
+		t.Fatalf("death drops = %d, want 4", len(entities))
 	}
 
 	applied = runtime.DamagePlayer(session, PlayerDamage{Type: PlayerDamageGenericKill, Amount: math.MaxFloat32})
@@ -406,7 +406,7 @@ func TestPlayerDeathDropsInventoryOnlyOnce(t *testing.T) {
 
 	runtime.Tick()
 
-	if len(runtime.snapshotRuntimeEntities()) != 3 {
+	if len(runtime.snapshotRuntimeEntities()) != 4 {
 		t.Fatal("dead player survival tick duplicated inventory drops")
 	}
 }
@@ -451,7 +451,7 @@ func TestPlayerDeathPreventsVanishingEquipmentDrops(t *testing.T) {
 	}
 }
 
-func TestPlayerDeathDiscardsTransientMenuItems(t *testing.T) {
+func TestPlayerDeathDropsTransientMenuItems(t *testing.T) {
 	t.Run("full inventory cursor", func(t *testing.T) {
 		runtime := NewRuntime(&game.World{})
 
@@ -488,11 +488,17 @@ func TestPlayerDeathDiscardsTransientMenuItems(t *testing.T) {
 			t.Fatalf("container backing changed on death: %+v", container[0])
 		}
 
+		var carriedDropped bool
+
 		for _, entity := range runtime.snapshotRuntimeEntities() {
 			item := entity.(*runtimeItemEntity)
 			if item.Stack.Item == game.ItemDiamond {
-				t.Fatalf("carried stack spawned on death: %+v", item.Stack)
+				carriedDropped = true
 			}
+		}
+
+		if !carriedDropped {
+			t.Fatal("carried stack did not drop on death")
 		}
 	})
 
@@ -502,6 +508,7 @@ func TestPlayerDeathDiscardsTransientMenuItems(t *testing.T) {
 		session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
 
 		session.Player.ResetSurvivalState()
+		session.Player.Inventory.Crafting[0] = game.ItemStack{Item: game.ItemEmerald, Count: 2}
 
 		table := &craftingTableBacking{}
 
@@ -511,8 +518,24 @@ func TestPlayerDeathDiscardsTransientMenuItems(t *testing.T) {
 
 		runtime.DamagePlayer(session, PlayerDamage{Type: PlayerDamageGenericKill, Amount: math.MaxFloat32})
 
-		if len(runtime.snapshotRuntimeEntities()) != 0 {
-			t.Fatal("crafting input spawned on death")
+		var (
+			diamondDropped bool
+			emeraldDropped bool
+		)
+
+		for _, entity := range runtime.snapshotRuntimeEntities() {
+			item := entity.(*runtimeItemEntity)
+
+			switch item.Stack.Item {
+			case game.ItemDiamond:
+				diamondDropped = item.Stack.Count == 1
+			case game.ItemEmerald:
+				emeraldDropped = item.Stack.Count == 2
+			}
+		}
+
+		if !diamondDropped || !emeraldDropped {
+			t.Fatalf("crafting death drops: diamond %t, emerald %t", diamondDropped, emeraldDropped)
 		}
 	})
 }

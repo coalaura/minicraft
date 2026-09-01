@@ -93,6 +93,7 @@ const (
 	ClientboundBlockDestructionID             = 0x05
 	ClientboundBlockEventID                   = 0x07
 	ClientboundBlockUpdateID                  = 0x08
+	ClientboundChangeDifficultyID             = 0x0A
 	ClientboundChunkBatchEndID                = 0x0B
 	ClientboundChunkBatchBeginID              = 0x0C
 	ClientboundContainerSetContentID          = 0x12

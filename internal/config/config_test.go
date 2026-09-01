@@ -17,6 +17,10 @@ func TestConfigDefaults(t *testing.T) {
 		t.Fatalf("world generator = %q, want superflat", cfg.World.Generator)
 	}
 
+	if cfg.Difficulty() != game.DifficultyNormal {
+		t.Fatalf("difficulty = %d, want normal", cfg.Difficulty())
+	}
+
 	if cfg.RenderDistance() != DefaultRenderDistance {
 		t.Fatalf("render distance = %d, want %d", cfg.RenderDistance(), DefaultRenderDistance)
 	}
@@ -148,6 +152,22 @@ func TestConfigRejectsInvalidGameMode(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "builder") {
 		t.Fatalf("validation error = %v, want invalid game mode", err)
+	}
+}
+
+func TestConfigWorldDifficulty(t *testing.T) {
+	cfg, err := decodeConfig(strings.NewReader("[world]\ndifficulty = 'hard'"))
+	if err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+
+	if cfg.Difficulty() != game.DifficultyHard {
+		t.Fatalf("difficulty = %d, want hard", cfg.Difficulty())
+	}
+
+	_, err = decodeConfig(strings.NewReader("[world]\ndifficulty = 'hostile'"))
+	if err == nil || !strings.Contains(err.Error(), "hostile") {
+		t.Fatalf("invalid difficulty error = %v", err)
 	}
 }
 

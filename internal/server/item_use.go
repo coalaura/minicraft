@@ -43,12 +43,217 @@ func (s *Session) handleUseItem(interaction protocol.UseItem) (err error) {
 	}
 
 	handler, handled := itemUseHandlers[stack.Item]
-	if !handled {
+	if handled {
+		s.Runtime.stopUsingItem(s)
+
+		_, err = handler(s, stack, interaction.Hand)
+		return err
+	}
+
+	definition, valid := stack.Item.Definition()
+	if !valid || definition.Food.ConsumeTicks == 0 {
 		return nil
 	}
 
-	_, err = handler(s, stack, interaction.Hand)
-	return err
+	return s.Runtime.startUsingFood(s, interaction.Hand, stack, definition.Food)
+}
+
+func (r *Runtime) startUsingFood(session *Session, hand int32, stack game.ItemStack, food game.ItemFood) error {
+	r.lifecycleMu.Lock()
+
+	player, changed := session.updatePlayerState(func(player *game.Player) bool {
+		if player.UsingItem || player.Dead || player.GameMode == game.GameModeSpectator {
+			return false
+		}
+
+		if player.GameMode != game.GameModeCreative && !food.AlwaysEdible && player.FoodLevel >= game.DefaultPlayerFoodLevel {
+			return false
+		}
+
+		held, valid := heldItemPointer(player, hand)
+		if !valid || !held.Equal(stack) {
+			return false
+		}
+
+		player.UsingItem = true
+		player.UsingOffhand = hand == protocol.OffHand
+		player.UseRemainingTicks = food.ConsumeTicks
+		player.UseSelectedHotbarSlot = player.SelectedHotbarSlot
+		player.UseAnimation = food.Animation
+		player.UseStack = stack.Clone()
+
+		return true
+	})
+
+	r.lifecycleMu.Unlock()
+
+	if changed {
+		r.sendPlayerMetadataUpdates([]game.Player{player})
+	}
+
+	return nil
+}
+
+func (r *Runtime) stopUsingItem(session *Session) {
+	r.lifecycleMu.Lock()
+
+	player, changed := session.updatePlayerState(func(player *game.Player) bool {
+		return player.StopUsingItem()
+	})
+
+	r.lifecycleMu.Unlock()
+
+	if changed {
+		r.sendPlayerMetadataUpdates([]game.Player{player})
+	}
+}
+
+func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, bool) {
+	var (
+		before           game.PlayerInventory
+		dropped          game.ItemStack
+		sounds           []protocol.Sound
+		useEnded         bool
+		inventoryChanged bool
+	)
+
+	player, changed := session.updatePlayerState(func(player *game.Player) bool {
+		if !player.UsingItem {
+			return false
+		}
+
+		hand := int32(protocol.MainHand)
+
+		if player.UsingOffhand {
+			hand = protocol.OffHand
+		}
+
+		held, valid := heldItemPointer(player, hand)
+		if !valid || held.Empty() || !held.Equal(player.UseStack) || (!player.UsingOffhand && player.SelectedHotbarSlot != player.UseSelectedHotbarSlot) {
+			player.StopUsingItem()
+
+			useEnded = true
+
+			return true
+		}
+
+		definition, valid := held.Item.Definition()
+		if !valid || definition.Food.ConsumeTicks == 0 {
+			player.StopUsingItem()
+
+			useEnded = true
+
+			return true
+		}
+
+		if player.UseRemainingTicks > 1 {
+			usedTicks := definition.Food.ConsumeTicks - player.UseRemainingTicks
+			waitTicks := uint16(float32(definition.Food.ConsumeTicks) * 0.21875)
+
+			if usedTicks > waitTicks && player.UseRemainingTicks%4 == 0 {
+				sounds = append(sounds, r.consumableSound(*player, definition.Food, protocol.SoundSourcePlayer))
+			}
+
+			player.UseRemainingTicks--
+
+			return true
+		}
+
+		sounds = append(sounds, r.consumableSound(*player, definition.Food, protocol.SoundSourcePlayer))
+		sounds = append(sounds, r.foodCompletionSounds(*player, definition.Food)...)
+
+		before = player.Inventory.Clone()
+
+		inventoryChanged = true
+
+		player.FoodLevel = min(game.DefaultPlayerFoodLevel, player.FoodLevel+int32(definition.Food.Nutrition))
+		player.Saturation = min(float32(player.FoodLevel), player.Saturation+definition.Food.Saturation)
+
+		if player.GameMode != game.GameModeCreative {
+			held.Count--
+
+			if definition.Food.Remainder != game.ItemAir {
+				remainder := game.ItemStack{Item: definition.Food.Remainder, Count: 1}
+
+				if held.Empty() {
+					*held = remainder
+				} else {
+					insertPlayerInventoryStack(&player.Inventory, &remainder, player.SelectedHotbarSlot)
+
+					dropped = remainder
+				}
+			} else if held.Empty() {
+				*held = game.ItemStack{}
+			}
+		}
+
+		player.StopUsingItem()
+
+		useEnded = true
+
+		return true
+	})
+
+	if !changed || (!useEnded && len(sounds) == 0) {
+		return playerSurvivalUpdate{}, false
+	}
+
+	if !dropped.Empty() {
+		r.spawnPlayerDroppedItem(player, dropped, false, true)
+	}
+
+	update := playerSurvivalUpdate{player: player, metadataChanged: useEnded, sounds: sounds}
+
+	if inventoryChanged {
+		update.healthChanged = true
+		update.inventoryBefore = &before
+	}
+
+	return update, true
+}
+
+func (r *Runtime) consumableSound(player game.Player, food game.ItemFood, source int32) protocol.Sound {
+	eatVolume := float32(1)
+
+	if r.nextEntityRandom() < 0.5 {
+		eatVolume = 0.5
+	}
+
+	eatPitch := 1 + (r.nextEntityRandom()-r.nextEntityRandom())*0.2
+	drinkPitch := 0.9 + r.nextEntityRandom()*0.1
+
+	volume := eatVolume
+	pitch := eatPitch
+
+	if food.Animation == game.ItemUseAnimationDrink {
+		volume = 0.5
+		pitch = drinkPitch
+	}
+
+	return playerConsumptionSound(player, food.Sound, source, volume, pitch)
+}
+
+func (r *Runtime) foodCompletionSounds(player game.Player, food game.ItemFood) []protocol.Sound {
+	consumePitch := 1 + (r.nextEntityRandom()-r.nextEntityRandom())*0.4
+	burpPitch := 0.9 + r.nextEntityRandom()*0.1
+
+	return []protocol.Sound{
+		playerConsumptionSound(player, food.Sound, protocol.SoundSourceNeutral, 1, consumePitch),
+		playerConsumptionSound(player, game.SoundEntityPlayerBurp, protocol.SoundSourcePlayer, 0.5, burpPitch),
+	}
+}
+
+func playerConsumptionSound(player game.Player, event game.SoundEvent, source int32, volume, pitch float32) protocol.Sound {
+	return protocol.Sound{
+		Event:  protocol.SoundEventHolder{Name: string(event)},
+		Source: source,
+		X:      player.Position.X,
+		Y:      player.Position.Y,
+		Z:      player.Position.Z,
+		Volume: volume,
+		Pitch:  pitch,
+		Seed:   rand.Int64(),
+	}
 }
 
 func (r *Runtime) useBucketOn(session *Session, interaction protocol.UseItemOn, stack game.ItemStack) (bool, error) {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"math"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 type Runtime struct {
 	World               *game.World
+	Difficulty          game.Difficulty
 	BlockMutationPolicy BlockMutationPolicy
 	AllowBlockBreaking  bool
 	AllowBlockPlacing   bool
@@ -608,7 +610,36 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 
 	inWater := r.fluidContact(currentBox, game.FluidTypeWater, true).Depth > 0
 
+	horizontalDeltaX := session.Player.Position.X - previous.Position.X
+	horizontalDeltaZ := session.Player.Position.Z - previous.Position.Z
 	verticalDelta := session.Player.Position.Y - previous.Position.Y
+
+	horizontalDistance := math.Hypot(horizontalDeltaX, horizontalDeltaZ)
+	fullDistance := math.Sqrt(horizontalDeltaX*horizontalDeltaX + verticalDelta*verticalDelta + horizontalDeltaZ*horizontalDeltaZ)
+
+	switch {
+	case session.Player.Swimming:
+		units := math.Round(fullDistance * 100)
+		if units > 0 {
+			session.Player.AddExhaustion(float32(units) * 0.0001)
+		}
+	case inWater:
+		distance := horizontalDistance
+
+		if r.playerEyeSubmerged(*session.Player) {
+			distance = fullDistance
+		}
+
+		units := math.Round(distance * 100)
+		if units > 0 {
+			session.Player.AddExhaustion(float32(units) * 0.0001)
+		}
+	case session.Player.Sprinting:
+		units := math.Round(horizontalDistance * 100)
+		if units > 0 {
+			session.Player.AddExhaustion(float32(units) * 0.001)
+		}
+	}
 
 	switch {
 	case session.Player.OnGround:
@@ -764,6 +795,7 @@ func NewRuntime(world *game.World) *Runtime {
 
 	runtime := &Runtime{
 		World:                     world,
+		Difficulty:                game.DifficultyNormal,
 		AllowBlockBreaking:        true,
 		AllowBlockPlacing:         true,
 		FluidRules:                FluidRules{WaterSourceConversion: true},

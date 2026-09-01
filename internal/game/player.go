@@ -47,6 +47,9 @@ type Player struct {
 	Health              float32
 	FoodLevel           int32
 	Saturation          float32
+	Exhaustion          float32
+	FoodTickTimer       int32
+	SurvivalTickCount   int64
 	AirSupply           int32
 	FallDistance        float32
 	RemainingFireTicks  int32
@@ -63,19 +66,55 @@ type Player struct {
 
 	SelectedHotbarSlot int
 	Inventory          PlayerInventory
+
+	UsingItem             bool
+	UsingOffhand          bool
+	UseRemainingTicks     uint16
+	UseSelectedHotbarSlot int
+	UseAnimation          ItemUseAnimation
+	UseStack              ItemStack
 }
 
 func (player *Player) ResetSurvivalState() {
 	player.Health = DefaultPlayerHealth
 	player.FoodLevel = DefaultPlayerFoodLevel
 	player.Saturation = DefaultPlayerSaturation
+	player.Exhaustion = 0
+	player.FoodTickTimer = 0
+	player.SurvivalTickCount = 0
 	player.AirSupply = DefaultPlayerAirSupply
 	player.FallDistance = 0
 	player.RemainingFireTicks = 0
 	player.InvulnerableTime = 0
 	player.LastHurt = 0
 	player.Dead = false
+
+	player.StopUsingItem()
+
 	player.SurvivalInitialized = true
+}
+
+func (player *Player) AddExhaustion(amount float32) {
+	if amount <= 0 || player.GameMode == GameModeCreative || player.GameMode == GameModeSpectator {
+		return
+	}
+
+	player.Exhaustion = min(player.Exhaustion+amount, 40)
+}
+
+func (player *Player) StopUsingItem() bool {
+	if !player.UsingItem {
+		return false
+	}
+
+	player.UsingItem = false
+	player.UsingOffhand = false
+	player.UseRemainingTicks = 0
+	player.UseSelectedHotbarSlot = 0
+	player.UseAnimation = ItemUseAnimationNone
+	player.UseStack = ItemStack{}
+
+	return true
 }
 
 func (player Player) EyeHeight() float64 {

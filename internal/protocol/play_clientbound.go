@@ -19,6 +19,7 @@ const (
 	EntityFlagsMetadataIndex     = 0
 	EntityAirMetadataIndex       = 1
 	EntityPoseMetadataIndex      = 6
+	LivingFlagsMetadataIndex     = 8
 	LivingHealthMetadataIndex    = 9
 	ItemEntityItemMetadataIndex  = 8
 	PlayerSkinPartsMetadataIndex = 16
@@ -35,6 +36,9 @@ const (
 	EntityFlagSneaking  = 0x02
 	EntityFlagSprinting = 0x08
 	EntityFlagSwimming  = 0x10
+
+	LivingFlagUsingItem    = 0x01
+	LivingFlagUsingOffhand = 0x02
 
 	EntityPoseStanding  = 0
 	EntityPoseSwimming  = 3
@@ -54,6 +58,7 @@ const (
 	LevelEventBlockBreak = 2001
 	SoundSourceBlock     = 4
 	SoundSourceNeutral   = 6
+	SoundSourcePlayer    = 7
 
 	maxCommandTreeNodes       = 32767
 	maxCommandNodeChildren    = 32767
@@ -205,6 +210,11 @@ type SetHealth struct {
 	Health     float32
 	Food       int32
 	Saturation float32
+}
+
+type ChangeDifficulty struct {
+	Difficulty byte
+	Locked     bool
 }
 
 type SynchronizeEntityPosition struct {
@@ -719,6 +729,11 @@ func (p SetHealth) Encode(wr *PacketWriter) {
 	wr.Float(p.Health)
 	wr.VarInt(p.Food)
 	wr.Float(p.Saturation)
+}
+
+func (p ChangeDifficulty) Encode(wr *PacketWriter) {
+	wr.Byte(p.Difficulty)
+	wr.Bool(p.Locked)
 }
 
 func (p SynchronizeEntityPosition) Encode(wr *PacketWriter) {

@@ -309,6 +309,14 @@ func (s *Session) sendInitialPlayState() error {
 		return err
 	}
 
+	err = s.writePacket(protocol.ClientboundChangeDifficultyID, protocol.ChangeDifficulty{
+		Difficulty: byte(s.Runtime.Difficulty),
+	})
+
+	if err != nil {
+		return err
+	}
+
 	err = s.sendTimeUpdate(s.Runtime.World.Time())
 	if err != nil {
 		return err
@@ -584,6 +592,8 @@ func (s *Session) handlePlayerAction(action protocol.PlayerAction) error {
 		s.handleDropHeldItem(true)
 	case protocol.PlayerActionDropItem:
 		s.handleDropHeldItem(false)
+	case protocol.PlayerActionReleaseUseItem:
+		s.Runtime.stopUsingItem(s)
 	case protocol.PlayerActionSwapWithOffhand:
 		s.handleSwapWithOffhand()
 	default:

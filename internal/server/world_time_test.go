@@ -80,11 +80,25 @@ func TestInitialPlayStateSendsWorldTimeBeforeChunks(t *testing.T) {
 	}
 
 	packets := connection.packets(t)
-	if len(packets) < 4 || packets[0].ID != protocol.ClientboundPlayLoginID || packets[1].ID != protocol.ClientboundUpdateTimeID || packets[2].ID != protocol.ClientboundEntityEventID || packets[3].ID != protocol.ClientboundDeclareCommandsID {
+	if len(packets) < 5 || packets[0].ID != protocol.ClientboundPlayLoginID || packets[1].ID != protocol.ClientboundChangeDifficultyID || packets[2].ID != protocol.ClientboundUpdateTimeID || packets[3].ID != protocol.ClientboundEntityEventID || packets[4].ID != protocol.ClientboundDeclareCommandsID {
 		t.Fatalf("initial packet IDs = %v", connection.packetIDs(t))
 	}
 
-	permissionReader := protocol.NewPacketReader(packets[2].Data)
+	difficultyReader := protocol.NewPacketReader(packets[1].Data)
+
+	difficulty := difficultyReader.Byte()
+	locked := difficultyReader.Bool()
+
+	err = difficultyReader.Done("change difficulty")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if difficulty != byte(game.DifficultyNormal) || locked {
+		t.Fatalf("difficulty = %d locked %v, want normal unlocked", difficulty, locked)
+	}
+
+	permissionReader := protocol.NewPacketReader(packets[3].Data)
 
 	entityID := permissionReader.Int()
 	permissionEvent := permissionReader.Byte()
@@ -98,7 +112,7 @@ func TestInitialPlayStateSendsWorldTimeBeforeChunks(t *testing.T) {
 		t.Fatalf("permission entity event = entity %d event %d", entityID, permissionEvent)
 	}
 
-	reader := protocol.NewPacketReader(packets[1].Data)
+	reader := protocol.NewPacketReader(packets[2].Data)
 
 	age := reader.Long()
 	dayTime := reader.Long()

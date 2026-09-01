@@ -153,6 +153,8 @@ func (r *Runtime) mutateMinedBlockLocked(session *Session, position game.BlockPo
 
 	miningInventory, broke := r.damageMiningTool(session, tool, minedBlock)
 
+	r.addPlayerExhaustion(session, 0.005)
+
 	delivery.miningInventory = miningInventory
 	delivery.miningToolBroke = broke
 

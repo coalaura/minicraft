@@ -27,6 +27,7 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 		"container set content":        {actual: ClientboundContainerSetContentID, expected: 0x12},
 		"container set data":           {actual: ClientboundContainerSetDataID, expected: 0x13},
 		"container set slot":           {actual: ClientboundContainerSetSlotID, expected: 0x14},
+		"change difficulty":            {actual: ClientboundChangeDifficultyID, expected: 0x0A},
 		"damage event":                 {actual: ClientboundDamageEventID, expected: 0x19},
 		"synchronize entity position":  {actual: ClientboundSynchronizeEntityPositionID, expected: 0x23},
 		"update entity position":       {actual: ClientboundUpdateEntityPositionID, expected: 0x33},
@@ -97,6 +98,10 @@ func TestSetHealthEncode(t *testing.T) {
 		0x14,
 		0x40, 0xA0, 0x00, 0x00,
 	})
+}
+
+func TestChangeDifficultyEncode(t *testing.T) {
+	assertPacketEncoding(t, ChangeDifficulty{Difficulty: 3, Locked: true}, []byte{0x03, 0x01})
 }
 
 func TestDamageEventEncode(t *testing.T) {
@@ -720,6 +725,14 @@ func TestAddEntityEncode(t *testing.T) {
 }
 
 func TestEntityMetadataEncode(t *testing.T) {
+	if LivingFlagsMetadataIndex != 8 {
+		t.Fatalf("living flags metadata index = %d, want 8", LivingFlagsMetadataIndex)
+	}
+
+	if LivingFlagUsingItem != 0x01 || LivingFlagUsingOffhand != 0x02 {
+		t.Fatalf("living use flags = %#x/%#x, want 0x1/0x2", LivingFlagUsingItem, LivingFlagUsingOffhand)
+	}
+
 	metadata := EntityMetadata{
 		EntityID: 300,
 		Entries: []EntityMetadataEntry{

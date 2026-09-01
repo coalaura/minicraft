@@ -225,6 +225,7 @@ func (s *Session) sendPlayerMovement(previous, current game.Player) error {
 
 func (s *Session) sendPlayerMetadata(player game.Player) error {
 	flags := byte(0)
+	livingFlags := byte(0)
 
 	if player.RemainingFireTicks > 0 {
 		flags |= protocol.EntityFlagOnFire
@@ -242,6 +243,14 @@ func (s *Session) sendPlayerMetadata(player game.Player) error {
 		flags |= protocol.EntityFlagSwimming
 	}
 
+	if player.UsingItem {
+		livingFlags |= protocol.LivingFlagUsingItem
+
+		if player.UsingOffhand {
+			livingFlags |= protocol.LivingFlagUsingOffhand
+		}
+	}
+
 	pose := protocol.EntityPoseStanding
 
 	switch player.Pose {
@@ -256,6 +265,7 @@ func (s *Session) sendPlayerMetadata(player game.Player) error {
 		Entries: []protocol.EntityMetadataEntry{
 			{Index: protocol.EntityFlagsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(flags)},
 			{Index: protocol.EntityPoseMetadataIndex, Type: protocol.MetadataTypePose, Value: protocol.MetadataVarInt(pose)},
+			{Index: protocol.LivingFlagsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(livingFlags)},
 			{Index: protocol.PlayerSkinPartsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(player.SkinParts)},
 			{Index: protocol.EntityAirMetadataIndex, Type: protocol.MetadataTypeInt, Value: protocol.MetadataVarInt(player.AirSupply)},
 			{Index: protocol.LivingHealthMetadataIndex, Type: protocol.MetadataTypeFloat, Value: protocol.MetadataFloat(player.Health)},

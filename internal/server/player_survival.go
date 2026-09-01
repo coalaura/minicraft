@@ -31,6 +31,7 @@ const (
 	PlayerDamageOnFire
 	PlayerDamageOutOfWorld
 	PlayerDamageGenericKill
+	PlayerDamageStarve
 )
 
 type PlayerDamage struct {
@@ -50,6 +51,7 @@ type playerSurvivalUpdate struct {
 	drowned         bool
 	died            bool
 	inventoryBefore *game.PlayerInventory
+	sounds          []protocol.Sound
 }
 
 func (s *Session) sendHealth() error {
@@ -195,6 +197,13 @@ func (r *Runtime) tickPlayerSurvivalLocked(session *Session) []playerSurvivalUpd
 		return updates
 	}
 
+	useUpdate, useChanged := r.tickUsingItemLocked(session)
+	if useChanged {
+		updates = append(updates, useUpdate)
+	}
+
+	player = session.snapshotPlayer()
+
 	wasBurning := player.RemainingFireTicks > 0
 
 	lava := r.fluidContact(player.CollisionBox(), game.FluidTypeLava, true).Depth > 0
@@ -331,7 +340,141 @@ func (r *Runtime) tickPlayerSurvivalLocked(session *Session) []playerSurvivalUpd
 		updates = append(updates, playerSurvivalUpdate{player: player, metadataChanged: true})
 	}
 
+	player = session.snapshotPlayer()
+	if player.Dead {
+		return updates
+	}
+
+	updates = append(updates, r.tickPlayerFoodLocked(session)...)
+
 	return updates
+}
+
+func (r *Runtime) tickPlayerFoodLocked(session *Session) []playerSurvivalUpdate {
+	updates := make([]playerSurvivalUpdate, 0, 2)
+
+	var (
+		healAmount     float32
+		starvationDue  bool
+		visibleChanged bool
+	)
+
+	player, _ := session.updatePlayerState(func(player *game.Player) bool {
+		previousFood := player.FoodLevel
+		previousSaturation := player.Saturation
+
+		player.SurvivalTickCount++
+
+		if player.Exhaustion > 4 {
+			player.Exhaustion -= 4
+
+			if player.Saturation > 0 {
+				player.Saturation = max(player.Saturation-1, 0)
+			} else if r.Difficulty != game.DifficultyPeaceful {
+				player.FoodLevel = max(player.FoodLevel-1, 0)
+			}
+		}
+
+		if player.Health < game.DefaultPlayerHealth && player.FoodLevel >= 20 && player.Saturation > 0 {
+			player.FoodTickTimer++
+
+			if player.FoodTickTimer >= 10 {
+				healAmount += min(player.Saturation, 6) / 6
+
+				player.AddExhaustion(min(player.Saturation, 6) / 6)
+
+				player.FoodTickTimer = 0
+			}
+		} else if player.Health < game.DefaultPlayerHealth && player.FoodLevel >= 18 {
+			player.FoodTickTimer++
+
+			if player.FoodTickTimer >= 80 {
+				healAmount++
+
+				player.AddExhaustion(6)
+
+				player.FoodTickTimer = 0
+			}
+		} else if player.FoodLevel <= 0 {
+			player.FoodTickTimer++
+
+			if player.FoodTickTimer >= 80 {
+				starvationDue = player.Health > 10 || r.Difficulty == game.DifficultyHard || (r.Difficulty == game.DifficultyNormal && player.Health > 1)
+				player.FoodTickTimer = 0
+			}
+		} else {
+			player.FoodTickTimer = 0
+		}
+
+		if r.Difficulty == game.DifficultyPeaceful {
+			if player.SurvivalTickCount%20 == 0 {
+				if player.Health < game.DefaultPlayerHealth {
+					healAmount++
+				}
+
+				if player.Saturation < game.DefaultPlayerHealth {
+					player.Saturation = min(player.Saturation+1, game.DefaultPlayerHealth)
+				}
+			}
+
+			if player.SurvivalTickCount%10 == 0 && player.FoodLevel < game.DefaultPlayerFoodLevel {
+				player.FoodLevel++
+			}
+		}
+
+		visibleChanged = previousFood != player.FoodLevel || previousSaturation != player.Saturation
+
+		return true
+	})
+
+	if healAmount > 0 {
+		update, healed := r.healPlayerLocked(session, healAmount)
+		if healed {
+			updates = append(updates, update)
+		}
+	} else if visibleChanged {
+		updates = append(updates, playerSurvivalUpdate{player: player, healthChanged: true})
+	}
+
+	if starvationDue {
+		update, applied := r.damagePlayerLocked(session, PlayerDamage{Type: PlayerDamageStarve, Amount: 1})
+		if applied {
+			updates = append(updates, update)
+		}
+	}
+
+	return updates
+}
+
+func (r *Runtime) healPlayerLocked(session *Session, amount float32) (playerSurvivalUpdate, bool) {
+	player, healed := session.updatePlayerState(func(player *game.Player) bool {
+		if player.Dead || amount <= 0 || player.Health >= game.DefaultPlayerHealth {
+			return false
+		}
+
+		player.Health = min(player.Health+amount, float32(game.DefaultPlayerHealth))
+
+		return true
+	})
+
+	if !healed {
+		return playerSurvivalUpdate{}, false
+	}
+
+	return playerSurvivalUpdate{player: player, healthChanged: true, metadataChanged: true}, true
+}
+
+func (r *Runtime) addPlayerExhaustion(session *Session, amount float32) {
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+
+	session.updatePlayerState(func(player *game.Player) bool {
+		previous := player.Exhaustion
+
+		player.AddExhaustion(amount)
+
+		return previous != player.Exhaustion
+	})
 }
 
 func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (playerSurvivalUpdate, bool) {
@@ -372,6 +515,9 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 		player.Health = max(0, player.Health-amount)
 		if player.Health == 0 {
 			player.Dead = true
+
+			player.StopUsingItem()
+
 			player.RemainingFireTicks = 0
 			player.FallDistance = 0
 		}
@@ -397,13 +543,25 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 	}
 
 	r.cancelMiningLocked(session)
-	r.discardMenuOnDeathLocked(session)
+
+	transientDrops := r.discardMenuOnDeathLocked(session)
 
 	before := session.snapshotPlayer().Inventory.Clone()
-	drops := make([]game.ItemStack, 0, game.PlayerInventorySlots-1)
+	drops := make([]game.ItemStack, 0, game.PlayerInventorySlots-1+len(transientDrops))
+
+	drops = append(drops, transientDrops...)
 
 	player, _ = session.updatePlayerState(func(player *game.Player) bool {
 		if player.GameMode != game.GameModeSpectator {
+			for slot := 1; slot <= 4; slot++ {
+				stack := player.Inventory.Slot(slot)
+				if stack == nil || stack.Empty() {
+					continue
+				}
+
+				drops = append(drops, stack.Clone())
+			}
+
 			for slot := 9; slot < game.PlayerInventorySlots; slot++ {
 				stack := player.Inventory.Slot(slot)
 				if stack == nil || stack.Empty() || stack.PreventsEquipmentDrop() {
@@ -457,6 +615,15 @@ func (r *Runtime) sendPlayerSurvivalUpdate(session *Session, update playerSurviv
 		recipientPlayer := recipient.snapshotPlayer()
 		if recipient != session && !playersVisible(recipientPlayer, update.player, recipient.renderDistance()) {
 			continue
+		}
+
+		for _, sound := range update.sounds {
+			position := toBlockPosition(game.Position{X: sound.X, Y: sound.Y, Z: sound.Z})
+
+			err := recipient.sendSoundIfLoaded(sound, position)
+			if err != nil && recipient.Log != nil {
+				recipient.Log.Warnf("[play] failed to synchronize consumption sound: %v\n", err)
+			}
 		}
 
 		if update.fullHurt {
@@ -596,6 +763,8 @@ func playerDamageRegistryID(damageType PlayerDamageType) int32 {
 		return 31
 	case PlayerDamageOutOfWorld:
 		return 32
+	case PlayerDamageStarve:
+		return 40
 	default:
 		return 18
 	}
@@ -617,6 +786,8 @@ func playerDeathTranslation(damageType PlayerDamageType) string {
 		return "death.attack.onFire"
 	case PlayerDamageOutOfWorld:
 		return "death.attack.outOfWorld"
+	case PlayerDamageStarve:
+		return "death.attack.starve"
 	default:
 		return "death.attack.generic"
 	}

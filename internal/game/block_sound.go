@@ -117,6 +117,11 @@ const (
 	SoundBlockWoolHit   SoundEvent = "minecraft:block.wool.hit"
 	SoundBlockWoolPlace SoundEvent = "minecraft:block.wool.place"
 	SoundBlockWoolStep  SoundEvent = "minecraft:block.wool.step"
+
+	SoundEntityGenericDrink   SoundEvent = "minecraft:entity.generic.drink"
+	SoundEntityGenericEat     SoundEvent = "minecraft:entity.generic.eat"
+	SoundEntityPlayerBurp     SoundEvent = "minecraft:entity.player.burp"
+	SoundItemHoneyBottleDrink SoundEvent = "minecraft:item.honey_bottle.drink"
 )
 
 type SoundEvent string

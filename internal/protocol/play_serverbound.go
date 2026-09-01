@@ -24,6 +24,7 @@ const (
 	PlayerActionStopDestroyBlock  = 2
 	PlayerActionDropAllItems      = 3
 	PlayerActionDropItem          = 4
+	PlayerActionReleaseUseItem    = 5
 	PlayerActionSwapWithOffhand   = 6
 
 	BlockFaceDown  = 0

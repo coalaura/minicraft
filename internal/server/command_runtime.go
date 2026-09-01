@@ -22,12 +22,15 @@ func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) (bool, er
 	r.worldMutationMu.Lock()
 	r.lifecycleMu.Lock()
 
+	useCancelled := false
+
 	player, changed := session.updatePlayerState(func(player *game.Player) bool {
 		if player.GameMode == mode {
 			return false
 		}
 
 		player.GameMode = mode
+		useCancelled = player.StopUsingItem()
 
 		return true
 	})
@@ -41,6 +44,10 @@ func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) (bool, er
 
 	if !changed {
 		return false, nil
+	}
+
+	if useCancelled {
+		r.sendPlayerMetadataUpdates([]game.Player{player})
 	}
 
 	err := session.writePacket(protocol.ClientboundGameEventID, protocol.GameEvent{

@@ -48,6 +48,9 @@ leave-message = "{player} left the game"
 # menger-sponge, natural, quasicrystal, superflat, test-world, or wave-terrain.
 generator = "superflat"
 
+# World difficulty: peaceful, easy, normal, or hard.
+difficulty = "normal"
+
 # Seed passed to the selected world generator.
 seed = 0
 

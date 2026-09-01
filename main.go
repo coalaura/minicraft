@@ -38,6 +38,7 @@ func main() {
 
 	runtime := server.NewRuntime(world)
 
+	runtime.Difficulty = cfg.Difficulty()
 	runtime.AllowBlockBreaking = cfg.AllowBlockBreaking()
 	runtime.AllowBlockPlacing = cfg.AllowBlockPlacing()
 	runtime.ChatEnabled = cfg.ChatEnabled()

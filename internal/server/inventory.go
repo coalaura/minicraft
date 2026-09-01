@@ -44,6 +44,8 @@ func (s *Session) handleSetHeldItem(selection protocol.SetHeldItem) {
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
 
+	useCancelled := false
+
 	player, changed := s.updatePlayerState(func(player *game.Player) bool {
 		selected := int(selection.Slot)
 		if player.SelectedHotbarSlot == selected {
@@ -51,12 +53,17 @@ func (s *Session) handleSetHeldItem(selection protocol.SetHeldItem) {
 		}
 
 		player.SelectedHotbarSlot = selected
+		useCancelled = player.StopUsingItem()
 
 		return true
 	})
 
 	if changed {
 		s.Runtime.broadcastPlayerEquipment(s, player, protocol.EquipmentSlotMainHand)
+
+		if useCancelled {
+			s.Runtime.sendPlayerMetadataUpdates([]game.Player{player})
+		}
 	}
 }
 
@@ -102,7 +109,10 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
 
-	var before game.PlayerInventory
+	var (
+		before       game.PlayerInventory
+		useCancelled bool
+	)
 
 	player, changed := s.updatePlayerState(func(player *game.Player) bool {
 		if player.GameMode != game.GameModeCreative {
@@ -116,6 +126,16 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 
 		before = player.Inventory.Clone()
 		*slot = stack.Clone()
+
+		usedSlot := 36 + player.SelectedHotbarSlot
+
+		if player.UsingOffhand {
+			usedSlot = 45
+		}
+
+		if player.UsingItem && int(update.Slot) == usedSlot {
+			useCancelled = player.StopUsingItem()
+		}
 
 		return true
 	})
@@ -134,6 +154,10 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 
 	if err != nil {
 		s.Log.Warnf("[play] failed to synchronize creative inventory slot: %v\n", err)
+	}
+
+	if useCancelled {
+		s.Runtime.sendPlayerMetadataUpdates([]game.Player{player})
 	}
 
 }
@@ -261,6 +285,7 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 		changedBackings []int
 		dropped         []game.ItemStack
 		equipment       []byte
+		useCancelled    bool
 		valid           bool
 	)
 
@@ -295,6 +320,9 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 		changedBackings = candidate.changedBackings()
 
 		currentMenu.commit(candidate)
+
+		useCancelled = player.StopUsingItem()
+
 		dropped = cloneItemStacks(candidate.dropped)
 
 		currentMenu.incrementStateID()
@@ -328,6 +356,10 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 			s.Runtime.broadcastPlayerEquipment(s, player, equipment...)
 		}
 
+		if useCancelled {
+			s.Runtime.sendPlayerMetadataUpdates([]game.Player{player})
+		}
+
 		return s.sendChangedMenuData(currentMenu, false)
 	}
 
@@ -346,8 +378,9 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 	}
 
 	var (
-		before  game.PlayerInventory
-		dropped game.ItemStack
+		before       game.PlayerInventory
+		dropped      game.ItemStack
+		useCancelled bool
 	)
 
 	player, changed := s.updatePlayerState(func(player *game.Player) bool {
@@ -357,6 +390,8 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 		}
 
 		before = player.Inventory.Clone()
+
+		useCancelled = player.StopUsingItem()
 
 		if dropAll || stack.Count == 1 {
 			dropped = stack.Clone()
@@ -380,6 +415,10 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 		if err != nil {
 			s.Log.Warnf("[play] failed to synchronize dropped held item: %v\n", err)
 		}
+
+		if useCancelled {
+			s.Runtime.sendPlayerMetadataUpdates([]game.Player{player})
+		}
 	}
 
 }
@@ -392,15 +431,19 @@ func (s *Session) handleSwapWithOffhand() {
 		return
 	}
 
-	var before game.PlayerInventory
+	var (
+		before       game.PlayerInventory
+		useCancelled bool
+	)
 
-	_, changed := s.updatePlayerState(func(player *game.Player) bool {
+	player, changed := s.updatePlayerState(func(player *game.Player) bool {
 		held := player.Inventory.Held(player.SelectedHotbarSlot)
 		if held == nil {
 			return false
 		}
 
 		before = player.Inventory.Clone()
+		useCancelled = player.StopUsingItem()
 
 		heldClone := held.Clone()
 		offhandClone := player.Inventory.Offhand.Clone()
@@ -415,6 +458,10 @@ func (s *Session) handleSwapWithOffhand() {
 		err := s.synchronizePlayerInventoryMutation(before)
 		if err != nil {
 			s.Log.Warnf("[play] failed to synchronize offhand swap: %v\n", err)
+		}
+
+		if useCancelled {
+			s.Runtime.sendPlayerMetadataUpdates([]game.Player{player})
 		}
 	}
 

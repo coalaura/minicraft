@@ -18,6 +18,24 @@ type ItemDefinition struct {
 	MaxDurability int32  `json:"maxDurability"`
 }
 
+type ConsumableManifest struct {
+	Version string                   `json:"version"`
+	Sources map[string]string        `json:"sources"`
+	Foods   []ConsumableFoodMetadata `json:"foods"`
+}
+
+type ConsumableFoodMetadata struct {
+	Name            string  `json:"name"`
+	Nutrition       int8    `json:"nutrition"`
+	Saturation      float32 `json:"saturation"`
+	AlwaysEdible    bool    `json:"alwaysEdible"`
+	ConsumeTicks    uint16  `json:"consumeTicks"`
+	Animation       string  `json:"animation"`
+	Sound           string  `json:"sound"`
+	Remainder       string  `json:"remainder"`
+	DeferredEffects bool    `json:"deferredEffects"`
+}
+
 type BlockProperty struct {
 	Name   string   `json:"name"`
 	Values []string `json:"values"`
@@ -38,12 +56,13 @@ type PlaceableBlock struct {
 func main() {
 	itemsPath := flag.String("items", "", "path to items.json")
 	blocksPath := flag.String("blocks", "", "path to blocks.json")
+	consumablesPath := flag.String("consumables", "", "path to item consumables manifest")
 	outputPath := flag.String("output", "", "generated Go output path")
 
 	flag.Parse()
 
-	if *itemsPath == "" || *blocksPath == "" || *outputPath == "" {
-		fmt.Fprintln(os.Stderr, "items, blocks and output are required")
+	if *itemsPath == "" || *blocksPath == "" || *consumablesPath == "" || *outputPath == "" {
+		fmt.Fprintln(os.Stderr, "items, blocks, consumables and output are required")
 
 		os.Exit(2)
 	}
@@ -58,7 +77,12 @@ func main() {
 		fail(err)
 	}
 
-	generated, err := generate(items, blocks)
+	consumables, err := readConsumables(*consumablesPath)
+	if err != nil {
+		fail(err)
+	}
+
+	generated, err := generate(items, blocks, consumables)
 	if err != nil {
 		fail(err)
 	}
@@ -93,7 +117,19 @@ func readBlocks(path string) ([]BlockDefinition, error) {
 	return blocks, err
 }
 
-func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) {
+func readConsumables(path string) (ConsumableManifest, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ConsumableManifest{}, err
+	}
+
+	var manifest ConsumableManifest
+
+	err = json.Unmarshal(raw, &manifest)
+	return manifest, err
+}
+
+func generate(items []ItemDefinition, blocks []BlockDefinition, consumables ConsumableManifest) ([]byte, error) {
 	if len(items) == 0 {
 		return nil, fmt.Errorf("item catalogue is empty")
 	}
@@ -102,6 +138,11 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 		if int(item.ID) != index {
 			return nil, fmt.Errorf("item ID %d at index %d is not contiguous", item.ID, index)
 		}
+	}
+
+	foods, err := validateConsumables(items, consumables)
+	if err != nil {
+		return nil, err
 	}
 
 	placeableBlocks := make(map[string]PlaceableBlock)
@@ -133,14 +174,17 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 	fmt.Fprintln(&output, "var itemDefinitions = [...]ItemDefinition{")
 
 	for _, item := range items {
+		food := itemFood(foodForItem(foods, item.Name))
+
 		fmt.Fprintf(
 			&output,
-			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, Mining: %s},\n",
+			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, Mining: %s, Food: %s},\n",
 			goName(item.Name),
 			item.Name,
 			item.StackSize,
 			item.MaxDurability,
 			itemMining(item.Name),
+			food,
 		)
 	}
 
@@ -178,6 +222,93 @@ func generate(items []ItemDefinition, blocks []BlockDefinition) ([]byte, error) 
 	}
 
 	return formatted, nil
+}
+
+func validateConsumables(items []ItemDefinition, manifest ConsumableManifest) (map[string]ConsumableFoodMetadata, error) {
+	if manifest.Version != "1.21.11" || len(manifest.Sources) != 3 {
+		return nil, fmt.Errorf("consumable manifest must identify the 1.21.11 source set")
+	}
+
+	itemNames := make(map[string]struct{}, len(items))
+
+	for _, item := range items {
+		itemNames[item.Name] = struct{}{}
+	}
+
+	foods := make(map[string]ConsumableFoodMetadata, len(manifest.Foods))
+
+	for _, food := range manifest.Foods {
+		if _, exists := itemNames[food.Name]; !exists {
+			return nil, fmt.Errorf("food item %q is absent from item catalogue", food.Name)
+		}
+
+		if _, exists := foods[food.Name]; exists {
+			return nil, fmt.Errorf("food item %q is duplicated", food.Name)
+		}
+
+		if food.Nutrition <= 0 || food.Saturation < 0 || food.ConsumeTicks == 0 {
+			return nil, fmt.Errorf("food item %q has invalid gameplay values", food.Name)
+		}
+
+		if food.Animation != "eat" && food.Animation != "drink" {
+			return nil, fmt.Errorf("food item %q has invalid animation %q", food.Name, food.Animation)
+		}
+
+		if food.Remainder != "" {
+			if _, exists := itemNames[food.Remainder]; !exists {
+				return nil, fmt.Errorf("food item %q has unknown remainder %q", food.Name, food.Remainder)
+			}
+		}
+
+		foods[food.Name] = food
+	}
+
+	if len(foods) != 40 {
+		return nil, fmt.Errorf("consumable manifest has %d foods, want 40", len(foods))
+	}
+
+	return foods, nil
+}
+
+func foodForItem(foods map[string]ConsumableFoodMetadata, name string) ConsumableFoodMetadata {
+	return foods[name]
+}
+
+func itemFood(food ConsumableFoodMetadata) string {
+	if food.Name == "" {
+		return "ItemFood{}"
+	}
+
+	animation := "ItemUseAnimationEat"
+	sound := "SoundEntityGenericEat"
+
+	if food.Animation == "drink" {
+		animation = "ItemUseAnimationDrink"
+		sound = "SoundEntityGenericDrink"
+	}
+
+	if food.Sound != "" {
+		name := strings.TrimPrefix(food.Sound, "minecraft:")
+		sound = "Sound" + goName(strings.ReplaceAll(name, ".", "_"))
+	}
+
+	remainder := "ItemAir"
+
+	if food.Remainder != "" {
+		remainder = "Item" + goName(food.Remainder)
+	}
+
+	return fmt.Sprintf(
+		"ItemFood{Nutrition: %d, Saturation: %g, ConsumeTicks: %d, Animation: %s, Sound: %s, Remainder: %s, AlwaysEdible: %t, DeferredEffects: %t}",
+		food.Nutrition,
+		food.Saturation,
+		food.ConsumeTicks,
+		animation,
+		sound,
+		remainder,
+		food.AlwaysEdible,
+		food.DeferredEffects,
+	)
 }
 
 func itemMining(name string) string {

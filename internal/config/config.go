@@ -41,6 +41,7 @@ type WorldConfig struct {
 	Seed       int64        `toml:"seed"`
 	RandomSeed bool         `toml:"random-seed"`
 	Spawn      *SpawnConfig `toml:"spawn"`
+	Difficulty string       `toml:"difficulty"`
 	Lighting   string       `toml:"lighting"`
 	DayCycle   *bool        `toml:"day-cycle"`
 	Time       *int64       `toml:"time"`
@@ -141,6 +142,10 @@ func (c *Config) SetDefaults() {
 		c.World.Generator = "superflat"
 	}
 
+	if c.World.Difficulty == "" {
+		c.World.Difficulty = "normal"
+	}
+
 	if c.World.Lighting == "" {
 		c.World.Lighting = "normal"
 	}
@@ -180,6 +185,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("default-game-mode: %w", err)
 	}
 
+	_, err = game.ParseDifficulty(c.World.Difficulty)
+	if err != nil {
+		return fmt.Errorf("world difficulty: %w", err)
+	}
+
 	return nil
 }
 
@@ -197,6 +207,15 @@ func (c *Config) WorldTime() int64 {
 	}
 
 	return *c.World.Time
+}
+
+func (c *Config) Difficulty() game.Difficulty {
+	difficulty, err := game.ParseDifficulty(c.World.Difficulty)
+	if err != nil {
+		return game.DifficultyNormal
+	}
+
+	return difficulty
 }
 
 func (c *Config) WorldSeed() int64 {

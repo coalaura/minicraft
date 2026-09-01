@@ -49,9 +49,17 @@ const (
 	MaxItemComponentType      int32 = 103
 )
 
+const (
+	ItemUseAnimationNone ItemUseAnimation = iota
+	ItemUseAnimationEat
+	ItemUseAnimationDrink
+)
+
 type Item uint16
 
 type ItemPlacementRule uint8
+
+type ItemUseAnimation uint8
 
 type ItemMiningRule struct {
 	Trait          BlockTrait
@@ -68,12 +76,24 @@ type ItemMining struct {
 	DamagePerBlock int32
 }
 
+type ItemFood struct {
+	Nutrition       int8
+	Saturation      float32
+	ConsumeTicks    uint16
+	Animation       ItemUseAnimation
+	Sound           SoundEvent
+	Remainder       Item
+	AlwaysEdible    bool
+	DeferredEffects bool
+}
+
 type ItemDefinition struct {
 	ID            Item
 	Name          string
 	StackSize     int32
 	MaxDurability int32
 	Mining        ItemMining
+	Food          ItemFood
 }
 
 type ItemStack struct {
@@ -478,7 +498,7 @@ func (inventory PlayerInventory) Contents() []ItemStack {
 	return contents
 }
 
-//go:generate go run ../../cmd/generate-items -items ../../data/items.json -blocks ../../data/blocks.json -output items_generated.go
+//go:generate go run ../../cmd/generate-items -items ../../data/items.json -blocks ../../data/blocks.json -consumables ../../data/item_consumables.json -output items_generated.go
 func ItemForBlock(block Block) (Item, bool) {
 	if block == Air {
 		return 0, false

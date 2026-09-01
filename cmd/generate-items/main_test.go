@@ -1,6 +1,13 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 type placementRuleTestCase struct {
 	name       string
@@ -72,6 +79,53 @@ func TestUnsupportedBlockEntityPlacementFamiliesRemainExcluded(t *testing.T) {
 	rule := blockPlacementRule(paleMossCarpet)
 	if rule != "" {
 		t.Errorf("pale moss carpet placement rule = %q", rule)
+	}
+}
+
+func TestConsumableSourcesAndGeneratedItemsAreCurrent(t *testing.T) {
+	manifest, err := readConsumables(filepath.Join("..", "..", "data", "item_consumables.json"))
+	if err != nil {
+		t.Fatalf("read consumables: %v", err)
+	}
+
+	for source, expected := range manifest.Sources {
+		path := filepath.Join("..", "..", "..", "reference", "client_source", filepath.FromSlash(source))
+
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read consumable source %s: %v", source, err)
+		}
+
+		digest := sha256.Sum256(contents)
+
+		actual := hex.EncodeToString(digest[:])
+		if actual != expected {
+			t.Errorf("consumable source %s digest = %s, want %s", source, actual, expected)
+		}
+	}
+
+	items, err := readItems(filepath.Join("..", "..", "data", "items.json"))
+	if err != nil {
+		t.Fatalf("read items: %v", err)
+	}
+
+	blocks, err := readBlocks(filepath.Join("..", "..", "data", "blocks.json"))
+	if err != nil {
+		t.Fatalf("read blocks: %v", err)
+	}
+
+	generated, err := generate(items, blocks, manifest)
+	if err != nil {
+		t.Fatalf("generate items: %v", err)
+	}
+
+	committed, err := os.ReadFile(filepath.Join("..", "..", "internal", "game", "items_generated.go"))
+	if err != nil {
+		t.Fatalf("read generated items: %v", err)
+	}
+
+	if !bytes.Equal(generated, committed) {
+		t.Fatal("items_generated.go is stale; run go generate ./internal/game")
 	}
 }
 
