@@ -22,7 +22,7 @@ const (
 	LivingFlagsMetadataIndex      = 8
 	LivingHealthMetadataIndex     = 9
 	ItemEntityItemMetadataIndex   = 8
-	PlayerAbsorptionMetadataIndex = 15
+	PlayerAbsorptionMetadataIndex = 17
 	PlayerSkinPartsMetadataIndex  = 16
 
 	MetadataTypeByte      = 0

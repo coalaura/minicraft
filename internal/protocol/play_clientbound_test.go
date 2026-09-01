@@ -740,8 +740,8 @@ func TestEntityMetadataEncode(t *testing.T) {
 		t.Fatalf("living use flags = %#x/%#x, want 0x1/0x2", LivingFlagUsingItem, LivingFlagUsingOffhand)
 	}
 
-	if PlayerAbsorptionMetadataIndex != 15 {
-		t.Fatalf("player absorption metadata index = %d, want 15", PlayerAbsorptionMetadataIndex)
+	if PlayerAbsorptionMetadataIndex != 17 {
+		t.Fatalf("player absorption metadata index = %d, want 17", PlayerAbsorptionMetadataIndex)
 	}
 
 	metadata := EntityMetadata{
@@ -767,7 +767,7 @@ func TestEntityMetadataEncode(t *testing.T) {
 		0xAC, 0x02,
 		0x00, 0x00, 0x0A,
 		0x06, 0x14, 0x05,
-		0x0F, 0x03, 0x40, 0x90, 0x00, 0x00,
+		0x11, 0x03, 0x40, 0x90, 0x00, 0x00,
 		0x10, 0x00, 0x7F,
 		0xFF,
 	}
