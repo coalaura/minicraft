@@ -112,6 +112,29 @@ func TestCreativeSlotUpdatesPreserveGameplayComponents(t *testing.T) {
 	}
 }
 
+func TestCreativeSlotUpdatesPreservePotionContents(t *testing.T) {
+	session, _ := newMovementTestSession(NewRuntime(&game.World{}), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	session.Player.GameMode = game.GameModeCreative
+
+	component := game.ItemComponent{Type: game.ItemComponentPotionContents, Data: []byte{0x01, 0x0A, 0x00, 0x00, 0x00}}
+	stack := game.ItemStack{Item: game.ItemPotion, Count: 1, Components: []game.ItemComponent{component}}
+
+	session.handleSetCreativeModeSlot(protocol.SetCreativeModeSlot{
+		Slot: 38,
+		Item: protocol.UntrustedSlot{
+			ItemID:     int32(stack.Item),
+			ItemCount:  stack.Count,
+			Components: stack.Clone().Components,
+		},
+	})
+
+	actual := session.snapshotPlayer().Inventory.Hotbar[2]
+	if !actual.Equal(stack) {
+		t.Fatalf("creative potion component stack = %+v, want %+v", actual, stack)
+	}
+}
+
 func TestCreativeSlotUpdatesRejectInvalidOrNonCreativeChanges(t *testing.T) {
 	session, _ := newMovementTestSession(NewRuntime(&game.World{}), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
 

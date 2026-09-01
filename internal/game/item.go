@@ -44,9 +44,10 @@ const (
 )
 
 const (
-	ItemComponentDamage       int32 = 3
-	ItemComponentEnchantments int32 = 13
-	MaxItemComponentType      int32 = 103
+	ItemComponentDamage         int32 = 3
+	ItemComponentEnchantments   int32 = 13
+	ItemComponentPotionContents int32 = 49
+	MaxItemComponentType        int32 = 103
 )
 
 const (

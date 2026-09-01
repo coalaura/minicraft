@@ -788,6 +788,24 @@ func TestDecodeSetCreativeModeSlotAcceptsGameplayComponents(t *testing.T) {
 	}
 }
 
+func TestDecodeSetCreativeModeSlotAcceptsPotionContents(t *testing.T) {
+	data := []byte{0x00, 0x26, 0x01, 0xE1, 0x08, 0x01, 0x00, 0x31, 0x05, 0x01, 0x0A, 0x00, 0x00, 0x00}
+
+	update, err := DecodeSetCreativeModeSlot(data)
+	if err != nil {
+		t.Fatalf("decode creative potion slot: %v", err)
+	}
+
+	if update.Item.ItemID != int32(game.ItemPotion) || update.Item.ItemCount != 1 || len(update.Item.Components) != 1 {
+		t.Fatalf("creative potion slot = %+v", update.Item)
+	}
+
+	component := update.Item.Components[0]
+	if component.Type != game.ItemComponentPotionContents || !slices.Equal(component.Data, []byte{0x01, 0x0A, 0x00, 0x00, 0x00}) {
+		t.Fatalf("creative potion component = %+v", component)
+	}
+}
+
 func TestDecodeSetCreativeModeSlotRejectsUnsupportedAddedComponent(t *testing.T) {
 	data := []byte{0x00, 0x24, 0x01, 0x01, 0x01, 0x00, 0x01, 0x01, 0x10}
 
