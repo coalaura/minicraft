@@ -18,6 +18,7 @@ const (
 	playerLavaFireDurationTicks  = 15 * 20
 	playerVoidDamage             = 4
 	playerVoidDistanceBelowWorld = 64
+	playerSafeFallDistance       = 3
 )
 
 type PlayerDamageType uint8
@@ -220,6 +221,11 @@ func (r *Runtime) tickPlayerSurvivalLocked(session *Session) []playerSurvivalUpd
 			changed = true
 		}
 
+		if water && player.FallDistance != 0 {
+			player.FallDistance = 0
+			changed = true
+		}
+
 		if !water && fireDamage > 0 {
 			addedTicks := int32(1 + int(r.nextEntityRandom()*2))
 
@@ -391,18 +397,29 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 	}
 
 	r.cancelMiningLocked(session)
-	r.closeMenuWithRemovalStateLocked(session, true, false)
+	r.discardMenuOnDeathLocked(session)
 
 	before := session.snapshotPlayer().Inventory.Clone()
 	drops := make([]game.ItemStack, 0, game.PlayerInventorySlots-1)
 
 	player, _ = session.updatePlayerState(func(player *game.Player) bool {
 		if player.GameMode != game.GameModeSpectator {
-			for slot := 1; slot < game.PlayerInventorySlots; slot++ {
+			for slot := 9; slot < game.PlayerInventorySlots; slot++ {
 				stack := player.Inventory.Slot(slot)
-				if stack != nil && !stack.Empty() {
-					drops = append(drops, stack.Clone())
+				if stack == nil || stack.Empty() || stack.PreventsEquipmentDrop() {
+					continue
 				}
+
+				drops = append(drops, stack.Clone())
+			}
+
+			for slot := 5; slot <= 8; slot++ {
+				stack := player.Inventory.Slot(slot)
+				if stack == nil || stack.Empty() || stack.PreventsEquipmentDrop() {
+					continue
+				}
+
+				drops = append(drops, stack.Clone())
 			}
 
 			player.Inventory = game.PlayerInventory{}
@@ -502,8 +519,10 @@ func (r *Runtime) sendPlayerSurvivalUpdates(session *Session, updates []playerSu
 }
 
 func (r *Runtime) playerFireContactDamage(player game.Player) float32 {
-	box := player.CollisionBox()
+	return r.fireContactDamage(player.CollisionBox())
+}
 
+func (r *Runtime) fireContactDamage(box game.AABB) float32 {
 	minX := int32(math.Floor(box.MinX))
 	minY := int32(math.Floor(box.MinY))
 	minZ := int32(math.Floor(box.MinZ))
@@ -518,10 +537,15 @@ func (r *Runtime) playerFireContactDamage(player game.Player) float32 {
 			for z := minZ; z <= maxZ; z++ {
 				block := r.World.BlockAt(game.BlockPosition{X: x, Y: y, Z: z})
 
-				switch block {
-				case game.SoulFire:
+				definition, valid := block.Definition()
+				if !valid {
+					continue
+				}
+
+				switch definition.ID {
+				case game.SoulFireID:
 					damage = max(damage, 2)
-				case game.Fire:
+				case game.FireID:
 					damage = max(damage, 1)
 				}
 			}
@@ -529,6 +553,15 @@ func (r *Runtime) playerFireContactDamage(player game.Player) float32 {
 	}
 
 	return damage
+}
+
+func calculatePlayerFallDamage(fallDistance float32) float32 {
+	unsafeDistance := fallDistance - playerSafeFallDistance
+	if unsafeDistance <= 0 {
+		return 0
+	}
+
+	return float32(math.Ceil(float64(unsafeDistance)))
 }
 
 func playerCanTakeDamage(player game.Player, damageType PlayerDamageType) bool {

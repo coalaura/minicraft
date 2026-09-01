@@ -29,6 +29,10 @@ const (
 	itemEntityLavaPush           = 0.0023333333333333335
 	itemEntityFastLavaPush       = 0.007
 	itemEntityFluidSyncThreshold = 1e-8
+	itemEntityFireDurationTicks  = 8 * 20
+	itemEntityLavaFireTicks      = 15 * 20
+	itemEntityLavaDamage         = 4
+	itemEntityBurningDamage      = 1
 )
 
 type RuntimeEntityState struct {
@@ -90,18 +94,19 @@ type RuntimeEntityTracker interface {
 }
 
 type runtimeItemEntity struct {
-	State        RuntimeEntityState
-	Stack        game.ItemStack
-	Velocity     game.Velocity
-	Health       int32
-	Age          int32
-	PickupDelay  int32
-	TargetUUID   string
-	ThrowerUUID  string
-	OnGround     bool
-	TickCount    int32
-	FluidType    game.FluidType
-	FluidImpulse game.Velocity
+	State              RuntimeEntityState
+	Stack              game.ItemStack
+	Velocity           game.Velocity
+	Health             int32
+	Age                int32
+	PickupDelay        int32
+	TargetUUID         string
+	ThrowerUUID        string
+	OnGround           bool
+	TickCount          int32
+	FluidType          game.FluidType
+	FluidImpulse       game.Velocity
+	RemainingFireTicks int32
 }
 
 type itemEscapeDirection struct {
@@ -218,6 +223,27 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	waterContact := runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeWater, false)
 	lavaContact := runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeLava, false)
 
+	inLava := lavaContact.Depth > 0
+
+	if entity.Stack.Item.FireResistant() || waterContact.Depth > 0 {
+		entity.RemainingFireTicks = 0
+	} else if entity.RemainingFireTicks > 0 {
+		if entity.RemainingFireTicks%20 == 0 && !inLava {
+			removed := entity.damageLocked(itemEntityBurningDamage)
+			if removed {
+				entityID := entity.State.ID
+
+				entity.State.mu.Unlock()
+
+				runtime.removeRuntimeEntity(entityID)
+
+				return
+			}
+		}
+
+		entity.RemainingFireTicks--
+	}
+
 	fluidType := game.FluidTypeEmpty
 
 	if waterContact.Depth > fluidContactDepth {
@@ -312,18 +338,53 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	}
 
 	if fluidType == game.FluidTypeLava && !entity.Stack.Item.FireResistant() {
-		entity.Health -= 4
+		entity.RemainingFireTicks = max(entity.RemainingFireTicks, itemEntityLavaFireTicks)
 
-		if entity.Health <= 0 {
+		removed := entity.damageLocked(itemEntityLavaDamage)
+
+		playSound := removed || entity.TickCount%10 == 0
+
+		if playSound || removed {
 			entityID := entity.State.ID
 			position := entity.State.Position
 
 			entity.State.mu.Unlock()
 
-			runtime.playItemBurnSound(position)
-			runtime.removeRuntimeEntity(entityID)
+			if playSound {
+				runtime.playItemBurnSound(position)
+			}
 
-			return
+			if removed {
+				runtime.removeRuntimeEntity(entityID)
+
+				return
+			}
+
+			entity.State.mu.Lock()
+
+			if entity.State.Removed {
+				entity.State.mu.Unlock()
+
+				return
+			}
+		}
+	}
+
+	if shouldMove && !entity.Stack.Item.FireResistant() {
+		fireDamage := runtime.fireContactDamage(itemEntityBox(entity.State.Position))
+		if fireDamage > 0 {
+			entity.RemainingFireTicks = max(entity.RemainingFireTicks, itemEntityFireDurationTicks)
+
+			removed := entity.damageLocked(int32(fireDamage))
+			if removed {
+				entityID := entity.State.ID
+
+				entity.State.mu.Unlock()
+
+				runtime.removeRuntimeEntity(entityID)
+
+				return
+			}
 		}
 	}
 
@@ -399,6 +460,12 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	}
 
 	runtime.synchronizeRuntimeEntity(entity)
+}
+
+func (entity *runtimeItemEntity) damageLocked(amount int32) bool {
+	entity.Health -= amount
+
+	return entity.Health <= 0
 }
 
 func (r *Runtime) SpawnItemEntity(stack game.ItemStack, position game.Position, velocity game.Velocity, pickupDelay int32) *runtimeItemEntity {

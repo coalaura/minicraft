@@ -291,6 +291,10 @@ func (stack ItemStack) EnchantmentLevel(enchantment Enchantment) int32 {
 	return stack.Enchantments()[enchantment]
 }
 
+func (stack ItemStack) PreventsEquipmentDrop() bool {
+	return stack.EnchantmentLevel(EnchantmentVanishingCurse) > 0
+}
+
 func (stack ItemStack) Enchantments() map[Enchantment]int32 {
 	data, exists := stack.component(ItemComponentEnchantments)
 	if !exists {

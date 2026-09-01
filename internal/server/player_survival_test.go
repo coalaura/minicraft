@@ -10,6 +10,12 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+type playerFallDamageTestCase struct {
+	name     string
+	distance float32
+	want     float32
+}
+
 func TestDamagePlayerHitCooldownAndEligibility(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
@@ -145,7 +151,19 @@ func TestPlayerSurvivalAirDrowningAndEnvironmentalDamage(t *testing.T) {
 	t.Run("fire and lava", func(t *testing.T) {
 		world := &game.World{}
 
-		world.SetBlock(game.BlockPosition{}, game.Fire)
+		fireDefinition, valid := game.Fire.Definition()
+		if !valid {
+			t.Fatal("fire definition is invalid")
+		}
+
+		statefulFire := game.Fire + 1
+		statefulDefinition, valid := statefulFire.Definition()
+
+		if !valid || statefulDefinition.ID != fireDefinition.ID || statefulFire == game.Fire {
+			t.Fatalf("stateful fire = %d, definition %+v", statefulFire, statefulDefinition)
+		}
+
+		world.SetBlock(game.BlockPosition{}, statefulFire)
 
 		runtime := NewRuntime(world)
 
@@ -250,6 +268,105 @@ func TestPlayerSurvivalFallAndVoid(t *testing.T) {
 	}
 }
 
+func TestCalculatePlayerFallDamageBoundaries(t *testing.T) {
+	tests := []playerFallDamageTestCase{
+		{name: "below safe distance", distance: 2.9999, want: 0},
+		{name: "safe distance", distance: 3, want: 0},
+		{name: "just above safe distance", distance: 3.0001, want: 1},
+		{name: "within first interval", distance: 3.75, want: 1},
+		{name: "integer boundary", distance: 4, want: 1},
+		{name: "above integer boundary", distance: 4.0001, want: 2},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := calculatePlayerFallDamage(test.distance)
+			if got != test.want {
+				t.Fatalf("damage at %v = %v, want %v", test.distance, got, test.want)
+			}
+		})
+	}
+}
+
+func TestPlayerFallDistanceFluidProgression(t *testing.T) {
+	world := &game.World{}
+
+	for y := int32(0); y <= 6; y++ {
+		world.SetBlock(game.BlockPosition{Y: y}, game.Lava)
+	}
+
+	runtime := NewRuntime(world)
+
+	session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	joinTestSession(t, runtime, session)
+
+	session.Player.ResetSurvivalState()
+
+	session.Player.Position = game.Position{X: 0.5, Y: 6, Z: 0.5}
+
+	runtime.updatePlayerMovement(session, func(player *game.Player) {
+		player.Position.Y = 4
+		player.OnGround = false
+	})
+
+	runtime.Tick()
+
+	distance := session.snapshotPlayer().FallDistance
+	if distance != 1 {
+		t.Fatalf("first lava fall distance = %v, want 1", distance)
+	}
+
+	runtime.updatePlayerMovement(session, func(player *game.Player) {
+		player.Position.Y = 2
+		player.OnGround = false
+	})
+
+	runtime.Tick()
+
+	distance = session.snapshotPlayer().FallDistance
+	if distance != 1.5 {
+		t.Fatalf("second lava fall distance = %v, want 1.5", distance)
+	}
+
+	healthBeforeLanding := session.snapshotPlayer().Health
+
+	runtime.updatePlayerMovement(session, func(player *game.Player) {
+		player.Position.Y = 0.5
+		player.OnGround = true
+	})
+
+	player := session.snapshotPlayer()
+	if player.FallDistance != 0 || player.Health != healthBeforeLanding {
+		t.Fatalf("lava landing = distance %v health %v, want 0 and %v", player.FallDistance, player.Health, healthBeforeLanding)
+	}
+
+	world.SetBlock(game.BlockPosition{}, game.Water)
+
+	session.updatePlayerState(func(player *game.Player) bool {
+		player.FallDistance = 5
+
+		return true
+	})
+
+	runtime.Tick()
+
+	distance = session.snapshotPlayer().FallDistance
+	if distance != 0 {
+		t.Fatalf("water reset fall distance = %v, want 0", distance)
+	}
+
+	runtime.updatePlayerMovement(session, func(player *game.Player) {
+		player.Position.Y -= 0.5
+		player.OnGround = false
+	})
+
+	distance = session.snapshotPlayer().FallDistance
+	if distance != 0 {
+		t.Fatalf("water movement fall distance = %v, want 0", distance)
+	}
+}
+
 func TestPlayerDeathDropsInventoryOnlyOnce(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
@@ -278,8 +395,8 @@ func TestPlayerDeathDropsInventoryOnlyOnce(t *testing.T) {
 	}
 
 	entities := runtime.snapshotRuntimeEntities()
-	if len(entities) != 4 {
-		t.Fatalf("death drops = %d, want 4", len(entities))
+	if len(entities) != 3 {
+		t.Fatalf("death drops = %d, want 3", len(entities))
 	}
 
 	applied = runtime.DamagePlayer(session, PlayerDamage{Type: PlayerDamageGenericKill, Amount: math.MaxFloat32})
@@ -289,9 +406,115 @@ func TestPlayerDeathDropsInventoryOnlyOnce(t *testing.T) {
 
 	runtime.Tick()
 
-	if len(runtime.snapshotRuntimeEntities()) != 4 {
+	if len(runtime.snapshotRuntimeEntities()) != 3 {
 		t.Fatal("dead player survival tick duplicated inventory drops")
 	}
+}
+
+func TestPlayerDeathPreventsVanishingEquipmentDrops(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	session.Player.ResetSurvivalState()
+
+	cursed := game.ItemStack{Item: game.ItemDiamond, Count: 1}
+
+	cursed.SetEnchantment(game.EnchantmentVanishingCurse, 1)
+
+	session.Player.Inventory.Main[0] = game.ItemStack{Item: game.ItemOakLog, Count: 1}
+	session.Player.Inventory.Main[1] = cursed.Clone()
+
+	session.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemStone, Count: 1}
+	session.Player.Inventory.Hotbar[1] = cursed.Clone()
+
+	session.Player.Inventory.Armor[0] = game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
+	session.Player.Inventory.Armor[1] = cursed.Clone()
+
+	session.Player.Inventory.Offhand = cursed.Clone()
+
+	applied := runtime.DamagePlayer(session, PlayerDamage{Type: PlayerDamageGenericKill, Amount: math.MaxFloat32})
+	if !applied {
+		t.Fatal("lethal damage was not applied")
+	}
+
+	entities := runtime.snapshotRuntimeEntities()
+	if len(entities) != 3 {
+		t.Fatalf("death drops = %d, want 3 ordinary stacks", len(entities))
+	}
+
+	for _, entity := range entities {
+		item := entity.(*runtimeItemEntity)
+		if item.Stack.PreventsEquipmentDrop() {
+			t.Fatalf("vanishing stack spawned on death: %+v", item.Stack)
+		}
+	}
+}
+
+func TestPlayerDeathDiscardsTransientMenuItems(t *testing.T) {
+	t.Run("full inventory cursor", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+		session.Player.ResetSurvivalState()
+
+		for index := range session.Player.Inventory.Main {
+			session.Player.Inventory.Main[index] = game.ItemStack{Item: game.ItemStone, Count: 64}
+		}
+
+		for index := range session.Player.Inventory.Hotbar {
+			session.Player.Inventory.Hotbar[index] = game.ItemStack{Item: game.ItemStone, Count: 64}
+		}
+
+		container := make([]game.ItemStack, 9)
+
+		container[0] = game.ItemStack{Item: game.ItemDirt, Count: 2}
+
+		menu := newGenericContainerMenu(1, 1, container, &session.Player.Inventory)
+
+		menu.carried = game.ItemStack{Item: game.ItemDiamond, Count: 1}
+		menu.carried.SetEnchantment(game.EnchantmentVanishingCurse, 1)
+
+		session.containerMenu = menu
+
+		runtime.DamagePlayer(session, PlayerDamage{Type: PlayerDamageGenericKill, Amount: math.MaxFloat32})
+
+		if session.activeMenu() != session.inventoryMenu || !session.activeMenu().carried.Empty() {
+			t.Fatal("death retained the open menu or carried stack")
+		}
+
+		if !container[0].Equal(game.ItemStack{Item: game.ItemDirt, Count: 2}) {
+			t.Fatalf("container backing changed on death: %+v", container[0])
+		}
+
+		for _, entity := range runtime.snapshotRuntimeEntities() {
+			item := entity.(*runtimeItemEntity)
+			if item.Stack.Item == game.ItemDiamond {
+				t.Fatalf("carried stack spawned on death: %+v", item.Stack)
+			}
+		}
+	})
+
+	t.Run("crafting inputs", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+		session.Player.ResetSurvivalState()
+
+		table := &craftingTableBacking{}
+
+		table.inputs[0] = game.ItemStack{Item: game.ItemDiamond, Count: 1}
+
+		session.containerMenu = newCraftingTableMenu(1, table, &session.Player.Inventory)
+
+		runtime.DamagePlayer(session, PlayerDamage{Type: PlayerDamageGenericKill, Amount: math.MaxFloat32})
+
+		if len(runtime.snapshotRuntimeEntities()) != 0 {
+			t.Fatal("crafting input spawned on death")
+		}
+	})
 }
 
 func TestRespawnPlayerResetsAndSynchronizesObservers(t *testing.T) {

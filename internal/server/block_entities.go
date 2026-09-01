@@ -245,6 +245,29 @@ func (r *Runtime) closeMenuWithRemovalStateLocked(session *Session, notify, disc
 	}
 }
 
+func (r *Runtime) discardMenuOnDeathLocked(session *Session) {
+	current := session.containerMenu
+	if current == nil {
+		session.returnToInventoryMenu()
+
+		current = session.containerMenu
+	}
+
+	current.carried = game.ItemStack{}
+
+	current.resetDrag()
+
+	if current != session.inventoryMenu && current.backing != nil {
+		current.backing.Detach(r, session)
+	}
+
+	session.returnToInventoryMenu()
+
+	session.inventoryMenu.carried = game.ItemStack{}
+
+	session.inventoryMenu.resetDrag()
+}
+
 func (r *Runtime) reconcileRuntimeBlockEntities(records []blockMutationRecord) {
 	for _, record := range records {
 		previousType := game.BlockEntityTypeForBlock(record.previous)

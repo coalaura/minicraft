@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"math"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -608,20 +607,15 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 	currentBox := session.Player.CollisionBox()
 
 	inWater := r.fluidContact(currentBox, game.FluidTypeWater, true).Depth > 0
-	inLava := r.fluidContact(currentBox, game.FluidTypeLava, true).Depth > 0
 
 	verticalDelta := session.Player.Position.Y - previous.Position.Y
 
 	switch {
-	case inWater:
-		session.Player.FallDistance = 0
-	case inLava:
-		session.Player.FallDistance *= 0.5
 	case session.Player.OnGround:
 		fallDistance := session.Player.FallDistance
 		session.Player.FallDistance = 0
 
-		damage := float32(math.Floor(float64(fallDistance + 0.000001 - 3)))
+		damage := calculatePlayerFallDamage(fallDistance)
 		if damage > 0 {
 			session.playerMx.Unlock()
 
@@ -629,7 +623,7 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 
 			session.playerMx.Lock()
 		}
-	case verticalDelta < 0:
+	case verticalDelta < 0 && !inWater:
 		session.Player.FallDistance -= float32(verticalDelta)
 	}
 

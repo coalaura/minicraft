@@ -15,6 +15,12 @@ type itemTrajectorySnapshot struct {
 	velocity game.Velocity
 }
 
+type itemFireDamageTestCase struct {
+	name       string
+	fire       game.Block
+	wantHealth int32
+}
+
 type collisionAxisOrderTestCase struct {
 	name     string
 	movement game.Velocity
@@ -455,6 +461,203 @@ func TestFireResistantItemSurvivesLava(t *testing.T) {
 
 	if item.State.Removed || item.Health != 5 {
 		t.Fatalf("fire-resistant item state = removed %t, health %d", item.State.Removed, item.Health)
+	}
+}
+
+func TestItemEntityFireDamage(t *testing.T) {
+	tests := []itemFireDamageTestCase{
+		{name: "fire", fire: game.Fire, wantHealth: 4},
+		{name: "soul fire", fire: game.SoulFire, wantHealth: 3},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			world := &game.World{}
+
+			world.SetBlock(game.BlockPosition{Y: -1}, game.Stone)
+			world.SetBlock(game.BlockPosition{}, test.fire)
+
+			runtime := NewRuntime(world)
+
+			viewer, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Viewer")
+
+			viewer.loadedChunks = map[LoadedChunk]struct{}{{}: {}}
+
+			joinTestSession(t, runtime, viewer)
+
+			runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+			item := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: 1}, game.Position{X: 0.5, Y: 0.125, Z: 0.5}, game.Velocity{}, 32767)
+
+			item.OnGround = true
+			item.TickCount = 3 - item.State.ID
+
+			connection.reset()
+
+			runtime.Tick()
+
+			if item.State.Removed || item.Health != test.wantHealth || item.RemainingFireTicks != itemEntityFireDurationTicks {
+				t.Fatalf("item fire state = removed %t health %d fire %d", item.State.Removed, item.Health, item.RemainingFireTicks)
+			}
+
+			if sessionHasPacket(connection.packets(t), protocol.ClientboundSoundID) {
+				t.Fatal("direct fire damage emitted a lava burn sound")
+			}
+		})
+	}
+}
+
+func TestItemEntityFireDamageCadenceAndRemoval(t *testing.T) {
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{Y: -1}, game.Stone)
+	world.SetBlock(game.BlockPosition{}, game.Fire)
+
+	runtime := NewRuntime(world)
+
+	viewer, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Viewer")
+
+	viewer.loadedChunks = map[LoadedChunk]struct{}{{}: {}}
+
+	joinTestSession(t, runtime, viewer)
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+	item := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: 1}, game.Position{X: 0.5, Y: 0, Z: 0.5}, game.Velocity{}, 32767)
+
+	item.OnGround = true
+	item.TickCount = 3 - item.State.ID
+
+	connection.reset()
+
+	runtime.Tick()
+
+	if item.Health != 4 {
+		t.Fatalf("first direct fire hit health = %d, want 4", item.Health)
+	}
+
+	runtime.Tick()
+
+	if item.Health != 3 {
+		t.Fatalf("first burning hit health = %d, want 3", item.Health)
+	}
+
+	for range 20 {
+		if item.State.Removed {
+			break
+		}
+
+		runtime.Tick()
+	}
+
+	if !item.State.Removed {
+		t.Fatal("fire damage did not remove the item")
+	}
+
+	if len(runtime.snapshotRuntimeEntities()) != 0 {
+		t.Fatal("lethal fire damage left the item tracked")
+	}
+
+	if countPacketID(connection.packets(t), protocol.ClientboundRemoveEntitiesID) != 1 {
+		t.Fatalf("fire removal packets = %v, want exactly one removal", connection.packetIDs(t))
+	}
+
+	if sessionHasPacket(connection.packets(t), protocol.ClientboundSoundID) {
+		t.Fatal("fire removal emitted a lava burn sound")
+	}
+}
+
+func TestFireResistantItemSurvivesFire(t *testing.T) {
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{Y: -1}, game.Stone)
+	world.SetBlock(game.BlockPosition{}, game.SoulFire)
+
+	runtime := NewRuntime(world)
+
+	viewer := &Session{}
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+	item := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemNetheriteIngot, Count: 1}, game.Position{X: 0.5, Y: 0.125, Z: 0.5}, game.Velocity{}, 32767)
+
+	item.OnGround = true
+
+	for range 40 {
+		runtime.Tick()
+	}
+
+	if item.State.Removed || item.Health != 5 || item.RemainingFireTicks != 0 {
+		t.Fatalf("fire-resistant item state = removed %t health %d fire %d", item.State.Removed, item.Health, item.RemainingFireTicks)
+	}
+}
+
+func TestItemEntityNonlethalLavaSoundCadence(t *testing.T) {
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{}, game.Lava)
+
+	runtime := NewRuntime(world)
+
+	viewer, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Viewer")
+
+	viewer.loadedChunks = map[LoadedChunk]struct{}{{}: {}}
+
+	joinTestSession(t, runtime, viewer)
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+	item := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: 1}, game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 32767)
+
+	item.Health = 20
+	item.TickCount = 9
+
+	connection.reset()
+
+	runtime.Tick()
+
+	if item.State.Removed || item.Health != 16 {
+		t.Fatalf("nonlethal lava hit = removed %t health %d", item.State.Removed, item.Health)
+	}
+
+	sounds := packetsByID(t, connection, protocol.ClientboundSoundID)
+	if len(sounds) != 1 {
+		t.Fatalf("nonlethal lava sounds = %d, packet IDs %v", len(sounds), connection.packetIDs(t))
+	}
+
+	assertItemBurnSound(t, sounds[0], item.State.Position)
+}
+
+func TestLethalItemDamageSkipsPickupAndMerge(t *testing.T) {
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{}, game.Lava)
+
+	runtime := NewRuntime(world)
+
+	player, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	joinTestSession(t, runtime, player)
+
+	runtime.setSessionActiveChunks(player, []LoadedChunk{{}})
+
+	dying := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: 1}, game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 0)
+
+	dying.Health = 1
+	dying.TickCount = 1
+
+	survivor := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: 1}, game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 32767)
+
+	survivor.PickupDelay = 0
+
+	dying.Tick(runtime, nil)
+
+	if !dying.State.Removed || survivor.State.Removed || survivor.Stack.Count != 1 {
+		t.Fatalf("post-damage entities = dying removed %t, survivor removed %t stack %+v", dying.State.Removed, survivor.State.Removed, survivor.Stack)
+	}
+
+	if !player.snapshotPlayer().Inventory.Hotbar[0].Empty() {
+		t.Fatalf("lethally damaged item was picked up: %+v", player.snapshotPlayer().Inventory.Hotbar[0])
 	}
 }
 
