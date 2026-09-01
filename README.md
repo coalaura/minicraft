@@ -99,21 +99,16 @@ Run the test suite with:
 go test ./...
 ```
 
-Minicraft is not intended to be a drop-in replacement for a full vanilla server. Its focus is on the Minecraft protocol, multiplayer fundamentals, derived water and lava flow, and providing a small, efficient foundation for procedural worlds.
+## Scope and limitations
 
-There are still gameplay systems and protocol features that are intentionally incomplete or outside that scope.
+Minicraft is a focused protocol and procedural-world server, not a drop-in replacement for vanilla Minecraft.
 
-Fluid simulation covers vanilla-like derived water and lava flow in active world chunks, while scheduled fluid ticks intentionally pause in inactive chunks. It also covers waterlogging, buckets, item movement through fluids, player drowning, lava damage and extinguishing. Nether water evaporation and broader fluid parity remain deferred or out of scope.
-
-Generic block entities support procedural copy-on-write state, removal behavior and optional runtime interaction/ticking capabilities. Generic 9x1 through 9x6 storage menus are available, including barrels and single/double normal, trapped and copper chest variants. Hoppers automate those containers and the furnace family with sided access, active-chunk cooldown semantics and dropped-item collection. Furnace-family block entities process the generated 1.21.11 smelting, smoking and blasting catalogues with vanilla fuel durations, remainders, lit states and menu data. Manual crafting supports the generated ordinary shaped and shapeless recipe catalogue in the player inventory and at crafting tables. Recipe-book protocol, furnace XP payout, special/dynamic recipes and component-transforming recipes are not implemented yet.
-
-The survival block loop uses server-tick-authoritative START, STOP and ABORT handling, vanilla hardness/tool progress including Efficiency, harvest gating, post-commit tool durability with Unbreaking, cause-specific ordinary loot, and exact-hand placement consumption. `/enchant` can place all ordinary vanilla enchantments on their canonical supported items with exact exclusive-set compatibility, but intentionally targets players only. Canonical 1.21.11 block loot is compiled into Go during generation and supports ordered alternatives, independent pools, state and tool conditions, shears, Silk Touch, Fortune formulas and random counts or chances. Tables that require unavailable location, block-state copying or block-entity component contexts remain visibly deferred rather than approximated. Loot uses a dedicated advancing runtime random stream; unlike Java, Minicraft does not yet persist a separate named `random_sequence` stream for each table. XP drops, potion/effect modifiers, underwater and airborne mining penalties remain explicitly deferred.
-
-Player survival state includes vanilla health, absorption, hunger, saturation and exhaustion, air supply, hurt cooldown behavior, environmental damage, death inventory drops and respawn. World difficulty defaults to Normal and drives exact baseline starvation limits and Peaceful recovery. Timed consumables are server-authoritative, support either hand, preserve Creative stacks, and separate food properties from use duration, animation, sound, consume effects and remainders. Use continues across same-item count, component and backing-stack changes, but still cancels when the authoritative active hand becomes empty or changes item. Hunger includes block-breaking and supported movement exhaustion plus the vanilla saturated and high-food natural-regeneration cadences. Jump exhaustion remains deferred because the accepted movement input does not expose an exact authoritative jump action.
-
-Active player effects use the generated canonical 1.21.11 registry and preserve vanilla duration, amplifier, ambient, particle/icon and hidden-effect merge semantics. Effect packets are synchronized only to the player and viewers tracking that player. Regeneration, Poison, Hunger, Absorption, Fire Resistance, Resistance and client-side Nausea are authoritative where they have server gameplay; absorption is separate from health and participates in centralized damage processing. Golden apples, enchanted golden apples, chicken, poisonous potatoes, pufferfish, rotten flesh and spider eyes apply their static effects and chances, honey bottles remove only Poison, and milk buckets clear active effects through the ordinary timed-use path.
-
-The canonical `USE_EFFECTS` sprint, interaction-vibration and speed-multiplier fields are retained in generated item data. Movement-speed enforcement and interaction vibrations remain deferred because the current input and world-event architecture cannot reproduce them cleanly. Suspicious-stew effects remain deferred because they are per-stack component data, and chorus-fruit safe random teleportation remains deferred until a proper destination-search primitive exists. Entity potion-swirl metadata is also deferred rather than approximated because it requires generic particle-registry serialization. Potions, armor, enchantment damage mitigation, combat, mobs, projectiles, XP, beds, respawn anchors, gamerule configuration and persistent player data are not implemented.
+- World and player changes are held in memory; persistent storage is not implemented.
+- Fluid ticks pause in inactive chunks, and broader fluid parity remains out of scope.
+- Recipe-book support, special recipes, furnace XP and component-transforming recipes are deferred.
+- Timed item use continues across same-item count, component and backing-stack changes, but cancels when the active hand becomes empty or changes item.
+- Suspicious-stew effects, chorus-fruit teleportation, potion swirls and `USE_EFFECTS` movement or vibration behavior remain explicitly deferred.
+- Potions, armor, combat, mobs, projectiles, XP, beds, respawn anchors and gamerule configuration are not implemented.
 
 ## Todo
 
@@ -122,7 +117,6 @@ The canonical `USE_EFFECTS` sprint, interaction-vibration and speed-multiplier f
 - Recipe-book and special crafting recipe parity
 - Broader survival mechanics such as potions, armor and combat
 - Adventure map features
-
 
 ## License
 
