@@ -77,14 +77,44 @@ type ItemMining struct {
 }
 
 type ItemFood struct {
-	Nutrition       int8
-	Saturation      float32
-	ConsumeTicks    uint16
-	Animation       ItemUseAnimation
-	Sound           SoundEvent
-	Remainder       Item
-	AlwaysEdible    bool
-	DeferredEffects bool
+	Nutrition    int8
+	Saturation   float32
+	AlwaysEdible bool
+}
+
+type ItemUseEffects struct {
+	CanSprint          bool
+	InteractVibrations bool
+	SpeedMultiplier    float32
+}
+
+type ItemConsumeEffectType uint8
+
+const (
+	ItemConsumeEffectApplyStatusEffects ItemConsumeEffectType = iota + 1
+	ItemConsumeEffectRemoveStatusEffects
+	ItemConsumeEffectClearAllStatusEffects
+	ItemConsumeEffectTeleportRandomly
+	ItemConsumeEffectSuspiciousStew
+)
+
+type ItemConsumeEffect struct {
+	Type        ItemConsumeEffectType
+	Effects     []MobEffectInstance
+	Probability float32
+	Remove      []MobEffect
+	Diameter    float32
+}
+
+type ItemConsumable struct {
+	UseEffects     ItemUseEffects
+	Particles      bool
+	Sound          SoundEvent
+	Duration       uint16
+	Animation      ItemUseAnimation
+	Remainder      Item
+	Effects        []ItemConsumeEffect
+	DynamicEffects []ItemConsumeEffect
 }
 
 type ItemDefinition struct {
@@ -94,6 +124,7 @@ type ItemDefinition struct {
 	MaxDurability int32
 	Mining        ItemMining
 	Food          ItemFood
+	Consumable    ItemConsumable
 }
 
 type ItemStack struct {

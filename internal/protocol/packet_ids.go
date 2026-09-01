@@ -123,6 +123,7 @@ const (
 	ClientboundPlayerInfoUpdateID             = 0x44
 	ClientboundPlayerPositionID               = 0x46
 	ClientboundRemoveEntitiesID               = 0x4B
+	ClientboundRemoveMobEffectID              = 0x4C
 	ClientboundRespawnID                      = 0x50
 	ClientboundSetHeadRotationID              = 0x51
 	ClientboundSectionBlocksUpdateID          = 0x52
@@ -136,5 +137,6 @@ const (
 	ClientboundSoundID                        = 0x73
 	ClientboundSystemChatID                   = 0x77
 	ClientboundTakeItemEntityID               = 0x7A
+	ClientboundUpdateMobEffectID              = 0x82
 	ClientboundUpdateRecipesID                = 0x83
 )

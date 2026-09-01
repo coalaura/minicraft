@@ -19,21 +19,40 @@ type ItemDefinition struct {
 }
 
 type ConsumableManifest struct {
-	Version string                   `json:"version"`
-	Sources map[string]string        `json:"sources"`
-	Foods   []ConsumableFoodMetadata `json:"foods"`
+	Version     string                   `json:"version"`
+	Sources     map[string]string        `json:"sources"`
+	Consumables []ConsumableItemMetadata `json:"consumables"`
 }
 
-type ConsumableFoodMetadata struct {
-	Name            string  `json:"name"`
-	Nutrition       int8    `json:"nutrition"`
-	Saturation      float32 `json:"saturation"`
-	AlwaysEdible    bool    `json:"alwaysEdible"`
-	ConsumeTicks    uint16  `json:"consumeTicks"`
-	Animation       string  `json:"animation"`
-	Sound           string  `json:"sound"`
-	Remainder       string  `json:"remainder"`
-	DeferredEffects bool    `json:"deferredEffects"`
+type ConsumableItemMetadata struct {
+	Name               string                  `json:"name"`
+	Nutrition          int8                    `json:"nutrition"`
+	Saturation         float32                 `json:"saturation"`
+	AlwaysEdible       bool                    `json:"alwaysEdible"`
+	Duration           uint16                  `json:"duration"`
+	Animation          string                  `json:"animation"`
+	Sound              string                  `json:"sound"`
+	Particles          bool                    `json:"particles"`
+	CanSprint          bool                    `json:"canSprint"`
+	InteractVibrations bool                    `json:"interactVibrations"`
+	SpeedMultiplier    float32                 `json:"speedMultiplier"`
+	Remainder          string                  `json:"remainder"`
+	Effects            []ConsumeEffectMetadata `json:"effects"`
+	DynamicEffects     []ConsumeEffectMetadata `json:"dynamicEffects"`
+}
+
+type ConsumeEffectMetadata struct {
+	Type        string              `json:"type"`
+	Effects     []MobEffectMetadata `json:"effects"`
+	Probability float32             `json:"probability"`
+	Remove      []string            `json:"remove"`
+	Diameter    float32             `json:"diameter"`
+}
+
+type MobEffectMetadata struct {
+	Effect    string `json:"effect"`
+	Duration  uint16 `json:"duration"`
+	Amplifier int8   `json:"amplifier"`
 }
 
 type BlockProperty struct {
@@ -140,7 +159,7 @@ func generate(items []ItemDefinition, blocks []BlockDefinition, consumables Cons
 		}
 	}
 
-	foods, err := validateConsumables(items, consumables)
+	consumablesByName, err := validateConsumables(items, consumables)
 	if err != nil {
 		return nil, err
 	}
@@ -174,17 +193,18 @@ func generate(items []ItemDefinition, blocks []BlockDefinition, consumables Cons
 	fmt.Fprintln(&output, "var itemDefinitions = [...]ItemDefinition{")
 
 	for _, item := range items {
-		food := itemFood(foodForItem(foods, item.Name))
+		food, consumable := itemConsumable(consumableForItem(consumablesByName, item.Name))
 
 		fmt.Fprintf(
 			&output,
-			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, Mining: %s, Food: %s},\n",
+			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, Mining: %s, Food: %s, Consumable: %s},\n",
 			goName(item.Name),
 			item.Name,
 			item.StackSize,
 			item.MaxDurability,
 			itemMining(item.Name),
 			food,
+			consumable,
 		)
 	}
 
@@ -224,8 +244,8 @@ func generate(items []ItemDefinition, blocks []BlockDefinition, consumables Cons
 	return formatted, nil
 }
 
-func validateConsumables(items []ItemDefinition, manifest ConsumableManifest) (map[string]ConsumableFoodMetadata, error) {
-	if manifest.Version != "1.21.11" || len(manifest.Sources) != 3 {
+func validateConsumables(items []ItemDefinition, manifest ConsumableManifest) (map[string]ConsumableItemMetadata, error) {
+	if manifest.Version != "1.21.11" || len(manifest.Sources) != 10 {
 		return nil, fmt.Errorf("consumable manifest must identify the 1.21.11 source set")
 	}
 
@@ -235,80 +255,159 @@ func validateConsumables(items []ItemDefinition, manifest ConsumableManifest) (m
 		itemNames[item.Name] = struct{}{}
 	}
 
-	foods := make(map[string]ConsumableFoodMetadata, len(manifest.Foods))
+	consumables := make(map[string]ConsumableItemMetadata, len(manifest.Consumables))
+	foodCount := 0
 
-	for _, food := range manifest.Foods {
-		if _, exists := itemNames[food.Name]; !exists {
-			return nil, fmt.Errorf("food item %q is absent from item catalogue", food.Name)
+	for _, consumable := range manifest.Consumables {
+		if _, exists := itemNames[consumable.Name]; !exists {
+			return nil, fmt.Errorf("consumable item %q is absent from item catalogue", consumable.Name)
 		}
 
-		if _, exists := foods[food.Name]; exists {
-			return nil, fmt.Errorf("food item %q is duplicated", food.Name)
+		if _, exists := consumables[consumable.Name]; exists {
+			return nil, fmt.Errorf("consumable item %q is duplicated", consumable.Name)
 		}
 
-		if food.Nutrition <= 0 || food.Saturation < 0 || food.ConsumeTicks == 0 {
-			return nil, fmt.Errorf("food item %q has invalid gameplay values", food.Name)
+		if consumable.Nutrition < 0 || consumable.Saturation < 0 || consumable.Duration == 0 {
+			return nil, fmt.Errorf("consumable item %q has invalid gameplay values", consumable.Name)
 		}
 
-		if food.Animation != "eat" && food.Animation != "drink" {
-			return nil, fmt.Errorf("food item %q has invalid animation %q", food.Name, food.Animation)
+		if consumable.Nutrition == 0 && consumable.Saturation != 0 {
+			return nil, fmt.Errorf("non-food consumable item %q has saturation", consumable.Name)
 		}
 
-		if food.Remainder != "" {
-			if _, exists := itemNames[food.Remainder]; !exists {
-				return nil, fmt.Errorf("food item %q has unknown remainder %q", food.Name, food.Remainder)
+		if consumable.Nutrition > 0 {
+			foodCount++
+		}
+
+		if consumable.Animation != "eat" && consumable.Animation != "drink" {
+			return nil, fmt.Errorf("consumable item %q has invalid animation %q", consumable.Name, consumable.Animation)
+		}
+
+		if consumable.Remainder != "" {
+			if _, exists := itemNames[consumable.Remainder]; !exists {
+				return nil, fmt.Errorf("consumable item %q has unknown remainder %q", consumable.Name, consumable.Remainder)
 			}
 		}
 
-		foods[food.Name] = food
+		for _, effect := range append(consumable.Effects, consumable.DynamicEffects...) {
+			if !validConsumeEffect(effect) {
+				return nil, fmt.Errorf("consumable item %q has invalid consume effect %q", consumable.Name, effect.Type)
+			}
+		}
+
+		consumables[consumable.Name] = consumable
 	}
 
-	if len(foods) != 40 {
-		return nil, fmt.Errorf("consumable manifest has %d foods, want 40", len(foods))
+	if foodCount != 40 || len(consumables) != 41 {
+		return nil, fmt.Errorf("consumable manifest has %d foods and %d consumables, want 40 and 41", foodCount, len(consumables))
 	}
 
-	return foods, nil
+	return consumables, nil
 }
 
-func foodForItem(foods map[string]ConsumableFoodMetadata, name string) ConsumableFoodMetadata {
-	return foods[name]
+func validConsumeEffect(effect ConsumeEffectMetadata) bool {
+	switch effect.Type {
+	case "apply":
+		return len(effect.Effects) > 0 && effect.Probability > 0 && effect.Probability <= 1
+	case "remove":
+		return len(effect.Remove) > 0
+	case "clear", "suspicious_stew":
+		return true
+	case "teleport":
+		return effect.Diameter > 0
+	default:
+		return false
+	}
 }
 
-func itemFood(food ConsumableFoodMetadata) string {
-	if food.Name == "" {
-		return "ItemFood{}"
+func consumableForItem(consumables map[string]ConsumableItemMetadata, name string) ConsumableItemMetadata {
+	return consumables[name]
+}
+
+func itemConsumable(metadata ConsumableItemMetadata) (string, string) {
+	if metadata.Name == "" {
+		return "ItemFood{}", "ItemConsumable{}"
 	}
 
 	animation := "ItemUseAnimationEat"
 	sound := "SoundEntityGenericEat"
 
-	if food.Animation == "drink" {
+	if metadata.Animation == "drink" {
 		animation = "ItemUseAnimationDrink"
 		sound = "SoundEntityGenericDrink"
 	}
 
-	if food.Sound != "" {
-		name := strings.TrimPrefix(food.Sound, "minecraft:")
+	if metadata.Sound != "" {
+		name := strings.TrimPrefix(metadata.Sound, "minecraft:")
 		sound = "Sound" + goName(strings.ReplaceAll(name, ".", "_"))
 	}
 
 	remainder := "ItemAir"
 
-	if food.Remainder != "" {
-		remainder = "Item" + goName(food.Remainder)
+	if metadata.Remainder != "" {
+		remainder = "Item" + goName(metadata.Remainder)
 	}
 
-	return fmt.Sprintf(
-		"ItemFood{Nutrition: %d, Saturation: %g, ConsumeTicks: %d, Animation: %s, Sound: %s, Remainder: %s, AlwaysEdible: %t, DeferredEffects: %t}",
-		food.Nutrition,
-		food.Saturation,
-		food.ConsumeTicks,
-		animation,
+	food := fmt.Sprintf("ItemFood{Nutrition: %d, Saturation: %g, AlwaysEdible: %t}", metadata.Nutrition, metadata.Saturation, metadata.AlwaysEdible)
+
+	consumable := fmt.Sprintf(
+		"ItemConsumable{UseEffects: ItemUseEffects{CanSprint: %t, InteractVibrations: %t, SpeedMultiplier: %g}, Particles: %t, Sound: %s, Duration: %d, Animation: %s, Remainder: %s, Effects: %s, DynamicEffects: %s}",
+		metadata.CanSprint,
+		metadata.InteractVibrations,
+		metadata.SpeedMultiplier,
+		metadata.Particles,
 		sound,
+		metadata.Duration,
+		animation,
 		remainder,
-		food.AlwaysEdible,
-		food.DeferredEffects,
+		itemConsumeEffects(metadata.Effects),
+		itemConsumeEffects(metadata.DynamicEffects),
 	)
+
+	return food, consumable
+}
+
+func itemConsumeEffects(effects []ConsumeEffectMetadata) string {
+	if len(effects) == 0 {
+		return "nil"
+	}
+
+	values := make([]string, len(effects))
+
+	for index, effect := range effects {
+		values[index] = itemConsumeEffect(effect)
+	}
+
+	return "[]ItemConsumeEffect{" + strings.Join(values, ", ") + "}"
+}
+
+func itemConsumeEffect(effect ConsumeEffectMetadata) string {
+	typeName := "ItemConsumeEffect"
+
+	switch effect.Type {
+	case "apply":
+		instances := make([]string, len(effect.Effects))
+
+		for index, instance := range effect.Effects {
+			instances[index] = fmt.Sprintf("{Effect: MobEffect%s, Duration: %d, Amplifier: %d, Visible: true, ShowIcon: true}", goName(instance.Effect), instance.Duration, instance.Amplifier)
+		}
+
+		return fmt.Sprintf("%s{Type: ItemConsumeEffectApplyStatusEffects, Effects: []MobEffectInstance{%s}, Probability: %g}", typeName, strings.Join(instances, ", "), effect.Probability)
+	case "remove":
+		removed := make([]string, len(effect.Remove))
+
+		for index, name := range effect.Remove {
+			removed[index] = "MobEffect" + goName(name)
+		}
+
+		return fmt.Sprintf("%s{Type: ItemConsumeEffectRemoveStatusEffects, Remove: []MobEffect{%s}}", typeName, strings.Join(removed, ", "))
+	case "clear":
+		return typeName + "{Type: ItemConsumeEffectClearAllStatusEffects}"
+	case "teleport":
+		return fmt.Sprintf("%s{Type: ItemConsumeEffectTeleportRandomly, Diameter: %g}", typeName, effect.Diameter)
+	default:
+		return typeName + "{Type: ItemConsumeEffectSuspiciousStew}"
+	}
 }
 
 func itemMining(name string) string {

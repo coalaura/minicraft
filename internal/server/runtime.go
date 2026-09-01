@@ -242,6 +242,11 @@ func (r *Runtime) JoinSession(session *Session) error {
 		return err
 	}
 
+	err = session.sendPlayerMobEffects(player)
+	if err != nil {
+		return err
+	}
+
 	for _, other := range visible {
 		err = session.sendPlayerEntity(other.snapshotPlayer())
 		if err != nil {

@@ -239,12 +239,7 @@ func (s *Session) snapshotPlayer() game.Player {
 	s.playerMx.RLock()
 	defer s.playerMx.RUnlock()
 
-	player := *s.Player
-
-	player.Properties = append([]game.ProfileProperty(nil), s.Player.Properties...)
-	player.Inventory = s.Player.Inventory.Clone()
-
-	return player
+	return s.Player.Clone()
 }
 
 func (s *Session) setSkinParts(skinParts byte) (game.Player, bool) {
@@ -265,8 +260,9 @@ func (s *Session) updatePlayerState(update func(*game.Player) bool) (game.Player
 
 	changed := update(s.Player)
 
-	return *s.Player, changed
+	return s.Player.Clone(), changed
 }
+
 func NewSession(conn *protocol.Connection, cfg *config.Config, runtime *Runtime, log Logger) *Session {
 	return &Session{
 		Conn:            conn,

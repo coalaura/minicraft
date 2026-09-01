@@ -16,13 +16,14 @@ const (
 	PlayerEntityType = 155
 	ItemEntityType   = 71
 
-	EntityFlagsMetadataIndex     = 0
-	EntityAirMetadataIndex       = 1
-	EntityPoseMetadataIndex      = 6
-	LivingFlagsMetadataIndex     = 8
-	LivingHealthMetadataIndex    = 9
-	ItemEntityItemMetadataIndex  = 8
-	PlayerSkinPartsMetadataIndex = 16
+	EntityFlagsMetadataIndex      = 0
+	EntityAirMetadataIndex        = 1
+	EntityPoseMetadataIndex       = 6
+	LivingFlagsMetadataIndex      = 8
+	LivingHealthMetadataIndex     = 9
+	ItemEntityItemMetadataIndex   = 8
+	PlayerAbsorptionMetadataIndex = 15
+	PlayerSkinPartsMetadataIndex  = 16
 
 	MetadataTypeByte      = 0
 	MetadataTypeInt       = 1
@@ -39,6 +40,11 @@ const (
 
 	LivingFlagUsingItem    = 0x01
 	LivingFlagUsingOffhand = 0x02
+
+	MobEffectFlagAmbient       = 0x01
+	MobEffectFlagShowParticles = 0x02
+	MobEffectFlagShowIcon      = 0x04
+	MobEffectFlagBlend         = 0x08
 
 	EntityPoseStanding  = 0
 	EntityPoseSwimming  = 3
@@ -273,6 +279,19 @@ type SetHeadRotation struct {
 
 type RemoveEntities struct {
 	EntityIDs []int32
+}
+
+type RemoveMobEffect struct {
+	EntityID int32
+	EffectID int32
+}
+
+type UpdateMobEffect struct {
+	EntityID  int32
+	EffectID  int32
+	Amplifier int32
+	Duration  int32
+	Flags     byte
 }
 
 type PlayerInfoRemove struct {
@@ -794,6 +813,19 @@ func (p RemoveEntities) Encode(wr *PacketWriter) {
 	for _, entityID := range p.EntityIDs {
 		wr.VarInt(entityID)
 	}
+}
+
+func (p RemoveMobEffect) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+	wr.VarInt(p.EffectID)
+}
+
+func (p UpdateMobEffect) Encode(wr *PacketWriter) {
+	wr.VarInt(p.EntityID)
+	wr.VarInt(p.EffectID)
+	wr.VarInt(p.Amplifier)
+	wr.VarInt(p.Duration)
+	wr.Byte(p.Flags)
 }
 
 func (p PlayerInfoRemove) Encode(wr *PacketWriter) {

@@ -88,6 +88,36 @@ func TestConsumableSourcesAndGeneratedItemsAreCurrent(t *testing.T) {
 		t.Fatalf("read consumables: %v", err)
 	}
 
+	foodCount := 0
+	consumables := make(map[string]ConsumableItemMetadata, len(manifest.Consumables))
+
+	for _, consumable := range manifest.Consumables {
+		consumables[consumable.Name] = consumable
+
+		if consumable.Nutrition > 0 {
+			foodCount++
+		}
+	}
+
+	if foodCount != 40 || len(consumables) != 41 {
+		t.Fatalf("manifest has %d foods and %d consumables, want 40 and 41", foodCount, len(consumables))
+	}
+
+	milk := consumables["milk_bucket"]
+	if milk.Nutrition != 0 || milk.Remainder != "bucket" || len(milk.Effects) != 1 || milk.Effects[0].Type != "clear" {
+		t.Fatalf("milk bucket consumable = %+v", milk)
+	}
+
+	chorusFruit := consumables["chorus_fruit"]
+	if len(chorusFruit.Effects) != 1 || chorusFruit.Effects[0].Type != "teleport" || chorusFruit.Effects[0].Diameter != 16 {
+		t.Fatalf("chorus fruit effects = %+v", chorusFruit.Effects)
+	}
+
+	suspiciousStew := consumables["suspicious_stew"]
+	if len(suspiciousStew.DynamicEffects) != 1 || suspiciousStew.DynamicEffects[0].Type != "suspicious_stew" {
+		t.Fatalf("suspicious stew dynamic effects = %+v", suspiciousStew.DynamicEffects)
+	}
+
 	for source, expected := range manifest.Sources {
 		path := filepath.Join("..", "..", "..", "reference", "client_source", filepath.FromSlash(source))
 

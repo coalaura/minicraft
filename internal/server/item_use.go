@@ -56,14 +56,14 @@ func (s *Session) handleUseItem(interaction protocol.UseItem) (err error) {
 	}
 
 	definition, valid := stack.Item.Definition()
-	if !valid || definition.Food.ConsumeTicks == 0 {
+	if !valid || definition.Consumable.Duration == 0 {
 		return nil
 	}
 
-	return s.Runtime.startUsingFood(s, interaction.Hand, stack, definition.Food)
+	return s.Runtime.startUsingConsumable(s, interaction.Hand, stack, definition.Food, definition.Consumable)
 }
 
-func (r *Runtime) startUsingFood(session *Session, hand int32, stack game.ItemStack, food game.ItemFood) error {
+func (r *Runtime) startUsingConsumable(session *Session, hand int32, stack game.ItemStack, food game.ItemFood, consumable game.ItemConsumable) error {
 	r.lifecycleMu.Lock()
 
 	player, changed := session.updatePlayerState(func(player *game.Player) bool {
@@ -71,7 +71,7 @@ func (r *Runtime) startUsingFood(session *Session, hand int32, stack game.ItemSt
 			return false
 		}
 
-		if player.GameMode != game.GameModeCreative && !food.AlwaysEdible && player.FoodLevel >= game.DefaultPlayerFoodLevel {
+		if player.GameMode != game.GameModeCreative && food.Nutrition > 0 && !food.AlwaysEdible && player.FoodLevel >= game.DefaultPlayerFoodLevel {
 			return false
 		}
 
@@ -82,8 +82,8 @@ func (r *Runtime) startUsingFood(session *Session, hand int32, stack game.ItemSt
 
 		player.UsingItem = true
 		player.UsingOffhand = hand == protocol.OffHand
-		player.UseRemainingTicks = food.ConsumeTicks
-		player.UseAnimation = food.Animation
+		player.UseRemainingTicks = consumable.Duration
+		player.UseAnimation = consumable.Animation
 		player.UseStack = stack.Clone()
 
 		return true
@@ -114,11 +114,13 @@ func (r *Runtime) stopUsingItem(session *Session) {
 
 func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, bool) {
 	var (
-		before           game.PlayerInventory
-		dropped          game.ItemStack
-		sounds           []protocol.Sound
-		useEnded         bool
-		inventoryChanged bool
+		before            game.PlayerInventory
+		dropped           game.ItemStack
+		sounds            []protocol.Sound
+		useEnded          bool
+		inventoryChanged  bool
+		absorptionChanged bool
+		effectChanges     []playerMobEffectChange
 	)
 
 	player, changed := session.updatePlayerState(func(player *game.Player) bool {
@@ -144,7 +146,7 @@ func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, b
 		player.UseStack = held.Clone()
 
 		definition, valid := held.Item.Definition()
-		if !valid || definition.Food.ConsumeTicks == 0 {
+		if !valid || definition.Consumable.Duration == 0 {
 			player.StopUsingItem()
 
 			useEnded = true
@@ -153,12 +155,12 @@ func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, b
 		}
 
 		if player.UseRemainingTicks > 1 {
-			usedTicks := definition.Food.ConsumeTicks - player.UseRemainingTicks
-			waitTicks := uint16(float32(definition.Food.ConsumeTicks) * consumeEffectsStartFraction)
+			usedTicks := definition.Consumable.Duration - player.UseRemainingTicks
+			waitTicks := uint16(float32(definition.Consumable.Duration) * consumeEffectsStartFraction)
 
 			// Vanilla clients derive consume particles from synchronized using-item state; only sound is server-broadcast.
 			if usedTicks > waitTicks && player.UseRemainingTicks%consumeEffectsTickInterval == 0 {
-				sounds = append(sounds, r.consumableSound(*player, definition.Food, protocol.SoundSourcePlayer))
+				sounds = append(sounds, r.consumableSound(*player, definition.Consumable, protocol.SoundSourcePlayer))
 			}
 
 			player.UseRemainingTicks--
@@ -166,21 +168,28 @@ func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, b
 			return true
 		}
 
-		sounds = append(sounds, r.consumableSound(*player, definition.Food, protocol.SoundSourcePlayer))
-		sounds = append(sounds, r.foodCompletionSounds(*player, definition.Food)...)
+		sounds = append(sounds, r.consumableSound(*player, definition.Consumable, protocol.SoundSourcePlayer))
+
+		if definition.Food.Nutrition > 0 {
+			sounds = append(sounds, r.foodCompletionSounds(*player, definition.Consumable)...)
+		}
 
 		before = player.Inventory.Clone()
 
 		inventoryChanged = true
 
-		player.FoodLevel = min(game.DefaultPlayerFoodLevel, player.FoodLevel+int32(definition.Food.Nutrition))
-		player.Saturation = min(float32(player.FoodLevel), player.Saturation+definition.Food.Saturation)
+		if definition.Food.Nutrition > 0 {
+			player.FoodLevel = min(game.DefaultPlayerFoodLevel, player.FoodLevel+int32(definition.Food.Nutrition))
+			player.Saturation = min(float32(player.FoodLevel), player.Saturation+definition.Food.Saturation)
+		}
+
+		effectChanges, absorptionChanged = r.applyConsumableMobEffects(player, definition.Consumable.Effects)
 
 		if player.GameMode != game.GameModeCreative {
 			held.Count--
 
-			if definition.Food.Remainder != game.ItemAir {
-				remainder := game.ItemStack{Item: definition.Food.Remainder, Count: 1}
+			if definition.Consumable.Remainder != game.ItemAir {
+				remainder := game.ItemStack{Item: definition.Consumable.Remainder, Count: 1}
 
 				if held.Empty() {
 					*held = remainder
@@ -209,7 +218,7 @@ func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, b
 		r.spawnPlayerDroppedItem(player, dropped, false, true)
 	}
 
-	update := playerSurvivalUpdate{player: player, metadataChanged: useEnded, sounds: sounds}
+	update := playerSurvivalUpdate{player: player, metadataChanged: useEnded || absorptionChanged, sounds: sounds, effectChanges: effectChanges}
 
 	if inventoryChanged {
 		update.healthChanged = true
@@ -219,7 +228,7 @@ func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, b
 	return update, true
 }
 
-func (r *Runtime) consumableSound(player game.Player, food game.ItemFood, source int32) protocol.Sound {
+func (r *Runtime) consumableSound(player game.Player, consumable game.ItemConsumable, source int32) protocol.Sound {
 	eatVolume := float32(1)
 
 	if r.nextEntityRandom() < 0.5 {
@@ -232,20 +241,20 @@ func (r *Runtime) consumableSound(player game.Player, food game.ItemFood, source
 	volume := eatVolume
 	pitch := eatPitch
 
-	if food.Animation == game.ItemUseAnimationDrink {
+	if consumable.Animation == game.ItemUseAnimationDrink {
 		volume = 0.5
 		pitch = drinkPitch
 	}
 
-	return playerConsumptionSound(player, food.Sound, source, volume, pitch)
+	return playerConsumptionSound(player, consumable.Sound, source, volume, pitch)
 }
 
-func (r *Runtime) foodCompletionSounds(player game.Player, food game.ItemFood) []protocol.Sound {
+func (r *Runtime) foodCompletionSounds(player game.Player, consumable game.ItemConsumable) []protocol.Sound {
 	consumePitch := 1 + (r.nextEntityRandom()-r.nextEntityRandom())*0.4
 	burpPitch := 0.9 + r.nextEntityRandom()*0.1
 
 	return []protocol.Sound{
-		playerConsumptionSound(player, food.Sound, protocol.SoundSourceNeutral, 1, consumePitch),
+		playerConsumptionSound(player, consumable.Sound, protocol.SoundSourceNeutral, 1, consumePitch),
 		playerConsumptionSound(player, game.SoundEntityPlayerBurp, protocol.SoundSourcePlayer, 0.5, burpPitch),
 	}
 }

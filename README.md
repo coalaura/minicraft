@@ -21,7 +21,8 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Survival placement with exact main-hand/offhand item consumption and synchronized equipment
 - Authoritative player health, repeated-hit timing, air and drowning, fire and lava, fall and void damage
 - Configurable Peaceful, Easy, Normal and Hard difficulty with hunger, exhaustion, natural regeneration and starvation
-- Server-authoritative timed food use from either hand with canonical nutrition, durations and ordinary container remainders
+- Server-authoritative timed consumables from either hand, including canonical food, effect, milk and use-remainder behavior
+- Generated 1.21.11 mob-effect registry with synchronized active effects, absorption, Regeneration, Poison, Hunger, Fire Resistance, Resistance and Nausea
 - Idempotent death with inventory loss, `/kill`, and client-requested respawn at the world spawn
 - Stateful block placement for common structures such as slabs, stairs, doors, trapdoors, fences and walls
 - Full player inventory and creative inventory interactions
@@ -108,16 +109,18 @@ Generic block entities support procedural copy-on-write state, removal behavior 
 
 The survival block loop uses server-tick-authoritative START, STOP and ABORT handling, vanilla hardness/tool progress including Efficiency, harvest gating, post-commit tool durability with Unbreaking, cause-specific ordinary loot, and exact-hand placement consumption. `/enchant` can place all ordinary vanilla enchantments on their canonical supported items with exact exclusive-set compatibility, but intentionally targets players only. Canonical 1.21.11 block loot is compiled into Go during generation and supports ordered alternatives, independent pools, state and tool conditions, shears, Silk Touch, Fortune formulas and random counts or chances. Tables that require unavailable location, block-state copying or block-entity component contexts remain visibly deferred rather than approximated. Loot uses a dedicated advancing runtime random stream; unlike Java, Minicraft does not yet persist a separate named `random_sequence` stream for each table. XP drops, potion/effect modifiers, underwater and airborne mining penalties remain explicitly deferred.
 
-Player survival state includes vanilla health, hunger, saturation and exhaustion, air supply, hurt cooldown behavior, environmental damage, death inventory drops and respawn. World difficulty defaults to Normal and drives exact baseline starvation limits and Peaceful recovery. Food use is server-authoritative and timed, supports either hand, canonical nutrition and saturation, Creative preservation, cancellation on held-stack changes, and ordinary bowl or bottle remainders. Hunger includes block-breaking and supported movement exhaustion plus the vanilla saturated and high-food natural-regeneration cadences. Jump exhaustion remains deferred because the accepted movement input does not expose an exact authoritative jump action.
+Player survival state includes vanilla health, absorption, hunger, saturation and exhaustion, air supply, hurt cooldown behavior, environmental damage, death inventory drops and respawn. World difficulty defaults to Normal and drives exact baseline starvation limits and Peaceful recovery. Timed consumables are server-authoritative, support either hand, preserve Creative stacks, and separate food properties from use duration, animation, sound, consume effects and remainders. Use continues across same-item count, component and backing-stack changes, but still cancels when the authoritative active hand becomes empty or changes item. Hunger includes block-breaking and supported movement exhaustion plus the vanilla saturated and high-food natural-regeneration cadences. Jump exhaustion remains deferred because the accepted movement input does not expose an exact authoritative jump action.
 
-Effect-bearing foods currently apply their nutrition, saturation and ordinary remainder only. Golden and enchanted golden apple buffs; chicken, poisonous potato, pufferfish, rotten flesh and spider-eye effects; suspicious-stew effects; chorus-fruit teleportation; and honey-bottle poison removal remain explicitly deferred until the status-effect and consume-effect phase. Status effects, armor and enchantment mitigation, combat, mobs, projectiles, XP, beds, respawn anchors, gamerule configuration and persistent player data are also not implemented.
+Active player effects use the generated canonical 1.21.11 registry and preserve vanilla duration, amplifier, ambient, particle/icon and hidden-effect merge semantics. Effect packets are synchronized only to the player and viewers tracking that player. Regeneration, Poison, Hunger, Absorption, Fire Resistance, Resistance and client-side Nausea are authoritative where they have server gameplay; absorption is separate from health and participates in centralized damage processing. Golden apples, enchanted golden apples, chicken, poisonous potatoes, pufferfish, rotten flesh and spider eyes apply their static effects and chances, honey bottles remove only Poison, and milk buckets clear active effects through the ordinary timed-use path.
+
+The canonical `USE_EFFECTS` sprint, interaction-vibration and speed-multiplier fields are retained in generated item data. Movement-speed enforcement and interaction vibrations remain deferred because the current input and world-event architecture cannot reproduce them cleanly. Suspicious-stew effects remain deferred because they are per-stack component data, and chorus-fruit safe random teleportation remains deferred until a proper destination-search primitive exists. Entity potion-swirl metadata is also deferred rather than approximated because it requires generic particle-registry serialization. Potions, armor, enchantment damage mitigation, combat, mobs, projectiles, XP, beds, respawn anchors, gamerule configuration and persistent player data are not implemented.
 
 ## Todo
 
 - Broader block placement and interaction support
 - Other inventory blocks
 - Recipe-book and special crafting recipe parity
-- Broader survival mechanics such as effects, mitigation and combat
+- Broader survival mechanics such as potions, armor and combat
 - Adventure map features
 
 

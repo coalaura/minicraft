@@ -22,6 +22,11 @@ type clientboundItemStackFixture struct {
 	expected []byte
 }
 
+type mobEffectPacketFixture struct {
+	packet   testPacketEncoder
+	expected []byte
+}
+
 func TestMovementPacketIDsProtocol774(t *testing.T) {
 	packetIDs := map[string]packetIDTest{
 		"container set content":        {actual: ClientboundContainerSetContentID, expected: 0x12},
@@ -37,6 +42,8 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 		"set entity motion":            {actual: ClientboundSetEntityMotionID, expected: 0x63},
 		"entity equipment":             {actual: ClientboundEntityEquipmentID, expected: 0x64},
 		"take item entity":             {actual: ClientboundTakeItemEntityID, expected: 0x7A},
+		"remove mob effect":            {actual: ClientboundRemoveMobEffectID, expected: 0x4C},
+		"update mob effect":            {actual: ClientboundUpdateMobEffectID, expected: 0x82},
 		"update recipes":               {actual: ClientboundUpdateRecipesID, expected: 0x83},
 		"combat kill":                  {actual: ClientboundCombatKillID, expected: 0x42},
 		"respawn":                      {actual: ClientboundRespawnID, expected: 0x50},
@@ -733,11 +740,16 @@ func TestEntityMetadataEncode(t *testing.T) {
 		t.Fatalf("living use flags = %#x/%#x, want 0x1/0x2", LivingFlagUsingItem, LivingFlagUsingOffhand)
 	}
 
+	if PlayerAbsorptionMetadataIndex != 15 {
+		t.Fatalf("player absorption metadata index = %d, want 15", PlayerAbsorptionMetadataIndex)
+	}
+
 	metadata := EntityMetadata{
 		EntityID: 300,
 		Entries: []EntityMetadataEntry{
 			{Index: EntityFlagsMetadataIndex, Type: MetadataTypeByte, Value: MetadataByte(EntityFlagSneaking | EntityFlagSprinting)},
 			{Index: EntityPoseMetadataIndex, Type: MetadataTypePose, Value: MetadataVarInt(EntityPoseCrouching)},
+			{Index: PlayerAbsorptionMetadataIndex, Type: MetadataTypeFloat, Value: MetadataFloat(4.5)},
 			{Index: PlayerSkinPartsMetadataIndex, Type: MetadataTypeByte, Value: MetadataByte(0x7F)},
 		},
 	}
@@ -755,6 +767,7 @@ func TestEntityMetadataEncode(t *testing.T) {
 		0xAC, 0x02,
 		0x00, 0x00, 0x0A,
 		0x06, 0x14, 0x05,
+		0x0F, 0x03, 0x40, 0x90, 0x00, 0x00,
 		0x10, 0x00, 0x7F,
 		0xFF,
 	}
@@ -918,6 +931,39 @@ func TestRemoveEntitiesEncode(t *testing.T) {
 
 	if !bytes.Equal(wr.Buffer.Bytes(), expected) {
 		t.Fatalf("encoded remove entities = %x, want %x", wr.Buffer.Bytes(), expected)
+	}
+}
+
+func TestMobEffectPacketsEncode(t *testing.T) {
+	fixtures := map[string]mobEffectPacketFixture{
+		"removal": {
+			packet:   RemoveMobEffect{EntityID: 300, EffectID: 22},
+			expected: []byte{0xAC, 0x02, 0x16},
+		},
+		"short duration ambient": {
+			packet:   UpdateMobEffect{EntityID: 1, EffectID: 5, Amplifier: 0, Duration: 1, Flags: MobEffectFlagAmbient},
+			expected: []byte{0x01, 0x05, 0x00, 0x01, 0x01},
+		},
+		"high amplifier long duration particles icon blend": {
+			packet: UpdateMobEffect{
+				EntityID:  300,
+				EffectID:  22,
+				Amplifier: 300,
+				Duration:  100000,
+				Flags:     MobEffectFlagShowParticles | MobEffectFlagShowIcon | MobEffectFlagBlend,
+			},
+			expected: []byte{0xAC, 0x02, 0x16, 0xAC, 0x02, 0xA0, 0x8D, 0x06, 0x0E},
+		},
+		"all flags": {
+			packet:   UpdateMobEffect{EntityID: 2, EffectID: 3, Amplifier: 4, Duration: 5, Flags: MobEffectFlagAmbient | MobEffectFlagShowParticles | MobEffectFlagShowIcon | MobEffectFlagBlend},
+			expected: []byte{0x02, 0x03, 0x04, 0x05, 0x0F},
+		},
+	}
+
+	for name, fixture := range fixtures {
+		t.Run(name, func(t *testing.T) {
+			assertPacketEncoding(t, fixture.packet, fixture.expected)
+		})
 	}
 }
 

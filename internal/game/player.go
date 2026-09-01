@@ -56,6 +56,8 @@ type Player struct {
 	RemainingFireTicks  int32
 	InvulnerableTime    int32
 	LastHurt            float32
+	Absorption          float32
+	ActiveEffects       ActiveMobEffects
 	Dead                bool
 	SurvivalInitialized bool
 
@@ -87,11 +89,26 @@ func (player *Player) ResetSurvivalState() {
 	player.RemainingFireTicks = 0
 	player.InvulnerableTime = 0
 	player.LastHurt = 0
+	player.Absorption = 0
+
+	player.ActiveEffects.Clear()
+
 	player.Dead = false
 
 	player.StopUsingItem()
 
 	player.SurvivalInitialized = true
+}
+
+func (player Player) Clone() Player {
+	clone := player
+
+	clone.Properties = append([]ProfileProperty(nil), player.Properties...)
+	clone.Inventory = player.Inventory.Clone()
+	clone.ActiveEffects = player.ActiveEffects.Clone()
+	clone.UseStack = player.UseStack.Clone()
+
+	return clone
 }
 
 func (player *Player) AddExhaustion(amount float32) {

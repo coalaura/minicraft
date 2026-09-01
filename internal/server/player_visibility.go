@@ -83,11 +83,14 @@ func (s *Session) sendPlayerEntity(player game.Player) error {
 	}
 
 	slots := visibleEquipmentSlots(player)
-	if len(slots) == 0 {
-		return nil
+	if len(slots) != 0 {
+		err = s.sendPlayerEquipment(player, slots...)
+		if err != nil {
+			return err
+		}
 	}
 
-	return s.sendPlayerEquipment(player, slots...)
+	return s.sendPlayerMobEffects(player)
 }
 
 func (s *Session) sendPlayerEquipment(player game.Player, slots ...byte) error {
@@ -269,6 +272,7 @@ func (s *Session) sendPlayerMetadata(player game.Player) error {
 			{Index: protocol.PlayerSkinPartsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(player.SkinParts)},
 			{Index: protocol.EntityAirMetadataIndex, Type: protocol.MetadataTypeInt, Value: protocol.MetadataVarInt(player.AirSupply)},
 			{Index: protocol.LivingHealthMetadataIndex, Type: protocol.MetadataTypeFloat, Value: protocol.MetadataFloat(player.Health)},
+			{Index: protocol.PlayerAbsorptionMetadataIndex, Type: protocol.MetadataTypeFloat, Value: protocol.MetadataFloat(player.Absorption)},
 		},
 	}
 

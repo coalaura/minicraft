@@ -34,6 +34,7 @@ const (
 	PlayerDamageOutOfWorld
 	PlayerDamageGenericKill
 	PlayerDamageStarve
+	PlayerDamageMagic
 )
 
 type PlayerDamage struct {
@@ -54,6 +55,7 @@ type playerSurvivalUpdate struct {
 	died            bool
 	inventoryBefore *game.PlayerInventory
 	sounds          []protocol.Sound
+	effectChanges   []playerMobEffectChange
 }
 
 func (s *Session) sendHealth() error {
@@ -347,6 +349,13 @@ func (r *Runtime) tickPlayerSurvivalLocked(session *Session) []playerSurvivalUpd
 		return updates
 	}
 
+	updates = append(updates, r.tickPlayerEffectsLocked(session)...)
+
+	player = session.snapshotPlayer()
+	if player.Dead {
+		return updates
+	}
+
 	updates = append(updates, r.tickPlayerFoodLocked(session)...)
 
 	return updates
@@ -489,7 +498,10 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 		damage.Amount = math.MaxFloat32
 	}
 
-	var fullHurt bool
+	var (
+		fullHurt      bool
+		effectChanges []playerMobEffectChange
+	)
 
 	player, applied := session.updatePlayerState(func(player *game.Player) bool {
 		if !player.SurvivalInitialized {
@@ -497,6 +509,10 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 		}
 
 		if player.Dead || !playerCanTakeDamage(*player, damage.Type) {
+			return false
+		}
+
+		if playerDamageIsFire(damage.Type) && playerHasMobEffect(*player, game.MobEffectFireResistance) {
 			return false
 		}
 
@@ -515,6 +531,18 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 			fullHurt = true
 		}
 
+		if !playerDamageBypassesEffects(damage.Type) {
+			resistance, valid := player.ActiveEffects.Find(game.MobEffectResistance)
+			if valid && !playerDamageBypassesResistance(damage.Type) {
+				multiplier := max(float32(25-5*(resistance.Amplifier+1))/25, 0)
+				amount *= multiplier
+			}
+		}
+
+		absorbed := min(amount, player.Absorption)
+		player.Absorption -= absorbed
+		amount -= absorbed
+
 		player.Health = max(0, player.Health-amount)
 		if player.Health == 0 {
 			player.Dead = true
@@ -523,6 +551,7 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 
 			player.RemainingFireTicks = 0
 			player.FallDistance = 0
+			effectChanges = clearPlayerMobEffects(player)
 		}
 
 		return true
@@ -539,6 +568,7 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 		metadataChanged: true,
 		fullHurt:        fullHurt,
 		died:            player.Dead,
+		effectChanges:   effectChanges,
 	}
 
 	if !player.Dead {
@@ -664,6 +694,20 @@ func (r *Runtime) sendPlayerSurvivalUpdate(session *Session, update playerSurviv
 			}
 		}
 
+		for _, change := range update.effectChanges {
+			var err error
+
+			if change.removed {
+				err = recipient.sendPlayerMobEffectRemoval(update.player.EntityID, change.instance.Effect)
+			} else {
+				err = recipient.sendPlayerMobEffect(update.player.EntityID, change.instance)
+			}
+
+			if err != nil && recipient.Log != nil {
+				recipient.Log.Warnf("[play] failed to synchronize player effect: %v\n", err)
+			}
+		}
+
 		if update.died {
 			err := recipient.writePacket(protocol.ClientboundEntityEventID, protocol.EntityEvent{EntityID: update.player.EntityID, Event: 3})
 			if err != nil && recipient.Log != nil {
@@ -768,6 +812,8 @@ func playerDamageRegistryID(damageType PlayerDamageType) int32 {
 		return 32
 	case PlayerDamageStarve:
 		return 40
+	case PlayerDamageMagic:
+		return 27
 	default:
 		return 18
 	}
@@ -791,9 +837,28 @@ func playerDeathTranslation(damageType PlayerDamageType) string {
 		return "death.attack.outOfWorld"
 	case PlayerDamageStarve:
 		return "death.attack.starve"
+	case PlayerDamageMagic:
+		return "death.attack.magic"
 	default:
 		return "death.attack.generic"
 	}
+}
+
+func playerHasMobEffect(player game.Player, effect game.MobEffect) bool {
+	_, valid := player.ActiveEffects.Find(effect)
+	return valid
+}
+
+func playerDamageIsFire(damageType PlayerDamageType) bool {
+	return damageType == PlayerDamageInFire || damageType == PlayerDamageLava || damageType == PlayerDamageOnFire
+}
+
+func playerDamageBypassesEffects(damageType PlayerDamageType) bool {
+	return damageType == PlayerDamageStarve
+}
+
+func playerDamageBypassesResistance(damageType PlayerDamageType) bool {
+	return damageType == PlayerDamageOutOfWorld || damageType == PlayerDamageGenericKill
 }
 
 func protocolEntityID(entityID int32) int32 {
