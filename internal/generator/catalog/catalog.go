@@ -4,6 +4,7 @@ import (
 	_ "github.com/coalaura/minicraft/internal/generator/babel"
 	_ "github.com/coalaura/minicraft/internal/generator/backrooms"
 	_ "github.com/coalaura/minicraft/internal/generator/fractalvaults"
+	_ "github.com/coalaura/minicraft/internal/generator/grandcanyon"
 	_ "github.com/coalaura/minicraft/internal/generator/maze"
 	_ "github.com/coalaura/minicraft/internal/generator/mengersponge"
 	_ "github.com/coalaura/minicraft/internal/generator/natural"
