@@ -53,7 +53,10 @@ func (s *Session) handleSetHeldItem(selection protocol.SetHeldItem) {
 		}
 
 		player.SelectedHotbarSlot = selected
-		useCancelled = player.StopUsingItem()
+
+		if player.UsingItem && !player.UsingOffhand {
+			useCancelled = player.StopUsingItem()
+		}
 
 		return true
 	})
@@ -109,10 +112,7 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
 
-	var (
-		before       game.PlayerInventory
-		useCancelled bool
-	)
+	var before game.PlayerInventory
 
 	player, changed := s.updatePlayerState(func(player *game.Player) bool {
 		if player.GameMode != game.GameModeCreative {
@@ -126,16 +126,6 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 
 		before = player.Inventory.Clone()
 		*slot = stack.Clone()
-
-		usedSlot := 36 + player.SelectedHotbarSlot
-
-		if player.UsingOffhand {
-			usedSlot = 45
-		}
-
-		if player.UsingItem && int(update.Slot) == usedSlot {
-			useCancelled = player.StopUsingItem()
-		}
 
 		return true
 	})
@@ -154,10 +144,6 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 
 	if err != nil {
 		s.Log.Warnf("[play] failed to synchronize creative inventory slot: %v\n", err)
-	}
-
-	if useCancelled {
-		s.Runtime.sendPlayerMetadataUpdates([]game.Player{player})
 	}
 
 }
@@ -285,7 +271,6 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 		changedBackings []int
 		dropped         []game.ItemStack
 		equipment       []byte
-		useCancelled    bool
 		valid           bool
 	)
 
@@ -321,8 +306,6 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 
 		currentMenu.commit(candidate)
 
-		useCancelled = player.StopUsingItem()
-
 		dropped = cloneItemStacks(candidate.dropped)
 
 		currentMenu.incrementStateID()
@@ -356,10 +339,6 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 			s.Runtime.broadcastPlayerEquipment(s, player, equipment...)
 		}
 
-		if useCancelled {
-			s.Runtime.sendPlayerMetadataUpdates([]game.Player{player})
-		}
-
 		return s.sendChangedMenuData(currentMenu, false)
 	}
 
@@ -378,9 +357,8 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 	}
 
 	var (
-		before       game.PlayerInventory
-		dropped      game.ItemStack
-		useCancelled bool
+		before  game.PlayerInventory
+		dropped game.ItemStack
 	)
 
 	player, changed := s.updatePlayerState(func(player *game.Player) bool {
@@ -390,8 +368,6 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 		}
 
 		before = player.Inventory.Clone()
-
-		useCancelled = player.StopUsingItem()
 
 		if dropAll || stack.Count == 1 {
 			dropped = stack.Clone()
@@ -416,9 +392,6 @@ func (s *Session) handleDropHeldItem(dropAll bool) {
 			s.Log.Warnf("[play] failed to synchronize dropped held item: %v\n", err)
 		}
 
-		if useCancelled {
-			s.Runtime.sendPlayerMetadataUpdates([]game.Player{player})
-		}
 	}
 
 }

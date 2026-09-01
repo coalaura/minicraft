@@ -617,6 +617,7 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 	horizontalDistance := math.Hypot(horizontalDeltaX, horizontalDeltaZ)
 	fullDistance := math.Sqrt(horizontalDeltaX*horizontalDeltaX + verticalDelta*verticalDelta + horizontalDeltaZ*horizontalDeltaZ)
 
+	// Jump exhaustion is deferred until movement handling has a reliable server-authoritative jump signal.
 	switch {
 	case session.Player.Swimming:
 		units := math.Round(fullDistance * 100)

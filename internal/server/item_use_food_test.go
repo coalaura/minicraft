@@ -99,39 +99,19 @@ func TestFoodUseDriedKelpCompletesAfter16OffhandTicks(t *testing.T) {
 }
 
 func TestFoodUseEligibilityAndCreativePreservation(t *testing.T) {
-	t.Run("full hunger rejects ordinary food", func(t *testing.T) {
-		runtime := NewRuntime(&game.World{})
+	modes := []game.GameMode{game.GameModeSurvival, game.GameModeCreative, game.GameModeSpectator}
+	foods := []game.Item{game.ItemApple, game.ItemHoneyBottle}
+	foodLevels := []int32{10, game.DefaultPlayerFoodLevel}
 
-		actor, _ := newFoodUseTestSession(t, runtime, "Actor", game.GameModeSurvival)
+	for _, mode := range modes {
+		for _, food := range foods {
+			for _, foodLevel := range foodLevels {
+				want := mode != game.GameModeSpectator && (mode == game.GameModeCreative || food == game.ItemHoneyBottle || foodLevel < game.DefaultPlayerFoodLevel)
 
-		actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemApple, Count: 1}
-
-		err := actor.handleUseItem(protocol.UseItem{Hand: protocol.MainHand, Sequence: 1})
-		if err != nil {
-			t.Fatalf("use apple at full hunger: %v", err)
+				assertFoodUseEligibility(t, mode, food, foodLevel, want)
+			}
 		}
-
-		if actor.snapshotPlayer().UsingItem {
-			t.Fatal("ordinary food started at full hunger")
-		}
-	})
-
-	t.Run("always edible food starts at full hunger", func(t *testing.T) {
-		runtime := NewRuntime(&game.World{})
-
-		actor, _ := newFoodUseTestSession(t, runtime, "Actor", game.GameModeSurvival)
-
-		actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemHoneyBottle, Count: 1}
-
-		err := actor.handleUseItem(protocol.UseItem{Hand: protocol.MainHand, Sequence: 1})
-		if err != nil {
-			t.Fatalf("use honey bottle at full hunger: %v", err)
-		}
-
-		if !actor.snapshotPlayer().UsingItem {
-			t.Fatal("always edible food did not start at full hunger")
-		}
-	})
+	}
 
 	t.Run("creative preserves food", func(t *testing.T) {
 		runtime := NewRuntime(&game.World{})
@@ -152,6 +132,99 @@ func TestFoodUseEligibilityAndCreativePreservation(t *testing.T) {
 			t.Fatalf("creative food completion = %+v", player)
 		}
 	})
+}
+
+func TestFoodUseContinuesWithAuthoritativeSameItemStack(t *testing.T) {
+	t.Run("count increases", func(t *testing.T) {
+		assertFoodUseStackContinuation(t, game.ItemStack{Item: game.ItemApple, Count: 2}, game.ItemStack{Item: game.ItemApple, Count: 3}, game.ItemStack{Item: game.ItemApple, Count: 2})
+	})
+
+	t.Run("count decreases while nonempty", func(t *testing.T) {
+		assertFoodUseStackContinuation(t, game.ItemStack{Item: game.ItemApple, Count: 2}, game.ItemStack{Item: game.ItemApple, Count: 1}, game.ItemStack{})
+	})
+
+	t.Run("component patch changes", func(t *testing.T) {
+		current := game.ItemStack{Item: game.ItemApple, Count: 2, RemovedComponents: []int32{game.ItemComponentEnchantments}}
+		expected := game.ItemStack{Item: game.ItemApple, Count: 1, RemovedComponents: []int32{game.ItemComponentEnchantments}}
+
+		assertFoodUseStackContinuation(t, game.ItemStack{Item: game.ItemApple, Count: 2}, current, expected)
+	})
+
+	t.Run("backing stack is replaced", func(t *testing.T) {
+		initial := game.ItemStack{Item: game.ItemApple, Count: 2, Components: []game.ItemComponent{{Type: game.ItemComponentEnchantments, Data: []byte{1}}}}
+		current := game.ItemStack{Item: game.ItemApple, Count: 2}
+		expected := game.ItemStack{Item: game.ItemApple, Count: 1}
+
+		assertFoodUseStackContinuation(t, initial, current, expected)
+	})
+}
+
+func TestFoodUseSelectedSlotTransitionsMatchActiveHand(t *testing.T) {
+	t.Run("main hand cancels even for same item", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		actor, _ := newFoodUseTestSession(t, runtime, "Actor", game.GameModeSurvival)
+
+		actor.Player.FoodLevel = 10
+		actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemApple, Count: 1}
+		actor.Player.Inventory.Hotbar[1] = game.ItemStack{Item: game.ItemApple, Count: 1}
+
+		startFoodUse(t, actor)
+
+		actor.handleSetHeldItem(protocol.SetHeldItem{Slot: 1})
+
+		if actor.snapshotPlayer().UsingItem {
+			t.Fatal("main-hand food use continued across selected-slot change")
+		}
+	})
+
+	t.Run("main hand cancels for another item", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		actor, _ := newFoodUseTestSession(t, runtime, "Actor", game.GameModeSurvival)
+
+		actor.Player.FoodLevel = 10
+		actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemApple, Count: 1}
+		actor.Player.Inventory.Hotbar[1] = game.ItemStack{Item: game.ItemStone, Count: 1}
+
+		startFoodUse(t, actor)
+
+		actor.handleSetHeldItem(protocol.SetHeldItem{Slot: 1})
+
+		if actor.snapshotPlayer().UsingItem {
+			t.Fatal("main-hand food use continued after selecting another item")
+		}
+	})
+
+	t.Run("offhand continues", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		actor, _ := newFoodUseTestSession(t, runtime, "Actor", game.GameModeSurvival)
+
+		actor.Player.FoodLevel = 10
+		actor.Player.Inventory.Hotbar[1] = game.ItemStack{Item: game.ItemStone, Count: 1}
+		actor.Player.Inventory.Offhand = game.ItemStack{Item: game.ItemApple, Count: 1}
+
+		err := actor.handleUseItem(protocol.UseItem{Hand: protocol.OffHand, Sequence: 1})
+		if err != nil {
+			t.Fatalf("start offhand food use: %v", err)
+		}
+
+		actor.handleSetHeldItem(protocol.SetHeldItem{Slot: 1})
+
+		tickFoodUse(runtime, 32)
+
+		player := actor.snapshotPlayer()
+		if player.UsingItem || !player.Inventory.Offhand.Empty() || player.FoodLevel != 14 {
+			t.Fatalf("offhand food use after selected-slot change = %+v", player)
+		}
+	})
+}
+
+func TestFoodUseProgressAndCompletionSoundTicks(t *testing.T) {
+	assertFoodUseSoundTicks(t, game.ItemApple, 10, []int{9, 13, 17, 21, 25, 29}, 32)
+	assertFoodUseSoundTicks(t, game.ItemDriedKelp, 10, []int{5, 9, 13}, 16)
+	assertFoodUseSoundTicks(t, game.ItemHoneyBottle, game.DefaultPlayerFoodLevel, []int{13, 17, 21, 25, 29, 33, 37}, 40)
 }
 
 func TestFoodUseCancelsBeforeCompletion(t *testing.T) {
@@ -208,6 +281,26 @@ func TestFoodUseCancelsBeforeCompletion(t *testing.T) {
 		player := actor.snapshotPlayer()
 		if player.UsingItem || player.FoodLevel != 10 || player.Inventory.Hotbar[0].Item != game.ItemDriedKelp {
 			t.Fatalf("mutated held stack completion = %+v", player)
+		}
+	})
+
+	t.Run("active hand becomes empty", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		actor, _ := newFoodUseTestSession(t, runtime, "Actor", game.GameModeSurvival)
+
+		actor.Player.FoodLevel = 10
+		actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemApple, Count: 1}
+
+		startFoodUse(t, actor)
+
+		actor.Player.Inventory.Hotbar[0] = game.ItemStack{}
+
+		runtime.Tick()
+
+		player := actor.snapshotPlayer()
+		if player.UsingItem || player.FoodLevel != 10 || !player.Inventory.Hotbar[0].Empty() {
+			t.Fatalf("empty active hand cancellation = %+v", player)
 		}
 	})
 }
@@ -326,6 +419,109 @@ func startFoodUse(t *testing.T, session *Session) {
 func tickFoodUse(runtime *Runtime, ticks int) {
 	for range ticks {
 		runtime.Tick()
+	}
+}
+
+func assertFoodUseEligibility(t *testing.T, mode game.GameMode, food game.Item, foodLevel int32, want bool) {
+	t.Helper()
+
+	runtime := NewRuntime(&game.World{})
+
+	actor, _ := newFoodUseTestSession(t, runtime, "Actor", mode)
+
+	actor.Player.FoodLevel = foodLevel
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: food, Count: 1}
+
+	err := actor.handleUseItem(protocol.UseItem{Hand: protocol.MainHand, Sequence: 1})
+	if err != nil {
+		t.Fatalf("use food %d in mode %d at food %d: %v", food, mode, foodLevel, err)
+	}
+
+	usingItem := actor.snapshotPlayer().UsingItem
+	if usingItem != want {
+		t.Fatalf("food %d use in mode %d at food %d = %t, want %t", food, mode, foodLevel, usingItem, want)
+	}
+}
+
+func assertFoodUseStackContinuation(t *testing.T, initial, current, expected game.ItemStack) {
+	t.Helper()
+
+	runtime := NewRuntime(&game.World{})
+
+	actor, _ := newFoodUseTestSession(t, runtime, "Actor", game.GameModeSurvival)
+
+	actor.Player.FoodLevel = 10
+	actor.Player.Inventory.Hotbar[0] = initial
+
+	startFoodUse(t, actor)
+
+	tickFoodUse(runtime, 4)
+
+	actor.Player.Inventory.Hotbar[0] = current
+
+	runtime.Tick()
+
+	player := actor.snapshotPlayer()
+	if !player.UsingItem || !player.UseStack.Equal(current) {
+		t.Fatalf("same-item continuation = %+v, want use stack %+v", player, current)
+	}
+
+	tickFoodUse(runtime, int(player.UseRemainingTicks))
+
+	player = actor.snapshotPlayer()
+	if player.UsingItem || !player.Inventory.Hotbar[0].Equal(expected) || player.FoodLevel != 14 {
+		t.Fatalf("same-item completion = %+v, want held %+v", player, expected)
+	}
+}
+
+func assertFoodUseSoundTicks(t *testing.T, item game.Item, foodLevel int32, progressTicks []int, completionTick int) {
+	t.Helper()
+
+	runtime := NewRuntime(&game.World{})
+
+	actor, _ := newFoodUseTestSession(t, runtime, "Actor", game.GameModeSurvival)
+	observer, observerConnection := newFoodUseTestSession(t, runtime, "Observer", game.GameModeSurvival)
+
+	position := toBlockPosition(actor.Player.Position)
+
+	markChunkLoaded(actor, position)
+	markChunkLoaded(observer, position)
+
+	actor.Player.FoodLevel = foodLevel
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: item, Count: 1}
+
+	startFoodUse(t, actor)
+
+	observerConnection.reset()
+
+	actualProgressTicks := make([]int, 0, len(progressTicks))
+
+	for tick := 1; tick <= completionTick; tick++ {
+		runtime.Tick()
+
+		soundCount := len(packetsByID(t, observerConnection, protocol.ClientboundSoundID))
+
+		observerConnection.reset()
+
+		if tick == completionTick {
+			if soundCount != 3 {
+				t.Fatalf("item %d completion sounds at tick %d = %d, want 3", item, tick, soundCount)
+			}
+
+			continue
+		}
+
+		if soundCount > 0 {
+			if soundCount != 1 {
+				t.Fatalf("item %d progress sounds at tick %d = %d, want 1", item, tick, soundCount)
+			}
+
+			actualProgressTicks = append(actualProgressTicks, tick)
+		}
+	}
+
+	if !slices.Equal(actualProgressTicks, progressTicks) {
+		t.Fatalf("item %d progress sound ticks = %v, want %v", item, actualProgressTicks, progressTicks)
 	}
 }
 

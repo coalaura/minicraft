@@ -19,6 +19,7 @@ const (
 	DefaultPlayerHealth     = 20
 	DefaultPlayerFoodLevel  = 20
 	DefaultPlayerSaturation = 5
+	MaxPlayerSaturation     = 20
 	DefaultPlayerAirSupply  = 300
 )
 
@@ -67,12 +68,11 @@ type Player struct {
 	SelectedHotbarSlot int
 	Inventory          PlayerInventory
 
-	UsingItem             bool
-	UsingOffhand          bool
-	UseRemainingTicks     uint16
-	UseSelectedHotbarSlot int
-	UseAnimation          ItemUseAnimation
-	UseStack              ItemStack
+	UsingItem         bool
+	UsingOffhand      bool
+	UseRemainingTicks uint16
+	UseAnimation      ItemUseAnimation
+	UseStack          ItemStack
 }
 
 func (player *Player) ResetSurvivalState() {
@@ -110,7 +110,6 @@ func (player *Player) StopUsingItem() bool {
 	player.UsingItem = false
 	player.UsingOffhand = false
 	player.UseRemainingTicks = 0
-	player.UseSelectedHotbarSlot = 0
 	player.UseAnimation = ItemUseAnimationNone
 	player.UseStack = ItemStack{}
 

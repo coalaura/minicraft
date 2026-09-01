@@ -7,6 +7,11 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+const (
+	consumeEffectsTickInterval  = 4
+	consumeEffectsStartFraction = 0.21875
+)
+
 type itemUseHandler func(*Session, game.ItemStack, int32) (bool, error)
 
 var itemUseHandlers = map[game.Item]itemUseHandler{
@@ -78,7 +83,6 @@ func (r *Runtime) startUsingFood(session *Session, hand int32, stack game.ItemSt
 		player.UsingItem = true
 		player.UsingOffhand = hand == protocol.OffHand
 		player.UseRemainingTicks = food.ConsumeTicks
-		player.UseSelectedHotbarSlot = player.SelectedHotbarSlot
 		player.UseAnimation = food.Animation
 		player.UseStack = stack.Clone()
 
@@ -129,13 +133,15 @@ func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, b
 		}
 
 		held, valid := heldItemPointer(player, hand)
-		if !valid || held.Empty() || !held.Equal(player.UseStack) || (!player.UsingOffhand && player.SelectedHotbarSlot != player.UseSelectedHotbarSlot) {
+		if !valid || held.Empty() || held.Item != player.UseStack.Item {
 			player.StopUsingItem()
 
 			useEnded = true
 
 			return true
 		}
+
+		player.UseStack = held.Clone()
 
 		definition, valid := held.Item.Definition()
 		if !valid || definition.Food.ConsumeTicks == 0 {
@@ -148,9 +154,10 @@ func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, b
 
 		if player.UseRemainingTicks > 1 {
 			usedTicks := definition.Food.ConsumeTicks - player.UseRemainingTicks
-			waitTicks := uint16(float32(definition.Food.ConsumeTicks) * 0.21875)
+			waitTicks := uint16(float32(definition.Food.ConsumeTicks) * consumeEffectsStartFraction)
 
-			if usedTicks > waitTicks && player.UseRemainingTicks%4 == 0 {
+			// Vanilla clients derive consume particles from synchronized using-item state; only sound is server-broadcast.
+			if usedTicks > waitTicks && player.UseRemainingTicks%consumeEffectsTickInterval == 0 {
 				sounds = append(sounds, r.consumableSound(*player, definition.Food, protocol.SoundSourcePlayer))
 			}
 

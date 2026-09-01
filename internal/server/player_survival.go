@@ -19,6 +19,8 @@ const (
 	playerVoidDamage             = 4
 	playerVoidDistanceBelowWorld = 64
 	playerSafeFallDistance       = 3
+	fastRegenerationFoodLevel    = 20
+	slowRegenerationFoodLevel    = 18
 )
 
 type PlayerDamageType uint8
@@ -375,17 +377,18 @@ func (r *Runtime) tickPlayerFoodLocked(session *Session) []playerSurvivalUpdate 
 			}
 		}
 
-		if player.Health < game.DefaultPlayerHealth && player.FoodLevel >= 20 && player.Saturation > 0 {
+		if player.Health < game.DefaultPlayerHealth && player.FoodLevel >= fastRegenerationFoodLevel && player.Saturation > 0 {
 			player.FoodTickTimer++
 
 			if player.FoodTickTimer >= 10 {
-				healAmount += min(player.Saturation, 6) / 6
+				saturationSpent := min(player.Saturation, 6)
 
-				player.AddExhaustion(min(player.Saturation, 6) / 6)
+				healAmount += saturationSpent / 6
+				player.AddExhaustion(saturationSpent)
 
 				player.FoodTickTimer = 0
 			}
-		} else if player.Health < game.DefaultPlayerHealth && player.FoodLevel >= 18 {
+		} else if player.Health < game.DefaultPlayerHealth && player.FoodLevel >= slowRegenerationFoodLevel {
 			player.FoodTickTimer++
 
 			if player.FoodTickTimer >= 80 {
@@ -412,8 +415,8 @@ func (r *Runtime) tickPlayerFoodLocked(session *Session) []playerSurvivalUpdate 
 					healAmount++
 				}
 
-				if player.Saturation < game.DefaultPlayerHealth {
-					player.Saturation = min(player.Saturation+1, game.DefaultPlayerHealth)
+				if player.Saturation < game.MaxPlayerSaturation {
+					player.Saturation = min(player.Saturation+1, float32(game.MaxPlayerSaturation))
 				}
 			}
 
@@ -422,7 +425,7 @@ func (r *Runtime) tickPlayerFoodLocked(session *Session) []playerSurvivalUpdate 
 			}
 		}
 
-		visibleChanged = previousFood != player.FoodLevel || previousSaturation != player.Saturation
+		visibleChanged = previousFood != player.FoodLevel || (previousSaturation == 0) != (player.Saturation == 0)
 
 		return true
 	})
