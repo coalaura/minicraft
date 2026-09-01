@@ -99,6 +99,8 @@ func (block Block) CollisionBoxes(position BlockPosition) []AABB {
 		boxes = chestCollisionBoxes(block)
 	case BlockCollisionHopper:
 		boxes = hopperCollisionBoxes(block)
+	case BlockCollisionBed:
+		boxes = bedCollisionBoxes(block)
 	}
 
 	for index := range boxes {
@@ -126,6 +128,23 @@ func (block Block) OutlineBoxes(position BlockPosition) []AABB {
 		MaxY: float64(position.Y + 1),
 		MaxZ: float64(position.Z + 1),
 	}}
+}
+
+func bedCollisionBoxes(block Block) []AABB {
+	boxes := []AABB{unitBox(0, 3, 0, 16, 9, 16)}
+
+	switch collisionProperty(block, "facing") {
+	case "north":
+		boxes = append(boxes, unitBox(0, 0, 0, 3, 3, 3), unitBox(13, 0, 0, 16, 3, 3))
+	case "south":
+		boxes = append(boxes, unitBox(0, 0, 13, 3, 3, 16), unitBox(13, 0, 13, 16, 3, 16))
+	case "west":
+		boxes = append(boxes, unitBox(0, 0, 0, 3, 3, 3), unitBox(0, 0, 13, 3, 3, 16))
+	case "east":
+		boxes = append(boxes, unitBox(13, 0, 0, 16, 3, 3), unitBox(13, 0, 13, 16, 3, 16))
+	}
+
+	return boxes
 }
 
 func hopperCollisionBoxes(block Block) []AABB {

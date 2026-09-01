@@ -37,6 +37,8 @@ const (
 	BlockTraitLeaves
 	BlockTraitWool
 	BlockTraitFluidExcluded
+	BlockTraitFallDamageResetting
+	BlockTraitBed
 )
 
 const (
@@ -76,6 +78,7 @@ const (
 	BlockCollisionCake
 	BlockCollisionChest
 	BlockCollisionHopper
+	BlockCollisionBed
 )
 
 type Block uint16

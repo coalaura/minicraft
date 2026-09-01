@@ -235,7 +235,10 @@ func TestPlayerSurvivalAirDrowningAndEnvironmentalDamage(t *testing.T) {
 }
 
 func TestPlayerSurvivalFallAndVoid(t *testing.T) {
-	runtime := NewRuntime(&game.World{})
+	world := &game.World{}
+	world.SetBlock(game.BlockPosition{Y: -1}, game.Stone)
+
+	runtime := NewRuntime(world)
 
 	session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
 
@@ -331,8 +334,10 @@ func TestPlayerFallDistanceFluidProgression(t *testing.T) {
 
 	healthBeforeLanding := session.snapshotPlayer().Health
 
+	world.SetBlock(game.BlockPosition{}, game.Stone)
+
 	runtime.updatePlayerMovement(session, func(player *game.Player) {
-		player.Position.Y = 0.5
+		player.Position.Y = 1
 		player.OnGround = true
 	})
 
@@ -341,7 +346,7 @@ func TestPlayerFallDistanceFluidProgression(t *testing.T) {
 		t.Fatalf("lava landing = distance %v health %v, want 0 and %v", player.FallDistance, player.Health, healthBeforeLanding)
 	}
 
-	world.SetBlock(game.BlockPosition{}, game.Water)
+	world.SetBlock(game.BlockPosition{Y: 1}, game.Water)
 
 	session.updatePlayerState(func(player *game.Player) bool {
 		player.FallDistance = 5

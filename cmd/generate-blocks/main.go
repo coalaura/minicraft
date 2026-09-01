@@ -385,6 +385,8 @@ func readMiningTags(root string) (MiningTags, error) {
 		{Name: "sword_efficient", Value: "BlockTraitSwordEfficient"},
 		{Name: "leaves", Value: "BlockTraitLeaves"},
 		{Name: "wool", Value: "BlockTraitWool"},
+		{Name: "fall_damage_resetting", Value: "BlockTraitFallDamageResetting"},
+		{Name: "beds", Value: "BlockTraitBed"},
 	}
 
 	for _, tag := range traitTags {
@@ -765,6 +767,8 @@ func blockCollision(block BlockDefinition) string {
 	}
 
 	switch {
+	case strings.HasSuffix(block.Name, "_bed"):
+		return "BlockCollisionBed"
 	case block.Name == "chest" || block.Name == "trapped_chest" || isCopperChest(block.Name):
 		return "BlockCollisionChest"
 	case block.Name == "hopper":

@@ -582,6 +582,7 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 	var (
 		survivalUpdate playerSurvivalUpdate
 		damaged        bool
+		motionChanged  bool
 	)
 
 	r.worldMutationMu.Lock()
@@ -647,25 +648,48 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 		}
 	}
 
-	switch {
-	case session.Player.OnGround:
-		fallDistance := session.Player.FallDistance
+	fallDistanceReset := r.playerMovementResetsFallDistance(previous, *session.Player, inWater)
+	if fallDistanceReset {
 		session.Player.FallDistance = 0
+	}
 
-		damage := calculatePlayerFallDamage(fallDistance)
-		if damage > 0 {
-			session.playerMx.Unlock()
-
-			survivalUpdate, damaged = r.damagePlayerLocked(session, PlayerDamage{Type: PlayerDamageFall, Amount: damage})
-
-			session.playerMx.Lock()
-		}
-	case verticalDelta < 0 && !inWater:
+	if verticalDelta < 0 && !inWater {
 		session.Player.FallDistance -= float32(verticalDelta)
+	}
+
+	if session.Player.OnGround {
+		fallDistance := session.Player.FallDistance
+
+		landedBlock, landed := r.playerLandingBlock(*session.Player)
+		if landed {
+			session.Player.FallDistance = 0
+
+			landingBehavior := playerLandingBehaviorForBlock(landedBlock)
+
+			damage := playerLandingDamage(landingBehavior, fallDistance, session.Player.Sneaking)
+			if damage > 0 {
+				session.playerMx.Unlock()
+
+				survivalUpdate, damaged = r.damagePlayerLocked(session, PlayerDamage{Type: PlayerDamageFall, Amount: damage})
+
+				session.playerMx.Lock()
+			}
+
+			if !session.Player.Dead {
+				motionChanged = applyPlayerLandingVelocity(session.Player, landingBehavior, verticalDelta)
+			}
+		}
 	}
 
 	current := *session.Player
 	session.playerMx.Unlock()
+
+	if motionChanged {
+		err := session.sendPlayerMotion(current)
+		if err != nil {
+			session.Log.Warnf("[play] failed to update player motion: %v\n", err)
+		}
+	}
 
 	if session.mining.active || session.mining.delayed {
 		if !r.validMiningState(session, current, session.mining) {
@@ -712,6 +736,13 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 				err = other.sendPlayerMetadata(current)
 				if err != nil {
 					other.Log.Warnf("[play] failed to update player pose: %v\n", err)
+				}
+			}
+
+			if motionChanged {
+				err = other.sendPlayerMotion(current)
+				if err != nil {
+					other.Log.Warnf("[play] failed to update player motion: %v\n", err)
 				}
 			}
 		}
