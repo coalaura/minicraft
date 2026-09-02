@@ -27,6 +27,12 @@ type FlowingFluid struct {
 	slope   int
 }
 
+type fluidSpreadContext struct {
+	runtime *Runtime
+	blocks  map[game.BlockPosition]game.Block
+	holes   map[game.BlockPosition]bool
+}
+
 type FluidRules struct {
 	WaterSourceConversion bool
 	LavaSourceConversion  bool
@@ -42,6 +48,41 @@ var (
 	lavaFluid  = FlowingFluid{block: game.Lava, typeID: game.FluidTypeLava, delay: lavaFluidDelay, dropOff: lavaDropOff, slope: lavaSlope}
 	fluidSides = []game.BlockPosition{{X: -1}, {X: 1}, {Z: -1}, {Z: 1}}
 )
+
+func (context *fluidSpreadContext) blockAt(position game.BlockPosition) game.Block {
+	block, present := context.blocks[position]
+	if present {
+		return block
+	}
+
+	block = context.runtime.World.BlockAt(position)
+	context.blocks[position] = block
+
+	return block
+}
+
+func (context *fluidSpreadContext) hole(position game.BlockPosition, fluid FlowingFluid) bool {
+	hole, present := context.holes[position]
+	if present {
+		return hole
+	}
+
+	current := context.blockAt(position)
+
+	below := game.BlockPosition{X: position.X, Y: position.Y - 1, Z: position.Z}
+
+	belowBlock := context.blockAt(below)
+
+	if context.runtime.canFlowBetween(current, belowBlock, game.BlockFaceDown) {
+		_, flows, mixes := context.runtime.fluidFlowReplacementWith(position, below, belowBlock, fluid, 8, true, context.blockAt)
+
+		hole = flows || mixes
+	}
+
+	context.holes[position] = hole
+
+	return hole
+}
 
 func (r *Runtime) scheduleFluidNeighborsLocked(changes []game.BlockChange) {
 	for _, change := range changes {
@@ -350,6 +391,10 @@ func (r *Runtime) canFlowBetween(from, to game.Block, face game.BlockFace) bool 
 func (r *Runtime) fluidFlowReplacement(from, destination game.BlockPosition, fluid FlowingFluid, amount int, downward bool) (game.Block, bool, bool) {
 	target := r.World.BlockAt(destination)
 
+	return r.fluidFlowReplacementWith(from, destination, target, fluid, amount, downward, r.World.BlockAt)
+}
+
+func (r *Runtime) fluidFlowReplacementWith(from, destination game.BlockPosition, target game.Block, fluid FlowingFluid, amount int, downward bool, blockAt func(game.BlockPosition) game.Block) (game.Block, bool, bool) {
 	targetState := target.FluidState()
 	if targetState.Type() == fluid.typeID {
 		return game.Air, false, false
@@ -364,7 +409,7 @@ func (r *Runtime) fluidFlowReplacement(from, destination game.BlockPosition, flu
 			return game.Air, false, false
 		}
 
-		source := r.World.BlockAt(from).FluidState().IsSource()
+		source := blockAt(from).FluidState().IsSource()
 
 		return r.fluidMixingReplacement(fluid, source, targetState, downward), false, true
 	}
@@ -382,7 +427,7 @@ func (r *Runtime) fluidFlowReplacement(from, destination game.BlockPosition, flu
 		replacement := fluidBlockForAmount(fluid, amount, downward)
 
 		if fluid.typeID == game.FluidTypeLava {
-			mixed, mixes := r.fluidBlockMixingReplacement(destination, replacement.FluidState())
+			mixed, mixes := r.fluidBlockMixingReplacementWith(destination, replacement.FluidState(), blockAt)
 			if mixes {
 				return mixed, false, true
 			}
@@ -521,9 +566,15 @@ func (r *Runtime) fluidFlowDirections(position game.BlockPosition, fluid Flowing
 	slope := r.fluidSlope(fluid)
 	bestDistance := slope + 1
 
+	context := fluidSpreadContext{
+		runtime: r,
+		blocks:  make(map[game.BlockPosition]game.Block),
+		holes:   make(map[game.BlockPosition]bool),
+	}
+
 	directions := make([]game.BlockPosition, 0, len(fluidSides))
 
-	from := r.World.BlockAt(position)
+	from := context.blockAt(position)
 
 	for _, direction := range fluidSides {
 		destination := game.BlockPosition{X: position.X + direction.X, Y: position.Y, Z: position.Z + direction.Z}
@@ -531,18 +582,18 @@ func (r *Runtime) fluidFlowDirections(position game.BlockPosition, fluid Flowing
 			continue
 		}
 
-		target := r.World.BlockAt(destination)
+		target := context.blockAt(destination)
 
 		if !r.canFlowBetween(from, target, fluidFace(direction)) {
 			continue
 		}
 
-		_, flows, mixes := r.fluidFlowReplacement(position, destination, fluid, amount, false)
+		_, flows, mixes := r.fluidFlowReplacementWith(position, destination, target, fluid, amount, false, context.blockAt)
 		if !flows && !mixes {
 			continue
 		}
 
-		distance := r.fluidSlopeDistance(destination, fluid, direction, 0)
+		distance := r.fluidSlopeDistance(&context, destination, fluid, direction, 0)
 
 		if distance < bestDistance {
 			bestDistance = distance
@@ -557,18 +608,11 @@ func (r *Runtime) fluidFlowDirections(position game.BlockPosition, fluid Flowing
 	return directions
 }
 
-func (r *Runtime) fluidSlopeDistance(position game.BlockPosition, fluid FlowingFluid, previous game.BlockPosition, distance int) int {
+func (r *Runtime) fluidSlopeDistance(context *fluidSpreadContext, position game.BlockPosition, fluid FlowingFluid, previous game.BlockPosition, distance int) int {
 	slope := r.fluidSlope(fluid)
 
-	below := game.BlockPosition{X: position.X, Y: position.Y - 1, Z: position.Z}
-
-	belowBlock := r.World.BlockAt(below)
-
-	if r.canFlowBetween(r.World.BlockAt(position), belowBlock, game.BlockFaceDown) {
-		_, flows, mixes := r.fluidFlowReplacement(position, below, fluid, 8, true)
-		if flows || mixes {
-			return distance
-		}
+	if context.hole(position, fluid) {
+		return distance
 	}
 
 	if distance >= slope {
@@ -577,7 +621,7 @@ func (r *Runtime) fluidSlopeDistance(position game.BlockPosition, fluid FlowingF
 
 	bestDistance := slope + 1
 
-	from := r.World.BlockAt(position)
+	from := context.blockAt(position)
 
 	for _, direction := range fluidSides {
 		if direction.X == -previous.X && direction.Z == -previous.Z {
@@ -586,17 +630,17 @@ func (r *Runtime) fluidSlopeDistance(position game.BlockPosition, fluid FlowingF
 
 		next := game.BlockPosition{X: position.X + direction.X, Y: position.Y, Z: position.Z + direction.Z}
 
-		target := r.World.BlockAt(next)
+		target := context.blockAt(next)
 		if !r.canFlowBetween(from, target, fluidFace(direction)) {
 			continue
 		}
 
-		_, flows, mixes := r.fluidFlowReplacement(position, next, fluid, 1, false)
+		_, flows, mixes := r.fluidFlowReplacementWith(position, next, target, fluid, 1, false, context.blockAt)
 		if !flows && !mixes {
 			continue
 		}
 
-		nextDistance := r.fluidSlopeDistance(next, fluid, direction, distance+1)
+		nextDistance := r.fluidSlopeDistance(context, next, fluid, direction, distance+1)
 		if nextDistance < bestDistance {
 			bestDistance = nextDistance
 		}

@@ -43,6 +43,7 @@ type Runtime struct {
 	lootRandomFloat           func() float32
 	fluidRandomMu             sync.Mutex
 	fluidRandom               func(game.BlockPosition, int) int
+	chunkLightBuilder         chunkLightBuilder
 	commands                  *commandRegistry
 	blockMutationDeliveryTail chan struct{}
 	runtimeBlockMutations     []queuedBlockMutation
@@ -844,6 +845,7 @@ func NewRuntime(world *game.World) *Runtime {
 		fluidRandom: func(_ game.BlockPosition, bound int) int {
 			return fluidRandom.IntN(bound)
 		},
+		chunkLightBuilder:   buildChunkLight,
 		activeChunks:        make(map[LoadedChunk]*activeChunkReference),
 		sessionActiveChunks: make(map[*Session]map[LoadedChunk]struct{}),
 		entities:            make(map[int32]RuntimeEntity),

@@ -2,6 +2,7 @@ package server
 
 import (
 	"math/bits"
+	"sync"
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
@@ -12,10 +13,30 @@ type countingLightingGenerator struct {
 	calls int
 }
 
+type runtimeLightingMutationTicker struct {
+	changes []game.BlockChange
+	state   RuntimeEntityState
+}
+
 func (generator *countingLightingGenerator) BlockAt(_ int64, _ game.BlockPosition) game.Block {
 	generator.calls++
 
 	return game.Air
+}
+
+func (ticker *runtimeLightingMutationTicker) RuntimeEntityState() *RuntimeEntityState {
+	return &ticker.state
+}
+
+func (ticker *runtimeLightingMutationTicker) Tick(runtime *Runtime, _ *ActiveChunk) {
+	for _, change := range ticker.changes {
+		result, delivery, err := runtime.mutateBlocksLocked(nil, blockMutationLiteral, []game.BlockChange{change}, 1, true, false, true, false, true)
+		if err != nil || !result.Changed {
+			continue
+		}
+
+		runtime.runtimeBlockMutations = append(runtime.runtimeBlockMutations, queuedBlockMutation{result: result, delivery: delivery})
+	}
 }
 
 func TestNormalLightingDirectAndFilteredSkylight(t *testing.T) {
@@ -297,6 +318,75 @@ func TestChangedLightUpdatesCrossNegativeChunkBoundaries(t *testing.T) {
 			t.Fatalf("update %d = %+v, want %+v", index, actual, expected[index])
 		}
 	}
+}
+
+func TestRuntimeTickBatchesOverlappingLightingAndPreservesMutationOrder(t *testing.T) {
+	world := normalLightingTestWorld()
+
+	runtime := NewRuntime(world)
+
+	first := game.BlockPosition{X: 1, Y: 70, Z: 1}
+	second := game.BlockPosition{X: 1, Y: 71, Z: 1}
+
+	actor, connection := newBlockMutationTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Actor", game.GameModeCreative)
+	actor.Player.Position = blockMutationTestPlayerPosition(first)
+
+	markChunkLoaded(actor, first)
+
+	joinTestSession(t, runtime, actor)
+
+	runtime.setSessionActiveChunks(actor, []LoadedChunk{blockLoadedChunk(first)})
+
+	chunk, active := runtime.ActiveChunk(blockLoadedChunk(first))
+	if !active {
+		t.Fatal("mutation ticker chunk is not active")
+	}
+
+	ticker := &runtimeLightingMutationTicker{
+		changes: []game.BlockChange{
+			{Position: first, Replacement: game.Torch},
+			{Position: second, Replacement: game.Glowstone},
+		},
+	}
+
+	chunk.SetEntity(1, ticker)
+
+	var buildMu sync.Mutex
+
+	builds := make(map[LoadedChunk]int)
+
+	runtime.chunkLightBuilder = func(_ *game.World, chunkX, chunkZ int32) (protocol.UpdateLight, error) {
+		buildMu.Lock()
+		builds[LoadedChunk{X: chunkX, Z: chunkZ}]++
+		buildMu.Unlock()
+
+		return protocol.UpdateLight{Position: protocol.ChunkPosition{X: chunkX, Z: chunkZ}}, nil
+	}
+
+	connection.reset()
+
+	runtime.Tick()
+
+	expectedChunks := []LoadedChunk{{X: -1, Z: -1}, {X: 0, Z: -1}, {X: -1, Z: 0}, {X: 0, Z: 0}}
+
+	buildMu.Lock()
+	defer buildMu.Unlock()
+
+	if len(builds) != len(expectedChunks) {
+		t.Fatalf("distinct light builds = %d, want %d: %v", len(builds), len(expectedChunks), builds)
+	}
+
+	for _, position := range expectedChunks {
+		if builds[position] != 1 {
+			t.Fatalf("light builds for %+v = %d, want 1", position, builds[position])
+		}
+	}
+
+	assertPacketIDs(t, connection.packetIDs(t), []int32{
+		protocol.ClientboundBlockUpdateID,
+		protocol.ClientboundBlockUpdateID,
+		protocol.ClientboundUpdateLightID,
+	})
 }
 
 func normalLightingTestWorld() *game.World {

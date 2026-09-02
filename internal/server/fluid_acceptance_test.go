@@ -88,7 +88,7 @@ func TestFluidAcceptanceBucketMutationSchedulesAndFlowsAfterDelay(t *testing.T) 
 	}
 
 	key := scheduledFluidTickKey{position: position, typeID: game.FluidStateTypeWater}
-	if _, scheduled := runtime.scheduledFluidTicks.pending[key]; !scheduled {
+	if !runtime.scheduledFluidTicks.contains(key) {
 		t.Fatal("bucket mutation did not schedule its water source")
 	}
 
@@ -139,8 +139,8 @@ func TestFluidAcceptanceCrossChunkRetryWaitsForDestinationActivation(t *testing.
 		t.Fatalf("inactive cross-chunk destination = %d, want air", runtime.World.BlockAt(destination))
 	}
 
-	if len(runtime.scheduledFluidTicks.pending) != 0 {
-		t.Fatalf("inactive border left %d polling ticks, want none", len(runtime.scheduledFluidTicks.pending))
+	if runtime.scheduledFluidTicks.len() != 0 {
+		t.Fatalf("inactive border left %d polling ticks, want none", runtime.scheduledFluidTicks.len())
 	}
 
 	deferred := runtime.deferredFluidSources[blockLoadedChunk(destination)]
@@ -156,6 +156,83 @@ func TestFluidAcceptanceCrossChunkRetryWaitsForDestinationActivation(t *testing.
 
 	if runtime.World.BlockAt(destination).FluidState().Type() != game.FluidTypeWater {
 		t.Fatal("source did not flow after its destination chunk activated")
+	}
+}
+
+func TestFluidAcceptanceInactiveBorderStressDoesNotPoll(t *testing.T) {
+	runtime := NewRuntime(game.NewOverworld(nil))
+
+	session := &Session{}
+
+	sourceChunks := []LoadedChunk{{X: 0, Z: -1}, {X: 0, Z: 0}, {X: 0, Z: 1}}
+	destinationChunks := []LoadedChunk{{X: 1, Z: -1}, {X: 1, Z: 0}, {X: 1, Z: 1}}
+
+	runtime.setSessionActiveChunks(session, sourceChunks)
+
+	changes := make([]game.BlockChange, 0, 130)
+	sources := make([]game.BlockPosition, 0, 32)
+
+	for blockZ := int32(-8); blockZ < 24; blockZ++ {
+		source := game.BlockPosition{X: 15, Y: 70, Z: blockZ}
+
+		sources = append(sources, source)
+		changes = append(changes,
+			game.BlockChange{Position: source, Replacement: game.Water},
+			game.BlockChange{Position: game.BlockPosition{X: 14, Y: 70, Z: blockZ}, Replacement: game.Stone},
+			game.BlockChange{Position: game.BlockPosition{X: 15, Y: 69, Z: blockZ}, Replacement: game.Stone},
+		)
+	}
+
+	changes = append(changes,
+		game.BlockChange{Position: game.BlockPosition{X: 15, Y: 70, Z: -9}, Replacement: game.Stone},
+		game.BlockChange{Position: game.BlockPosition{X: 15, Y: 70, Z: 24}, Replacement: game.Stone},
+	)
+
+	runtime.World.SetBlocks(changes)
+
+	runtime.worldMutationMu.Lock()
+	runtime.scheduleFluidNeighborsLocked(changes)
+	runtime.worldMutationMu.Unlock()
+
+	for range waterFluidDelay {
+		tickFluidAcceptanceSchedule(runtime)
+	}
+
+	deferredCount := 0
+
+	for _, chunk := range destinationChunks {
+		deferredCount += len(runtime.deferredFluidSources[chunk])
+	}
+
+	if deferredCount != len(sources) {
+		t.Fatalf("deferred inactive-border sources = %d, want %d", deferredCount, len(sources))
+	}
+
+	if runtime.scheduledFluidTicks.len() != 0 {
+		t.Fatalf("inactive border left %d polling ticks, want none", runtime.scheduledFluidTicks.len())
+	}
+
+	for range 200 {
+		tickFluidAcceptanceSchedule(runtime)
+	}
+
+	if runtime.scheduledFluidTicks.len() != 0 {
+		t.Fatalf("dormant inactive border accumulated %d polling ticks", runtime.scheduledFluidTicks.len())
+	}
+
+	activeChunks := append(sourceChunks, destinationChunks...)
+
+	runtime.setSessionActiveChunks(session, activeChunks)
+
+	for range waterFluidDelay {
+		tickFluidAcceptanceSchedule(runtime)
+	}
+
+	for _, source := range sources {
+		destination := game.BlockPosition{X: 16, Y: source.Y, Z: source.Z}
+		if runtime.World.BlockAt(destination).FluidState().Type() != game.FluidTypeWater {
+			t.Fatalf("deferred source at %+v did not resume into %+v", source, destination)
+		}
 	}
 }
 
@@ -177,8 +254,8 @@ func TestFluidAcceptanceInactiveQueuePausesWithoutBacklog(t *testing.T) {
 		tickFluidAcceptanceSchedule(runtime)
 	}
 
-	if runtime.World.BlockAt(below) != game.Air || len(runtime.scheduledFluidTicks.pending) != 1 {
-		t.Fatalf("inactive fluid queue = below %d, pending %d; want air and one paused tick", runtime.World.BlockAt(below), len(runtime.scheduledFluidTicks.pending))
+	if runtime.World.BlockAt(below) != game.Air || runtime.scheduledFluidTicks.len() != 1 {
+		t.Fatalf("inactive fluid queue = below %d, pending %d; want air and one paused tick", runtime.World.BlockAt(below), runtime.scheduledFluidTicks.len())
 	}
 
 	runtime.setSessionActiveChunks(session, []LoadedChunk{blockLoadedChunk(position)})
@@ -225,8 +302,8 @@ func TestFluidAcceptanceEnclosedSourceStopsScheduling(t *testing.T) {
 		tickFluidAcceptanceSchedule(runtime)
 	}
 
-	if len(runtime.scheduledFluidTicks.pending) != 0 {
-		t.Fatalf("enclosed stable source left %d scheduled ticks", len(runtime.scheduledFluidTicks.pending))
+	if runtime.scheduledFluidTicks.len() != 0 {
+		t.Fatalf("enclosed stable source left %d scheduled ticks", runtime.scheduledFluidTicks.len())
 	}
 }
 
@@ -279,8 +356,8 @@ func TestFluidAcceptanceFiniteBasinSettlesWithoutFurtherMutations(t *testing.T) 
 		t.Fatalf("settled basin mutations grew from %d to %d", mutations, len(runtime.runtimeBlockMutations))
 	}
 
-	if len(runtime.scheduledFluidTicks.pending) != 0 {
-		t.Fatalf("settled basin left %d scheduled ticks", len(runtime.scheduledFluidTicks.pending))
+	if runtime.scheduledFluidTicks.len() != 0 {
+		t.Fatalf("settled basin left %d scheduled ticks", runtime.scheduledFluidTicks.len())
 	}
 }
 
@@ -340,7 +417,7 @@ func TestFluidAcceptanceProceduralSourceStartsAndCopyOnWriteCollapses(t *testing
 	}
 
 	key := scheduledFluidTickKey{position: position, typeID: game.FluidStateTypeWater}
-	if _, scheduled := runtime.scheduledFluidTicks.pending[key]; !scheduled {
+	if !runtime.scheduledFluidTicks.contains(key) {
 		t.Fatal("generated source was not scheduled after neighboring authoritative mutation")
 	}
 

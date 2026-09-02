@@ -11,6 +11,8 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+type chunkLightBuilder func(*game.World, int32, int32) (protocol.UpdateLight, error)
+
 const (
 	lightingHalo   = 15
 	lightingWidth  = game.ChunkWidth + lightingHalo*2
@@ -177,6 +179,10 @@ func buildChunkLight(world *game.World, chunkX, chunkZ int32) (protocol.UpdateLi
 }
 
 func buildChangedLightUpdates(world *game.World, changes []game.BlockChange) ([]protocol.UpdateLight, error) {
+	return buildChangedLightUpdatesWith(world, changes, buildChunkLight)
+}
+
+func buildChangedLightUpdatesWith(world *game.World, changes []game.BlockChange, builder chunkLightBuilder) ([]protocol.UpdateLight, error) {
 	affectedSet := make(map[LoadedChunk]struct{}, len(changes)*4)
 
 	for _, change := range changes {
@@ -235,7 +241,7 @@ func buildChangedLightUpdates(world *game.World, changes []game.BlockChange) ([]
 
 				chunk := affected[index]
 
-				update, err := buildChunkLight(world, chunk.X, chunk.Z)
+				update, err := builder(world, chunk.X, chunk.Z)
 				if err != nil {
 					errOnce.Do(func() {
 						firstErr = err

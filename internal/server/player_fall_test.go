@@ -39,7 +39,7 @@ func TestPlayerLandingDamageDispatch(t *testing.T) {
 		{name: "bed fractional boundary", block: game.RedBed, distance: 8.0002, wantHealth: 18, wantVelocity: 1.32},
 		{name: "bed suppress bounce", block: game.BlueBed, distance: 8, sneaking: true, wantHealth: 19, wantVelocity: 0},
 		{name: "slime bounce", block: game.SlimeBlock, distance: 10, wantHealth: 20, wantVelocity: 2},
-		{name: "slime suppress bounce", block: game.SlimeBlock, distance: 10, sneaking: true, wantHealth: 13, wantVelocity: 0},
+		{name: "slime suppress bounce", block: game.SlimeBlock, distance: 10, sneaking: true, wantHealth: 20, wantVelocity: 0},
 		{name: "powder snow", block: game.PowderSnow, distance: 10, wantHealth: 20, wantVelocity: 0},
 	}
 

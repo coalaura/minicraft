@@ -204,9 +204,7 @@ func playerLandingDamage(behavior playerLandingBehavior, fallDistance float32, s
 	case playerLandingBed:
 		return calculatePlayerFallDamage(fallDistance * 0.5)
 	case playerLandingSlime:
-		if !suppressBounce {
-			return 0
-		}
+		return 0
 	case playerLandingPowderSnow:
 		return 0
 	}

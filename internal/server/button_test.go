@@ -59,7 +59,7 @@ func TestButtonPressAndScheduledRelease(t *testing.T) {
 			definition, _ := test.button.Definition()
 
 			key := scheduledBlockTickKey{position: position, typeID: definition.ID}
-			if _, scheduled := runtime.scheduledBlockTicks.pending[key]; !scheduled {
+			if !runtime.scheduledBlockTicks.contains(key) {
 				t.Fatal("press did not schedule a block tick")
 			}
 
@@ -75,8 +75,8 @@ func TestButtonPressAndScheduledRelease(t *testing.T) {
 				t.Fatalf("repeat press result = handled %v, %+v", handled, result)
 			}
 
-			if len(runtime.scheduledBlockTicks.pending) != 1 {
-				t.Fatalf("pending ticks after repeat press = %d, want 1", len(runtime.scheduledBlockTicks.pending))
+			if runtime.scheduledBlockTicks.len() != 1 {
+				t.Fatalf("pending ticks after repeat press = %d, want 1", runtime.scheduledBlockTicks.len())
 			}
 
 			assertPacketIDs(t, actorConnection.packetIDs(t), nil)
@@ -147,14 +147,14 @@ func TestButtonSupportLossLeavesPendingTickSafe(t *testing.T) {
 		t.Fatalf("unsupported button = %d, want air", runtime.World.BlockAt(position))
 	}
 
-	if len(runtime.scheduledBlockTicks.pending) != 1 {
-		t.Fatalf("pending ticks after support loss = %d, want stale tick retained", len(runtime.scheduledBlockTicks.pending))
+	if runtime.scheduledBlockTicks.len() != 1 {
+		t.Fatalf("pending ticks after support loss = %d, want stale tick retained", runtime.scheduledBlockTicks.len())
 	}
 
 	runtime.Tick()
 
-	if len(runtime.scheduledBlockTicks.pending) != 1 {
-		t.Fatalf("pending ticks before deadline = %d, want 1", len(runtime.scheduledBlockTicks.pending))
+	if runtime.scheduledBlockTicks.len() != 1 {
+		t.Fatalf("pending ticks before deadline = %d, want 1", runtime.scheduledBlockTicks.len())
 	}
 
 	observerConnection.reset()

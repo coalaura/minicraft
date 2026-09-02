@@ -457,13 +457,27 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 	)
 
 	if len(delivery.lightingChanges) != 0 && r.World.Lighting == game.LightingNormal {
-		lightUpdates, lightingErr = buildChangedLightUpdates(r.World, delivery.lightingChanges)
+		lightUpdates, lightingErr = buildChangedLightUpdatesWith(r.World, delivery.lightingChanges, r.chunkLightBuilder)
 	}
 
 	// Lighting may run concurrently, but clients must observe committed mutations
 	// in the same order as the authoritative world.
 	<-delivery.waitForDelivery
 	defer close(delivery.deliveryComplete)
+
+	deliveryErr := r.deliverBlockMutation(delivery, lightUpdates)
+	if deliveryErr != nil {
+		return result, deliveryErr
+	}
+
+	if lightingErr != nil {
+		return result, fmt.Errorf("recalculate lighting: %w", lightingErr)
+	}
+
+	return result, nil
+}
+
+func (r *Runtime) deliverBlockMutation(delivery blockMutationDelivery, lightUpdates []protocol.UpdateLight) error {
 
 	sections := blockMutationSections(delivery.changes, delivery.states)
 	placementSound, hasPlacementSound := blockPlacementSound(delivery.records)
@@ -556,7 +570,7 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 	if delivery.miningInventory != nil {
 		err := delivery.session.synchronizePlayerInventoryMutation(*delivery.miningInventory)
 		if err != nil {
-			return result, fmt.Errorf("synchronize mining tool: %w", err)
+			return fmt.Errorf("synchronize mining tool: %w", err)
 		}
 	}
 
@@ -577,11 +591,7 @@ func (r *Runtime) completeBlockMutation(result BlockMutationResult, delivery blo
 		}
 	}
 
-	if lightingErr != nil {
-		return result, fmt.Errorf("recalculate lighting: %w", lightingErr)
-	}
-
-	return result, nil
+	return nil
 }
 
 func (r *Runtime) takeRuntimeBlockMutationsLocked() []queuedBlockMutation {
@@ -592,8 +602,43 @@ func (r *Runtime) takeRuntimeBlockMutationsLocked() []queuedBlockMutation {
 }
 
 func (r *Runtime) completeRuntimeBlockMutations(mutations []queuedBlockMutation) {
+	if len(mutations) == 0 {
+		return
+	}
+
+	lightingChanges := make([]game.BlockChange, 0)
+	recipientSet := make(map[*Session]struct{})
+	recipients := make([]*Session, 0)
+
 	for _, mutation := range mutations {
-		_, err := r.completeBlockMutation(mutation.result, mutation.delivery, nil)
+		lightingChanges = append(lightingChanges, mutation.delivery.lightingChanges...)
+
+		for _, session := range mutation.delivery.recipients {
+			_, present := recipientSet[session]
+			if present {
+				continue
+			}
+
+			recipientSet[session] = struct{}{}
+			recipients = append(recipients, session)
+		}
+	}
+
+	var (
+		lightUpdates []protocol.UpdateLight
+		lightingErr  error
+	)
+
+	if len(lightingChanges) != 0 && r.World.Lighting == game.LightingNormal {
+		lightUpdates, lightingErr = buildChangedLightUpdatesWith(r.World, lightingChanges, r.chunkLightBuilder)
+	}
+
+	// The captured queue is one contiguous delivery-chain segment. Waiting on
+	// its external predecessor avoids waiting on completion nodes owned here.
+	<-mutations[0].delivery.waitForDelivery
+
+	for _, mutation := range mutations {
+		err := r.deliverBlockMutation(mutation.delivery, nil)
 		if err != nil {
 			for _, session := range mutation.delivery.recipients {
 				if session.Log != nil {
@@ -601,6 +646,27 @@ func (r *Runtime) completeRuntimeBlockMutations(mutations []queuedBlockMutation)
 				}
 			}
 		}
+	}
+
+	for _, session := range recipients {
+		for _, update := range lightUpdates {
+			err := session.sendLightUpdateIfLoaded(update)
+			if err != nil && session.Log != nil {
+				session.Log.Warnf("[play] failed to update light: %v\n", err)
+			}
+		}
+	}
+
+	if lightingErr != nil {
+		for _, session := range recipients {
+			if session.Log != nil {
+				session.Log.Warnf("[play] failed to complete runtime block mutation: recalculate lighting: %v\n", lightingErr)
+			}
+		}
+	}
+
+	for _, mutation := range mutations {
+		close(mutation.delivery.deliveryComplete)
 	}
 }
 
