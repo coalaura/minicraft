@@ -67,17 +67,7 @@ func (context *fluidSpreadContext) hole(position game.BlockPosition, fluid Flowi
 		return hole
 	}
 
-	current := context.blockAt(position)
-
-	below := game.BlockPosition{X: position.X, Y: position.Y - 1, Z: position.Z}
-
-	belowBlock := context.blockAt(below)
-
-	if context.runtime.canFlowBetween(current, belowBlock, game.BlockFaceDown) {
-		_, flows, mixes := context.runtime.fluidFlowReplacementWith(position, below, belowBlock, fluid, 8, true, context.blockAt)
-
-		hole = flows || mixes
-	}
+	hole = context.runtime.fluidHoleWith(position, fluid, context.blockAt)
 
 	context.holes[position] = hole
 
@@ -307,11 +297,15 @@ func (r *Runtime) fluidDestinationActive(from, destination game.BlockPosition) b
 }
 
 func (r *Runtime) fluidHole(position game.BlockPosition, fluid FlowingFluid) bool {
-	current := r.World.BlockAt(position)
+	return r.fluidHoleWith(position, fluid, r.World.BlockAt)
+}
+
+func (r *Runtime) fluidHoleWith(position game.BlockPosition, fluid FlowingFluid, blockAt func(game.BlockPosition) game.Block) bool {
+	current := blockAt(position)
 
 	below := game.BlockPosition{X: position.X, Y: position.Y - 1, Z: position.Z}
 
-	belowBlock := r.World.BlockAt(below)
+	belowBlock := blockAt(below)
 
 	if !r.canFlowBetween(current, belowBlock, game.BlockFaceDown) {
 		return false
@@ -321,7 +315,7 @@ func (r *Runtime) fluidHole(position game.BlockPosition, fluid FlowingFluid) boo
 		return true
 	}
 
-	_, flows, mixes := r.fluidFlowReplacement(position, below, fluid, 8, true)
+	_, flows, mixes := r.fluidFlowReplacementWith(position, below, belowBlock, fluid, 8, true, blockAt)
 
 	return flows || mixes
 }

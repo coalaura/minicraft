@@ -14,6 +14,12 @@ type fluidMixingTestCase struct {
 	result  game.BlockPosition
 }
 
+type fluidHoleTestCase struct {
+	name  string
+	below game.Block
+	want  bool
+}
+
 func tickFluid(t *testing.T, runtime *Runtime, position game.BlockPosition) {
 	t.Helper()
 
@@ -350,6 +356,94 @@ func TestFluidFlowUsesCombinedFaceOcclusion(t *testing.T) {
 
 	if !runtime.canFlowBetween(game.Water, game.Air, game.BlockFaceEast) {
 		t.Fatal("fluid cannot pass through an open joint")
+	}
+}
+
+func TestFluidHoleCachedAndUncachedParity(t *testing.T) {
+	fluids := []FlowingFluid{waterFluid, lavaFluid}
+
+	for _, fluid := range fluids {
+		fluidName := "water"
+		opposite := game.Lava
+
+		if fluid.typeID == game.FluidTypeLava {
+			fluidName = "lava"
+			opposite = game.Water
+		}
+
+		tests := []fluidHoleTestCase{
+			{name: "same fluid below", below: fluid.block, want: true},
+			{name: "empty flowable below", below: game.Air, want: true},
+			{name: "blocked below", below: game.Stone, want: false},
+			{name: "opposite fluid mixes", below: opposite, want: true},
+		}
+
+		for _, test := range tests {
+			t.Run(fluidName+"/"+test.name, func(t *testing.T) {
+				runtime := NewRuntime(game.NewOverworld(nil))
+
+				position := game.BlockPosition{Y: 70}
+				below := game.BlockPosition{Y: 69}
+
+				runtime.World.SetBlocks([]game.BlockChange{
+					{Position: position, Replacement: fluid.block},
+					{Position: below, Replacement: test.below},
+				})
+
+				uncached := runtime.fluidHole(position, fluid)
+
+				context := fluidSpreadContext{
+					runtime: runtime,
+					blocks:  make(map[game.BlockPosition]game.Block),
+					holes:   make(map[game.BlockPosition]bool),
+				}
+
+				cached := context.hole(position, fluid)
+
+				if uncached != test.want || cached != test.want {
+					t.Fatalf("hole predicates = uncached %v cached %v, want %v", uncached, cached, test.want)
+				}
+			})
+		}
+	}
+}
+
+func TestFluidSlopePrefersSameFluidHole(t *testing.T) {
+	runtime := NewRuntime(game.NewOverworld(nil))
+	runtime.setSessionActiveChunks(&Session{}, []LoadedChunk{{X: -1}, {}})
+
+	source := game.BlockPosition{Y: 70}
+	westPosition := game.BlockPosition{X: -1, Y: 70}
+	westDirection := game.BlockPosition{X: -1}
+
+	runtime.World.SetBlocks([]game.BlockChange{
+		{Position: source, Replacement: game.Water},
+		{Position: game.BlockPosition{Y: 69}, Replacement: game.Stone},
+		{Position: game.BlockPosition{X: -1, Y: 69}, Replacement: game.Water},
+		{Position: game.BlockPosition{X: 1, Y: 69}, Replacement: game.Stone},
+		{Position: game.BlockPosition{Y: 70, Z: -1}, Replacement: game.Stone},
+		{Position: game.BlockPosition{Y: 70, Z: 1}, Replacement: game.Stone},
+		{Position: game.BlockPosition{X: -2, Y: 70}, Replacement: game.Stone},
+		{Position: game.BlockPosition{X: -1, Y: 70, Z: -1}, Replacement: game.Stone},
+		{Position: game.BlockPosition{X: -1, Y: 70, Z: 1}, Replacement: game.Stone},
+		{Position: game.BlockPosition{X: 1, Y: 70, Z: -1}, Replacement: game.Stone},
+		{Position: game.BlockPosition{X: 1, Y: 70, Z: 1}, Replacement: game.Stone},
+	})
+
+	context := fluidSpreadContext{
+		runtime: runtime,
+		blocks:  make(map[game.BlockPosition]game.Block),
+		holes:   make(map[game.BlockPosition]bool),
+	}
+
+	if !runtime.fluidHole(westPosition, waterFluid) || !context.hole(westPosition, waterFluid) {
+		t.Fatal("winning slope is not a hole in both cached and uncached predicates")
+	}
+
+	directions := runtime.fluidFlowDirections(source, waterFluid, 7)
+
+	if len(directions) != 1 || directions[0] != westDirection {
+		t.Fatalf("slope directions = %v, want only west toward the existing-water hole", directions)
 	}
 }
 

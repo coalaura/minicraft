@@ -11,6 +11,8 @@ const (
 	scheduledTicksPerInactiveChunk  = 64
 	scheduledTickFutureCount        = 10_000
 	scheduledTickBenchmarkFuture    = 100_000
+	scheduledTickBenchmarkDue       = 250_000
+	scheduledTickStructuralLimit    = 32
 )
 
 func TestScheduledFluidTicksPauseAndResumeExactly(t *testing.T) {
@@ -368,6 +370,82 @@ func TestScheduledTickQueueCapsDrainAndRetainsOrder(t *testing.T) {
 	}
 }
 
+func TestScheduledTickQueueKeepsOverdueChunkHeadBeforeNewPriority(t *testing.T) {
+	ticks := scheduledTickQueue[int]{}
+
+	for typeID := range scheduledTickDrainLimit + 1 {
+		position := game.BlockPosition{Y: int32(typeID)}
+
+		ticks.schedule(position, typeID, 1)
+	}
+
+	first := ticks.advance(func(LoadedChunk) bool {
+		return true
+	})
+
+	if len(first) != scheduledTickDrainLimit {
+		t.Fatalf("first drain = %d, want cap %d", len(first), scheduledTickDrainLimit)
+	}
+
+	newer := game.BlockPosition{Z: 1}
+	otherChunk := game.BlockPosition{X: 32}
+
+	ticks.schedule(newer, scheduledTickDrainLimit+1, 1, -1)
+	ticks.schedule(otherChunk, scheduledTickDrainLimit+2, 1, -2)
+
+	second := ticks.advance(func(LoadedChunk) bool {
+		return true
+	})
+
+	if len(second) != 3 {
+		t.Fatalf("second drain = %d, want 3", len(second))
+	}
+
+	if second[0].key.position != otherChunk {
+		t.Fatalf("cross-chunk first tick = %v, want higher-priority %v", second[0].key.position, otherChunk)
+	}
+
+	if second[1].key.typeID != scheduledTickDrainLimit {
+		t.Fatalf("same-chunk second tick type = %d, want overdue %d", second[1].key.typeID, scheduledTickDrainLimit)
+	}
+
+	if second[2].key.position != newer {
+		t.Fatalf("same-chunk third tick = %v, want newer priority tick %v", second[2].key.position, newer)
+	}
+}
+
+func TestScheduledTickQueueBoundsSimultaneouslyDueCollection(t *testing.T) {
+	ticks := scheduledTickQueue[int]{}
+	total := scheduledTickDrainLimit * 4
+
+	for typeID := range total {
+		position := game.BlockPosition{Y: int32(typeID)}
+
+		ticks.schedule(position, typeID, 1)
+	}
+
+	due := ticks.advance(func(LoadedChunk) bool {
+		return true
+	}, scheduledTickStructuralLimit)
+
+	if len(due) != scheduledTickStructuralLimit {
+		t.Fatalf("bounded drain = %d, want %d", len(due), scheduledTickStructuralLimit)
+	}
+
+	chunk := ticks.chunks[LoadedChunk{}]
+	if chunk == nil {
+		t.Fatal("simultaneously due chunk was discarded")
+	}
+
+	if len(chunk.queue) != total-scheduledTickStructuralLimit {
+		t.Fatalf("main heap retained %d ticks, want %d", len(chunk.queue), total-scheduledTickStructuralLimit)
+	}
+
+	if len(chunk.pending) != total-scheduledTickStructuralLimit {
+		t.Fatalf("pending set retained %d ticks, want %d", len(chunk.pending), total-scheduledTickStructuralLimit)
+	}
+}
+
 func BenchmarkScheduledTickQueueFuturePopulation(b *testing.B) {
 	b.ReportAllocs()
 
@@ -392,6 +470,32 @@ func BenchmarkScheduledTickQueueFuturePopulation(b *testing.B) {
 
 		if len(due) != 1 {
 			b.Fatalf("due ticks = %d, want 1", len(due))
+		}
+	}
+}
+
+func BenchmarkScheduledTickQueueSimultaneouslyDuePopulation(b *testing.B) {
+	b.ReportAllocs()
+
+	for b.Loop() {
+		b.StopTimer()
+
+		ticks := scheduledTickQueue[int]{}
+
+		for typeID := range scheduledTickBenchmarkDue {
+			position := game.BlockPosition{Y: int32(typeID)}
+
+			ticks.schedule(position, typeID, 1)
+		}
+
+		b.StartTimer()
+
+		due := ticks.advance(func(LoadedChunk) bool {
+			return true
+		})
+
+		if len(due) != scheduledTickDrainLimit {
+			b.Fatalf("due ticks = %d, want cap %d", len(due), scheduledTickDrainLimit)
 		}
 	}
 }

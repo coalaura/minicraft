@@ -27,13 +27,10 @@ type scheduledTick[T comparable] struct {
 
 type scheduledTickHeap[T comparable] []scheduledTick[T]
 
-type scheduledTickReadyHeap[T comparable] []scheduledTick[T]
-
 type scheduledTickChunk[T comparable] struct {
 	clock   int64
 	pending map[scheduledTickKey[T]]struct{}
 	queue   scheduledTickHeap[T]
-	ready   scheduledTickReadyHeap[T]
 }
 
 type scheduledTickCandidate[T comparable] struct {
@@ -55,60 +52,61 @@ type scheduledFluidTickKey = scheduledTickKey[game.FluidStateType]
 type scheduledBlockTicks = scheduledTickQueue[game.BlockID]
 type scheduledFluidTicks = scheduledTickQueue[game.FluidStateType]
 
-func (ticks scheduledTickHeap[T]) Len() int {
-	return len(ticks)
+func (ticks *scheduledTickHeap[T]) push(tick scheduledTick[T]) {
+	queue := append(*ticks, tick)
+	index := len(queue) - 1
+
+	for index != 0 {
+		parent := (index - 1) / 2
+		if !scheduledTickBefore(tick, queue[parent]) {
+			break
+		}
+
+		queue[index] = queue[parent]
+		index = parent
+	}
+
+	queue[index] = tick
+	*ticks = queue
 }
 
-func (ticks scheduledTickHeap[T]) Less(first, second int) bool {
-	return scheduledTickBefore(ticks[first], ticks[second])
-}
+func (ticks *scheduledTickHeap[T]) pop() scheduledTick[T] {
+	queue := *ticks
+	last := len(queue) - 1
+	tick := queue[0]
+	replacement := queue[last]
 
-func (ticks scheduledTickHeap[T]) Swap(first, second int) {
-	ticks[first], ticks[second] = ticks[second], ticks[first]
-}
+	queue[last] = scheduledTick[T]{}
+	queue = queue[:last]
 
-func (ticks *scheduledTickHeap[T]) Push(value any) {
-	tick := value.(scheduledTick[T])
+	if last != 0 {
+		index := 0
 
-	*ticks = append(*ticks, tick)
-}
+		for {
+			left := index*2 + 1
+			if left >= last {
+				break
+			}
 
-func (ticks *scheduledTickHeap[T]) Pop() any {
-	old := *ticks
-	last := len(old) - 1
-	tick := old[last]
+			child := left
 
-	old[last] = scheduledTick[T]{}
-	*ticks = old[:last]
+			right := left + 1
+			if right < last && scheduledTickBefore(queue[right], queue[left]) {
+				child = right
+			}
 
-	return tick
-}
+			if !scheduledTickBefore(queue[child], replacement) {
+				break
+			}
 
-func (ticks scheduledTickReadyHeap[T]) Len() int {
-	return len(ticks)
-}
+			queue[index] = queue[child]
+			index = child
+		}
 
-func (ticks scheduledTickReadyHeap[T]) Less(first, second int) bool {
-	return scheduledTickReadyBefore(ticks[first], ticks[second])
-}
+		queue[index] = replacement
+	}
 
-func (ticks scheduledTickReadyHeap[T]) Swap(first, second int) {
-	ticks[first], ticks[second] = ticks[second], ticks[first]
-}
-
-func (ticks *scheduledTickReadyHeap[T]) Push(value any) {
-	tick := value.(scheduledTick[T])
-
-	*ticks = append(*ticks, tick)
-}
-
-func (ticks *scheduledTickReadyHeap[T]) Pop() any {
-	old := *ticks
-	last := len(old) - 1
-	tick := old[last]
-
-	old[last] = scheduledTick[T]{}
-	*ticks = old[:last]
+	*ticks = queue
 
 	return tick
 }
@@ -118,7 +116,7 @@ func (candidates scheduledTickCandidateHeap[T]) Len() int {
 }
 
 func (candidates scheduledTickCandidateHeap[T]) Less(first, second int) bool {
-	return scheduledTickReadyBefore(candidates[first].chunk.ready[0], candidates[second].chunk.ready[0])
+	return scheduledTickReadyBefore(candidates[first].chunk.queue[0], candidates[second].chunk.queue[0])
 }
 
 func (candidates scheduledTickCandidateHeap[T]) Swap(first, second int) {
@@ -177,7 +175,7 @@ func (ticks *scheduledTickQueue[T]) schedule(position game.BlockPosition, typeID
 	tick := scheduledTick[T]{key: key, due: chunk.clock + delay, priority: priority, suborder: ticks.nextSuborder}
 
 	chunk.pending[key] = struct{}{}
-	heap.Push(&chunk.queue, tick)
+	chunk.queue.push(tick)
 }
 
 func (ticks *scheduledTickQueue[T]) advance(active func(LoadedChunk) bool, limits ...int) []scheduledTick[T] {
@@ -213,12 +211,7 @@ func (ticks *scheduledTickQueue[T]) advanceChunks(activeChunks map[LoadedChunk]*
 
 		chunk.clock++
 
-		for len(chunk.queue) != 0 && chunk.queue[0].due <= chunk.clock {
-			tick := heap.Pop(&chunk.queue).(scheduledTick[T])
-			heap.Push(&chunk.ready, tick)
-		}
-
-		if len(chunk.ready) != 0 {
+		if len(chunk.queue) != 0 && chunk.queue[0].due <= chunk.clock {
 			candidates = append(candidates, scheduledTickCandidate[T]{position: position, chunk: chunk})
 		}
 	}
@@ -229,19 +222,26 @@ func (ticks *scheduledTickQueue[T]) advanceChunks(activeChunks map[LoadedChunk]*
 
 	for len(candidates) != 0 && len(due) < limit {
 		candidate := heap.Pop(&candidates).(scheduledTickCandidate[T])
-		tick := heap.Pop(&candidate.chunk.ready).(scheduledTick[T])
 
-		delete(candidate.chunk.pending, tick.key)
+		for len(due) < limit {
+			tick := candidate.chunk.queue.pop()
 
-		due = append(due, tick)
+			delete(candidate.chunk.pending, tick.key)
 
-		if len(candidate.chunk.queue) == 0 && len(candidate.chunk.ready) == 0 {
-			delete(ticks.chunks, candidate.position)
+			due = append(due, tick)
 
-			continue
+			if len(candidate.chunk.queue) == 0 || candidate.chunk.queue[0].due > candidate.chunk.clock {
+				break
+			}
+
+			if len(candidates) != 0 && scheduledTickReadyBefore(candidates[0].chunk.queue[0], candidate.chunk.queue[0]) {
+				break
+			}
 		}
 
-		if len(candidate.chunk.ready) != 0 {
+		if len(candidate.chunk.queue) == 0 {
+			delete(ticks.chunks, candidate.position)
+		} else if len(due) < limit && candidate.chunk.queue[0].due <= candidate.chunk.clock {
 			heap.Push(&candidates, candidate)
 		}
 	}
