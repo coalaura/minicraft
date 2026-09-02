@@ -1,5 +1,7 @@
 package game
 
+import "math"
+
 type MobEffectInstance struct {
 	Effect       MobEffect
 	Duration     int32
@@ -29,6 +31,27 @@ func (instance MobEffectInstance) Infinite() bool {
 
 func (instance MobEffectInstance) HasRemainingDuration() bool {
 	return instance.Infinite() || instance.Duration > 0
+}
+
+func (instance MobEffectInstance) WithScaledDuration(scale float32) MobEffectInstance {
+	clone := instance.Clone()
+
+	if clone.Duration == InfiniteMobEffectDuration || clone.Duration == 0 {
+		return clone
+	}
+
+	scaled := float64(float32(clone.Duration) * scale)
+
+	switch {
+	case math.IsNaN(scaled), scaled < 1:
+		clone.Duration = 1
+	case scaled >= math.MaxInt32:
+		clone.Duration = math.MaxInt32
+	default:
+		clone.Duration = int32(math.Floor(scaled))
+	}
+
+	return clone
 }
 
 // Update applies Java's MobEffectInstance takeover and hidden-effect rules.

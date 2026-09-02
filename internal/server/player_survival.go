@@ -201,9 +201,9 @@ func (r *Runtime) tickPlayerSurvivalLocked(session *Session) []playerSurvivalUpd
 		return updates
 	}
 
-	useUpdate, useChanged := r.tickUsingItemLocked(session)
+	useUpdates, useChanged := r.tickUsingItemLocked(session)
 	if useChanged {
-		updates = append(updates, useUpdate)
+		updates = append(updates, useUpdates...)
 	}
 
 	player = session.snapshotPlayer()
@@ -314,9 +314,12 @@ func (r *Runtime) tickPlayerSurvivalLocked(session *Session) []playerSurvivalUpd
 	player, airChanged := session.updatePlayerState(func(player *game.Player) bool {
 		previous := player.AirSupply
 
-		if underwater && player.GameMode != game.GameModeCreative && player.GameMode != game.GameModeSpectator {
+		hasWaterBreathing := playerHasWaterBreathing(*player)
+		refillFromEffects := playerEffectsRefillAir(*player)
+
+		if underwater && player.GameMode != game.GameModeCreative && player.GameMode != game.GameModeSpectator && !hasWaterBreathing {
 			player.AirSupply--
-		} else if player.AirSupply < game.DefaultPlayerAirSupply {
+		} else if player.AirSupply < game.DefaultPlayerAirSupply && (!underwater || refillFromEffects || player.GameMode == game.GameModeCreative || player.GameMode == game.GameModeSpectator) {
 			player.AirSupply = min(player.AirSupply+4, game.DefaultPlayerAirSupply)
 		}
 
@@ -776,6 +779,27 @@ func calculatePlayerFallDamage(fallDistance float32) float32 {
 	}
 
 	return float32(math.Ceil(float64(unsafeDistance)))
+}
+
+func playerHasWaterBreathing(player game.Player) bool {
+	waterBreathingEffects := []game.MobEffect{game.MobEffectWaterBreathing, game.MobEffectConduitPower, game.MobEffectBreathOfTheNautilus}
+
+	for _, effect := range waterBreathingEffects {
+		_, active := player.ActiveEffects.Find(effect)
+		if active {
+			return true
+		}
+	}
+
+	return false
+}
+
+func playerEffectsRefillAir(player game.Player) bool {
+	_, nautilus := player.ActiveEffects.Find(game.MobEffectBreathOfTheNautilus)
+	_, waterBreathing := player.ActiveEffects.Find(game.MobEffectWaterBreathing)
+	_, conduitPower := player.ActiveEffects.Find(game.MobEffectConduitPower)
+
+	return !nautilus || waterBreathing || conduitPower
 }
 
 func playerCanTakeDamage(player game.Player, damageType PlayerDamageType) bool {

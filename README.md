@@ -107,8 +107,9 @@ Minicraft is a focused protocol and procedural-world server, not a drop-in repla
 - Fluid ticks pause in inactive chunks, and broader fluid parity remains out of scope.
 - Recipe-book support, special recipes, furnace XP and component-transforming recipes are deferred.
 - Timed item use continues across same-item count, component and backing-stack changes, but cancels when the active hand becomes empty or changes item.
-- Suspicious-stew effects, chorus-fruit teleportation, potion swirls and `USE_EFFECTS` movement or vibration behavior remain explicitly deferred.
-- Potions, armor, combat, mobs, projectiles, XP, bed placement/sleeping, respawn anchors and gamerule configuration are not implemented.
+- Ordinary drinkable potions are implemented; splash and lingering potions, brewing, tipped-arrow mechanics, area-effect clouds and potion swirls remain deferred.
+- Suspicious-stew effects, chorus-fruit teleportation and `USE_EFFECTS` movement or vibration behavior remain explicitly deferred.
+- Armor, combat, mobs, projectiles, XP, bed placement/sleeping, respawn anchors and gamerule configuration are not implemented.
 - Honey-block side sliding is deferred; honey landing damage is implemented.
 
 ## Todo
@@ -116,7 +117,7 @@ Minicraft is a focused protocol and procedural-world server, not a drop-in repla
 - Broader block placement and interaction support
 - Other inventory blocks
 - Recipe-book and special crafting recipe parity
-- Broader survival mechanics such as potions, armor and combat
+- Broader survival mechanics such as armor and combat
 - Adventure map features
 
 ## License

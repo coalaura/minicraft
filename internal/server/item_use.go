@@ -112,7 +112,7 @@ func (r *Runtime) stopUsingItem(session *Session) {
 	}
 }
 
-func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, bool) {
+func (r *Runtime) tickUsingItemLocked(session *Session) ([]playerSurvivalUpdate, bool) {
 	var (
 		before            game.PlayerInventory
 		dropped           game.ItemStack
@@ -121,6 +121,7 @@ func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, b
 		inventoryChanged  bool
 		absorptionChanged bool
 		effectChanges     []playerMobEffectChange
+		instantEffects    []game.MobEffectInstance
 	)
 
 	player, changed := session.updatePlayerState(func(player *game.Player) bool {
@@ -185,6 +186,32 @@ func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, b
 
 		effectChanges, absorptionChanged = r.applyConsumableMobEffects(player, definition.Consumable.Effects)
 
+		for _, effect := range definition.Consumable.DynamicEffects {
+			if effect.Type != game.ItemConsumeEffectPotionContents {
+				continue
+			}
+
+			contents, exists := held.PotionContents()
+			if !exists {
+				continue
+			}
+
+			for _, instance := range contents.Effects(held.PotionDurationScale()) {
+				if instance.Effect == game.MobEffectInstantHealth || instance.Effect == game.MobEffectInstantDamage {
+					instantEffects = append(instantEffects, instance)
+
+					continue
+				}
+
+				change, effectChanged, absorptionUpdated := addPlayerMobEffect(player, instance)
+				absorptionChanged = absorptionChanged || absorptionUpdated
+
+				if effectChanged {
+					effectChanges = append(effectChanges, change)
+				}
+			}
+		}
+
 		if player.GameMode != game.GameModeCreative {
 			held.Count--
 
@@ -211,7 +238,7 @@ func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, b
 	})
 
 	if !changed || (!useEnded && len(sounds) == 0) {
-		return playerSurvivalUpdate{}, false
+		return nil, false
 	}
 
 	if !dropped.Empty() {
@@ -225,7 +252,49 @@ func (r *Runtime) tickUsingItemLocked(session *Session) (playerSurvivalUpdate, b
 		update.inventoryBefore = &before
 	}
 
-	return update, true
+	updates := []playerSurvivalUpdate{update}
+
+	for _, instance := range instantEffects {
+		if session.snapshotPlayer().Dead {
+			break
+		}
+
+		amount := instantMobEffectAmount(instance)
+
+		var (
+			instantUpdate playerSurvivalUpdate
+			applied       bool
+		)
+
+		if instance.Effect == game.MobEffectInstantHealth {
+			instantUpdate, applied = r.healPlayerLocked(session, amount)
+		} else {
+			instantUpdate, applied = r.damagePlayerLocked(session, PlayerDamage{Type: PlayerDamageMagic, Amount: amount})
+		}
+
+		if applied {
+			updates = append(updates, instantUpdate)
+		}
+	}
+
+	return updates, true
+}
+
+func instantMobEffectAmount(instance game.MobEffectInstance) float32 {
+	base := int32(4)
+
+	if instance.Effect == game.MobEffectInstantDamage {
+		base = 6
+	}
+
+	shift := uint32(instance.Amplifier) & 31
+	amount := int32(uint32(base) << shift)
+
+	if instance.Effect == game.MobEffectInstantHealth {
+		amount = max(amount, 0)
+	}
+
+	return float32(amount)
 }
 
 func (r *Runtime) consumableSound(player game.Player, consumable game.ItemConsumable, source int32) protocol.Sound {

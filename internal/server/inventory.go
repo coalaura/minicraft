@@ -1229,7 +1229,7 @@ func creativeItemStack(item protocol.UntrustedSlot) (game.ItemStack, bool) {
 	seen := make(map[int32]struct{}, len(components)+len(item.RemovedComponents))
 
 	for index, component := range item.Components {
-		if component.Type != game.ItemComponentDamage && component.Type != game.ItemComponentEnchantments && component.Type != game.ItemComponentPotionContents {
+		if component.Type != game.ItemComponentDamage && component.Type != game.ItemComponentEnchantments && component.Type != game.ItemComponentPotionContents && component.Type != game.ItemComponentPotionDurationScale {
 			return game.ItemStack{}, false
 		}
 

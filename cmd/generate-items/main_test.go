@@ -99,8 +99,8 @@ func TestConsumableSourcesAndGeneratedItemsAreCurrent(t *testing.T) {
 		}
 	}
 
-	if foodCount != 40 || len(consumables) != 41 {
-		t.Fatalf("manifest has %d foods and %d consumables, want 40 and 41", foodCount, len(consumables))
+	if foodCount != 40 || len(consumables) != 42 {
+		t.Fatalf("manifest has %d foods and %d consumables, want 40 and 42", foodCount, len(consumables))
 	}
 
 	milk := consumables["milk_bucket"]
@@ -116,6 +116,11 @@ func TestConsumableSourcesAndGeneratedItemsAreCurrent(t *testing.T) {
 	suspiciousStew := consumables["suspicious_stew"]
 	if len(suspiciousStew.DynamicEffects) != 1 || suspiciousStew.DynamicEffects[0].Type != "suspicious_stew" {
 		t.Fatalf("suspicious stew dynamic effects = %+v", suspiciousStew.DynamicEffects)
+	}
+
+	potion := consumables["potion"]
+	if potion.Duration != 32 || potion.Animation != "drink" || potion.Particles || potion.Sound != "minecraft:entity.generic.drink" || potion.Remainder != "glass_bottle" || len(potion.DynamicEffects) != 1 || potion.DynamicEffects[0].Type != "potion_contents" {
+		t.Fatalf("potion consumable = %+v", potion)
 	}
 
 	for source, expected := range manifest.Sources {

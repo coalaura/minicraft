@@ -44,10 +44,11 @@ const (
 )
 
 const (
-	ItemComponentDamage         int32 = 3
-	ItemComponentEnchantments   int32 = 13
-	ItemComponentPotionContents int32 = 49
-	MaxItemComponentType        int32 = 103
+	ItemComponentDamage              int32 = 3
+	ItemComponentEnchantments        int32 = 13
+	ItemComponentPotionContents      int32 = 49
+	ItemComponentPotionDurationScale int32 = 50
+	MaxItemComponentType             int32 = 103
 )
 
 const (
@@ -97,6 +98,7 @@ const (
 	ItemConsumeEffectClearAllStatusEffects
 	ItemConsumeEffectTeleportRandomly
 	ItemConsumeEffectSuspiciousStew
+	ItemConsumeEffectPotionContents
 )
 
 type ItemConsumeEffect struct {

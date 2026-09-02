@@ -22,6 +22,24 @@ const (
 
 type playerLandingBehavior uint8
 
+func playerEffectResetsFallDistance(player game.Player) bool {
+	_, slowFalling := player.ActiveEffects.Find(game.MobEffectSlowFalling)
+	_, levitation := player.ActiveEffects.Find(game.MobEffectLevitation)
+
+	return slowFalling || levitation
+}
+
+func playerSafeFallDistanceFor(player game.Player) float32 {
+	safeDistance := float32(playerSafeFallDistance)
+	jumpBoost, active := player.ActiveEffects.Find(game.MobEffectJumpBoost)
+
+	if active {
+		safeDistance += float32(jumpBoost.Amplifier + 1)
+	}
+
+	return safeDistance
+}
+
 func (r *Runtime) playerMovementResetsFallDistance(previous, current game.Player, inWater bool) bool {
 	if inWater || r.playerTouchesFallDamageResettingBlock(current) {
 		return true

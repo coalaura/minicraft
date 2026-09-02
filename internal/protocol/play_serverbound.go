@@ -36,7 +36,6 @@ const (
 
 	maxUntrustedSlotComponents = 1024
 	maxUntrustedComponentBytes = 1 << 20
-	maxPotionRegistryID        = 45
 	maxContainerChangedSlots   = 128
 	maxChatMessageCharacters   = 256
 	chatMessageSignatureLength = 256
@@ -885,10 +884,14 @@ func decodeUntrustedSlotComponent(rd *PacketReader) (game.ItemComponent, error) 
 			seen[holder] = struct{}{}
 		}
 	case game.ItemComponentPotionContents:
-		err = decodeUntrustedPotionComponent(payload)
+		_, err = game.ParsePotionContents(data)
 		if err != nil {
 			return game.ItemComponent{}, err
 		}
+
+		return game.ItemComponent{Type: componentType, Data: data}, nil
+	case game.ItemComponentPotionDurationScale:
+		payload.Float()
 	default:
 		return game.ItemComponent{}, fmt.Errorf("unsupported added slot component type %d", componentType)
 	}
@@ -899,30 +902,6 @@ func decodeUntrustedSlotComponent(rd *PacketReader) (game.ItemComponent, error) 
 	}
 
 	return game.ItemComponent{Type: componentType, Data: data}, nil
-}
-
-func decodeUntrustedPotionComponent(payload *PacketReader) error {
-	if payload.Bool() {
-		potionID := payload.VarInt()
-		if potionID < 0 || potionID > maxPotionRegistryID {
-			return fmt.Errorf("invalid potion registry ID %d", potionID)
-		}
-	}
-
-	if payload.Bool() {
-		payload.Int()
-	}
-
-	customEffectCount := payload.VarInt()
-	if customEffectCount != 0 {
-		return fmt.Errorf("unsupported custom potion effect count %d", customEffectCount)
-	}
-
-	if payload.Bool() {
-		payload.String(maxCommandCharacters)
-	}
-
-	return payload.Err()
 }
 
 func decodeOptionalHashedSlot(rd *PacketReader) (HashedSlot, error) {

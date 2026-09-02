@@ -60,7 +60,9 @@ func (r *Runtime) tickPlayerEffectsLocked(session *Session) []playerSurvivalUpda
 	}
 
 	var changes []playerMobEffectChange
+
 	metadataChanged := false
+	previousEntityFlags := playerEffectEntityFlags(player)
 
 	player, _ = session.updatePlayerState(func(player *game.Player) bool {
 		active := player.ActiveEffects[:0]
@@ -91,6 +93,7 @@ func (r *Runtime) tickPlayerEffectsLocked(session *Session) []playerSurvivalUpda
 		clampPlayerAbsorption(player)
 
 		metadataChanged = previousAbsorption != player.Absorption
+		metadataChanged = metadataChanged || previousEntityFlags != playerEffectEntityFlags(*player)
 
 		return len(changes) != 0 || metadataChanged
 	})
@@ -160,7 +163,7 @@ func (r *Runtime) applyConsumableMobEffects(player *game.Player, effects []game.
 			changes = append(changes, clearPlayerMobEffects(player)...)
 
 			absorptionChanged = absorptionChanged || previousAbsorption != player.Absorption
-		case game.ItemConsumeEffectTeleportRandomly, game.ItemConsumeEffectSuspiciousStew:
+		case game.ItemConsumeEffectTeleportRandomly, game.ItemConsumeEffectSuspiciousStew, game.ItemConsumeEffectPotionContents:
 			// Dynamic stew effects and safe random teleportation require separate stack-component and teleport primitives.
 		}
 	}

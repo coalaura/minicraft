@@ -37,6 +37,8 @@ const (
 	EntityFlagSneaking  = 0x02
 	EntityFlagSprinting = 0x08
 	EntityFlagSwimming  = 0x10
+	EntityFlagInvisible = 0x20
+	EntityFlagGlowing   = 0x40
 
 	LivingFlagUsingItem    = 0x01
 	LivingFlagUsingOffhand = 0x02

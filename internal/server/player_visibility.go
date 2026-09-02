@@ -246,6 +246,8 @@ func (s *Session) sendPlayerMetadata(player game.Player) error {
 		flags |= protocol.EntityFlagSwimming
 	}
 
+	flags |= playerEffectEntityFlags(player)
+
 	if player.UsingItem {
 		livingFlags |= protocol.LivingFlagUsingItem
 
@@ -277,6 +279,22 @@ func (s *Session) sendPlayerMetadata(player game.Player) error {
 	}
 
 	return s.writePacket(protocol.ClientboundEntityMetadataID, metadata)
+}
+
+func playerEffectEntityFlags(player game.Player) byte {
+	flags := byte(0)
+
+	_, invisible := player.ActiveEffects.Find(game.MobEffectInvisibility)
+	if invisible {
+		flags |= protocol.EntityFlagInvisible
+	}
+
+	_, glowing := player.ActiveEffects.Find(game.MobEffectGlowing)
+	if glowing {
+		flags |= protocol.EntityFlagGlowing
+	}
+
+	return flags
 }
 
 func (s *Session) sendPlayerAnimation(player game.Player, animation byte) error {

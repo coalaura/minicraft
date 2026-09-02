@@ -298,8 +298,8 @@ func validateConsumables(items []ItemDefinition, manifest ConsumableManifest) (m
 		consumables[consumable.Name] = consumable
 	}
 
-	if foodCount != 40 || len(consumables) != 41 {
-		return nil, fmt.Errorf("consumable manifest has %d foods and %d consumables, want 40 and 41", foodCount, len(consumables))
+	if foodCount != 40 || len(consumables) != 42 {
+		return nil, fmt.Errorf("consumable manifest has %d foods and %d consumables, want 40 and 42", foodCount, len(consumables))
 	}
 
 	return consumables, nil
@@ -311,7 +311,7 @@ func validConsumeEffect(effect ConsumeEffectMetadata) bool {
 		return len(effect.Effects) > 0 && effect.Probability > 0 && effect.Probability <= 1
 	case "remove":
 		return len(effect.Remove) > 0
-	case "clear", "suspicious_stew":
+	case "clear", "suspicious_stew", "potion_contents":
 		return true
 	case "teleport":
 		return effect.Diameter > 0
@@ -405,6 +405,8 @@ func itemConsumeEffect(effect ConsumeEffectMetadata) string {
 		return typeName + "{Type: ItemConsumeEffectClearAllStatusEffects}"
 	case "teleport":
 		return fmt.Sprintf("%s{Type: ItemConsumeEffectTeleportRandomly, Diameter: %g}", typeName, effect.Diameter)
+	case "potion_contents":
+		return typeName + "{Type: ItemConsumeEffectPotionContents}"
 	default:
 		return typeName + "{Type: ItemConsumeEffectSuspiciousStew}"
 	}

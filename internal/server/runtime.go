@@ -648,12 +648,14 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 		}
 	}
 
-	fallDistanceReset := r.playerMovementResetsFallDistance(previous, *session.Player, inWater)
+	effectResetsFallDistance := playerEffectResetsFallDistance(*session.Player)
+
+	fallDistanceReset := effectResetsFallDistance || r.playerMovementResetsFallDistance(previous, *session.Player, inWater)
 	if fallDistanceReset {
 		session.Player.FallDistance = 0
 	}
 
-	if verticalDelta < 0 && !inWater {
+	if verticalDelta < 0 && !inWater && !effectResetsFallDistance {
 		session.Player.FallDistance -= float32(verticalDelta)
 	}
 
@@ -666,7 +668,10 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 
 			landingBehavior := playerLandingBehaviorForBlock(landedBlock)
 
-			damage := playerLandingDamage(landingBehavior, fallDistance, session.Player.Sneaking)
+			safeFallDistance := playerSafeFallDistanceFor(*session.Player)
+			adjustedFallDistance := fallDistance - (safeFallDistance - playerSafeFallDistance)
+
+			damage := playerLandingDamage(landingBehavior, adjustedFallDistance, session.Player.Sneaking)
 			if damage > 0 {
 				session.playerMx.Unlock()
 
