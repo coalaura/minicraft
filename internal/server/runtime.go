@@ -583,7 +583,6 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 	var (
 		survivalUpdate playerSurvivalUpdate
 		damaged        bool
-		motionChanged  bool
 	)
 
 	r.worldMutationMu.Lock()
@@ -677,20 +676,13 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 			}
 
 			if !session.Player.Dead {
-				motionChanged = applyPlayerLandingVelocity(session.Player, landingBehavior, verticalDelta)
+				applyPlayerLandingVelocity(session.Player, landingBehavior)
 			}
 		}
 	}
 
 	current := *session.Player
 	session.playerMx.Unlock()
-
-	if motionChanged {
-		err := session.sendPlayerMotion(current)
-		if err != nil {
-			session.Log.Warnf("[play] failed to update player motion: %v\n", err)
-		}
-	}
 
 	if session.mining.active || session.mining.delayed {
 		if !r.validMiningState(session, current, session.mining) {
@@ -737,13 +729,6 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 				err = other.sendPlayerMetadata(current)
 				if err != nil {
 					other.Log.Warnf("[play] failed to update player pose: %v\n", err)
-				}
-			}
-
-			if motionChanged {
-				err = other.sendPlayerMotion(current)
-				if err != nil {
-					other.Log.Warnf("[play] failed to update player motion: %v\n", err)
 				}
 			}
 		}

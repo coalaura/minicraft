@@ -226,17 +226,6 @@ func (s *Session) sendPlayerMovement(previous, current game.Player) error {
 	return s.writePacket(protocol.ClientboundSetHeadRotationID, head)
 }
 
-func (s *Session) sendPlayerMotion(player game.Player) error {
-	motion := protocol.SetEntityMotion{
-		EntityID:  player.EntityID,
-		VelocityX: player.Velocity.X,
-		VelocityY: player.Velocity.Y,
-		VelocityZ: player.Velocity.Z,
-	}
-
-	return s.writePacket(protocol.ClientboundSetEntityMotionID, motion)
-}
-
 func (s *Session) sendPlayerMetadata(player game.Player) error {
 	flags := byte(0)
 	livingFlags := byte(0)

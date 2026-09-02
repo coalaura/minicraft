@@ -212,16 +212,9 @@ func playerLandingDamage(behavior playerLandingBehavior, fallDistance float32, s
 	return calculatePlayerFallDamage(fallDistance)
 }
 
-func applyPlayerLandingVelocity(player *game.Player, behavior playerLandingBehavior, verticalDelta float64) bool {
-	authoritativeY := player.Velocity.Y
-	landingY := authoritativeY
-
-	if landingY >= 0 && verticalDelta < 0 {
-		landingY = verticalDelta
-	}
-
-	if landingY >= 0 {
-		return false
+func applyPlayerLandingVelocity(player *game.Player, behavior playerLandingBehavior) {
+	if player.Velocity.Y >= 0 {
+		return
 	}
 
 	switch behavior {
@@ -229,19 +222,17 @@ func applyPlayerLandingVelocity(player *game.Player, behavior playerLandingBehav
 		if player.Sneaking {
 			player.Velocity.Y = 0
 		} else {
-			player.Velocity.Y = -landingY * 0.66
+			player.Velocity.Y *= -0.66
 		}
 	case playerLandingSlime:
 		if player.Sneaking {
 			player.Velocity.Y = 0
 		} else {
-			player.Velocity.Y = -landingY
+			player.Velocity.Y = -player.Velocity.Y
 		}
 	default:
 		player.Velocity.Y = 0
 	}
-
-	return player.Velocity.Y != authoritativeY
 }
 
 func calculatePlayerFallDamageWithMultiplier(fallDistance, multiplier float32) float32 {

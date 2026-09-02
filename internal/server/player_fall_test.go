@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
@@ -354,39 +353,76 @@ func TestBedFamilyLandingAndCollision(t *testing.T) {
 	}
 }
 
-func TestPlayerBounceMotionPacket(t *testing.T) {
+func TestPlayerLandingDoesNotSendMotionPacket(t *testing.T) {
 	result := runPlayerLandingTest(t, game.SlimeBlock, 10, false)
 
-	packets := result.connection.packets(t)
+	if result.player.Velocity.Y != 2 {
+		t.Fatalf("server landing velocity = %v, want 2", result.player.Velocity.Y)
+	}
 
-	var motionPacket protocol.Packet
+	assertNoPlayerMotionPacket(t, result.connection)
+}
 
-	found := false
+func TestPlayerSlimeLandingPacketsDoNotOverrideClientBounce(t *testing.T) {
+	world := &game.World{}
 
-	for _, packet := range packets {
-		if packet.ID == protocol.ClientboundSetEntityMotionID {
-			motionPacket = packet
-			found = true
+	world.SetBlock(game.BlockPosition{}, game.SlimeBlock)
 
-			break
+	t.Run("position and grounded", func(t *testing.T) {
+		_, session, recording := newPlayerFallTestRuntime(t, world)
+
+		session.Player.Position = game.Position{X: 0.5, Y: 3, Z: 0.5}
+
+		recording.reset()
+
+		err := session.handleMovePlayerPosition(protocol.MovePlayerPosition{
+			X:     0.5,
+			Y:     1,
+			Z:     0.5,
+			Flags: protocol.MovementFlagOnGround,
+		})
+		if err != nil {
+			t.Fatalf("land on slime: %v", err)
 		}
-	}
 
-	if !found {
-		t.Fatalf("landing packet IDs = %v, missing motion", result.connection.packetIDs(t))
-	}
+		player := session.snapshotPlayer()
+		if player.FallDistance != 0 || player.Velocity.Y != 0 {
+			t.Fatalf("position slime landing = distance %v velocity %v, want distance 0 velocity 0", player.FallDistance, player.Velocity.Y)
+		}
 
-	var expected protocol.PacketWriter
+		assertNoPlayerMotionPacket(t, recording)
+	})
 
-	protocol.SetEntityMotion{
-		EntityID:  result.player.EntityID,
-		VelocityX: result.player.Velocity.X,
-		VelocityY: result.player.Velocity.Y,
-		VelocityZ: result.player.Velocity.Z,
-	}.Encode(&expected)
+	t.Run("status only grounded", func(t *testing.T) {
+		_, session, recording := newPlayerFallTestRuntime(t, world)
 
-	if !bytes.Equal(motionPacket.Data, expected.Buffer.Bytes()) {
-		t.Fatalf("motion payload = %x, want %x", motionPacket.Data, expected.Buffer.Bytes())
+		session.Player.Position = game.Position{X: 0.5, Y: 3, Z: 0.5}
+
+		err := session.handleMovePlayerPosition(protocol.MovePlayerPosition{X: 0.5, Y: 1, Z: 0.5})
+		if err != nil {
+			t.Fatalf("move onto slime: %v", err)
+		}
+
+		recording.reset()
+
+		session.handleMovePlayerStatus(protocol.MovePlayerStatus{Flags: protocol.MovementFlagOnGround})
+
+		player := session.snapshotPlayer()
+		if player.FallDistance != 0 || player.Velocity.Y != 0 {
+			t.Fatalf("status-only slime landing = distance %v velocity %v, want distance 0 velocity 0", player.FallDistance, player.Velocity.Y)
+		}
+
+		assertNoPlayerMotionPacket(t, recording)
+	})
+}
+
+func assertNoPlayerMotionPacket(t *testing.T, connection *recordingConnection) {
+	t.Helper()
+
+	for _, packetID := range connection.packetIDs(t) {
+		if packetID == protocol.ClientboundSetEntityMotionID {
+			t.Fatalf("landing packet IDs = %v, unexpected motion", connection.packetIDs(t))
+		}
 	}
 }
 
