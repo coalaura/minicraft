@@ -1,6 +1,9 @@
 package game
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestMobEffectInstanceUpdateHigherAmplifierPreservesShorterEffect(t *testing.T) {
 	instance := NewMobEffectInstance(MobEffectSpeed, 100, 0, true, true, true)
@@ -115,5 +118,56 @@ func TestMobEffectInstanceCloneDeepCopiesHiddenChain(t *testing.T) {
 
 	if instance.HiddenEffect.Duration != 5 {
 		t.Fatalf("source hidden duration changed through clone: %d", instance.HiddenEffect.Duration)
+	}
+}
+
+func TestMobEffectInstanceWithScaledDurationCopiesVisibleDetailsOnly(t *testing.T) {
+	hidden := NewMobEffectInstance(MobEffectPoison, 11, 0, false, true, true)
+	instance := NewMobEffectInstance(MobEffectRegeneration, 5, 2, true, false, false)
+
+	instance.HiddenEffect = &hidden
+
+	scaled := instance.WithScaledDuration(0.5)
+
+	if scaled.Effect != instance.Effect || scaled.Duration != 2 || scaled.Amplifier != 2 || !scaled.Ambient || scaled.Visible || scaled.ShowIcon {
+		t.Fatalf("scaled instance = %+v", scaled)
+	}
+
+	if scaled.HiddenEffect != nil {
+		t.Fatalf("scaled hidden effect = %+v, want nil", scaled.HiddenEffect)
+	}
+
+	if instance.Duration != 5 || instance.HiddenEffect == nil || instance.HiddenEffect.Duration != 11 {
+		t.Fatalf("source instance changed during scaling: %+v", instance)
+	}
+}
+
+func TestMobEffectInstanceWithScaledDurationMatchesJavaFloatExtremes(t *testing.T) {
+	instance := NewMobEffectInstance(MobEffectSpeed, 5, 0, false, true, true)
+
+	if instance.WithScaledDuration(0).Duration != 1 {
+		t.Fatal("zero scale did not clamp finite duration to one")
+	}
+
+	if instance.WithScaledDuration(float32(math.NaN())).Duration != 1 {
+		t.Fatal("NaN scale did not match Java's minimum duration")
+	}
+
+	if instance.WithScaledDuration(float32(math.Inf(-1))).Duration != 1 {
+		t.Fatal("negative infinity scale did not match Java's minimum duration")
+	}
+
+	if instance.WithScaledDuration(float32(math.Inf(1))).Duration != math.MaxInt32 {
+		t.Fatal("positive infinity scale did not match Java's maximum int duration")
+	}
+
+	infinite := NewMobEffectInstance(MobEffectSpeed, InfiniteMobEffectDuration, 0, false, true, true)
+	if infinite.WithScaledDuration(0).Duration != InfiniteMobEffectDuration {
+		t.Fatal("infinite duration changed during scaling")
+	}
+
+	zero := NewMobEffectInstance(MobEffectSpeed, 0, 0, false, true, true)
+	if zero.WithScaledDuration(float32(math.Inf(1))).Duration != 0 {
+		t.Fatal("zero duration changed during scaling")
 	}
 }

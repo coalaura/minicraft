@@ -14,6 +14,34 @@ type chanceFoodEffectTest struct {
 	want   bool
 }
 
+func TestConsumableCompletionPrecedesFoodTick(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	actor, _ := newFoodUseTestSession(t, runtime, "Actor", game.GameModeSurvival)
+
+	actor.Player.FoodLevel = 16
+	actor.Player.Saturation = 0
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemApple, Count: 1}
+
+	startFoodUse(t, actor)
+
+	tickFoodUse(runtime, 31)
+
+	actor.updatePlayerState(func(player *game.Player) bool {
+		player.Health = 10
+		player.FoodTickTimer = 9
+
+		return true
+	})
+
+	runtime.Tick()
+
+	player := actor.snapshotPlayer()
+	if player.FoodLevel != 20 || !closeHungerValue(player.Health, 10.4) || player.FoodTickTimer != 0 {
+		t.Fatalf("completion-tick food processing = %+v", player)
+	}
+}
+
 func TestGoldenAppleConsumablesApplyExpectedEffectsAndAbsorption(t *testing.T) {
 	t.Run("golden apple", func(t *testing.T) {
 		runtime := NewRuntime(&game.World{})
@@ -31,8 +59,8 @@ func TestGoldenAppleConsumablesApplyExpectedEffectsAndAbsorption(t *testing.T) {
 
 		player := actor.snapshotPlayer()
 
-		assertPlayerEffect(t, player, game.MobEffectRegeneration, 99, 1)
-		assertPlayerEffect(t, player, game.MobEffectAbsorption, 2399, 0)
+		assertPlayerEffect(t, player, game.MobEffectRegeneration, 100, 1)
+		assertPlayerEffect(t, player, game.MobEffectAbsorption, 2400, 0)
 
 		if player.FoodLevel != 14 || player.Saturation != 9.6 || player.Absorption != 4 {
 			t.Fatalf("golden apple state = %+v", player)
@@ -63,10 +91,10 @@ func TestGoldenAppleConsumablesApplyExpectedEffectsAndAbsorption(t *testing.T) {
 
 		player := actor.snapshotPlayer()
 
-		assertPlayerEffect(t, player, game.MobEffectRegeneration, 399, 1)
-		assertPlayerEffect(t, player, game.MobEffectResistance, 5999, 0)
-		assertPlayerEffect(t, player, game.MobEffectFireResistance, 5999, 0)
-		assertPlayerEffect(t, player, game.MobEffectAbsorption, 2399, 3)
+		assertPlayerEffect(t, player, game.MobEffectRegeneration, 400, 1)
+		assertPlayerEffect(t, player, game.MobEffectResistance, 6000, 0)
+		assertPlayerEffect(t, player, game.MobEffectFireResistance, 6000, 0)
+		assertPlayerEffect(t, player, game.MobEffectAbsorption, 2400, 3)
 
 		if player.Absorption != 16 {
 			t.Fatalf("enchanted golden apple absorption = %v, want 16", player.Absorption)
@@ -97,11 +125,38 @@ func TestChanceFoodEffectsUseRuntimeEntityRandom(t *testing.T) {
 
 			startFoodUse(t, actor)
 
-			tickFoodUse(runtime, 32)
+			tickFoodUse(runtime, 31)
 
-			_, active := actor.snapshotPlayer().ActiveEffects.Find(game.MobEffectHunger)
+			actor.updatePlayerState(func(player *game.Player) bool {
+				player.Exhaustion = 0
+
+				return true
+			})
+
+			runtime.Tick()
+
+			player := actor.snapshotPlayer()
+
+			instance, active := player.ActiveEffects.Find(game.MobEffectHunger)
 			if active != test.want {
 				t.Fatalf("hunger active = %t, want %t", active, test.want)
+			}
+
+			if test.want && (instance.Duration != 600 || player.Exhaustion != 0) {
+				t.Fatalf("completion-tick hunger state = effect %+v exhaustion %v", instance, player.Exhaustion)
+			}
+
+			if !test.want {
+				return
+			}
+
+			runtime.Tick()
+
+			player = actor.snapshotPlayer()
+			instance, active = player.ActiveEffects.Find(game.MobEffectHunger)
+
+			if !active || instance.Duration != 599 || player.Exhaustion != 0.005 {
+				t.Fatalf("next-tick hunger state = effect %+v active %t exhaustion %v", instance, active, player.Exhaustion)
 			}
 		})
 	}
@@ -124,7 +179,7 @@ func TestPoisonousFoodsApplyExpectedEffects(t *testing.T) {
 
 		tickFoodUse(runtime, 32)
 
-		assertPlayerEffect(t, actor.snapshotPlayer(), game.MobEffectPoison, 99, 0)
+		assertPlayerEffect(t, actor.snapshotPlayer(), game.MobEffectPoison, 100, 0)
 	})
 
 	t.Run("pufferfish", func(t *testing.T) {
@@ -141,9 +196,9 @@ func TestPoisonousFoodsApplyExpectedEffects(t *testing.T) {
 
 		player := actor.snapshotPlayer()
 
-		assertPlayerEffect(t, player, game.MobEffectPoison, 1199, 1)
-		assertPlayerEffect(t, player, game.MobEffectHunger, 299, 2)
-		assertPlayerEffect(t, player, game.MobEffectNausea, 299, 0)
+		assertPlayerEffect(t, player, game.MobEffectPoison, 1200, 1)
+		assertPlayerEffect(t, player, game.MobEffectHunger, 300, 2)
+		assertPlayerEffect(t, player, game.MobEffectNausea, 300, 0)
 	})
 
 	t.Run("spider eye", func(t *testing.T) {
@@ -158,7 +213,7 @@ func TestPoisonousFoodsApplyExpectedEffects(t *testing.T) {
 
 		tickFoodUse(runtime, 32)
 
-		assertPlayerEffect(t, actor.snapshotPlayer(), game.MobEffectPoison, 99, 0)
+		assertPlayerEffect(t, actor.snapshotPlayer(), game.MobEffectPoison, 100, 0)
 	})
 }
 
@@ -207,10 +262,22 @@ func TestHoneyAndMilkConsumablesRemoveEffectsAndPreserveCreativeItems(t *testing
 
 		actorConnection.reset()
 
-		tickFoodUse(runtime, 32)
+		tickFoodUse(runtime, 31)
+
+		actor.updatePlayerState(func(player *game.Player) bool {
+			player.Health = 10
+			player.InvulnerableTime = 0
+			player.LastHurt = 0
+			player.ActiveEffects.Clear()
+			player.ActiveEffects.Add(game.NewMobEffectInstance(game.MobEffectPoison, 25, 0, false, true, true))
+
+			return true
+		})
+
+		runtime.Tick()
 
 		player := actor.snapshotPlayer()
-		if len(player.ActiveEffects) != 0 || !player.Inventory.Offhand.Equal(game.ItemStack{Item: game.ItemBucket, Count: 1}) {
+		if player.Health != 9 || len(player.ActiveEffects) != 0 || !player.Inventory.Offhand.Equal(game.ItemStack{Item: game.ItemBucket, Count: 1}) {
 			t.Fatalf("offhand milk result = %+v", player)
 		}
 

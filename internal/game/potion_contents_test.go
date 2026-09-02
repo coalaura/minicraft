@@ -130,8 +130,13 @@ func TestPotionDurationScaleAndEffects(t *testing.T) {
 		t.Fatalf("scaled durations = %+v", effects)
 	}
 
-	if effects[2].HiddenEffect == nil || effects[2].HiddenEffect.Duration != 11 {
-		t.Fatalf("scaled hidden effect = %+v", effects[2].HiddenEffect)
+	if effects[2].HiddenEffect != nil {
+		t.Fatalf("scaled hidden effect = %+v, want nil", effects[2].HiddenEffect)
+	}
+
+	source := contents.CustomEffects[2]
+	if source.Duration != 5 || source.HiddenEffect == nil || source.HiddenEffect.Duration != 11 {
+		t.Fatalf("source effect changed during scaling: %+v", source)
 	}
 
 	effects = contents.Effects(0)

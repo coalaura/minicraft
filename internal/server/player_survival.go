@@ -201,13 +201,6 @@ func (r *Runtime) tickPlayerSurvivalLocked(session *Session) []playerSurvivalUpd
 		return updates
 	}
 
-	useUpdates, useChanged := r.tickUsingItemLocked(session)
-	if useChanged {
-		updates = append(updates, useUpdates...)
-	}
-
-	player = session.snapshotPlayer()
-
 	wasBurning := player.RemainingFireTicks > 0
 
 	lava := r.fluidContact(player.CollisionBox(), game.FluidTypeLava, true).Depth > 0
@@ -357,6 +350,11 @@ func (r *Runtime) tickPlayerSurvivalLocked(session *Session) []playerSurvivalUpd
 	player = session.snapshotPlayer()
 	if player.Dead {
 		return updates
+	}
+
+	useUpdates, useChanged := r.tickUsingItemLocked(session)
+	if useChanged {
+		updates = append(updates, useUpdates...)
 	}
 
 	updates = append(updates, r.tickPlayerFoodLocked(session)...)

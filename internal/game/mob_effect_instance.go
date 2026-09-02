@@ -34,7 +34,8 @@ func (instance MobEffectInstance) HasRemainingDuration() bool {
 }
 
 func (instance MobEffectInstance) WithScaledDuration(scale float32) MobEffectInstance {
-	clone := instance.Clone()
+	clone := instance
+	clone.HiddenEffect = nil
 
 	if clone.Duration == InfiniteMobEffectDuration || clone.Duration == 0 {
 		return clone
