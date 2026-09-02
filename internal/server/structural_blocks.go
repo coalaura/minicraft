@@ -576,6 +576,11 @@ func plantSupported(blockAt func(game.BlockPosition) game.Block, position game.B
 	}
 
 	plantDefinition, _ := plant.Definition()
+
+	if supportedCrop(plant) {
+		return supportDefinition.Name == "farmland"
+	}
+
 	if plantDefinition.Name == "dead_bush" || strings.HasSuffix(plantDefinition.Name, "dry_grass") {
 		return supportBlock.HasTrait(game.BlockTraitDirt) || supportDefinition.Name == "farmland" || supportDefinition.Name == "sand" || supportDefinition.Name == "red_sand" || strings.HasSuffix(supportDefinition.Name, "terracotta")
 	}
@@ -585,6 +590,13 @@ func plantSupported(blockAt func(game.BlockPosition) game.Block, position game.B
 	}
 
 	return supportBlock.HasTrait(game.BlockTraitDirt) || supportDefinition.Name == "farmland"
+}
+
+func supportedCrop(block game.Block) bool {
+	return sameBlockType(block, game.Wheat) ||
+		sameBlockType(block, game.Carrots) ||
+		sameBlockType(block, game.Potatoes) ||
+		sameBlockType(block, game.Beetroots)
 }
 
 func recalculateDoor(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) game.Block {

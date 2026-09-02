@@ -60,6 +60,8 @@ func (r *Runtime) Tick() game.TimeState {
 	r.tickScheduledBlocksLocked()
 	r.tickScheduledFluidsLocked()
 
+	r.tickRandomBlocksLocked()
+
 	miningMutations := r.tickMiningAttemptsLocked()
 
 	r.runtimeBlockMutations = append(r.runtimeBlockMutations, miningMutations...)

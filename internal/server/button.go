@@ -8,6 +8,12 @@ const (
 )
 
 func (r *Runtime) tickBlockLocked(position game.BlockPosition, block game.Block) {
+	if sameBlockType(block, game.Farmland) {
+		r.tickFarmlandSurvivalLocked(position, block)
+
+		return
+	}
+
 	if block.Behavior() != game.BlockBehaviorButton || blockProperty(block, "powered") != "true" {
 		return
 	}

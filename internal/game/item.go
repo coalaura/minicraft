@@ -57,11 +57,18 @@ const (
 	ItemUseAnimationDrink
 )
 
+const (
+	ItemOnBlockBehaviorNone ItemOnBlockBehavior = iota
+	ItemOnBlockBehaviorHoe
+)
+
 type Item uint16
 
 type ItemPlacementRule uint8
 
 type ItemUseAnimation uint8
+
+type ItemOnBlockBehavior uint8
 
 type ItemMiningRule struct {
 	Trait          BlockTrait
@@ -203,6 +210,14 @@ func (item Item) PlacementRule() ItemPlacementRule {
 	}
 
 	return itemPlacementRules[item]
+}
+
+func (item Item) OnBlockBehavior() ItemOnBlockBehavior {
+	if !item.Valid() {
+		return ItemOnBlockBehaviorNone
+	}
+
+	return itemOnBlockBehaviors[item]
 }
 
 func (item Item) MiningProperties() ItemMining {

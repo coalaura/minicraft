@@ -1,6 +1,7 @@
 package server
 
 import (
+	"slices"
 	"sort"
 	"sync"
 
@@ -18,9 +19,10 @@ type RuntimeEntityTicker interface {
 type ActiveChunk struct {
 	Position LoadedChunk
 
-	mu            sync.RWMutex
-	entities      map[int32]RuntimeEntity
-	blockEntities map[game.BlockPosition]RuntimeBlockEntity
+	mu             sync.RWMutex
+	entities       map[int32]RuntimeEntity
+	blockEntities  map[game.BlockPosition]RuntimeBlockEntity
+	randomSections map[int32]struct{}
 }
 
 type activeChunkReference struct {
@@ -106,6 +108,32 @@ func (c *ActiveChunk) BlockEntity(position game.BlockPosition) (RuntimeBlockEnti
 
 	entity, present := c.blockEntities[position]
 	return entity, present
+}
+
+func (c *ActiveChunk) markRandomTickSection(sectionMinY int32) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.randomSections == nil {
+		c.randomSections = make(map[int32]struct{})
+	}
+
+	c.randomSections[sectionMinY] = struct{}{}
+}
+
+func (c *ActiveChunk) snapshotRandomTickSections() []int32 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	sections := make([]int32, 0, len(c.randomSections))
+
+	for sectionMinY := range c.randomSections {
+		sections = append(sections, sectionMinY)
+	}
+
+	slices.Sort(sections)
+
+	return sections
 }
 
 func (c *ActiveChunk) snapshotTickers() ([]runtimeEntitySnapshot, []runtimeBlockEntitySnapshot) {

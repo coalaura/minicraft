@@ -92,6 +92,7 @@ type queuedBlockMutation struct {
 type positionalBlockSound struct {
 	position game.BlockPosition
 	sound    protocol.Sound
+	exclude  *Session
 }
 
 type blockMutationSection struct {
@@ -407,6 +408,10 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 
 	r.World.SetBlocks(committed)
 
+	r.promoteRandomTickSections(committed)
+
+	r.scheduleFarmlandSurvivalChecksLocked(committed)
+
 	r.scheduleFluidNeighborsLocked(committed)
 
 	r.reconcileRuntimeBlockEntities(records)
@@ -537,6 +542,10 @@ func (r *Runtime) deliverBlockMutation(delivery blockMutationDelivery, lightUpda
 		}
 
 		for _, runtimeSound := range delivery.runtimeSounds {
+			if other == runtimeSound.exclude {
+				continue
+			}
+
 			err := other.sendSoundIfLoaded(runtimeSound.sound, runtimeSound.position)
 			if err != nil {
 				other.Log.Warnf("[play] failed to send runtime block sound: %v\n", err)

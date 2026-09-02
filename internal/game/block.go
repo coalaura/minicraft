@@ -39,6 +39,7 @@ const (
 	BlockTraitFluidExcluded
 	BlockTraitFallDamageResetting
 	BlockTraitBed
+	BlockTraitMaintainsFarmland
 )
 
 const (
@@ -173,6 +174,12 @@ type BoundedGenerator interface {
 	GenerationBounds(seed int64, chunk ChunkPosition) (minY, maxY int32, ok bool)
 }
 
+// RandomTickSectionGenerator optionally provides a definitive section-level
+// random-tick eligibility hint for generated terrain.
+type RandomTickSectionGenerator interface {
+	RandomTickSection(seed int64, chunk ChunkPosition, sectionMinY int32) (mayTick bool, definitive bool)
+}
+
 func (block Block) Valid() bool {
 	return block <= MaxBlockState
 }
@@ -224,6 +231,14 @@ func (block Block) Behavior() BlockBehavior {
 	}
 
 	return blockDefinitions[stateBlockIDs[block]].Behavior
+}
+
+func (block Block) RandomlyTicks() bool {
+	if !block.Valid() {
+		return false
+	}
+
+	return stateRandomlyTicks[block]
 }
 
 func (block Block) LightProperties() (emission, filter uint8) {

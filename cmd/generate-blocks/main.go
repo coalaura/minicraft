@@ -308,6 +308,23 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, lootPrograms Bloc
 	fmt.Fprintln(&output, "}")
 	fmt.Fprintln(&output)
 
+	fmt.Fprintln(&output, "var stateRandomlyTicks = [MaxBlockState + 1]bool{")
+
+	for _, block := range blocks {
+		for state := block.MinState; state <= block.MaxState; state++ {
+			if supportedRandomTickState(block, state) {
+				fmt.Fprintf(&output, "\t%d: true,\n", state)
+			}
+
+			if state == block.MaxState {
+				break
+			}
+		}
+	}
+
+	fmt.Fprintln(&output, "}")
+	fmt.Fprintln(&output)
+
 	fmt.Fprintln(&output, "var stateFluidStates = [...]fluidStateData{")
 
 	for _, block := range blocks {
@@ -387,6 +404,7 @@ func readMiningTags(root string) (MiningTags, error) {
 		{Name: "wool", Value: "BlockTraitWool"},
 		{Name: "fall_damage_resetting", Value: "BlockTraitFallDamageResetting"},
 		{Name: "beds", Value: "BlockTraitBed"},
+		{Name: "maintains_farmland", Value: "BlockTraitMaintainsFarmland"},
 	}
 
 	for _, tag := range traitTags {
@@ -716,6 +734,18 @@ func blockFluidState(block BlockDefinition, state uint16) (fluidType string, lev
 	}
 }
 
+func supportedRandomTickState(block BlockDefinition, state uint16) bool {
+	switch block.Name {
+	case "farmland":
+		return true
+	case "wheat", "carrots", "potatoes", "beetroots":
+		age := propertyInt(block, state, "age")
+		return age < len(block.Properties[0].Values)-1
+	default:
+		return false
+	}
+}
+
 func blockBehavior(block BlockDefinition) string {
 	if strings.HasSuffix(block.Name, "_chain") {
 		return "BlockBehaviorNone"
@@ -726,6 +756,8 @@ func blockBehavior(block BlockDefinition) string {
 	}
 
 	switch {
+	case block.Name == "wheat" || block.Name == "carrots" || block.Name == "potatoes" || block.Name == "beetroots":
+		return "BlockBehaviorPlant"
 	case block.Name == "chest" || block.Name == "trapped_chest" || isCopperChest(block.Name):
 		return "BlockBehaviorChest"
 	case strings.HasSuffix(block.Name, "_slab"):

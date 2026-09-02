@@ -50,6 +50,19 @@ func (s *Session) handleUseItemOn(interaction protocol.UseItemOn) error {
 		return s.resynchronizePlacement(interaction.Position, interaction.Sequence)
 	}
 
+	handled, result, affected, err = s.Runtime.UseHeldItemOnBlock(s, interaction, stack.Item)
+	if err != nil {
+		return err
+	}
+
+	if handled {
+		if !result.Allowed || !result.Changed {
+			return s.resynchronizePlacementPrediction(affected, interaction.Sequence, inventoryBefore)
+		}
+
+		return s.sendBlockChangedAck(interaction.Sequence)
+	}
+
 	result, affected, err = s.Runtime.PlaceHeldItem(s, interaction, stack.Item)
 	if err != nil {
 		return err

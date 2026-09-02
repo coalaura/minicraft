@@ -280,10 +280,36 @@ func (r *Runtime) damageMiningTool(session *Session, tool miningTool, block game
 		}
 	}
 
-	damage := int32(0)
-	unbreaking := tool.stack.EnchantmentLevel(game.EnchantmentUnbreaking)
+	selectStack := func(player *game.Player) *game.ItemStack {
+		return player.Inventory.Held(tool.slot)
+	}
 
-	for range mining.DamagePerBlock {
+	return r.damageItem(session, tool.stack, mining.DamagePerBlock, definition.MaxDurability, selectStack)
+}
+
+func (r *Runtime) damageHeldItem(session *Session, hand int32, expected game.ItemStack, amount int32) (*game.PlayerInventory, bool) {
+	definition, valid := expected.Item.Definition()
+	if !valid || definition.MaxDurability <= 0 || amount <= 0 {
+		return nil, false
+	}
+
+	selectStack := func(player *game.Player) *game.ItemStack {
+		stack, valid := heldItemPointer(player, hand)
+		if !valid {
+			return nil
+		}
+
+		return stack
+	}
+
+	return r.damageItem(session, expected, amount, definition.MaxDurability, selectStack)
+}
+
+func (r *Runtime) damageItem(session *Session, expected game.ItemStack, amount, maximumDurability int32, selectStack func(*game.Player) *game.ItemStack) (*game.PlayerInventory, bool) {
+	damage := int32(0)
+	unbreaking := expected.EnchantmentLevel(game.EnchantmentUnbreaking)
+
+	for range amount {
 		if unbreaking > 0 {
 			r.miningRandomMu.Lock()
 			prevented := r.miningRandom(int(unbreaking)+1) != 0
@@ -308,13 +334,13 @@ func (r *Runtime) damageMiningTool(session *Session, tool miningTool, block game
 	broke := false
 
 	_, changed := session.updatePlayerState(func(player *game.Player) bool {
-		stack := player.Inventory.Held(tool.slot)
-		if stack == nil || !stack.SameItem(tool.stack) {
+		stack := selectStack(player)
+		if stack == nil || !stack.SameItem(expected) {
 			return false
 		}
 
 		newDamage := stack.Damage() + damage
-		if newDamage < definition.MaxDurability {
+		if newDamage < maximumDurability {
 			stack.SetDamage(newDamage)
 
 			return true

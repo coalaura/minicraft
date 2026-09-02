@@ -25,6 +25,7 @@ type Runtime struct {
 	ChatLeaveMessage    string
 	FluidRules          FluidRules
 	FluidEnvironment    FluidEnvironment
+	RandomTickSpeed     int
 
 	// Keep each profile/entity transition ordered as one lifecycle event.
 	lifecycleMu               sync.Mutex
@@ -43,6 +44,8 @@ type Runtime struct {
 	lootRandomFloat           func() float32
 	fluidRandomMu             sync.Mutex
 	fluidRandom               func(game.BlockPosition, int) int
+	randomTickPositionState   int32
+	randomTickRandom          func(int) int
 	chunkLightBuilder         chunkLightBuilder
 	commands                  *commandRegistry
 	blockMutationDeliveryTail chan struct{}
@@ -818,6 +821,7 @@ func NewRuntime(world *game.World) *Runtime {
 	fluidRandom := rand.New(rand.NewPCG(uint64(world.Seed), uint64(world.Seed)^0x9e3779b97f4a7c15))
 	miningRandom := rand.New(rand.NewPCG(uint64(world.Seed)^0x243f6a8885a308d3, uint64(world.Seed)^0x13198a2e03707344))
 	lootRandom := rand.New(rand.NewPCG(uint64(world.Seed)^0x9e3779b97f4a7c15, uint64(world.Seed)^0x243f6a8885a308d3))
+	randomTickRandom := rand.New(rand.NewPCG(uint64(world.Seed)^0xa4093822299f31d0, uint64(world.Seed)^0x082efa98ec4e6c89))
 
 	close(initialDelivery)
 
@@ -827,6 +831,7 @@ func NewRuntime(world *game.World) *Runtime {
 		AllowBlockBreaking:        true,
 		AllowBlockPlacing:         true,
 		FluidRules:                FluidRules{WaterSourceConversion: true},
+		RandomTickSpeed:           defaultRandomTickSpeed,
 		blockMutationDeliveryTail: initialDelivery,
 		commandRandom:             rand.IntN,
 		miningRandom:              miningRandom.IntN,
@@ -835,14 +840,16 @@ func NewRuntime(world *game.World) *Runtime {
 		fluidRandom: func(_ game.BlockPosition, bound int) int {
 			return fluidRandom.IntN(bound)
 		},
-		chunkLightBuilder:   buildChunkLight,
-		activeChunks:        make(map[LoadedChunk]*activeChunkReference),
-		sessionActiveChunks: make(map[*Session]map[LoadedChunk]struct{}),
-		entities:            make(map[int32]RuntimeEntity),
-		entitiesByChunk:     make(map[LoadedChunk]map[int32]RuntimeEntity),
-		entityRandom:        rand.Float32,
-		sessions:            make(map[*Session]*game.Player),
-		connectedSessions:   make(map[*Session]struct{}),
+		randomTickPositionState: int32(world.Seed),
+		randomTickRandom:        randomTickRandom.IntN,
+		chunkLightBuilder:       buildChunkLight,
+		activeChunks:            make(map[LoadedChunk]*activeChunkReference),
+		sessionActiveChunks:     make(map[*Session]map[LoadedChunk]struct{}),
+		entities:                make(map[int32]RuntimeEntity),
+		entitiesByChunk:         make(map[LoadedChunk]map[int32]RuntimeEntity),
+		entityRandom:            rand.Float32,
+		sessions:                make(map[*Session]*game.Player),
+		connectedSessions:       make(map[*Session]struct{}),
 	}
 
 	runtime.commands = newCommandRegistry(runtime)

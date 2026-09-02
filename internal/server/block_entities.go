@@ -88,6 +88,8 @@ func (r *Runtime) dropContainerContents(position game.BlockPosition, items []gam
 func (r *Runtime) newActiveChunk(position LoadedChunk) *ActiveChunk {
 	chunk := &ActiveChunk{Position: position}
 
+	chunk.initializeRandomTickSections(r.World)
+
 	for id, entity := range r.snapshotEntitiesInChunk(position) {
 		chunk.SetEntity(id, entity)
 	}

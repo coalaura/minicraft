@@ -98,6 +98,7 @@ const (
 	SoundBlockStoneHit            SoundEvent = "minecraft:block.stone.hit"
 	SoundBlockStonePlace          SoundEvent = "minecraft:block.stone.place"
 	SoundBlockStoneStep           SoundEvent = "minecraft:block.stone.step"
+	SoundItemHoeTill              SoundEvent = "minecraft:item.hoe.till"
 
 	SoundBlockWoodenDoorClose      SoundEvent = "minecraft:block.wooden_door.close"
 	SoundBlockWoodenDoorOpen       SoundEvent = "minecraft:block.wooden_door.open"
