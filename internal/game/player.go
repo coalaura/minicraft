@@ -9,18 +9,21 @@ const (
 )
 
 const (
-	standingPlayerEyeHeight      = 1.62
-	crouchingPlayerEyeHeight     = 1.27
-	crawlingPlayerEyeHeight      = 0.4
-	defaultBlockInteractionRange = 4.5
+	standingPlayerEyeHeight       = 1.62
+	crouchingPlayerEyeHeight      = 1.27
+	crawlingPlayerEyeHeight       = 0.4
+	defaultBlockInteractionRange  = 4.5
+	defaultEntityInteractionRange = 3.0
 )
 
 const (
-	DefaultPlayerHealth     = 20
-	DefaultPlayerFoodLevel  = 20
-	DefaultPlayerSaturation = 5
-	MaxPlayerSaturation     = 20
-	DefaultPlayerAirSupply  = 300
+	DefaultPlayerHealth       = 20
+	DefaultPlayerFoodLevel    = 20
+	DefaultPlayerSaturation   = 5
+	MaxPlayerSaturation       = 20
+	DefaultPlayerAirSupply    = 300
+	DefaultPlayerAttackDamage = 1
+	DefaultPlayerAttackSpeed  = 4
 )
 
 type PlayerPose uint8
@@ -44,22 +47,25 @@ type Player struct {
 	Rotation Rotation
 	Velocity Velocity
 
-	GameMode            GameMode
-	Health              float32
-	FoodLevel           int32
-	Saturation          float32
-	Exhaustion          float32
-	FoodTickTimer       int32
-	SurvivalTickCount   int64
-	AirSupply           int32
-	FallDistance        float32
-	RemainingFireTicks  int32
-	InvulnerableTime    int32
-	LastHurt            float32
-	Absorption          float32
-	ActiveEffects       ActiveMobEffects
-	Dead                bool
-	SurvivalInitialized bool
+	GameMode             GameMode
+	Health               float32
+	FoodLevel            int32
+	Saturation           float32
+	Exhaustion           float32
+	FoodTickTimer        int32
+	SurvivalTickCount    int64
+	AirSupply            int32
+	FallDistance         float32
+	RemainingFireTicks   int32
+	InvulnerableTime     int32
+	LastHurt             float32
+	Absorption           float32
+	ActiveEffects        ActiveMobEffects
+	Dead                 bool
+	SurvivalInitialized  bool
+	AttackStrengthTicker int32
+	LastMainHandItem     Item
+	LastMainHandItemSet  bool
 
 	OnGround  bool
 	Sneaking  bool
@@ -119,6 +125,23 @@ func (player *Player) AddExhaustion(amount float32) {
 	player.Exhaustion = min(player.Exhaustion+amount, 40)
 }
 
+func (player *Player) TickAttackStrength() {
+	player.AttackStrengthTicker++
+
+	item := player.MainHandItem()
+	if player.LastMainHandItemSet && item == player.LastMainHandItem {
+		return
+	}
+
+	player.LastMainHandItem = item
+	player.LastMainHandItemSet = true
+	player.AttackStrengthTicker = 0
+}
+
+func (player *Player) ResetAttackStrength() {
+	player.AttackStrengthTicker = 0
+}
+
 func (player *Player) StopUsingItem() bool {
 	if !player.UsingItem {
 		return false
@@ -131,6 +154,64 @@ func (player *Player) StopUsingItem() bool {
 	player.UseStack = ItemStack{}
 
 	return true
+}
+
+func (player Player) MainHandAttackDamage() float32 {
+	stack := player.Inventory.Held(player.SelectedHotbarSlot)
+	if stack == nil || stack.Empty() {
+		return DefaultPlayerAttackDamage
+	}
+
+	definition, valid := stack.Item.Definition()
+	if !valid {
+		return DefaultPlayerAttackDamage
+	}
+
+	return DefaultPlayerAttackDamage + definition.AttackDamageModifier
+}
+
+func (player Player) MainHandAttackSpeed() float32 {
+	stack := player.Inventory.Held(player.SelectedHotbarSlot)
+	if stack == nil || stack.Empty() {
+		return DefaultPlayerAttackSpeed
+	}
+
+	definition, valid := stack.Item.Definition()
+	if !valid {
+		return DefaultPlayerAttackSpeed
+	}
+
+	return DefaultPlayerAttackSpeed + definition.AttackSpeedModifier
+}
+
+func (player Player) MainHandItem() Item {
+	stack := player.Inventory.Held(player.SelectedHotbarSlot)
+	if stack == nil || stack.Empty() {
+		return 0
+	}
+
+	return stack.Item
+}
+
+func (player Player) MainHandDamagePerAttack() int32 {
+	stack := player.Inventory.Held(player.SelectedHotbarSlot)
+	if stack == nil || stack.Empty() {
+		return 0
+	}
+
+	definition, valid := stack.Item.Definition()
+	if !valid {
+		return 0
+	}
+
+	return definition.DamagePerAttack
+}
+
+func (player Player) AttackStrength() float32 {
+	delay := float32(20) / player.MainHandAttackSpeed()
+	strength := (float32(player.AttackStrengthTicker) + 0.5) / delay
+
+	return max(0, min(strength, 1))
 }
 
 func (player Player) EyeHeight() float64 {
@@ -162,4 +243,22 @@ func (player Player) IsWithinBlockInteractionRange(position BlockPosition, buffe
 
 	maximumDistance := defaultBlockInteractionRange + buffer
 	return distanceX*distanceX+distanceY*distanceY+distanceZ*distanceZ < maximumDistance*maximumDistance
+}
+
+func (player Player) IsWithinEntityInteractionRange(box AABB, buffer float64, inclusive bool) bool {
+	eye := player.EyePosition()
+
+	distanceX := eye.X - math.Max(box.MinX, math.Min(eye.X, box.MaxX))
+	distanceY := eye.Y - math.Max(box.MinY, math.Min(eye.Y, box.MaxY))
+	distanceZ := eye.Z - math.Max(box.MinZ, math.Min(eye.Z, box.MaxZ))
+
+	maximumDistance := defaultEntityInteractionRange + buffer
+	distanceSquared := distanceX*distanceX + distanceY*distanceY + distanceZ*distanceZ
+	maximumSquared := maximumDistance * maximumDistance
+
+	if inclusive {
+		return distanceSquared <= maximumSquared
+	}
+
+	return distanceSquared < maximumSquared
 }

@@ -20,7 +20,7 @@ func (r *Runtime) randomTickFarmlandLocked(position game.BlockPosition, block ga
 	if hydrated && moisture < farmlandMaximumMoisture {
 		replacement := withBlockProperties(block, game.BlockPropertyValue{Name: "moisture", Value: "7"})
 
-		r.queueRandomTickMutationLocked([]game.BlockChange{{Position: position, Replacement: replacement}}, false)
+		r.queueTickMutationLocked([]game.BlockChange{{Position: position, Replacement: replacement}}, false)
 
 		return
 	}
@@ -32,7 +32,7 @@ func (r *Runtime) randomTickFarmlandLocked(position game.BlockPosition, block ga
 	if moisture > 0 {
 		replacement := withBlockProperties(block, game.BlockPropertyValue{Name: "moisture", Value: decimalBlockPropertyValue(moisture - 1)})
 
-		r.queueRandomTickMutationLocked([]game.BlockChange{{Position: position, Replacement: replacement}}, false)
+		r.queueTickMutationLocked([]game.BlockChange{{Position: position, Replacement: replacement}}, false)
 
 		return
 	}
@@ -44,7 +44,7 @@ func (r *Runtime) randomTickFarmlandLocked(position game.BlockPosition, block ga
 		return
 	}
 
-	r.queueRandomTickMutationLocked([]game.BlockChange{{Position: position, Replacement: game.Dirt}}, true)
+	r.queueTickMutationLocked([]game.BlockChange{{Position: position, Replacement: game.Dirt}}, true)
 }
 
 func (r *Runtime) randomTickCropLocked(position game.BlockPosition, block game.Block) {
@@ -67,7 +67,7 @@ func (r *Runtime) randomTickCropLocked(position game.BlockPosition, block game.B
 	age := blockPropertyInt(block, "age")
 	replacement := withBlockProperties(block, game.BlockPropertyValue{Name: "age", Value: decimalBlockPropertyValue(age + 1)})
 
-	r.queueRandomTickMutationLocked([]game.BlockChange{{Position: position, Replacement: replacement}}, false)
+	r.queueTickMutationLocked([]game.BlockChange{{Position: position, Replacement: replacement}}, false)
 }
 
 func (r *Runtime) farmlandHasWater(position game.BlockPosition) bool {
@@ -120,10 +120,10 @@ func (r *Runtime) tickFarmlandSurvivalLocked(position game.BlockPosition, block 
 		return
 	}
 
-	r.queueRandomTickMutationLocked([]game.BlockChange{{Position: position, Replacement: game.Dirt}}, true)
+	r.queueTickMutationLocked([]game.BlockChange{{Position: position, Replacement: game.Dirt}}, true)
 }
 
-func (r *Runtime) queueRandomTickMutationLocked(changes []game.BlockChange, structural bool) {
+func (r *Runtime) queueTickMutationLocked(changes []game.BlockChange, structural bool) {
 	requiredChanges := len(changes)
 
 	if structural {

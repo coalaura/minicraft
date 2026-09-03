@@ -198,6 +198,13 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		}
 
 		s.handleKeepAlive(keepAlive)
+	case protocol.ServerboundInteractID:
+		interaction, err := protocol.DecodeInteract(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		s.Runtime.handlePlayerInteraction(s, interaction)
 	case protocol.ServerboundMovePlayerPositionID:
 		move, err := protocol.DecodeMovePlayerPosition(packet.Data)
 		if err != nil {

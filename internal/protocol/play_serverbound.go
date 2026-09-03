@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"fmt"
+	"math"
 	"unicode/utf8"
 
 	"github.com/coalaura/minicraft/internal/game"
@@ -18,6 +19,10 @@ const (
 
 	MainHand = 0
 	OffHand  = 1
+
+	InteractActionInteract   InteractAction = 0
+	InteractActionAttack     InteractAction = 1
+	InteractActionInteractAt InteractAction = 2
 
 	PlayerActionStartDestroyBlock = 0
 	PlayerActionAbortDestroyBlock = 1
@@ -53,8 +58,20 @@ const (
 
 type MovementFlags byte
 
+type InteractAction int32
+
 type ConfirmTeleport struct {
 	TeleportID int32
+}
+
+type Interact struct {
+	EntityID        int32
+	Action          InteractAction
+	TargetX         float32
+	TargetY         float32
+	TargetZ         float32
+	Hand            int32
+	SecondaryAction bool
 }
 
 type ChunkBatchReceived struct {
@@ -300,6 +317,45 @@ func DecodeCloseContainer(data []byte) (CloseContainer, error) {
 	}
 
 	return CloseContainer{ContainerID: containerID}, nil
+}
+
+func DecodeInteract(data []byte) (Interact, error) {
+	rd := NewPacketReader(data)
+
+	interaction := Interact{
+		EntityID: rd.VarInt(),
+		Action:   InteractAction(rd.VarInt()),
+	}
+
+	switch interaction.Action {
+	case InteractActionInteract:
+		interaction.Hand = rd.VarInt()
+	case InteractActionAttack:
+	case InteractActionInteractAt:
+		interaction.TargetX = rd.Float()
+		interaction.TargetY = rd.Float()
+		interaction.TargetZ = rd.Float()
+		interaction.Hand = rd.VarInt()
+	default:
+		return Interact{}, fmt.Errorf("invalid interact action %d", interaction.Action)
+	}
+
+	interaction.SecondaryAction = rd.Bool()
+
+	err := rd.Done("interact")
+	if err != nil {
+		return Interact{}, err
+	}
+
+	if interaction.Action != InteractActionAttack && interaction.Hand != MainHand && interaction.Hand != OffHand {
+		return Interact{}, fmt.Errorf("invalid interact hand %d", interaction.Hand)
+	}
+
+	if interaction.Action == InteractActionInteractAt && (!finiteFloat32(interaction.TargetX) || !finiteFloat32(interaction.TargetY) || !finiteFloat32(interaction.TargetZ)) {
+		return Interact{}, fmt.Errorf("interact target vector must be finite")
+	}
+
+	return interaction, nil
 }
 
 func DecodeChatMessage(data []byte) (ChatMessage, error) {
@@ -957,6 +1013,10 @@ func validChatMessage(message string) bool {
 	}
 
 	return true
+}
+
+func finiteFloat32(value float32) bool {
+	return !math.IsNaN(float64(value)) && !math.IsInf(float64(value), 0)
 }
 
 func validCommand(command string) bool {

@@ -24,6 +24,19 @@ type ConsumableManifest struct {
 	Consumables []ConsumableItemMetadata `json:"consumables"`
 }
 
+type AttackAttributesManifest struct {
+	Version    string                         `json:"version"`
+	Sources    map[string]string              `json:"sources"`
+	Attributes []ItemAttackAttributesMetadata `json:"attributes"`
+}
+
+type ItemAttackAttributesMetadata struct {
+	Name            string  `json:"name"`
+	DamageModifier  float32 `json:"damageModifier"`
+	SpeedModifier   float32 `json:"speedModifier"`
+	DamagePerAttack int32   `json:"damagePerAttack"`
+}
+
 type ConsumableItemMetadata struct {
 	Name               string                  `json:"name"`
 	Nutrition          int8                    `json:"nutrition"`
@@ -76,12 +89,13 @@ func main() {
 	itemsPath := flag.String("items", "", "path to items.json")
 	blocksPath := flag.String("blocks", "", "path to blocks.json")
 	consumablesPath := flag.String("consumables", "", "path to item consumables manifest")
+	attackAttributesPath := flag.String("attack-attributes", "", "path to item attack attributes manifest")
 	outputPath := flag.String("output", "", "generated Go output path")
 
 	flag.Parse()
 
-	if *itemsPath == "" || *blocksPath == "" || *consumablesPath == "" || *outputPath == "" {
-		fmt.Fprintln(os.Stderr, "items, blocks, consumables and output are required")
+	if *itemsPath == "" || *blocksPath == "" || *consumablesPath == "" || *attackAttributesPath == "" || *outputPath == "" {
+		fmt.Fprintln(os.Stderr, "items, blocks, consumables, attack-attributes and output are required")
 
 		os.Exit(2)
 	}
@@ -101,7 +115,12 @@ func main() {
 		fail(err)
 	}
 
-	generated, err := generate(items, blocks, consumables)
+	attackAttributes, err := readAttackAttributes(*attackAttributesPath)
+	if err != nil {
+		fail(err)
+	}
+
+	generated, err := generate(items, blocks, consumables, attackAttributes)
 	if err != nil {
 		fail(err)
 	}
@@ -148,7 +167,19 @@ func readConsumables(path string) (ConsumableManifest, error) {
 	return manifest, err
 }
 
-func generate(items []ItemDefinition, blocks []BlockDefinition, consumables ConsumableManifest) ([]byte, error) {
+func readAttackAttributes(path string) (AttackAttributesManifest, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return AttackAttributesManifest{}, err
+	}
+
+	var manifest AttackAttributesManifest
+
+	err = json.Unmarshal(raw, &manifest)
+	return manifest, err
+}
+
+func generate(items []ItemDefinition, blocks []BlockDefinition, consumables ConsumableManifest, attackAttributes AttackAttributesManifest) ([]byte, error) {
 	if len(items) == 0 {
 		return nil, fmt.Errorf("item catalogue is empty")
 	}
@@ -160,6 +191,11 @@ func generate(items []ItemDefinition, blocks []BlockDefinition, consumables Cons
 	}
 
 	consumablesByName, err := validateConsumables(items, consumables)
+	if err != nil {
+		return nil, err
+	}
+
+	attackAttributesByName, err := validateAttackAttributes(items, attackAttributes)
 	if err != nil {
 		return nil, err
 	}
@@ -199,11 +235,14 @@ func generate(items []ItemDefinition, blocks []BlockDefinition, consumables Cons
 
 		fmt.Fprintf(
 			&output,
-			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, Mining: %s, Food: %s, Consumable: %s},\n",
+			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, AttackDamageModifier: %g, AttackSpeedModifier: %g, DamagePerAttack: %d, Mining: %s, Food: %s, Consumable: %s},\n",
 			goName(item.Name),
 			item.Name,
 			item.StackSize,
 			item.MaxDurability,
+			attackAttributesByName[item.Name].DamageModifier,
+			attackAttributesByName[item.Name].SpeedModifier,
+			attackAttributesByName[item.Name].DamagePerAttack,
 			itemMining(item.Name),
 			food,
 			consumable,
@@ -339,6 +378,55 @@ func validateConsumables(items []ItemDefinition, manifest ConsumableManifest) (m
 	}
 
 	return consumables, nil
+}
+
+func validateAttackAttributes(items []ItemDefinition, manifest AttackAttributesManifest) (map[string]ItemAttackAttributesMetadata, error) {
+	if manifest.Version != "1.21.11" || len(manifest.Sources) != 2 {
+		return nil, fmt.Errorf("attack attributes manifest must identify the 1.21.11 source set")
+	}
+
+	itemNames := make(map[string]struct{}, len(items))
+
+	for _, item := range items {
+		itemNames[item.Name] = struct{}{}
+	}
+
+	attributes := make(map[string]ItemAttackAttributesMetadata, len(manifest.Attributes))
+
+	for _, attribute := range manifest.Attributes {
+		if _, exists := itemNames[attribute.Name]; !exists {
+			return nil, fmt.Errorf("attack attributes item %q is absent from item catalogue", attribute.Name)
+		}
+
+		if _, exists := attributes[attribute.Name]; exists {
+			return nil, fmt.Errorf("attack attributes item %q is duplicated", attribute.Name)
+		}
+
+		if attribute.DamagePerAttack != 1 && attribute.DamagePerAttack != 2 {
+			return nil, fmt.Errorf("attack attributes item %q has invalid durability cost", attribute.Name)
+		}
+
+		attributes[attribute.Name] = attribute
+	}
+
+	if len(attributes) != 35 {
+		return nil, fmt.Errorf("attack attributes manifest has %d items, want 35", len(attributes))
+	}
+
+	materials := []string{"wooden", "copper", "stone", "golden", "iron", "diamond", "netherite"}
+	tools := []string{"sword", "shovel", "pickaxe", "axe", "hoe"}
+
+	for _, material := range materials {
+		for _, tool := range tools {
+			name := material + "_" + tool
+
+			if _, exists := attributes[name]; !exists {
+				return nil, fmt.Errorf("attack attributes manifest is missing %q", name)
+			}
+		}
+	}
+
+	return attributes, nil
 }
 
 func validConsumeEffect(effect ConsumeEffectMetadata) bool {

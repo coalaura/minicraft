@@ -20,10 +20,13 @@ type copperChestTestCase struct {
 }
 
 type itemMetadataTestCase struct {
-	name           string
-	item           Item
-	maxDurability  int32
-	damagePerBlock int32
+	name                 string
+	item                 Item
+	maxDurability        int32
+	damagePerBlock       int32
+	attackDamageModifier float32
+	attackSpeedModifier  float32
+	damagePerAttack      int32
 }
 
 func TestGeneratedItemCatalogueCoversVanillaItems(t *testing.T) {
@@ -50,16 +53,31 @@ func TestGeneratedItemCatalogueCoversVanillaItems(t *testing.T) {
 func TestGeneratedItemMetadata(t *testing.T) {
 	tests := []itemMetadataTestCase{
 		{
-			name:           "pickaxe",
-			item:           ItemDiamondPickaxe,
-			maxDurability:  1561,
-			damagePerBlock: 1,
+			name:                 "pickaxe",
+			item:                 ItemDiamondPickaxe,
+			maxDurability:        1561,
+			damagePerBlock:       1,
+			attackDamageModifier: 4,
+			attackSpeedModifier:  -2.8,
+			damagePerAttack:      2,
 		},
 		{
-			name:           "sword",
-			item:           ItemDiamondSword,
-			maxDurability:  1561,
-			damagePerBlock: 2,
+			name:                 "sword",
+			item:                 ItemDiamondSword,
+			maxDurability:        1561,
+			damagePerBlock:       2,
+			attackDamageModifier: 6,
+			attackSpeedModifier:  -2.4,
+			damagePerAttack:      1,
+		},
+		{
+			name:                 "copper axe",
+			item:                 ItemCopperAxe,
+			maxDurability:        190,
+			damagePerBlock:       1,
+			attackDamageModifier: 8,
+			attackSpeedModifier:  -3.2,
+			damagePerAttack:      2,
 		},
 		{
 			name:           "shears",
@@ -91,6 +109,14 @@ func TestGeneratedItemMetadata(t *testing.T) {
 
 			if definition.Mining.DamagePerBlock != test.damagePerBlock {
 				t.Fatalf("damage per block = %d, want %d", definition.Mining.DamagePerBlock, test.damagePerBlock)
+			}
+
+			if definition.AttackDamageModifier != test.attackDamageModifier || definition.AttackSpeedModifier != test.attackSpeedModifier {
+				t.Fatalf("attack modifiers = damage %v speed %v, want damage %v speed %v", definition.AttackDamageModifier, definition.AttackSpeedModifier, test.attackDamageModifier, test.attackSpeedModifier)
+			}
+
+			if definition.DamagePerAttack != test.damagePerAttack {
+				t.Fatalf("damage per attack = %d, want %d", definition.DamagePerAttack, test.damagePerAttack)
 			}
 		})
 	}

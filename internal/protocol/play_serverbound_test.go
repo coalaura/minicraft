@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"math"
 	"slices"
 	"testing"
 
@@ -481,6 +482,7 @@ func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 	packetIDs := map[string]packetIDTest{
 		"container click": {actual: ServerboundContainerClickID, expected: 0x11},
 		"close container": {actual: ServerboundCloseContainerID, expected: 0x12},
+		"interact":        {actual: ServerboundInteractID, expected: 0x19},
 		"chat command":    {actual: ServerboundChatCommandID, expected: 0x06},
 		"signed command":  {actual: ServerboundSignedChatCommandID, expected: 0x07},
 		"suggestions":     {actual: ServerboundCommandSuggestionsID, expected: 0x0E},
@@ -977,6 +979,116 @@ func TestDecodeUseItemOnRejectsTruncatedPacket(t *testing.T) {
 	_, err := DecodeUseItemOn([]byte{MainHand, 0, 0, 0})
 	if err == nil {
 		t.Fatal("decode truncated use item on succeeded")
+	}
+}
+
+func TestDecodeInteract(t *testing.T) {
+	var writer PacketWriter
+
+	writer.VarInt(300)
+	writer.VarInt(int32(InteractActionInteract))
+	writer.VarInt(OffHand)
+	writer.Bool(true)
+
+	interaction, err := DecodeInteract(writer.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode interact: %v", err)
+	}
+
+	if interaction.EntityID != 300 || interaction.Action != InteractActionInteract || interaction.Hand != OffHand || !interaction.SecondaryAction {
+		t.Fatalf("interact = %+v", interaction)
+	}
+
+	writer.Reset()
+	writer.VarInt(301)
+	writer.VarInt(int32(InteractActionAttack))
+	writer.Bool(false)
+
+	attack, err := DecodeInteract(writer.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode attack: %v", err)
+	}
+
+	if attack.EntityID != 301 || attack.Action != InteractActionAttack || attack.SecondaryAction {
+		t.Fatalf("attack = %+v", attack)
+	}
+
+	writer.Reset()
+	writer.VarInt(302)
+	writer.VarInt(int32(InteractActionInteractAt))
+	writer.Float(0.25)
+	writer.Float(0.5)
+	writer.Float(0.75)
+	writer.VarInt(MainHand)
+	writer.Bool(true)
+
+	interactAtData := append([]byte(nil), writer.Buffer.Bytes()...)
+
+	interactAt, err := DecodeInteract(interactAtData)
+	if err != nil {
+		t.Fatalf("decode interact at: %v", err)
+	}
+
+	if interactAt.EntityID != 302 || interactAt.Action != InteractActionInteractAt || interactAt.TargetX != 0.25 || interactAt.TargetY != 0.5 || interactAt.TargetZ != 0.75 || interactAt.Hand != MainHand || !interactAt.SecondaryAction {
+		t.Fatalf("interact at = %+v", interactAt)
+	}
+
+	_, err = DecodeInteract(interactAtData[:len(interactAtData)-1])
+	if err == nil {
+		t.Fatal("truncated interact at decoded")
+	}
+
+	assertTrailingRejected(t, "interact at", interactAtData, DecodeInteract)
+}
+
+func TestDecodeInteractRejectsInvalidPayloads(t *testing.T) {
+	var writer PacketWriter
+
+	writer.VarInt(1)
+	writer.VarInt(3)
+
+	_, err := DecodeInteract(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("interact with invalid action decoded")
+	}
+
+	writer.Reset()
+	writer.VarInt(1)
+	writer.VarInt(int32(InteractActionInteract))
+	writer.VarInt(2)
+	writer.Bool(false)
+
+	_, err = DecodeInteract(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("interact with invalid hand decoded")
+	}
+
+	writer.Reset()
+	writer.VarInt(1)
+	writer.VarInt(int32(InteractActionInteractAt))
+	writer.Float(float32(math.NaN()))
+	writer.Float(0)
+	writer.Float(0)
+	writer.VarInt(MainHand)
+	writer.Bool(false)
+
+	_, err = DecodeInteract(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("interact at with NaN target decoded")
+	}
+
+	writer.Reset()
+	writer.VarInt(1)
+	writer.VarInt(int32(InteractActionInteractAt))
+	writer.Float(0)
+	writer.Float(float32(math.Inf(1)))
+	writer.Float(0)
+	writer.VarInt(MainHand)
+	writer.Bool(false)
+
+	_, err = DecodeInteract(writer.Buffer.Bytes())
+	if err == nil {
+		t.Fatal("interact at with infinite target decoded")
 	}
 }
 

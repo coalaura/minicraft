@@ -49,6 +49,12 @@ func (r *Runtime) Tick() game.TimeState {
 	swimmingChanges := r.updateActivePlayerSwimmingLocked()
 
 	for _, session := range r.snapshotSessions() {
+		session.updatePlayerState(func(player *game.Player) bool {
+			player.TickAttackStrength()
+
+			return true
+		})
+
 		updates := r.tickPlayerSurvivalLocked(session)
 		if len(updates) > 0 {
 			survivalUpdates[session] = updates

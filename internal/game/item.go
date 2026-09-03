@@ -128,13 +128,16 @@ type ItemConsumable struct {
 }
 
 type ItemDefinition struct {
-	ID            Item
-	Name          string
-	StackSize     int32
-	MaxDurability int32
-	Mining        ItemMining
-	Food          ItemFood
-	Consumable    ItemConsumable
+	ID                   Item
+	Name                 string
+	StackSize            int32
+	MaxDurability        int32
+	AttackDamageModifier float32
+	AttackSpeedModifier  float32
+	DamagePerAttack      int32
+	Mining               ItemMining
+	Food                 ItemFood
+	Consumable           ItemConsumable
 }
 
 type ItemStack struct {
@@ -547,7 +550,7 @@ func (inventory PlayerInventory) Contents() []ItemStack {
 	return contents
 }
 
-//go:generate go run ../../cmd/generate-items -items ../../data/items.json -blocks ../../data/blocks.json -consumables ../../data/item_consumables.json -output items_generated.go
+//go:generate go run ../../cmd/generate-items -items ../../data/items.json -blocks ../../data/blocks.json -consumables ../../data/item_consumables.json -attack-attributes ../../data/item_attack_attributes.json -output items_generated.go
 func ItemForBlock(block Block) (Item, bool) {
 	if block == Air {
 		return 0, false

@@ -48,7 +48,7 @@ func (r *Runtime) tickLeafLocked(position game.BlockPosition, block game.Block) 
 
 	replacement := withBlockProperties(block, game.BlockPropertyValue{Name: "distance", Value: decimalBlockPropertyValue(distance)})
 
-	r.queueRandomTickMutationLocked([]game.BlockChange{{Position: position, Replacement: replacement}}, false)
+	r.queueTickMutationLocked([]game.BlockChange{{Position: position, Replacement: replacement}}, false)
 }
 
 func (r *Runtime) randomTickLeafLocked(position game.BlockPosition, block game.Block) {

@@ -35,6 +35,7 @@ const (
 	PlayerDamageGenericKill
 	PlayerDamageStarve
 	PlayerDamageMagic
+	PlayerDamagePlayerAttack
 )
 
 type PlayerDamage struct {
@@ -56,6 +57,7 @@ type playerSurvivalUpdate struct {
 	inventoryBefore *game.PlayerInventory
 	sounds          []protocol.Sound
 	effectChanges   []playerMobEffectChange
+	attackerName    string
 }
 
 func (s *Session) sendHealth() error {
@@ -718,7 +720,13 @@ func (r *Runtime) sendPlayerSurvivalUpdate(session *Session, update playerSurviv
 	}
 
 	if update.died {
-		message := game.TranslatableText(playerDeathTranslation(update.damage.Type), game.LiteralText(update.player.Name))
+		arguments := []game.TextComponent{game.LiteralText(update.player.Name)}
+
+		if update.attackerName != "" {
+			arguments = append(arguments, game.LiteralText(update.attackerName))
+		}
+
+		message := game.TranslatableText(playerDeathTranslation(update.damage.Type), arguments...)
 
 		err := session.writePacket(protocol.ClientboundCombatKillID, protocol.CombatKill{PlayerID: update.player.EntityID, Message: message})
 		if err != nil && session.Log != nil {
@@ -836,6 +844,8 @@ func playerDamageRegistryID(damageType PlayerDamageType) int32 {
 		return 40
 	case PlayerDamageMagic:
 		return 27
+	case PlayerDamagePlayerAttack:
+		return 34
 	default:
 		return 18
 	}
@@ -861,6 +871,8 @@ func playerDeathTranslation(damageType PlayerDamageType) string {
 		return "death.attack.starve"
 	case PlayerDamageMagic:
 		return "death.attack.magic"
+	case PlayerDamagePlayerAttack:
+		return "death.attack.player"
 	default:
 		return "death.attack.generic"
 	}

@@ -149,7 +149,32 @@ func TestConsumableSourcesAndGeneratedItemsAreCurrent(t *testing.T) {
 		t.Fatalf("read blocks: %v", err)
 	}
 
-	generated, err := generate(items, blocks, manifest)
+	attackAttributes, err := readAttackAttributes(filepath.Join("..", "..", "data", "item_attack_attributes.json"))
+	if err != nil {
+		t.Fatalf("read attack attributes: %v", err)
+	}
+
+	if len(attackAttributes.Attributes) != 35 {
+		t.Fatalf("attack attributes = %d, want 35", len(attackAttributes.Attributes))
+	}
+
+	for source, expected := range attackAttributes.Sources {
+		path := filepath.Join("..", "..", "..", "reference", "client_source", filepath.FromSlash(source))
+
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read attack attributes source %s: %v", source, err)
+		}
+
+		digest := sha256.Sum256(contents)
+		actual := hex.EncodeToString(digest[:])
+
+		if actual != expected {
+			t.Errorf("attack attributes source %s digest = %s, want %s", source, actual, expected)
+		}
+	}
+
+	generated, err := generate(items, blocks, manifest, attackAttributes)
 	if err != nil {
 		t.Fatalf("generate items: %v", err)
 	}

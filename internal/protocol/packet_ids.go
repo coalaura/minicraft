@@ -71,6 +71,7 @@ const (
 	ServerboundCommandSuggestionsID         = 0x0E
 	ServerboundContainerClickID             = 0x11
 	ServerboundCloseContainerID             = 0x12
+	ServerboundInteractID                   = 0x19
 	ServerboundPlayKeepAliveID              = 0x1B
 	ServerboundMovePlayerPositionID         = 0x1D
 	ServerboundMovePlayerPositionRotationID = 0x1E
