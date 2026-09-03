@@ -300,6 +300,11 @@ func (r *Runtime) placeItem(session *Session, interaction protocol.UseItemOn, it
 			return BlockMutationResult{Block: game.Air}, []game.BlockPosition{target}, blockMutationDelivery{}, nil
 		}
 
+		if rule == game.ItemPlacementLeaves {
+			distance := calculateLeafDistance(r.World.BlockAt, target)
+			state = withBlockProperties(state, game.BlockPropertyValue{Name: "distance", Value: decimalBlockPropertyValue(distance)})
+		}
+
 		if !validPlacementSupport(r.World.BlockAt, target, state, rule) {
 			return BlockMutationResult{Block: game.Air}, []game.BlockPosition{target}, blockMutationDelivery{}, nil
 		}

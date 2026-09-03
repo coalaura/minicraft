@@ -411,7 +411,7 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	r.promoteRandomTickSections(committed)
 
 	r.scheduleFarmlandSurvivalChecksLocked(committed)
-
+	r.scheduleLeafNeighborsLocked(committed)
 	r.scheduleFluidNeighborsLocked(committed)
 
 	r.reconcileRuntimeBlockEntities(records)

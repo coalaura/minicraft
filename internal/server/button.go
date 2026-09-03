@@ -8,6 +8,12 @@ const (
 )
 
 func (r *Runtime) tickBlockLocked(position game.BlockPosition, block game.Block) {
+	if block.HasTrait(game.BlockTraitLeaves) {
+		r.tickLeafLocked(position, block)
+
+		return
+	}
+
 	if sameBlockType(block, game.Farmland) {
 		r.tickFarmlandSurvivalLocked(position, block)
 

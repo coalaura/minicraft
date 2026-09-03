@@ -40,6 +40,7 @@ const (
 	BlockTraitFallDamageResetting
 	BlockTraitBed
 	BlockTraitMaintainsFarmland
+	BlockTraitLogs
 )
 
 const (

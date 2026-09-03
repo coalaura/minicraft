@@ -405,6 +405,7 @@ func readMiningTags(root string) (MiningTags, error) {
 		{Name: "fall_damage_resetting", Value: "BlockTraitFallDamageResetting"},
 		{Name: "beds", Value: "BlockTraitBed"},
 		{Name: "maintains_farmland", Value: "BlockTraitMaintainsFarmland"},
+		{Name: "logs", Value: "BlockTraitLogs"},
 	}
 
 	for _, tag := range traitTags {
@@ -741,9 +742,16 @@ func supportedRandomTickState(block BlockDefinition, state uint16) bool {
 	case "wheat", "carrots", "potatoes", "beetroots":
 		age := propertyInt(block, state, "age")
 		return age < len(block.Properties[0].Values)-1
-	default:
-		return false
 	}
+
+	if strings.HasSuffix(block.Name, "_leaves") {
+		distance := propertyInt(block, state, "distance")
+		persistent := propertyValue(block, state, "persistent")
+
+		return distance == 7 && persistent == "false"
+	}
+
+	return false
 }
 
 func blockBehavior(block BlockDefinition) string {

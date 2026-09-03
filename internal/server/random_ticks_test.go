@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
-	"github.com/coalaura/minicraft/internal/protocol"
 )
 
 type randomTickTestGenerator struct {
@@ -12,7 +11,7 @@ type randomTickTestGenerator struct {
 }
 
 type randomTickBoundedGenerator struct {
-	randomTickTestGenerator
+	base    randomTickTestGenerator
 	minY    int32
 	maxY    int32
 	present bool
@@ -22,6 +21,26 @@ type randomTickBoundedGenerator struct {
 type randomTickSectionHint struct {
 	mayTick    bool
 	definitive bool
+}
+
+type randomTickSectionTestGenerator struct {
+	bounded      randomTickBoundedGenerator
+	uniformBlock game.Block
+	blocks       [game.SectionVolume]game.Block
+	uniform      bool
+	sectionCalls int
+}
+
+type countingRandomTickGenerator struct {
+	block game.Block
+	calls int
+}
+
+type generatedSectionInspectionTestCase struct {
+	name         string
+	uniform      bool
+	uniformBlock game.Block
+	blockIndex   int
 }
 
 type supportedCropRandomTickTestCase struct {
@@ -38,9 +57,38 @@ func (generator randomTickBoundedGenerator) GenerationBounds(_ int64, _ game.Chu
 	return generator.minY, generator.maxY, generator.present
 }
 
+func (generator randomTickBoundedGenerator) BlockAt(seed int64, position game.BlockPosition) game.Block {
+	return generator.base.BlockAt(seed, position)
+}
+
 func (generator randomTickBoundedGenerator) RandomTickSection(_ int64, _ game.ChunkPosition, sectionMinY int32) (bool, bool) {
 	hint := generator.hints[sectionMinY]
 	return hint.mayTick, hint.definitive
+}
+
+func (generator *randomTickSectionTestGenerator) GenerateSection(_ int64, _ game.ChunkPosition, _ int32, blocks *[game.SectionVolume]game.Block) (game.Block, bool) {
+	generator.sectionCalls++
+	copy(blocks[:], generator.blocks[:])
+
+	return generator.uniformBlock, generator.uniform
+}
+
+func (generator *randomTickSectionTestGenerator) BlockAt(seed int64, position game.BlockPosition) game.Block {
+	return generator.bounded.BlockAt(seed, position)
+}
+
+func (generator *randomTickSectionTestGenerator) GenerationBounds(seed int64, chunk game.ChunkPosition) (int32, int32, bool) {
+	return generator.bounded.GenerationBounds(seed, chunk)
+}
+
+func (generator *randomTickSectionTestGenerator) RandomTickSection(seed int64, chunk game.ChunkPosition, sectionMinY int32) (bool, bool) {
+	return generator.bounded.RandomTickSection(seed, chunk, sectionMinY)
+}
+
+func (generator *countingRandomTickGenerator) BlockAt(_ int64, _ game.BlockPosition) game.Block {
+	generator.calls++
+
+	return generator.block
 }
 
 func TestRandomTickPositionSequence(t *testing.T) {
@@ -209,10 +257,10 @@ func TestGeneratedBaselineFarmlandRandomTicksWithoutOverride(t *testing.T) {
 	baseline := randomTickTestGenerator{block: withBlockProperties(game.Farmland, game.BlockPropertyValue{Name: "moisture", Value: "1"})}
 
 	generator := randomTickBoundedGenerator{
-		randomTickTestGenerator: baseline,
-		minY:                    0,
-		maxY:                    15,
-		present:                 true,
+		base:    baseline,
+		minY:    0,
+		maxY:    15,
+		present: true,
 	}
 
 	world := game.NewOverworld(generator)
@@ -283,27 +331,13 @@ func TestRandomTickSectionsSnapshotAndPromotion(t *testing.T) {
 }
 
 func TestRandomTickSectionInitializationUsesBoundsHintsAndOverrides(t *testing.T) {
-	baseline := NewRuntime(game.NewOverworld(randomTickTestGenerator{block: game.Stone}))
-
-	baselineChunk := baseline.newActiveChunk(LoadedChunk{})
-
-	baselineSections := baselineChunk.snapshotRandomTickSections()
-
-	if len(baselineSections) != protocol.OverworldSectionCount {
-		t.Fatalf("baseline section count = %d, want %d", len(baselineSections), protocol.OverworldSectionCount)
-	}
-
-	if baselineSections[0] != protocol.OverworldMinY || baselineSections[len(baselineSections)-1] != protocol.OverworldMinY+(protocol.OverworldSectionCount-1)*game.ChunkWidth {
-		t.Fatalf("baseline sections = %v", baselineSections)
-	}
-
 	baseGenerator := randomTickTestGenerator{block: game.Stone}
 
 	generator := randomTickBoundedGenerator{
-		randomTickTestGenerator: baseGenerator,
-		minY:                    -80,
-		maxY:                    -33,
-		present:                 true,
+		base:    baseGenerator,
+		minY:    -80,
+		maxY:    -33,
+		present: true,
 		hints: map[int32]randomTickSectionHint{
 			-64: {mayTick: false, definitive: true},
 			-48: {mayTick: false, definitive: false},
@@ -320,9 +354,146 @@ func TestRandomTickSectionInitializationUsesBoundsHintsAndOverrides(t *testing.T
 
 	chunk := runtime.newActiveChunk(LoadedChunk{})
 
-	expected := []int32{-48, 80}
+	expected := []int32{80}
 
 	assertRandomTickSections(t, chunk.snapshotRandomTickSections(), expected)
+}
+
+func TestRandomTickSectionInitializationInspectsGeneratedContents(t *testing.T) {
+	tests := []generatedSectionInspectionTestCase{
+		{name: "uniform", uniform: true, uniformBlock: game.Farmland},
+		{name: "non-uniform", blockIndex: 37},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			generator := &randomTickSectionTestGenerator{
+				bounded: randomTickBoundedGenerator{
+					base:    randomTickTestGenerator{block: game.Stone},
+					minY:    0,
+					maxY:    15,
+					present: true,
+				},
+				uniformBlock: test.uniformBlock,
+				uniform:      test.uniform,
+			}
+
+			for index := range generator.blocks {
+				generator.blocks[index] = game.Stone
+			}
+
+			if !test.uniform {
+				generator.blocks[test.blockIndex] = game.Farmland
+			}
+
+			runtime := NewRuntime(game.NewOverworld(generator))
+
+			chunk := runtime.newActiveChunk(LoadedChunk{})
+
+			assertRandomTickSections(t, chunk.snapshotRandomTickSections(), []int32{0})
+
+			if generator.sectionCalls != 1 {
+				t.Fatalf("section generation calls = %d, want 1", generator.sectionCalls)
+			}
+		})
+	}
+}
+
+func TestDefinitiveRandomTickHintAvoidsSectionGeneration(t *testing.T) {
+	generator := &randomTickSectionTestGenerator{
+		bounded: randomTickBoundedGenerator{
+			base:    randomTickTestGenerator{block: game.Stone},
+			minY:    0,
+			maxY:    31,
+			present: true,
+			hints: map[int32]randomTickSectionHint{
+				0:  {mayTick: false, definitive: true},
+				16: {mayTick: true, definitive: true},
+			},
+		},
+	}
+
+	runtime := NewRuntime(game.NewOverworld(generator))
+
+	chunk := runtime.newActiveChunk(LoadedChunk{})
+
+	assertRandomTickSections(t, chunk.snapshotRandomTickSections(), []int32{16})
+
+	if generator.sectionCalls != 0 {
+		t.Fatalf("section generation calls = %d, want 0", generator.sectionCalls)
+	}
+}
+
+func TestStaticGeneratedWorldDoesNotSampleEmptySections(t *testing.T) {
+	generator := &countingRandomTickGenerator{block: game.Stone}
+
+	runtime := NewRuntime(game.NewOverworld(generator))
+
+	session := &Session{}
+
+	runtime.setSessionActiveChunks(session, []LoadedChunk{{}})
+
+	activationCalls := generator.calls
+	if activationCalls == 0 {
+		t.Fatal("activation did not inspect generated contents")
+	}
+
+	chunk, active := runtime.ActiveChunk(LoadedChunk{})
+	if !active {
+		t.Fatal("chunk is not active")
+	}
+
+	assertRandomTickSections(t, chunk.snapshotRandomTickSections(), nil)
+
+	runtime.tickRandomBlocksLocked()
+
+	if generator.calls != activationCalls {
+		t.Fatalf("procedural calls after random tick = %d, want %d", generator.calls, activationCalls)
+	}
+}
+
+func TestRandomTickSectionEligibilityRebuildsOnReactivation(t *testing.T) {
+	generator := &randomTickSectionTestGenerator{
+		bounded: randomTickBoundedGenerator{
+			base:    randomTickTestGenerator{block: game.Stone},
+			minY:    0,
+			maxY:    15,
+			present: true,
+		},
+		uniformBlock: game.Stone,
+		uniform:      true,
+	}
+
+	world := game.NewOverworld(generator)
+
+	runtime := NewRuntime(world)
+
+	session := &Session{}
+
+	chunkPosition := LoadedChunk{}
+
+	override := game.BlockPosition{Y: 32}
+
+	world.SetBlock(override, game.Farmland)
+
+	runtime.setSessionActiveChunks(session, []LoadedChunk{chunkPosition})
+
+	chunk, _ := runtime.ActiveChunk(chunkPosition)
+
+	assertRandomTickSections(t, chunk.snapshotRandomTickSections(), []int32{32})
+
+	runtime.setSessionActiveChunks(session, nil)
+
+	world.SetBlock(override, game.Stone)
+
+	generator.uniformBlock = game.Farmland
+	generator.bounded.base.block = game.Farmland
+
+	runtime.setSessionActiveChunks(session, []LoadedChunk{chunkPosition})
+
+	chunk, _ = runtime.ActiveChunk(chunkPosition)
+
+	assertRandomTickSections(t, chunk.snapshotRandomTickSections(), []int32{0})
 }
 
 func TestFarmlandRandomTickHydrationAndDecay(t *testing.T) {

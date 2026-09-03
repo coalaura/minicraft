@@ -13,6 +13,12 @@ type generatedChunkSnapshot struct {
 	sections [5][game.SectionVolume]game.Block
 }
 
+type generatedLeafTest struct {
+	name  string
+	kind  treeKind
+	block game.Block
+}
+
 var benchmarkNaturalBlock game.Block
 
 func TestGenerateSectionMatchesBlockAt(t *testing.T) {
@@ -135,6 +141,35 @@ func TestWorldMetadataMatchesNaturalSeaLevel(t *testing.T) {
 	metadata := (Generator{}).WorldMetadata(42)
 	if metadata.SeaLevel != seaLevel {
 		t.Fatalf("sea level = %d, want %d", metadata.SeaLevel, seaLevel)
+	}
+}
+
+func TestGeneratedTreeLeavesAreSupported(t *testing.T) {
+	tests := []generatedLeafTest{
+		{name: "oak", kind: treeOak, block: game.OakLeaves},
+		{name: "spruce", kind: treeSpruce, block: game.SpruceLeaves},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := tree{x: 10, z: 20, baseY: 64, height: 6, kind: test.kind}
+			position := game.BlockPosition{X: 11, Y: 70, Z: 20}
+
+			block, trunk, present := treeBlockAt(candidate, position)
+			definition, valid := block.Definition()
+			expectedDefinition, _ := test.block.Definition()
+
+			if !present || trunk || !valid || definition.ID != expectedDefinition.ID {
+				t.Fatalf("generated block = %d, trunk %t, present %t", block, trunk, present)
+			}
+
+			distance, _ := block.Property("distance")
+			persistent, _ := block.Property("persistent")
+
+			if distance != "1" || persistent != "false" || block.RandomlyTicks() {
+				t.Fatalf("generated leaf distance=%q persistent=%q randomlyTicks=%t", distance, persistent, block.RandomlyTicks())
+			}
+		})
 	}
 }
 

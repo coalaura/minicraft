@@ -114,7 +114,7 @@ func treeBlockAt(candidate tree, position game.BlockPosition) (game.Block, bool,
 			return game.Air, false, false
 		}
 
-		return game.SpruceLeaves, false, true
+		return generatedLeafState(game.SpruceLeaves, dx, dz, position.Y-topY), false, true
 	}
 
 	radius, ok := oakLeafRadius(position.Y - topY)
@@ -129,7 +129,22 @@ func treeBlockAt(candidate tree, position game.BlockPosition) (game.Block, bool,
 		}
 	}
 
-	return game.OakLeaves, false, true
+	return generatedLeafState(game.OakLeaves, dx, dz, position.Y-topY), false, true
+}
+
+func generatedLeafState(block game.Block, dx, dz, relativeY int32) game.Block {
+	distance := dx + dz
+
+	if relativeY > 0 {
+		distance += relativeY
+	}
+
+	state, valid := block.WithProperties(game.BlockPropertyValue{Name: "distance", Value: string(rune('0' + distance))})
+	if !valid {
+		return block
+	}
+
+	return state
 }
 
 func oakLeafRadius(relativeY int32) (int32, bool) {

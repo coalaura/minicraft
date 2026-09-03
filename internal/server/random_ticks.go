@@ -59,15 +59,33 @@ func (c *ActiveChunk) initializeRandomTickSections(world *game.World) {
 
 		hint, hinted := world.Generator.(game.RandomTickSectionGenerator)
 
+		var (
+			prepared           preparedChunkGeneration
+			preparedGeneration bool
+			blocks             [game.SectionVolume]game.Block
+		)
+
 		for sectionMinY := firstSection; sectionMinY <= lastSection; sectionMinY += game.ChunkWidth {
 			if hinted {
 				mayTick, definitive := hint.RandomTickSection(world.Seed, chunk, sectionMinY)
-				if definitive && !mayTick {
+				if definitive {
+					if mayTick {
+						c.markRandomTickSection(sectionMinY)
+					}
+
 					continue
 				}
 			}
 
-			c.markRandomTickSection(sectionMinY)
+			if !preparedGeneration {
+				prepared = prepareChunkGeneration(world, chunk)
+				preparedGeneration = true
+			}
+
+			uniformBlock, uniform := prepared.GenerateSection(sectionMinY, &blocks)
+			if randomTickSectionContents(uniformBlock, uniform, &blocks) {
+				c.markRandomTickSection(sectionMinY)
+			}
 		}
 	}
 
@@ -165,6 +183,8 @@ func (r *Runtime) promoteRandomTickSections(changes []game.BlockChange) {
 
 func (r *Runtime) randomTickBlockLocked(position game.BlockPosition, block game.Block) {
 	switch {
+	case block.HasTrait(game.BlockTraitLeaves):
+		r.randomTickLeafLocked(position, block)
 	case sameBlockType(block, game.Farmland):
 		r.randomTickFarmlandLocked(position, block)
 	case cropMaximumAge(block) != 0:
@@ -180,4 +200,18 @@ func randomTickSectionMinY(y int32) int32 {
 	}
 
 	return section * game.ChunkWidth
+}
+
+func randomTickSectionContents(uniformBlock game.Block, uniform bool, blocks *[game.SectionVolume]game.Block) bool {
+	if uniform {
+		return uniformBlock.RandomlyTicks()
+	}
+
+	for _, block := range blocks {
+		if block.RandomlyTicks() {
+			return true
+		}
+	}
+
+	return false
 }
