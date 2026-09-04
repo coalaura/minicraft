@@ -2,7 +2,6 @@ package server
 
 import (
 	"slices"
-	"strings"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
@@ -1383,18 +1382,26 @@ func armorSlotForItem(stack game.ItemStack) int {
 		return -1
 	}
 
-	switch {
-	case strings.HasSuffix(definition.Name, "_helmet"), definition.Name == "carved_pumpkin":
+	switch definition.Armor.Slot {
+	case game.ItemEquipmentSlotHead:
 		return 5
-	case strings.HasSuffix(definition.Name, "_chestplate"), definition.Name == "elytra":
+	case game.ItemEquipmentSlotChest:
 		return 6
-	case strings.HasSuffix(definition.Name, "_leggings"):
+	case game.ItemEquipmentSlotLegs:
 		return 7
-	case strings.HasSuffix(definition.Name, "_boots"):
+	case game.ItemEquipmentSlotFeet:
 		return 8
-	default:
-		return -1
 	}
+
+	if stack.Item == game.ItemCarvedPumpkin {
+		return 5
+	}
+
+	if stack.Item == game.ItemElytra {
+		return 6
+	}
+
+	return -1
 }
 
 func stackLimit(stack game.ItemStack) int32 {

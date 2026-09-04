@@ -39,3 +39,8 @@ applicability comes from `item_tags/enchantable/` instead.
 `Enchantments.bootstrap`. It records registry raw-ID order, which is not stored
 in the individual enchantment JSON files. Java field declaration order is not
 the registry order.
+
+`item_armor_attributes.json` contains the player armor slot, defense, toughness,
+and knockback-resistance values derived from the pinned armor material, armor
+type, and item registration sources. Its source hashes preserve provenance
+while keeping item generation self-contained within `data/`.

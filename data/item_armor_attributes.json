@@ -1,0 +1,40 @@
+{
+  "version": "1.21.11",
+  "sources": {
+    "net/minecraft/world/item/Items.java": "fd5726bda33ebb5ec4a55955be4a2fa5e03e64538c0a1c79102c441025c812c6",
+    "net/minecraft/world/item/equipment/ArmorMaterial.java": "5d75e614b8347a1ab2be30458963c3ba2bfab8480904f26f363bee91dd8ad596",
+    "net/minecraft/world/item/equipment/ArmorMaterials.java": "d5b538f91baed2a0a2f09ed639cf8a7d38dff04b168bac2a0397d03de3fb1944",
+    "net/minecraft/world/item/equipment/ArmorType.java": "66dacb78ada08c094f0d784f9b79bf287dd0079cbaefbd11a62fb9071d5a09dc"
+  },
+  "attributes": [
+    {"name":"leather_helmet","slot":"HEAD","defense":1,"toughness":0,"knockbackResistance":0},
+    {"name":"leather_chestplate","slot":"CHEST","defense":3,"toughness":0,"knockbackResistance":0},
+    {"name":"leather_leggings","slot":"LEGS","defense":2,"toughness":0,"knockbackResistance":0},
+    {"name":"leather_boots","slot":"FEET","defense":1,"toughness":0,"knockbackResistance":0},
+    {"name":"copper_helmet","slot":"HEAD","defense":2,"toughness":0,"knockbackResistance":0},
+    {"name":"copper_chestplate","slot":"CHEST","defense":4,"toughness":0,"knockbackResistance":0},
+    {"name":"copper_leggings","slot":"LEGS","defense":3,"toughness":0,"knockbackResistance":0},
+    {"name":"copper_boots","slot":"FEET","defense":1,"toughness":0,"knockbackResistance":0},
+    {"name":"chainmail_helmet","slot":"HEAD","defense":2,"toughness":0,"knockbackResistance":0},
+    {"name":"chainmail_chestplate","slot":"CHEST","defense":5,"toughness":0,"knockbackResistance":0},
+    {"name":"chainmail_leggings","slot":"LEGS","defense":4,"toughness":0,"knockbackResistance":0},
+    {"name":"chainmail_boots","slot":"FEET","defense":1,"toughness":0,"knockbackResistance":0},
+    {"name":"iron_helmet","slot":"HEAD","defense":2,"toughness":0,"knockbackResistance":0},
+    {"name":"iron_chestplate","slot":"CHEST","defense":6,"toughness":0,"knockbackResistance":0},
+    {"name":"iron_leggings","slot":"LEGS","defense":5,"toughness":0,"knockbackResistance":0},
+    {"name":"iron_boots","slot":"FEET","defense":2,"toughness":0,"knockbackResistance":0},
+    {"name":"golden_helmet","slot":"HEAD","defense":2,"toughness":0,"knockbackResistance":0},
+    {"name":"golden_chestplate","slot":"CHEST","defense":5,"toughness":0,"knockbackResistance":0},
+    {"name":"golden_leggings","slot":"LEGS","defense":3,"toughness":0,"knockbackResistance":0},
+    {"name":"golden_boots","slot":"FEET","defense":1,"toughness":0,"knockbackResistance":0},
+    {"name":"diamond_helmet","slot":"HEAD","defense":3,"toughness":2,"knockbackResistance":0},
+    {"name":"diamond_chestplate","slot":"CHEST","defense":8,"toughness":2,"knockbackResistance":0},
+    {"name":"diamond_leggings","slot":"LEGS","defense":6,"toughness":2,"knockbackResistance":0},
+    {"name":"diamond_boots","slot":"FEET","defense":3,"toughness":2,"knockbackResistance":0},
+    {"name":"netherite_helmet","slot":"HEAD","defense":3,"toughness":3,"knockbackResistance":0.1},
+    {"name":"netherite_chestplate","slot":"CHEST","defense":8,"toughness":3,"knockbackResistance":0.1},
+    {"name":"netherite_leggings","slot":"LEGS","defense":6,"toughness":3,"knockbackResistance":0.1},
+    {"name":"netherite_boots","slot":"FEET","defense":3,"toughness":3,"knockbackResistance":0.1},
+    {"name":"turtle_helmet","slot":"HEAD","defense":2,"toughness":0,"knockbackResistance":0}
+  ]
+}

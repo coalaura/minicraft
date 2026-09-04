@@ -348,6 +348,13 @@ func (r *Runtime) playerCanCriticalAttack(attacker game.Player) bool {
 }
 
 func (r *Runtime) applyPlayerKnockback(target *game.Player, directionX, directionZ, strength float64) {
+	resistance := min(max(float64(target.ArmorAttributes().KnockbackResistance), 0), 1)
+	strength *= 1 - resistance
+
+	if strength <= 0 {
+		return
+	}
+
 	for directionX*directionX+directionZ*directionZ < playerKnockbackMinimumDirection {
 		directionX = float64(r.nextEntityRandom()-r.nextEntityRandom()) * playerKnockbackRandomScale
 		directionZ = float64(r.nextEntityRandom()-r.nextEntityRandom()) * playerKnockbackRandomScale

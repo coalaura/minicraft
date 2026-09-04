@@ -838,6 +838,43 @@ func TestGenericMenuSlotRestrictions(t *testing.T) {
 	}
 }
 
+func TestArmorSlotForItemUsesGeneratedMetadataAndSpecialWearables(t *testing.T) {
+	slot := armorSlotForItem(game.ItemStack{Item: game.ItemCopperHelmet, Count: 1})
+	if slot != 5 {
+		t.Fatalf("copper helmet slot = %d, want 5", slot)
+	}
+
+	slot = armorSlotForItem(game.ItemStack{Item: game.ItemNetheriteChestplate, Count: 1})
+	if slot != 6 {
+		t.Fatalf("netherite chestplate slot = %d, want 6", slot)
+	}
+
+	slot = armorSlotForItem(game.ItemStack{Item: game.ItemChainmailLeggings, Count: 1})
+	if slot != 7 {
+		t.Fatalf("chainmail leggings slot = %d, want 7", slot)
+	}
+
+	slot = armorSlotForItem(game.ItemStack{Item: game.ItemLeatherBoots, Count: 1})
+	if slot != 8 {
+		t.Fatalf("leather boots slot = %d, want 8", slot)
+	}
+
+	slot = armorSlotForItem(game.ItemStack{Item: game.ItemCarvedPumpkin, Count: 1})
+	if slot != 5 {
+		t.Fatalf("carved pumpkin slot = %d, want 5", slot)
+	}
+
+	slot = armorSlotForItem(game.ItemStack{Item: game.ItemElytra, Count: 1})
+	if slot != 6 {
+		t.Fatalf("elytra slot = %d, want 6", slot)
+	}
+
+	slot = armorSlotForItem(game.ItemStack{Item: game.ItemStone, Count: 1})
+	if slot != -1 {
+		t.Fatalf("stone slot = %d, want -1", slot)
+	}
+}
+
 func TestGenericMenuQuickMoveCommitsMultipleBackings(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 

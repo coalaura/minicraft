@@ -28,6 +28,12 @@ const (
 
 type PlayerPose uint8
 
+type PlayerArmorAttributes struct {
+	Armor               int32
+	Toughness           float32
+	KnockbackResistance float32
+}
+
 type ProfileProperty struct {
 	Name      string `json:"name"`
 	Value     string `json:"value"`
@@ -211,6 +217,24 @@ func (player Player) MainHandDamagePerAttack() int32 {
 	return definition.DamagePerAttack
 }
 
+func (player Player) ArmorAttributes() PlayerArmorAttributes {
+	slots := [...]ItemEquipmentSlot{ItemEquipmentSlotHead, ItemEquipmentSlotChest, ItemEquipmentSlotLegs, ItemEquipmentSlotFeet}
+	attributes := PlayerArmorAttributes{}
+
+	for index, slot := range slots {
+		armor, valid := player.Inventory.Armor[index].ArmorAttributes(slot)
+		if !valid {
+			continue
+		}
+
+		attributes.Armor += armor.Defense
+		attributes.Toughness += armor.Toughness
+		attributes.KnockbackResistance += armor.KnockbackResistance
+	}
+
+	return attributes
+}
+
 func (player Player) AttackStrength() float32 {
 	delay := float32(20) / player.MainHandAttackSpeed()
 	strength := (float32(player.AttackStrengthTicker) + 0.5) / delay
@@ -265,4 +289,12 @@ func (player Player) IsWithinEntityInteractionRange(box AABB, buffer float64, in
 	}
 
 	return distanceSquared < maximumSquared
+}
+
+func DamageAfterArmorAbsorb(damage float32, armor int32, armorToughness float32) float32 {
+	toughness := 2 + armorToughness/4
+	realArmor := min(max(float32(armor)-damage/toughness, float32(armor)*0.2), 20)
+	armorFraction := realArmor / 25
+
+	return damage * (1 - armorFraction)
 }

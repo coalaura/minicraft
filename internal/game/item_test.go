@@ -29,6 +29,14 @@ type itemMetadataTestCase struct {
 	damagePerAttack      int32
 }
 
+type armorMetadataTestCase struct {
+	item                Item
+	slot                ItemEquipmentSlot
+	defense             int32
+	toughness           float32
+	knockbackResistance float32
+}
+
 func TestGeneratedItemCatalogueCoversVanillaItems(t *testing.T) {
 	if MaxItemID != 1504 {
 		t.Fatalf("max item ID = %d, want 1504", MaxItemID)
@@ -119,6 +127,61 @@ func TestGeneratedItemMetadata(t *testing.T) {
 				t.Fatalf("damage per attack = %d, want %d", definition.DamagePerAttack, test.damagePerAttack)
 			}
 		})
+	}
+}
+
+func TestGeneratedArmorMetadata(t *testing.T) {
+	tests := []armorMetadataTestCase{
+		{item: ItemLeatherHelmet, slot: ItemEquipmentSlotHead, defense: 1},
+		{item: ItemLeatherChestplate, slot: ItemEquipmentSlotChest, defense: 3},
+		{item: ItemLeatherLeggings, slot: ItemEquipmentSlotLegs, defense: 2},
+		{item: ItemLeatherBoots, slot: ItemEquipmentSlotFeet, defense: 1},
+		{item: ItemCopperHelmet, slot: ItemEquipmentSlotHead, defense: 2},
+		{item: ItemCopperChestplate, slot: ItemEquipmentSlotChest, defense: 4},
+		{item: ItemCopperLeggings, slot: ItemEquipmentSlotLegs, defense: 3},
+		{item: ItemCopperBoots, slot: ItemEquipmentSlotFeet, defense: 1},
+		{item: ItemChainmailHelmet, slot: ItemEquipmentSlotHead, defense: 2},
+		{item: ItemChainmailChestplate, slot: ItemEquipmentSlotChest, defense: 5},
+		{item: ItemChainmailLeggings, slot: ItemEquipmentSlotLegs, defense: 4},
+		{item: ItemChainmailBoots, slot: ItemEquipmentSlotFeet, defense: 1},
+		{item: ItemIronHelmet, slot: ItemEquipmentSlotHead, defense: 2},
+		{item: ItemIronChestplate, slot: ItemEquipmentSlotChest, defense: 6},
+		{item: ItemIronLeggings, slot: ItemEquipmentSlotLegs, defense: 5},
+		{item: ItemIronBoots, slot: ItemEquipmentSlotFeet, defense: 2},
+		{item: ItemGoldenHelmet, slot: ItemEquipmentSlotHead, defense: 2},
+		{item: ItemGoldenChestplate, slot: ItemEquipmentSlotChest, defense: 5},
+		{item: ItemGoldenLeggings, slot: ItemEquipmentSlotLegs, defense: 3},
+		{item: ItemGoldenBoots, slot: ItemEquipmentSlotFeet, defense: 1},
+		{item: ItemDiamondHelmet, slot: ItemEquipmentSlotHead, defense: 3, toughness: 2},
+		{item: ItemDiamondChestplate, slot: ItemEquipmentSlotChest, defense: 8, toughness: 2},
+		{item: ItemDiamondLeggings, slot: ItemEquipmentSlotLegs, defense: 6, toughness: 2},
+		{item: ItemDiamondBoots, slot: ItemEquipmentSlotFeet, defense: 3, toughness: 2},
+		{item: ItemNetheriteHelmet, slot: ItemEquipmentSlotHead, defense: 3, toughness: 3, knockbackResistance: 0.1},
+		{item: ItemNetheriteChestplate, slot: ItemEquipmentSlotChest, defense: 8, toughness: 3, knockbackResistance: 0.1},
+		{item: ItemNetheriteLeggings, slot: ItemEquipmentSlotLegs, defense: 6, toughness: 3, knockbackResistance: 0.1},
+		{item: ItemNetheriteBoots, slot: ItemEquipmentSlotFeet, defense: 3, toughness: 3, knockbackResistance: 0.1},
+		{item: ItemTurtleHelmet, slot: ItemEquipmentSlotHead, defense: 2},
+	}
+
+	for _, test := range tests {
+		definition, valid := test.item.Definition()
+		if !valid {
+			t.Fatalf("armor item %d definition is missing", test.item)
+		}
+
+		armor := definition.Armor
+		if armor.Slot != test.slot || armor.Defense != test.defense || armor.Toughness != test.toughness || armor.KnockbackResistance != test.knockbackResistance {
+			t.Fatalf("armor item %s metadata = %+v, want slot %d defense %d toughness %v knockback resistance %v", definition.Name, armor, test.slot, test.defense, test.toughness, test.knockbackResistance)
+		}
+	}
+
+	nonArmorWearables := []Item{ItemCarvedPumpkin, ItemElytra}
+
+	for _, item := range nonArmorWearables {
+		definition, valid := item.Definition()
+		if !valid || definition.Armor != (ItemArmor{}) {
+			t.Fatalf("non-armor wearable %d metadata = %+v", item, definition.Armor)
+		}
 	}
 }
 

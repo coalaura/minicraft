@@ -16,6 +16,8 @@ type playerFallDamageTestCase struct {
 	want     float32
 }
 
+var playerArmorDamageGameModes = []game.GameMode{game.GameModeCreative, game.GameModeSpectator}
+
 func TestDamagePlayerHitCooldownAndEligibility(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
@@ -64,6 +66,198 @@ func TestDamagePlayerHitCooldownAndEligibility(t *testing.T) {
 		applied = runtime.DamagePlayer(session, PlayerDamage{Type: PlayerDamageOutOfWorld, Amount: 1})
 		if !applied {
 			t.Fatalf("%v player did not take void damage", mode)
+		}
+	}
+}
+
+func TestPlayerArmorDamageSemantics(t *testing.T) {
+	t.Run("environmental wear mitigation and unbreaking", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		session, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+		joinTestSession(t, runtime, session)
+
+		equipPlayerArmor(session.Player, [4]game.Item{game.ItemIronHelmet, game.ItemIronChestplate, game.ItemIronLeggings, game.ItemIronBoots})
+
+		session.Player.Inventory.Armor[3].SetEnchantment(game.EnchantmentUnbreaking, 3)
+
+		randomCalls := 0
+
+		runtime.miningRandom = func(bound int) int {
+			if bound != 4 {
+				t.Fatalf("unbreaking random bound = %d, want 4", bound)
+			}
+
+			randomCalls++
+
+			if randomCalls == 1 {
+				return 1
+			}
+
+			return 0
+		}
+
+		connection.reset()
+
+		applied := runtime.DamagePlayer(session, PlayerDamage{Type: PlayerDamageInFire, Amount: 11})
+		if !applied {
+			t.Fatal("armor-applicable environmental damage was not applied")
+		}
+
+		player := session.snapshotPlayer()
+		wantHealth := float32(game.DefaultPlayerHealth) - 6.82
+
+		if math.Abs(float64(player.Health-wantHealth)) > 1e-5 {
+			t.Fatalf("health after iron armor = %v, want %v", player.Health, wantHealth)
+		}
+
+		wantDamage := [4]int32{2, 2, 2, 1}
+
+		for index, stack := range player.Inventory.Armor {
+			if stack.Damage() != wantDamage[index] {
+				t.Fatalf("armor slot %d damage = %d, want %d", index, stack.Damage(), wantDamage[index])
+			}
+		}
+
+		if randomCalls != 2 {
+			t.Fatalf("unbreaking random calls = %d, want 2", randomCalls)
+		}
+
+		if countPacketID(connection.packets(t), protocol.ClientboundContainerSetContentID) != 1 {
+			t.Fatalf("armor durability inventory packets = %v", connection.packetIDs(t))
+		}
+	})
+
+	t.Run("armor bypass", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+		equipPlayerArmor(session.Player, [4]game.Item{game.ItemDiamondHelmet, game.ItemDiamondChestplate, game.ItemDiamondLeggings, game.ItemDiamondBoots})
+
+		applied := runtime.DamagePlayer(session, PlayerDamage{Type: PlayerDamageFall, Amount: 11})
+		if !applied {
+			t.Fatal("armor-bypassing damage was not applied")
+		}
+
+		player := session.snapshotPlayer()
+		if player.Health != game.DefaultPlayerHealth-11 {
+			t.Fatalf("armor-bypassing health = %v, want %v", player.Health, game.DefaultPlayerHealth-11)
+		}
+
+		for index, stack := range player.Inventory.Armor {
+			if stack.Damage() != 0 {
+				t.Fatalf("armor-bypassing damage wore slot %d by %d", index, stack.Damage())
+			}
+		}
+	})
+
+	t.Run("creative and spectator", func(t *testing.T) {
+		for _, mode := range playerArmorDamageGameModes {
+			runtime := NewRuntime(&game.World{})
+
+			session, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+			session.Player.GameMode = mode
+
+			equipPlayerArmor(session.Player, [4]game.Item{game.ItemIronHelmet, game.ItemIronChestplate, game.ItemIronLeggings, game.ItemIronBoots})
+
+			applied := runtime.DamagePlayer(session, PlayerDamage{Type: PlayerDamagePlayerAttack, Amount: 4})
+			if applied {
+				t.Fatalf("%v player took ordinary armor-applicable damage", mode)
+			}
+
+			for index, stack := range session.snapshotPlayer().Inventory.Armor {
+				if stack.Damage() != 0 {
+					t.Fatalf("%v armor slot %d damage = %d, want 0", mode, index, stack.Damage())
+				}
+			}
+		}
+	})
+}
+
+func TestPlayerArmorBreakSynchronizesActualSlots(t *testing.T) {
+	runtime, observer, playerSession, observerConnection, playerConnection := newPlayerCombatTest(t)
+
+	playerSession.updatePlayerState(func(player *game.Player) bool {
+		equipPlayerArmor(player, [4]game.Item{game.ItemIronHelmet, game.ItemIronChestplate, game.ItemIronLeggings, game.ItemIronBoots})
+
+		for index := range player.Inventory.Armor {
+			stack := &player.Inventory.Armor[index]
+
+			definition, valid := stack.Item.Definition()
+			if !valid {
+				t.Fatalf("armor slot %d definition is missing", index)
+			}
+
+			stack.SetDamage(definition.MaxDurability - 1)
+		}
+
+		return true
+	})
+
+	observerConnection.reset()
+	playerConnection.reset()
+
+	applied := runtime.DamagePlayer(playerSession, PlayerDamage{Type: PlayerDamagePlayerAttack, Amount: 4, CauseEntityID: observer.snapshotPlayer().EntityID})
+	if !applied {
+		t.Fatal("armor-breaking damage was not applied")
+	}
+
+	player := playerSession.snapshotPlayer()
+
+	for index, stack := range player.Inventory.Armor {
+		if !stack.Empty() {
+			t.Fatalf("broken armor remains in slot %d: %+v", index, stack)
+		}
+	}
+
+	if player.Health != game.DefaultPlayerHealth-4 {
+		t.Fatalf("health after all armor broke = %v, want %v", player.Health, game.DefaultPlayerHealth-4)
+	}
+
+	if countPacketID(playerConnection.packets(t), protocol.ClientboundContainerSetContentID) != 1 {
+		t.Fatalf("player armor break inventory packets = %v", playerConnection.packetIDs(t))
+	}
+
+	if countPacketID(observerConnection.packets(t), protocol.ClientboundEntityEquipmentID) != 1 {
+		t.Fatalf("observer armor break equipment packets = %v", observerConnection.packetIDs(t))
+	}
+
+	wantEvents := []byte{playerFeetArmorBreakEvent, playerLegsArmorBreakEvent, playerChestArmorBreakEvent, playerHeadArmorBreakEvent}
+
+	assertEntityEvents(t, playerConnection, player.EntityID, wantEvents)
+	assertEntityEvents(t, observerConnection, player.EntityID, wantEvents)
+}
+
+func equipPlayerArmor(player *game.Player, items [4]game.Item) {
+	for index, item := range items {
+		player.Inventory.Armor[index] = game.ItemStack{Item: item, Count: 1}
+	}
+}
+
+func assertEntityEvents(t *testing.T, connection *recordingConnection, entityID int32, expected []byte) {
+	t.Helper()
+
+	packets := packetsByID(t, connection, protocol.ClientboundEntityEventID)
+	if len(packets) != len(expected) {
+		t.Fatalf("entity event packets = %d, want %d; packet IDs %v", len(packets), len(expected), connection.packetIDs(t))
+	}
+
+	for index, packet := range packets {
+		reader := protocol.NewPacketReader(packet.Data)
+
+		actualEntityID := reader.Int()
+		actualEvent := reader.Byte()
+
+		err := reader.Err()
+		if err != nil {
+			t.Fatalf("decode entity event: %v", err)
+		}
+
+		if actualEntityID != entityID || actualEvent != expected[index] {
+			t.Fatalf("entity event %d = entity %d event %d, want entity %d event %d", index, actualEntityID, actualEvent, entityID, expected[index])
 		}
 	}
 }

@@ -20,6 +20,7 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Canonical 1.21.11 enchantment registry, tags and item applicability, with Efficiency, Unbreaking, Silk Touch and Fortune gameplay behavior
 - Survival placement with exact main-hand/offhand item consumption and synchronized equipment
 - Authoritative player health, repeated-hit timing, air and drowning, fire and lava, movement-time fall resets, block-specific landing damage and void damage
+- Server-authoritative base player melee combat with vanilla-like armor reduction, toughness, durability and knockback resistance
 - Configurable Peaceful, Easy, Normal and Hard difficulty with hunger, exhaustion, natural regeneration and starvation
 - Server-authoritative timed consumables from either hand, including canonical food, effect, milk and use-remainder behavior
 - Generated 1.21.11 mob-effect registry with synchronized active effects, absorption, Regeneration, Poison, Hunger, Fire Resistance, Resistance and Nausea
@@ -109,7 +110,7 @@ Minicraft is a focused protocol and procedural-world server, not a drop-in repla
 - Timed item use continues across same-item count, component and backing-stack changes, but cancels when the active hand becomes empty or changes item.
 - Ordinary drinkable potions are implemented; splash and lingering potions, brewing, tipped-arrow mechanics, area-effect clouds and potion swirls remain deferred.
 - Suspicious-stew effects, chorus-fruit teleportation and `USE_EFFECTS` movement or vibration behavior remain explicitly deferred.
-- Armor, combat, mobs, projectiles, XP, bed placement/sleeping, respawn anchors and gamerule configuration are not implemented.
+- Base player melee and armor are implemented; mobs, shields, projectiles, broader combat mechanics, XP, bed placement/sleeping, respawn anchors and gamerule configuration are not implemented.
 - Honey-block side sliding is deferred; honey landing damage is implemented.
 
 ## Todo
@@ -117,7 +118,7 @@ Minicraft is a focused protocol and procedural-world server, not a drop-in repla
 - Broader block placement and interaction support
 - Other inventory blocks
 - Recipe-book and special crafting recipe parity
-- Broader survival mechanics such as armor and combat
+- Broader survival and combat mechanics such as mobs, shields and projectiles
 - Adventure map features
 
 ## License

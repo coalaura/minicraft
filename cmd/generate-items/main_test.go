@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -82,7 +80,7 @@ func TestUnsupportedBlockEntityPlacementFamiliesRemainExcluded(t *testing.T) {
 	}
 }
 
-func TestConsumableSourcesAndGeneratedItemsAreCurrent(t *testing.T) {
+func TestItemDataAndGeneratedItemsAreCurrent(t *testing.T) {
 	manifest, err := readConsumables(filepath.Join("..", "..", "data", "item_consumables.json"))
 	if err != nil {
 		t.Fatalf("read consumables: %v", err)
@@ -123,22 +121,6 @@ func TestConsumableSourcesAndGeneratedItemsAreCurrent(t *testing.T) {
 		t.Fatalf("potion consumable = %+v", potion)
 	}
 
-	for source, expected := range manifest.Sources {
-		path := filepath.Join("..", "..", "..", "reference", "client_source", filepath.FromSlash(source))
-
-		contents, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read consumable source %s: %v", source, err)
-		}
-
-		digest := sha256.Sum256(contents)
-
-		actual := hex.EncodeToString(digest[:])
-		if actual != expected {
-			t.Errorf("consumable source %s digest = %s, want %s", source, actual, expected)
-		}
-	}
-
 	items, err := readItems(filepath.Join("..", "..", "data", "items.json"))
 	if err != nil {
 		t.Fatalf("read items: %v", err)
@@ -158,23 +140,26 @@ func TestConsumableSourcesAndGeneratedItemsAreCurrent(t *testing.T) {
 		t.Fatalf("attack attributes = %d, want 35", len(attackAttributes.Attributes))
 	}
 
-	for source, expected := range attackAttributes.Sources {
-		path := filepath.Join("..", "..", "..", "reference", "client_source", filepath.FromSlash(source))
-
-		contents, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read attack attributes source %s: %v", source, err)
-		}
-
-		digest := sha256.Sum256(contents)
-		actual := hex.EncodeToString(digest[:])
-
-		if actual != expected {
-			t.Errorf("attack attributes source %s digest = %s, want %s", source, actual, expected)
-		}
+	armorAttributes, err := readArmorAttributes(filepath.Join("..", "..", "data", "item_armor_attributes.json"))
+	if err != nil {
+		t.Fatalf("read armor attributes: %v", err)
 	}
 
-	generated, err := generate(items, blocks, manifest, attackAttributes)
+	armorAttributesByName, err := validateArmorAttributes(items, armorAttributes)
+	if err != nil {
+		t.Fatalf("validate armor attributes: %v", err)
+	}
+
+	if len(armorAttributesByName) != 29 {
+		t.Fatalf("armor attributes = %d, want 29", len(armorAttributesByName))
+	}
+
+	netheriteChestplate := armorAttributesByName["netherite_chestplate"]
+	if netheriteChestplate.Slot != "CHEST" || netheriteChestplate.Defense != 8 || netheriteChestplate.Toughness != 3 || netheriteChestplate.KnockbackResistance != 0.1 {
+		t.Fatalf("netherite chestplate armor = %+v", netheriteChestplate)
+	}
+
+	generated, err := generate(items, blocks, manifest, attackAttributes, armorAttributes)
 	if err != nil {
 		t.Fatalf("generate items: %v", err)
 	}

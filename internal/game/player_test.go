@@ -5,6 +5,22 @@ import (
 	"testing"
 )
 
+type playerArmorAttributesTestCase struct {
+	name                string
+	items               [4]Item
+	armor               int32
+	toughness           float32
+	knockbackResistance float32
+}
+
+type damageAfterArmorAbsorbTestCase struct {
+	name      string
+	damage    float32
+	armor     int32
+	toughness float32
+	want      float32
+}
+
 func TestPlayerResetSurvivalState(t *testing.T) {
 	player := Player{
 		Health:             1,
@@ -69,6 +85,69 @@ func TestPlayerMainHandAttackAttributes(t *testing.T) {
 
 	if player.MainHandAttackDamage() != DefaultPlayerAttackDamage || player.MainHandAttackSpeed() != DefaultPlayerAttackSpeed {
 		t.Fatalf("non-tool main hand attack attributes = damage %v speed %v", player.MainHandAttackDamage(), player.MainHandAttackSpeed())
+	}
+}
+
+func TestPlayerArmorAttributes(t *testing.T) {
+	sets := []playerArmorAttributesTestCase{
+		{name: "none"},
+		{name: "leather", items: [4]Item{ItemLeatherHelmet, ItemLeatherChestplate, ItemLeatherLeggings, ItemLeatherBoots}, armor: 7},
+		{name: "copper", items: [4]Item{ItemCopperHelmet, ItemCopperChestplate, ItemCopperLeggings, ItemCopperBoots}, armor: 10},
+		{name: "chainmail", items: [4]Item{ItemChainmailHelmet, ItemChainmailChestplate, ItemChainmailLeggings, ItemChainmailBoots}, armor: 12},
+		{name: "iron", items: [4]Item{ItemIronHelmet, ItemIronChestplate, ItemIronLeggings, ItemIronBoots}, armor: 15},
+		{name: "gold", items: [4]Item{ItemGoldenHelmet, ItemGoldenChestplate, ItemGoldenLeggings, ItemGoldenBoots}, armor: 11},
+		{name: "diamond", items: [4]Item{ItemDiamondHelmet, ItemDiamondChestplate, ItemDiamondLeggings, ItemDiamondBoots}, armor: 20, toughness: 8},
+		{name: "netherite", items: [4]Item{ItemNetheriteHelmet, ItemNetheriteChestplate, ItemNetheriteLeggings, ItemNetheriteBoots}, armor: 20, toughness: 12, knockbackResistance: 0.4},
+		{name: "mixed", items: [4]Item{ItemTurtleHelmet, ItemDiamondChestplate, ItemIronLeggings, ItemLeatherBoots}, armor: 16, toughness: 2},
+	}
+
+	for _, test := range sets {
+		t.Run(test.name, func(t *testing.T) {
+			player := Player{}
+
+			for index, item := range test.items {
+				if item != ItemAir {
+					player.Inventory.Armor[index] = ItemStack{Item: item, Count: 1}
+				}
+			}
+
+			attributes := player.ArmorAttributes()
+			if attributes.Armor != test.armor || attributes.Toughness != test.toughness || math.Abs(float64(attributes.KnockbackResistance-test.knockbackResistance)) > 1e-6 {
+				t.Fatalf("armor attributes = %+v, want armor %d toughness %v knockback resistance %v", attributes, test.armor, test.toughness, test.knockbackResistance)
+			}
+		})
+	}
+
+	player := Player{}
+
+	player.Inventory.Armor[0] = ItemStack{Item: ItemDiamondBoots, Count: 1}
+	player.Inventory.Armor[1] = ItemStack{Item: ItemElytra, Count: 1}
+	player.Inventory.Armor[2] = ItemStack{Item: ItemCarvedPumpkin, Count: 1}
+
+	attributes := player.ArmorAttributes()
+
+	if attributes != (PlayerArmorAttributes{}) {
+		t.Fatalf("invalid-slot and non-armor wearables contributed attributes: %+v", attributes)
+	}
+}
+
+func TestDamageAfterArmorAbsorb(t *testing.T) {
+	tests := []damageAfterArmorAbsorbTestCase{
+		{name: "no armor", damage: 10, want: 10},
+		{name: "low damage iron", damage: 4, armor: 15, want: 1.92},
+		{name: "low damage diamond", damage: 4, armor: 20, toughness: 8, want: 0.96},
+		{name: "high damage diamond", damage: 40, armor: 20, toughness: 8, want: 24},
+		{name: "high damage netherite toughness", damage: 40, armor: 20, toughness: 12, want: 20.8},
+		{name: "minimum armor effectiveness", damage: 100, armor: 20, toughness: 8, want: 84},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actual := DamageAfterArmorAbsorb(test.damage, test.armor, test.toughness)
+			if math.Abs(float64(actual-test.want)) > 1e-5 {
+				t.Fatalf("damage after armor = %v, want %v", actual, test.want)
+			}
+		})
 	}
 }
 

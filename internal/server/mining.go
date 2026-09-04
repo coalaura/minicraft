@@ -306,8 +306,34 @@ func (r *Runtime) damageHeldItem(session *Session, hand int32, expected game.Ite
 }
 
 func (r *Runtime) damageItem(session *Session, expected game.ItemStack, amount, maximumDurability int32, selectStack func(*game.Player) *game.ItemStack) (*game.PlayerInventory, bool) {
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+
+	before := session.snapshotPlayer().Inventory
+	broke := false
+
+	_, changed := session.updatePlayerState(func(player *game.Player) bool {
+		stack := selectStack(player)
+		if stack == nil || !stack.SameItem(expected) {
+			return false
+		}
+
+		var changed bool
+
+		broke, changed = r.damageItemStack(stack, amount, maximumDurability)
+		return changed
+	})
+
+	if !changed {
+		return nil, false
+	}
+
+	return &before, broke
+}
+
+func (r *Runtime) damageItemStack(stack *game.ItemStack, amount, maximumDurability int32) (bool, bool) {
 	damage := int32(0)
-	unbreaking := expected.EnchantmentLevel(game.EnchantmentUnbreaking)
+	unbreaking := stack.EnchantmentLevel(game.EnchantmentUnbreaking)
 
 	for range amount {
 		if unbreaking > 0 {
@@ -324,46 +350,25 @@ func (r *Runtime) damageItem(session *Session, expected game.ItemStack, amount, 
 	}
 
 	if damage == 0 {
-		return nil, false
+		return false, false
 	}
 
-	r.lifecycleMu.Lock()
-	defer r.lifecycleMu.Unlock()
+	newDamage := stack.Damage() + damage
+	if newDamage < maximumDurability {
+		stack.SetDamage(newDamage)
 
-	before := session.snapshotPlayer().Inventory
-	broke := false
-
-	_, changed := session.updatePlayerState(func(player *game.Player) bool {
-		stack := selectStack(player)
-		if stack == nil || !stack.SameItem(expected) {
-			return false
-		}
-
-		newDamage := stack.Damage() + damage
-		if newDamage < maximumDurability {
-			stack.SetDamage(newDamage)
-
-			return true
-		}
-
-		stack.Count--
-
-		if stack.Count <= 0 {
-			*stack = game.ItemStack{}
-		} else {
-			stack.SetDamage(0)
-		}
-
-		broke = true
-
-		return true
-	})
-
-	if !changed {
-		return nil, false
+		return false, true
 	}
 
-	return &before, broke
+	stack.Count--
+
+	if stack.Count <= 0 {
+		*stack = game.ItemStack{}
+	} else {
+		stack.SetDamage(0)
+	}
+
+	return true, true
 }
 
 func (r *Runtime) commitOrdinaryBlockDrops(records []blockMutationRecord) {

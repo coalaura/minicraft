@@ -231,6 +231,37 @@ func TestPlayerMeleeDamageCooldownAndExhaustion(t *testing.T) {
 	assertAttackSounds(t, attackerConnection, playerAttackNoDamageSound)
 }
 
+func TestPlayerMeleeArmorMitigation(t *testing.T) {
+	runtime, attacker, target, _, _ := newPlayerCombatTest(t)
+
+	attacker.updatePlayerState(func(player *game.Player) bool {
+		player.AttackStrengthTicker = 20
+
+		return true
+	})
+
+	target.updatePlayerState(func(player *game.Player) bool {
+		equipPlayerArmor(player, [4]game.Item{game.ItemDiamondHelmet, game.ItemDiamondChestplate, game.ItemDiamondLeggings, game.ItemDiamondBoots})
+
+		return true
+	})
+
+	runtime.handlePlayerInteraction(attacker, protocol.Interact{EntityID: target.snapshotPlayer().EntityID, Action: protocol.InteractActionAttack})
+
+	player := target.snapshotPlayer()
+	wantDamage := game.DamageAfterArmorAbsorb(7, 20, 8)
+
+	if math.Abs(float64(player.Health-(game.DefaultPlayerHealth-wantDamage))) > 1e-5 {
+		t.Fatalf("diamond-armored melee health = %v, want %v", player.Health, game.DefaultPlayerHealth-wantDamage)
+	}
+
+	for index, stack := range player.Inventory.Armor {
+		if stack.Damage() != 1 {
+			t.Fatalf("melee armor slot %d damage = %d, want 1", index, stack.Damage())
+		}
+	}
+}
+
 func TestPlayerMeleeOrdinaryKnockbackAndMotionSynchronization(t *testing.T) {
 	runtime, attacker, target, attackerConnection, targetConnection := newPlayerCombatTest(t)
 
@@ -261,6 +292,50 @@ func TestPlayerMeleeOrdinaryKnockbackAndMotionSynchronization(t *testing.T) {
 	}
 
 	wantMotion := game.Velocity{X: 0.5, Y: 0.4, Z: 0.2}
+
+	assertPlayerMotion(t, targetConnection, targetAfter.EntityID, wantMotion)
+	assertPlayerMotion(t, attackerConnection, targetAfter.EntityID, wantMotion)
+}
+
+func TestPlayerMeleeKnockbackResistanceUsesDeterministicDirection(t *testing.T) {
+	runtime, attacker, target, attackerConnection, targetConnection := newPlayerCombatTest(t)
+
+	attacker.updatePlayerState(func(player *game.Player) bool {
+		player.AttackStrengthTicker = 20
+
+		return true
+	})
+
+	target.updatePlayerState(func(player *game.Player) bool {
+		player.Position = attacker.snapshotPlayer().Position
+		player.OnGround = true
+		equipPlayerArmor(player, [4]game.Item{game.ItemNetheriteHelmet, game.ItemNetheriteChestplate, game.ItemNetheriteLeggings, game.ItemNetheriteBoots})
+
+		return true
+	})
+
+	randomValues := []float32{0.75, 0.25, 0.5, 0}
+	randomIndex := 0
+
+	runtime.entityRandom = func() float32 {
+		value := randomValues[randomIndex]
+		randomIndex++
+
+		return value
+	}
+
+	attackerConnection.reset()
+	targetConnection.reset()
+
+	runtime.handlePlayerInteraction(attacker, protocol.Interact{EntityID: target.snapshotPlayer().EntityID, Action: protocol.InteractActionAttack})
+
+	if randomIndex != len(randomValues) {
+		t.Fatalf("knockback random calls = %d, want %d", randomIndex, len(randomValues))
+	}
+
+	horizontal := -0.24 / math.Sqrt2
+	wantMotion := game.Velocity{X: horizontal, Y: 0.24, Z: horizontal}
+	targetAfter := target.snapshotPlayer()
 
 	assertPlayerMotion(t, targetConnection, targetAfter.EntityID, wantMotion)
 	assertPlayerMotion(t, attackerConnection, targetAfter.EntityID, wantMotion)
@@ -311,6 +386,7 @@ func TestPlayerMeleeSprintKnockbackComposition(t *testing.T) {
 	target.updatePlayerState(func(player *game.Player) bool {
 		player.OnGround = true
 		player.FallDistance = 2
+		equipPlayerArmor(player, [4]game.Item{game.ItemNetheriteHelmet, game.ItemNetheriteChestplate, game.ItemNetheriteLeggings, game.ItemNetheriteBoots})
 
 		return true
 	})
@@ -325,8 +401,8 @@ func TestPlayerMeleeSprintKnockbackComposition(t *testing.T) {
 		t.Fatalf("stored knockback state = velocity %+v onGround %t fall %v", targetAfter.Velocity, targetAfter.OnGround, targetAfter.FallDistance)
 	}
 
-	assertPlayerMotion(t, targetConnection, targetAfter.EntityID, game.Velocity{X: 0.7, Y: 0.4})
-	assertPlayerMotion(t, attackerConnection, targetAfter.EntityID, game.Velocity{X: 0.7, Y: 0.4})
+	assertPlayerMotion(t, targetConnection, targetAfter.EntityID, game.Velocity{X: 0.42, Y: 0.4})
+	assertPlayerMotion(t, attackerConnection, targetAfter.EntityID, game.Velocity{X: 0.42, Y: 0.4})
 
 	attackerAfter := attacker.snapshotPlayer()
 	if attackerAfter.Sprinting || attackerAfter.Velocity.X != 0.6 || attackerAfter.Velocity.Z != 0.6 {

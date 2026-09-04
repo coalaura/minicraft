@@ -37,6 +37,20 @@ type ItemAttackAttributesMetadata struct {
 	DamagePerAttack int32   `json:"damagePerAttack"`
 }
 
+type ArmorAttributesManifest struct {
+	Version    string              `json:"version"`
+	Sources    map[string]string   `json:"sources"`
+	Attributes []ItemArmorMetadata `json:"attributes"`
+}
+
+type ItemArmorMetadata struct {
+	Name                string  `json:"name"`
+	Slot                string  `json:"slot"`
+	Defense             int     `json:"defense"`
+	Toughness           float32 `json:"toughness"`
+	KnockbackResistance float32 `json:"knockbackResistance"`
+}
+
 type ConsumableItemMetadata struct {
 	Name               string                  `json:"name"`
 	Nutrition          int8                    `json:"nutrition"`
@@ -90,12 +104,13 @@ func main() {
 	blocksPath := flag.String("blocks", "", "path to blocks.json")
 	consumablesPath := flag.String("consumables", "", "path to item consumables manifest")
 	attackAttributesPath := flag.String("attack-attributes", "", "path to item attack attributes manifest")
+	armorAttributesPath := flag.String("armor-attributes", "", "path to item armor attributes manifest")
 	outputPath := flag.String("output", "", "generated Go output path")
 
 	flag.Parse()
 
-	if *itemsPath == "" || *blocksPath == "" || *consumablesPath == "" || *attackAttributesPath == "" || *outputPath == "" {
-		fmt.Fprintln(os.Stderr, "items, blocks, consumables, attack-attributes and output are required")
+	if *itemsPath == "" || *blocksPath == "" || *consumablesPath == "" || *attackAttributesPath == "" || *armorAttributesPath == "" || *outputPath == "" {
+		fmt.Fprintln(os.Stderr, "items, blocks, consumables, attack-attributes, armor-attributes and output are required")
 
 		os.Exit(2)
 	}
@@ -120,7 +135,12 @@ func main() {
 		fail(err)
 	}
 
-	generated, err := generate(items, blocks, consumables, attackAttributes)
+	armorAttributes, err := readArmorAttributes(*armorAttributesPath)
+	if err != nil {
+		fail(err)
+	}
+
+	generated, err := generate(items, blocks, consumables, attackAttributes, armorAttributes)
 	if err != nil {
 		fail(err)
 	}
@@ -179,7 +199,19 @@ func readAttackAttributes(path string) (AttackAttributesManifest, error) {
 	return manifest, err
 }
 
-func generate(items []ItemDefinition, blocks []BlockDefinition, consumables ConsumableManifest, attackAttributes AttackAttributesManifest) ([]byte, error) {
+func readArmorAttributes(path string) (ArmorAttributesManifest, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ArmorAttributesManifest{}, err
+	}
+
+	var manifest ArmorAttributesManifest
+
+	err = json.Unmarshal(raw, &manifest)
+	return manifest, err
+}
+
+func generate(items []ItemDefinition, blocks []BlockDefinition, consumables ConsumableManifest, attackAttributes AttackAttributesManifest, armorAttributes ArmorAttributesManifest) ([]byte, error) {
 	if len(items) == 0 {
 		return nil, fmt.Errorf("item catalogue is empty")
 	}
@@ -196,6 +228,11 @@ func generate(items []ItemDefinition, blocks []BlockDefinition, consumables Cons
 	}
 
 	attackAttributesByName, err := validateAttackAttributes(items, attackAttributes)
+	if err != nil {
+		return nil, err
+	}
+
+	armorAttributesByName, err := validateArmorAttributes(items, armorAttributes)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +272,7 @@ func generate(items []ItemDefinition, blocks []BlockDefinition, consumables Cons
 
 		fmt.Fprintf(
 			&output,
-			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, AttackDamageModifier: %g, AttackSpeedModifier: %g, DamagePerAttack: %d, Mining: %s, Food: %s, Consumable: %s},\n",
+			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, AttackDamageModifier: %g, AttackSpeedModifier: %g, DamagePerAttack: %d%s, Mining: %s, Food: %s, Consumable: %s},\n",
 			goName(item.Name),
 			item.Name,
 			item.StackSize,
@@ -243,6 +280,7 @@ func generate(items []ItemDefinition, blocks []BlockDefinition, consumables Cons
 			attackAttributesByName[item.Name].DamageModifier,
 			attackAttributesByName[item.Name].SpeedModifier,
 			attackAttributesByName[item.Name].DamagePerAttack,
+			itemArmor(armorAttributesByName[item.Name]),
 			itemMining(item.Name),
 			food,
 			consumable,
@@ -429,6 +467,44 @@ func validateAttackAttributes(items []ItemDefinition, manifest AttackAttributesM
 	return attributes, nil
 }
 
+func validateArmorAttributes(items []ItemDefinition, manifest ArmorAttributesManifest) (map[string]ItemArmorMetadata, error) {
+	if manifest.Version != "1.21.11" || len(manifest.Sources) != 4 {
+		return nil, fmt.Errorf("armor attributes manifest must identify the 1.21.11 source set")
+	}
+
+	itemNames := make(map[string]struct{}, len(items))
+
+	for _, item := range items {
+		itemNames[item.Name] = struct{}{}
+	}
+
+	armorAttributes := make(map[string]ItemArmorMetadata, len(manifest.Attributes))
+
+	for _, armor := range manifest.Attributes {
+		name := armor.Name
+
+		if _, exists := itemNames[name]; !exists {
+			return nil, fmt.Errorf("armor item %q is absent from item catalogue", name)
+		}
+
+		if _, exists := armorAttributes[name]; exists {
+			return nil, fmt.Errorf("armor item %q is duplicated", name)
+		}
+
+		if armor.Defense <= 0 || armor.Slot == "" || armor.Slot == "BODY" || armor.Toughness < 0 || armor.KnockbackResistance < 0 {
+			return nil, fmt.Errorf("armor item %q has invalid gameplay values", name)
+		}
+
+		armorAttributes[name] = armor
+	}
+
+	if len(armorAttributes) != 29 {
+		return nil, fmt.Errorf("armor source has %d humanoid items, want 29", len(armorAttributes))
+	}
+
+	return armorAttributes, nil
+}
+
 func validConsumeEffect(effect ConsumeEffectMetadata) bool {
 	switch effect.Type {
 	case "apply":
@@ -489,6 +565,20 @@ func itemConsumable(metadata ConsumableItemMetadata) (string, string) {
 	)
 
 	return food, consumable
+}
+
+func itemArmor(metadata ItemArmorMetadata) string {
+	if metadata.Name == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(
+		", Armor: ItemArmor{Slot: ItemEquipmentSlot%s, Defense: %d, Toughness: %g, KnockbackResistance: %g}",
+		goName(strings.ToLower(metadata.Slot)),
+		metadata.Defense,
+		metadata.Toughness,
+		metadata.KnockbackResistance,
+	)
 }
 
 func itemConsumeEffects(effects []ConsumeEffectMetadata) string {

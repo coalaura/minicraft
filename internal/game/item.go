@@ -62,6 +62,14 @@ const (
 	ItemOnBlockBehaviorHoe
 )
 
+const (
+	ItemEquipmentSlotNone ItemEquipmentSlot = iota
+	ItemEquipmentSlotHead
+	ItemEquipmentSlotChest
+	ItemEquipmentSlotLegs
+	ItemEquipmentSlotFeet
+)
+
 type Item uint16
 
 type ItemPlacementRule uint8
@@ -69,6 +77,8 @@ type ItemPlacementRule uint8
 type ItemUseAnimation uint8
 
 type ItemOnBlockBehavior uint8
+
+type ItemEquipmentSlot uint8
 
 type ItemMiningRule struct {
 	Trait          BlockTrait
@@ -127,6 +137,13 @@ type ItemConsumable struct {
 	DynamicEffects []ItemConsumeEffect
 }
 
+type ItemArmor struct {
+	Slot                ItemEquipmentSlot
+	Defense             int32
+	Toughness           float32
+	KnockbackResistance float32
+}
+
 type ItemDefinition struct {
 	ID                   Item
 	Name                 string
@@ -135,6 +152,7 @@ type ItemDefinition struct {
 	AttackDamageModifier float32
 	AttackSpeedModifier  float32
 	DamagePerAttack      int32
+	Armor                ItemArmor
 	Mining               ItemMining
 	Food                 ItemFood
 	Consumable           ItemConsumable
@@ -367,6 +385,19 @@ func (stack ItemStack) PreventsEquipmentDrop() bool {
 	return stack.EnchantmentLevel(EnchantmentVanishingCurse) > 0
 }
 
+func (stack ItemStack) ArmorAttributes(slot ItemEquipmentSlot) (ItemArmor, bool) {
+	if stack.Empty() {
+		return ItemArmor{}, false
+	}
+
+	definition, valid := stack.Item.Definition()
+	if !valid || definition.Armor.Slot != slot {
+		return ItemArmor{}, false
+	}
+
+	return definition.Armor, true
+}
+
 func (stack ItemStack) Enchantments() map[Enchantment]int32 {
 	data, exists := stack.component(ItemComponentEnchantments)
 	if !exists {
@@ -550,7 +581,7 @@ func (inventory PlayerInventory) Contents() []ItemStack {
 	return contents
 }
 
-//go:generate go run ../../cmd/generate-items -items ../../data/items.json -blocks ../../data/blocks.json -consumables ../../data/item_consumables.json -attack-attributes ../../data/item_attack_attributes.json -output items_generated.go
+//go:generate go run ../../cmd/generate-items -items ../../data/items.json -blocks ../../data/blocks.json -consumables ../../data/item_consumables.json -attack-attributes ../../data/item_attack_attributes.json -armor-attributes ../../data/item_armor_attributes.json -output items_generated.go
 func ItemForBlock(block Block) (Item, bool) {
 	if block == Air {
 		return 0, false
