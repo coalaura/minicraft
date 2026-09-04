@@ -54,6 +54,7 @@ const (
 
 	EntityAnimationSwingMainHand = 0
 	EntityAnimationSwingOffHand  = 3
+	EntityAnimationCriticalHit   = 4
 
 	EquipmentSlotMainHand byte = 0
 	EquipmentSlotOffHand  byte = 1

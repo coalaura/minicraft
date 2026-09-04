@@ -19,6 +19,8 @@ func TestPlayerResetSurvivalState(t *testing.T) {
 			NewMobEffectInstance(MobEffectSpeed, 20, 0, false, true, true),
 		},
 		Dead:                true,
+		DeathTime:           19,
+		DeathEntityRemoved:  true,
 		SurvivalInitialized: false,
 	}
 
@@ -28,7 +30,7 @@ func TestPlayerResetSurvivalState(t *testing.T) {
 		t.Fatalf("reset vital state = health %v food %d saturation %v air %d", player.Health, player.FoodLevel, player.Saturation, player.AirSupply)
 	}
 
-	if player.FallDistance != 0 || player.RemainingFireTicks != 0 || player.InvulnerableTime != 0 || player.LastHurt != 0 || len(player.ActiveEffects) != 0 || player.Dead || !player.SurvivalInitialized {
+	if player.FallDistance != 0 || player.RemainingFireTicks != 0 || player.InvulnerableTime != 0 || player.LastHurt != 0 || len(player.ActiveEffects) != 0 || player.Dead || player.DeathTime != 0 || player.DeathEntityRemoved || !player.SurvivalInitialized {
 		t.Fatalf("reset transient state = %+v", player)
 	}
 }
@@ -111,6 +113,23 @@ func TestPlayerAttackStrengthProgressionAndItemChanges(t *testing.T) {
 
 	if player.AttackStrengthTicker != 1 {
 		t.Fatalf("durability change ticker = %d, want 1", player.AttackStrengthTicker)
+	}
+
+	player.Inventory.Hotbar[1] = ItemStack{Item: ItemDiamondSword, Count: 32}
+	player.SelectedHotbarSlot = 1
+
+	player.TickAttackStrength()
+
+	if player.AttackStrengthTicker != 2 {
+		t.Fatalf("same-item slot change ticker = %d, want 2", player.AttackStrengthTicker)
+	}
+
+	player.Inventory.Hotbar[1].Count = 1
+
+	player.TickAttackStrength()
+
+	if player.AttackStrengthTicker != 3 {
+		t.Fatalf("same-item count change ticker = %d, want 3", player.AttackStrengthTicker)
 	}
 
 	player.ResetAttackStrength()

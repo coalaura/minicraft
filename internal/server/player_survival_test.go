@@ -545,6 +545,98 @@ func TestPlayerDeathDropsTransientMenuItems(t *testing.T) {
 	})
 }
 
+func TestPlayerDeathLifecycle(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	victim, victimConnection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Victim")
+	observer, observerConnection := newMovementTestSession(runtime, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Observer")
+	distant, distantConnection := newMovementTestSession(runtime, "20212223-2425-2627-2829-2a2b2c2d2e2f", "Distant")
+
+	distant.Player.Position.X = 1024
+
+	joinTestSession(t, runtime, victim)
+	joinTestSession(t, runtime, observer)
+	joinTestSession(t, runtime, distant)
+
+	victimConnection.reset()
+	observerConnection.reset()
+	distantConnection.reset()
+
+	applied := runtime.DamagePlayer(victim, PlayerDamage{Type: PlayerDamageGenericKill, Amount: math.MaxFloat32})
+	if !applied {
+		t.Fatal("lethal damage was not applied")
+	}
+
+	victimPlayer := victim.snapshotPlayer()
+	if entityEventCount(t, victimConnection, victimPlayer.EntityID, 3) != 1 || entityEventCount(t, observerConnection, victimPlayer.EntityID, 3) != 1 || entityEventCount(t, distantConnection, victimPlayer.EntityID, 3) != 0 {
+		t.Fatalf("initial death events victim=%v observer=%v distant=%v", victimConnection.packetIDs(t), observerConnection.packetIDs(t), distantConnection.packetIDs(t))
+	}
+
+	if countPacketID(victimConnection.packets(t), protocol.ClientboundCombatKillID) != 1 {
+		t.Fatalf("combat kill packets = %v", victimConnection.packetIDs(t))
+	}
+
+	message := game.TranslatableText("death.attack.genericKill", game.LiteralText("Victim"))
+
+	assertSystemComponents(t, victimConnection, message)
+	assertSystemComponents(t, observerConnection, message)
+	assertSystemComponents(t, distantConnection, message)
+
+	for range playerDeathDuration - 1 {
+		runtime.Tick()
+	}
+
+	victimPlayer = victim.snapshotPlayer()
+	if victimPlayer.DeathTime != playerDeathDuration-1 || victimPlayer.DeathEntityRemoved {
+		t.Fatalf("death state before final tick = %+v", victimPlayer)
+	}
+
+	if entityEventCount(t, victimConnection, victimPlayer.EntityID, 60) != 0 || entityEventCount(t, observerConnection, victimPlayer.EntityID, 60) != 0 || countPacketID(observerConnection.packets(t), protocol.ClientboundRemoveEntitiesID) != 0 {
+		t.Fatal("death lifecycle completed before tick 20")
+	}
+
+	runtime.Tick()
+
+	victimPlayer = victim.snapshotPlayer()
+	if victimPlayer.DeathTime != playerDeathDuration || !victimPlayer.DeathEntityRemoved {
+		t.Fatalf("death state after final tick = %+v", victimPlayer)
+	}
+
+	if entityEventCount(t, victimConnection, victimPlayer.EntityID, 60) != 1 || entityEventCount(t, observerConnection, victimPlayer.EntityID, 60) != 1 || entityEventCount(t, distantConnection, victimPlayer.EntityID, 60) != 0 {
+		t.Fatalf("final death events victim=%v observer=%v distant=%v", victimConnection.packetIDs(t), observerConnection.packetIDs(t), distantConnection.packetIDs(t))
+	}
+
+	if countPacketID(observerConnection.packets(t), protocol.ClientboundRemoveEntitiesID) != 1 || countPacketID(victimConnection.packets(t), protocol.ClientboundRemoveEntitiesID) != 0 || countPacketID(distantConnection.packets(t), protocol.ClientboundRemoveEntitiesID) != 0 {
+		t.Fatalf("death removals victim=%v observer=%v distant=%v", victimConnection.packetIDs(t), observerConnection.packetIDs(t), distantConnection.packetIDs(t))
+	}
+
+	connections := []*recordingConnection{victimConnection, observerConnection, distantConnection}
+
+	for _, connection := range connections {
+		if countPacketID(connection.packets(t), protocol.ClientboundPlayerInfoRemoveID) != 0 {
+			t.Fatalf("death sent player info removal: %v", connection.packetIDs(t))
+		}
+
+		if connection.isClosed() {
+			t.Fatal("death closed an active connection")
+		}
+	}
+
+	if runtime.PlayerCount() != 3 {
+		t.Fatalf("player count after death = %d, want 3", runtime.PlayerCount())
+	}
+
+	if playersVisible(observer.snapshotPlayer(), victimPlayer, observer.renderDistance()) {
+		t.Fatal("removed corpse remains visible")
+	}
+
+	runtime.Tick()
+
+	if entityEventCount(t, observerConnection, victimPlayer.EntityID, 60) != 1 || countPacketID(observerConnection.packets(t), protocol.ClientboundRemoveEntitiesID) != 1 {
+		t.Fatalf("death lifecycle repeated observer=%v", observerConnection.packetIDs(t))
+	}
+}
+
 func TestRespawnPlayerResetsAndSynchronizesObservers(t *testing.T) {
 	world := &game.World{Spawn: game.Position{X: 4, Y: 80, Z: -2}}
 
@@ -568,6 +660,7 @@ func TestRespawnPlayerResetsAndSynchronizesObservers(t *testing.T) {
 
 	player.updatePlayerState(func(current *game.Player) bool {
 		current.Dead = true
+		current.DeathTime = 5
 		current.Health = 0
 		current.AirSupply = 0
 		current.RemainingFireTicks = 10
@@ -593,7 +686,7 @@ func TestRespawnPlayerResetsAndSynchronizesObservers(t *testing.T) {
 	}
 
 	current := player.snapshotPlayer()
-	if current.Dead || current.Health != game.DefaultPlayerHealth || current.AirSupply != game.DefaultPlayerAirSupply || current.Position != world.Spawn || current.Rotation != (game.Rotation{}) || current.Velocity != (game.Velocity{}) || !current.OnGround || current.Sneaking || current.Sprinting || current.Swimming || current.Pose != game.PlayerPoseStanding {
+	if current.Dead || current.DeathTime != 0 || current.DeathEntityRemoved || current.Health != game.DefaultPlayerHealth || current.AirSupply != game.DefaultPlayerAirSupply || current.Position != world.Spawn || current.Rotation != (game.Rotation{}) || current.Velocity != (game.Velocity{}) || !current.OnGround || current.Sneaking || current.Sprinting || current.Swimming || current.Pose != game.PlayerPoseStanding {
 		t.Fatalf("respawned player = %+v", current)
 	}
 
@@ -638,6 +731,72 @@ func TestRespawnPlayerResetsAndSynchronizesObservers(t *testing.T) {
 	if len(ids) != 0 {
 		t.Fatalf("living respawn packets = %v, want none", ids)
 	}
+}
+
+func TestRespawnPlayerAfterDeathEntityRemovalSynchronizesObservers(t *testing.T) {
+	world := &game.World{Spawn: game.Position{X: 4, Y: 80, Z: -2}}
+
+	runtime := NewRuntime(world)
+
+	player, playerConnection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+	observer, observerConnection := newMovementTestSession(runtime, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Observer")
+
+	player.Log = &chatTestLogger{}
+
+	renderDistance := int32(config.MinRenderDistance)
+
+	player.Config = &config.Config{Server: config.ServerConfig{RenderDistance: &renderDistance}}
+
+	joinTestSession(t, runtime, player)
+	joinTestSession(t, runtime, observer)
+
+	playerConnection.reset()
+	observerConnection.reset()
+
+	applied := runtime.DamagePlayer(player, PlayerDamage{Type: PlayerDamageGenericKill, Amount: math.MaxFloat32})
+	if !applied {
+		t.Fatal("lethal damage was not applied")
+	}
+
+	for range playerDeathDuration {
+		runtime.Tick()
+	}
+
+	playerConnection.reset()
+	observerConnection.reset()
+
+	err := runtime.RespawnPlayer(player)
+	if err != nil {
+		t.Fatalf("respawn player: %v", err)
+	}
+
+	if countPacketID(observerConnection.packets(t), protocol.ClientboundRemoveEntitiesID) != 0 || countPacketID(observerConnection.packets(t), protocol.ClientboundAddEntityID) != 1 {
+		t.Fatalf("late respawn observer packets = %v", observerConnection.packetIDs(t))
+	}
+
+	current := player.snapshotPlayer()
+	if current.Dead || current.DeathTime != 0 || current.DeathEntityRemoved {
+		t.Fatalf("late respawn state = %+v", current)
+	}
+}
+
+func entityEventCount(t *testing.T, connection *recordingConnection, entityID int32, event byte) int {
+	t.Helper()
+
+	count := 0
+
+	for _, packet := range packetsByID(t, connection, protocol.ClientboundEntityEventID) {
+		reader := protocol.NewPacketReader(packet.Data)
+
+		actualEntityID := reader.Int()
+		actualEvent := reader.Byte()
+
+		if actualEntityID == entityID && actualEvent == event {
+			count++
+		}
+	}
+
+	return count
 }
 
 func TestKillCommandKillsCreativePlayer(t *testing.T) {

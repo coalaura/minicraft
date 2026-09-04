@@ -94,6 +94,8 @@ func (r *Runtime) RespawnPlayer(session *Session) error {
 	r.worldMutationMu.Lock()
 	r.lifecycleMu.Lock()
 
+	previous := session.snapshotPlayer()
+
 	player, changed := session.updatePlayerState(func(player *game.Player) bool {
 		if !player.Dead {
 			return false
@@ -168,17 +170,25 @@ func (r *Runtime) RespawnPlayer(session *Session) error {
 	}
 
 	for _, other := range r.snapshotSessions() {
-		if other == session || !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+		if other == session {
 			continue
 		}
 
-		err = other.sendPlayerRemoval(player)
-		if err == nil {
-			err = other.sendPlayerEntity(player)
+		observer := other.snapshotPlayer()
+		wasVisible := playersVisible(observer, previous, other.renderDistance())
+		isVisible := playersVisible(observer, player, other.renderDistance())
+		var syncErr error
+
+		if wasVisible {
+			syncErr = other.sendPlayerRemoval(previous)
 		}
 
-		if err != nil && other.Log != nil {
-			other.Log.Warnf("[play] failed to synchronize player respawn: %v\n", err)
+		if syncErr == nil && isVisible {
+			syncErr = other.sendPlayerEntity(player)
+		}
+
+		if syncErr != nil && other.Log != nil {
+			other.Log.Warnf("[play] failed to synchronize player respawn: %v\n", syncErr)
 		}
 	}
 
@@ -732,6 +742,8 @@ func (r *Runtime) sendPlayerSurvivalUpdate(session *Session, update playerSurviv
 		if err != nil && session.Log != nil {
 			session.Log.Warnf("[play] failed to present player death: %v\n", err)
 		}
+
+		r.broadcastSystemComponentLocked(message)
 	}
 }
 

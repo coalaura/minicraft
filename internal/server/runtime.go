@@ -437,8 +437,12 @@ func (r *Runtime) BroadcastSystemMessage(message string) {
 }
 
 func (r *Runtime) broadcastSystemMessageLocked(message string) {
+	r.broadcastSystemComponentLocked(game.LiteralText(message))
+}
+
+func (r *Runtime) broadcastSystemComponentLocked(message game.TextComponent) {
 	for _, session := range r.snapshotSessions() {
-		err := session.sendSystemMessage(message)
+		err := session.sendSystemComponent(message)
 		if err != nil {
 			session.Log.Warnf("[play] failed to send system message: %v\n", err)
 		}
@@ -858,6 +862,10 @@ func NewRuntime(world *game.World) *Runtime {
 }
 
 func playersVisible(observer, target game.Player, renderDistance int32) bool {
+	if target.DeathEntityRemoved {
+		return false
+	}
+
 	observerX := int64(chunkCoordinate(observer.Position.X))
 	observerZ := int64(chunkCoordinate(observer.Position.Z))
 

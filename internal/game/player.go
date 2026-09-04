@@ -62,6 +62,8 @@ type Player struct {
 	Absorption           float32
 	ActiveEffects        ActiveMobEffects
 	Dead                 bool
+	DeathTime            int32
+	DeathEntityRemoved   bool
 	SurvivalInitialized  bool
 	AttackStrengthTicker int32
 	LastMainHandItem     Item
@@ -100,6 +102,8 @@ func (player *Player) ResetSurvivalState() {
 	player.ActiveEffects.Clear()
 
 	player.Dead = false
+	player.DeathTime = 0
+	player.DeathEntityRemoved = false
 
 	player.StopUsingItem()
 

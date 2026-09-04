@@ -423,10 +423,6 @@ func (s *Session) sendPlayLogin() error {
 	})
 }
 
-func (s *Session) sendSystemMessage(content string) error {
-	return s.sendSystemComponent(game.LiteralText(content))
-}
-
 func (s *Session) sendSystemComponent(content game.TextComponent) error {
 	var wr protocol.PacketWriter
 
