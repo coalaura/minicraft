@@ -56,11 +56,97 @@ func (s *Session) handleUseItem(interaction protocol.UseItem) (err error) {
 	}
 
 	definition, valid := stack.Item.Definition()
-	if !valid || definition.Consumable.Duration == 0 {
+	if !valid {
 		return nil
 	}
 
-	return s.Runtime.startUsingConsumable(s, interaction.Hand, stack, definition.Food, definition.Consumable)
+	if definition.Consumable.Duration != 0 {
+		return s.Runtime.startUsingConsumable(s, interaction.Hand, stack, definition.Food, definition.Consumable)
+	}
+
+	if armorSlotForItem(stack) < 0 {
+		return nil
+	}
+
+	s.Runtime.stopUsingItem(s)
+
+	_, err = s.Runtime.equipHeldItem(s, interaction.Hand, stack)
+
+	return err
+}
+
+func (r *Runtime) equipHeldItem(session *Session, hand int32, expected game.ItemStack) (bool, error) {
+	r.lifecycleMu.Lock()
+
+	var (
+		before  game.PlayerInventory
+		dropped game.ItemStack
+	)
+
+	player, changed := session.updatePlayerState(func(player *game.Player) bool {
+		held, valid := heldItemPointer(player, hand)
+		if !valid || !held.Equal(expected) {
+			return false
+		}
+
+		armorSlot := armorSlotForItem(*held)
+		if armorSlot < 0 {
+			return false
+		}
+
+		equipped := player.Inventory.Slot(armorSlot)
+		if equipped == nil || held.SameItem(*equipped) {
+			return false
+		}
+
+		before = player.Inventory.Clone()
+
+		previous := equipped.Clone()
+		replacement := held.Clone()
+
+		replacement.Count = 1
+
+		*equipped = replacement
+
+		if held.Count <= 1 {
+			if previous.Empty() && player.GameMode == game.GameModeCreative {
+				return true
+			}
+
+			*held = previous
+
+			return true
+		}
+
+		if player.GameMode != game.GameModeCreative {
+			held.Count--
+		}
+
+		if !previous.Empty() {
+			insertPlayerInventoryStack(&player.Inventory, &previous, player.SelectedHotbarSlot)
+
+			dropped = previous
+		}
+
+		return true
+	})
+
+	r.lifecycleMu.Unlock()
+
+	if !changed {
+		return false, nil
+	}
+
+	if !dropped.Empty() {
+		r.spawnPlayerDroppedItem(player, dropped, false, true)
+	}
+
+	err := session.synchronizePlayerInventoryMutation(before)
+	if err != nil {
+		return true, err
+	}
+
+	return true, nil
 }
 
 func (r *Runtime) startUsingConsumable(session *Session, hand int32, stack game.ItemStack, food game.ItemFood, consumable game.ItemConsumable) error {
