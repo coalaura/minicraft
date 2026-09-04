@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -17,9 +16,8 @@ func TestGeneratedParity(t *testing.T) {
 	root := filepath.Join("..", "..")
 
 	manifestPath := filepath.Join(root, "data", "potions.json")
-	sourcePath := filepath.Join(root, "..", "reference", "client_source", "net", "minecraft", "world", "item", "alchemy", "Potions.java")
 
-	generated, err := generate(manifestPath, sourcePath)
+	generated, err := generate(manifestPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,13 +32,8 @@ func TestGeneratedParity(t *testing.T) {
 	}
 }
 
-func TestDefinitionsPreserveJavaRegistrationOrder(t *testing.T) {
-	source := potionSource(t)
-
-	definitions, err := parseDefinitions(source)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestDefinitionsPreserveRegistrationOrder(t *testing.T) {
+	definitions := potionDefinitions(t)
 
 	if len(definitions) != 46 {
 		t.Fatalf("registered potions = %d, want 46", len(definitions))
@@ -52,12 +45,7 @@ func TestDefinitionsPreserveJavaRegistrationOrder(t *testing.T) {
 }
 
 func TestDefinitionsPreserveRepresentativeEffects(t *testing.T) {
-	source := potionSource(t)
-
-	definitions, err := parseDefinitions(source)
-	if err != nil {
-		t.Fatal(err)
-	}
+	definitions := potionDefinitions(t)
 
 	tests := []representativePotion{
 		{name: "water", effects: nil},
@@ -81,40 +69,18 @@ func TestDefinitionsPreserveRepresentativeEffects(t *testing.T) {
 	}
 }
 
-func TestGenerateRejectsStaleSourceHash(t *testing.T) {
-	root := filepath.Join("..", "..")
-
-	manifestPath := filepath.Join(root, "data", "potions.json")
-
-	source := potionSource(t)
-
-	source = append(source, '\n')
-
-	sourcePath := filepath.Join(t.TempDir(), "Potions.java")
-
-	err := os.WriteFile(sourcePath, source, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = generate(manifestPath, sourcePath)
-	if err == nil || !strings.Contains(err.Error(), "potions.java SHA-256") {
-		t.Fatalf("generate stale source error = %v", err)
-	}
-}
-
-func potionSource(t *testing.T) []byte {
+func potionDefinitions(t *testing.T) []potionDefinition {
 	t.Helper()
 
 	root := filepath.Join("..", "..")
-	path := filepath.Join(root, "..", "reference", "client_source", "net", "minecraft", "world", "item", "alchemy", "Potions.java")
+	path := filepath.Join(root, "data", "potions.json")
 
-	source, err := os.ReadFile(path)
+	manifest, err := readManifest(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return source
+	return manifest.Potions
 }
 
 func definitionByName(t *testing.T, definitions []potionDefinition, name string) potionDefinition {

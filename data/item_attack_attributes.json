@@ -1,9 +1,5 @@
 {
   "version": "1.21.11",
-  "sources": {
-    "net/minecraft/world/item/Items.java": "fd5726bda33ebb5ec4a55955be4a2fa5e03e64538c0a1c79102c441025c812c6",
-    "net/minecraft/world/item/ToolMaterial.java": "d2f2988783b01ce97a3777a694567cadbe6988f02949d0d842d31ab8ccd9f811"
-  },
   "attributes": [
     {"name":"wooden_sword","damageModifier":3,"speedModifier":-2.4,"damagePerAttack":1},
     {"name":"wooden_shovel","damageModifier":1.5,"speedModifier":-3,"damagePerAttack":2},

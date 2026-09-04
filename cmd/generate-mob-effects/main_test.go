@@ -7,13 +7,12 @@ import (
 	"testing"
 )
 
-func TestSourceHashAndGeneratedParity(t *testing.T) {
+func TestGeneratedParity(t *testing.T) {
 	root := filepath.Join("..", "..")
 
 	manifestPath := filepath.Join(root, "data", "mob_effects.json")
-	sourcePath := filepath.Join(root, "..", "reference", "client_source", "net", "minecraft", "world", "effect", "MobEffects.java")
 
-	generated, err := generate(manifestPath, sourcePath)
+	generated, err := generate(manifestPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,22 +27,21 @@ func TestSourceHashAndGeneratedParity(t *testing.T) {
 	}
 }
 
-func TestDefinitionsPreserveJavaRegistrationOrder(t *testing.T) {
+func TestDefinitionsPreserveRegistrationOrder(t *testing.T) {
 	root := filepath.Join("..", "..")
 
-	sourcePath := filepath.Join(root, "..", "reference", "client_source", "net", "minecraft", "world", "effect", "MobEffects.java")
+	manifestPath := filepath.Join(root, "data", "mob_effects.json")
 
-	source, err := os.ReadFile(sourcePath)
+	manifest, err := readManifest(manifestPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	definitions := parseDefinitions(source)
-	if len(definitions) != 40 {
-		t.Fatalf("registered effects = %d, want 40", len(definitions))
+	if len(manifest.Effects) != 40 {
+		t.Fatalf("registered effects = %d, want 40", len(manifest.Effects))
 	}
 
-	if definitions[0].Name != "speed" || definitions[38].Name != "infested" || definitions[39].Name != "breath_of_the_nautilus" {
-		t.Fatalf("registration boundaries = %q, %q, %q", definitions[0].Name, definitions[38].Name, definitions[39].Name)
+	if manifest.Effects[0] != "speed" || manifest.Effects[38] != "infested" || manifest.Effects[39] != "breath_of_the_nautilus" {
+		t.Fatalf("registration boundaries = %q, %q, %q", manifest.Effects[0], manifest.Effects[38], manifest.Effects[39])
 	}
 }

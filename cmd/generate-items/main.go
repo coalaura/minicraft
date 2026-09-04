@@ -20,13 +20,11 @@ type ItemDefinition struct {
 
 type ConsumableManifest struct {
 	Version     string                   `json:"version"`
-	Sources     map[string]string        `json:"sources"`
 	Consumables []ConsumableItemMetadata `json:"consumables"`
 }
 
 type AttackAttributesManifest struct {
 	Version    string                         `json:"version"`
-	Sources    map[string]string              `json:"sources"`
 	Attributes []ItemAttackAttributesMetadata `json:"attributes"`
 }
 
@@ -39,7 +37,6 @@ type ItemAttackAttributesMetadata struct {
 
 type ArmorAttributesManifest struct {
 	Version    string              `json:"version"`
-	Sources    map[string]string   `json:"sources"`
 	Attributes []ItemArmorMetadata `json:"attributes"`
 }
 
@@ -358,8 +355,8 @@ func addCropPlacementOverrides(placeableBlocks map[string]PlaceableBlock, blocks
 }
 
 func validateConsumables(items []ItemDefinition, manifest ConsumableManifest) (map[string]ConsumableItemMetadata, error) {
-	if manifest.Version != "1.21.11" || len(manifest.Sources) != 10 {
-		return nil, fmt.Errorf("consumable manifest must identify the 1.21.11 source set")
+	if manifest.Version != "1.21.11" {
+		return nil, fmt.Errorf("consumable manifest must target Minecraft Java 1.21.11")
 	}
 
 	itemNames := make(map[string]struct{}, len(items))
@@ -419,8 +416,8 @@ func validateConsumables(items []ItemDefinition, manifest ConsumableManifest) (m
 }
 
 func validateAttackAttributes(items []ItemDefinition, manifest AttackAttributesManifest) (map[string]ItemAttackAttributesMetadata, error) {
-	if manifest.Version != "1.21.11" || len(manifest.Sources) != 2 {
-		return nil, fmt.Errorf("attack attributes manifest must identify the 1.21.11 source set")
+	if manifest.Version != "1.21.11" {
+		return nil, fmt.Errorf("attack attributes manifest must target Minecraft Java 1.21.11")
 	}
 
 	itemNames := make(map[string]struct{}, len(items))
@@ -468,8 +465,8 @@ func validateAttackAttributes(items []ItemDefinition, manifest AttackAttributesM
 }
 
 func validateArmorAttributes(items []ItemDefinition, manifest ArmorAttributesManifest) (map[string]ItemArmorMetadata, error) {
-	if manifest.Version != "1.21.11" || len(manifest.Sources) != 4 {
-		return nil, fmt.Errorf("armor attributes manifest must identify the 1.21.11 source set")
+	if manifest.Version != "1.21.11" {
+		return nil, fmt.Errorf("armor attributes manifest must target Minecraft Java 1.21.11")
 	}
 
 	itemNames := make(map[string]struct{}, len(items))

@@ -1,4 +1,4 @@
-//go:generate go run ../../cmd/generate-potions -manifest ../../data/potions.json -source ../../../reference/client_source/net/minecraft/world/item/alchemy/Potions.java -output potions_generated.go
+//go:generate go run ../../cmd/generate-potions -manifest ../../data/potions.json -output potions_generated.go
 
 package game
 

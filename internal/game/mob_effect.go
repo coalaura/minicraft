@@ -1,4 +1,4 @@
-//go:generate go run ../../cmd/generate-mob-effects -manifest ../../data/mob_effects.json -source ../../../reference/client_source/net/minecraft/world/effect/MobEffects.java -output mob_effects_generated.go
+//go:generate go run ../../cmd/generate-mob-effects -manifest ../../data/mob_effects.json -output mob_effects_generated.go
 
 package game
 

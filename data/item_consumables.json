@@ -1,17 +1,5 @@
 {
   "version": "1.21.11",
-  "sources": {
-    "net/minecraft/world/food/Foods.java": "75e9d8f3c4634dcac73b7bb711cdb5a3d183a58566983fcb5e8f0bd7848d3c74",
-    "net/minecraft/world/item/Items.java": "fd5726bda33ebb5ec4a55955be4a2fa5e03e64538c0a1c79102c441025c812c6",
-    "net/minecraft/world/item/component/Consumable.java": "91c393037eddd741085df3181dab19390287381f7850f08232efd4587c688011",
-    "net/minecraft/world/item/component/SuspiciousStewEffects.java": "2fdcf92913b6fe51e7dc80170779c66c2ab0f55cdd69bb6b7e05edd3a48a593a",
-    "net/minecraft/world/item/component/UseEffects.java": "2e4e722932f0d8852d974ecf4a87279eb70e2c77efdec9f3be6854995395dfb6",
-    "net/minecraft/world/item/consume_effects/ApplyStatusEffectsConsumeEffect.java": "71d23ad632086a694913754b0f624e7948a4ca25c2e9f18918c7a83b3ce62427",
-    "net/minecraft/world/item/consume_effects/ClearAllStatusEffectsConsumeEffect.java": "366a63d4f4fb788e20bed30ea4f7dfef551c16f02a8840fef3420a0632d0b7bc",
-    "net/minecraft/world/item/consume_effects/ConsumeEffect.java": "709eb070ca9e45d053525b2715bd2042e622866256894c190e0dbd43bb88d1b2",
-    "net/minecraft/world/item/consume_effects/RemoveStatusEffectsConsumeEffect.java": "095482407790b29b8520947624a73f5cdb3f6c268a3ff0052daa15a814b97b51",
-    "net/minecraft/world/item/consume_effects/TeleportRandomlyConsumeEffect.java": "a7bb87eeb250f033ce67f6f56b0e6922f0dac21ad1065fc8817c232627160db0"
-  },
   "consumables": [
     {"name":"apple","nutrition":4,"saturation":2.4,"duration":32,"animation":"eat","particles":true,"canSprint":false,"interactVibrations":true,"speedMultiplier":0.2},
     {"name":"baked_potato","nutrition":5,"saturation":6,"duration":32,"animation":"eat","particles":true,"canSprint":false,"interactVibrations":true,"speedMultiplier":0.2},
