@@ -29,6 +29,6 @@ These paths are copied byte-for-byte from `reference/client_source/data/minecraf
 
 `enchantment_order.json` is extracted from the `register` calls in `Enchantments.bootstrap`. It records registry raw-ID order, which is not stored in the individual enchantment JSON files. Java field declaration order is not the registry order.
 
-`item_armor_attributes.json` contains the player armor slot, defense, toughness, and knockback-resistance values for Minecraft Java 1.21.11. Item generation is self-contained within `data/`.
+`item_armor_attributes.json` and `item_equippables.json` are derived from the humanoid armor and Equippable registrations in the pinned Java sources. The former contains defensive attributes; the latter independently records player equipment slots and server-relevant equip behavior. Item generation remains self-contained within `data/`.
 
 `mob_effects.json` and `potions.json` contain their ordered registry definitions and their generators require no files outside `data/`.

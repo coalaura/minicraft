@@ -14,13 +14,12 @@ type wearableUseTestCase struct {
 	armorSlot int
 }
 
-func TestUseItemEquipsWearablesFromEitherHand(t *testing.T) {
+func TestUseItemEquipsSwappableWearablesFromEitherHand(t *testing.T) {
 	tests := []wearableUseTestCase{
 		{name: "helmet", item: game.ItemDiamondHelmet, hand: protocol.MainHand, armorSlot: 0},
 		{name: "chestplate", item: game.ItemIronChestplate, hand: protocol.MainHand, armorSlot: 1},
 		{name: "leggings", item: game.ItemCopperLeggings, hand: protocol.MainHand, armorSlot: 2},
 		{name: "boots", item: game.ItemLeatherBoots, hand: protocol.OffHand, armorSlot: 3},
-		{name: "carved pumpkin", item: game.ItemCarvedPumpkin, hand: protocol.MainHand, armorSlot: 0},
 		{name: "elytra", item: game.ItemElytra, hand: protocol.OffHand, armorSlot: 1},
 	}
 
@@ -61,6 +60,36 @@ func TestUseItemEquipsWearablesFromEitherHand(t *testing.T) {
 
 			assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundContainerSetContentID, protocol.ClientboundBlockChangedAckID})
 		})
+	}
+}
+
+func TestUseItemDoesNotQuickEquipUnswappableHeadwear(t *testing.T) {
+	items := []game.Item{game.ItemCarvedPumpkin, game.ItemPlayerHead, game.ItemCreeperHead, game.ItemZombieHead, game.ItemSkeletonSkull, game.ItemWitherSkeletonSkull, game.ItemDragonHead, game.ItemPiglinHead}
+
+	for _, item := range items {
+		world := &game.World{Generator: blockMutationTestGenerator{block: game.Air}}
+
+		runtime := NewRuntime(world)
+
+		actor, connection := newBlockMutationTestSession(runtime, commandTestBobUUID, "Actor", game.GameModeSurvival)
+
+		actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: item, Count: 1}
+
+		joinTestSession(t, runtime, actor)
+
+		connection.reset()
+
+		err := actor.handleUseItem(protocol.UseItem{Hand: protocol.MainHand, Sequence: 75})
+		if err != nil {
+			t.Fatalf("use unswappable item %d: %v", item, err)
+		}
+
+		player := actor.snapshotPlayer()
+		if player.Inventory.Hotbar[0].Item != item || !player.Inventory.Armor[0].Empty() {
+			t.Fatalf("unswappable item %d changed inventory = %+v", item, player.Inventory)
+		}
+
+		assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundBlockChangedAckID})
 	}
 }
 
@@ -135,39 +164,7 @@ func TestUseItemSwapsOccupiedArmorAndSynchronizesEquipment(t *testing.T) {
 	}
 }
 
-func TestUseItemStackedAndCreativeWearableSemantics(t *testing.T) {
-	t.Run("stacked wearable returns old armor to inventory", func(t *testing.T) {
-		world := &game.World{Generator: blockMutationTestGenerator{block: game.Air}}
-
-		runtime := NewRuntime(world)
-
-		actor, _ := newBlockMutationTestSession(runtime, commandTestBobUUID, "Actor", game.GameModeSurvival)
-
-		actor.Player.Inventory.Offhand = game.ItemStack{Item: game.ItemCarvedPumpkin, Count: 3}
-		actor.Player.Inventory.Armor[0] = game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
-
-		joinTestSession(t, runtime, actor)
-
-		err := actor.handleUseItem(protocol.UseItem{Hand: protocol.OffHand, Sequence: 73})
-		if err != nil {
-			t.Fatalf("equip stacked pumpkin: %v", err)
-		}
-
-		player := actor.snapshotPlayer()
-
-		if player.Inventory.Offhand.Item != game.ItemCarvedPumpkin || player.Inventory.Offhand.Count != 2 {
-			t.Fatalf("offhand stack = %+v, want two carved pumpkins", player.Inventory.Offhand)
-		}
-
-		if player.Inventory.Armor[0].Item != game.ItemCarvedPumpkin || player.Inventory.Armor[0].Count != 1 {
-			t.Fatalf("equipped stack = %+v, want one carved pumpkin", player.Inventory.Armor[0])
-		}
-
-		if player.Inventory.Hotbar[0].Item != game.ItemIronHelmet || player.Inventory.Hotbar[0].Count != 1 {
-			t.Fatalf("returned armor = %+v, want iron helmet", player.Inventory.Hotbar[0])
-		}
-	})
-
+func TestUseItemCreativeWearableSemantics(t *testing.T) {
 	t.Run("creative copies wearable", func(t *testing.T) {
 		world := &game.World{Generator: blockMutationTestGenerator{block: game.Air}}
 
@@ -194,4 +191,129 @@ func TestUseItemStackedAndCreativeWearableSemantics(t *testing.T) {
 			t.Fatalf("creative equipped stack = %+v, want copied boots", player.Inventory.Armor[3])
 		}
 	})
+}
+
+func TestUseItemCannotReplaceBoundEquipmentOutsideCreative(t *testing.T) {
+	modes := []game.GameMode{game.GameModeSurvival, game.GameModeAdventure}
+
+	for _, mode := range modes {
+		world := &game.World{Generator: blockMutationTestGenerator{block: game.Air}}
+
+		runtime := NewRuntime(world)
+
+		actor, connection := newBlockMutationTestSession(runtime, commandTestBobUUID, "Actor", mode)
+
+		bound := game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
+
+		bound.SetEnchantment(game.EnchantmentBindingCurse, 1)
+
+		actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemDiamondHelmet, Count: 1}
+		actor.Player.Inventory.Armor[0] = bound
+
+		joinTestSession(t, runtime, actor)
+
+		connection.reset()
+
+		err := actor.handleUseItem(protocol.UseItem{Hand: protocol.MainHand, Sequence: 76})
+		if err != nil {
+			t.Fatalf("replace bound helmet in mode %d: %v", mode, err)
+		}
+
+		player := actor.snapshotPlayer()
+		if player.Inventory.Hotbar[0].Item != game.ItemDiamondHelmet || !player.Inventory.Armor[0].Equal(bound) {
+			t.Fatalf("mode %d replaced bound equipment = %+v", mode, player.Inventory)
+		}
+
+		assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundBlockChangedAckID})
+	}
+
+	world := &game.World{Generator: blockMutationTestGenerator{block: game.Air}}
+
+	runtime := NewRuntime(world)
+
+	actor, _ := newBlockMutationTestSession(runtime, commandTestBobUUID, "Actor", game.GameModeCreative)
+
+	bound := game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
+
+	bound.SetEnchantment(game.EnchantmentBindingCurse, 1)
+
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemDiamondHelmet, Count: 1}
+	actor.Player.Inventory.Armor[0] = bound
+
+	joinTestSession(t, runtime, actor)
+
+	err := actor.handleUseItem(protocol.UseItem{Hand: protocol.MainHand, Sequence: 77})
+	if err != nil {
+		t.Fatalf("creative replace bound helmet: %v", err)
+	}
+
+	player := actor.snapshotPlayer()
+	if player.Inventory.Hotbar[0].Item != game.ItemDiamondHelmet || player.Inventory.Armor[0].Item != game.ItemDiamondHelmet {
+		t.Fatalf("creative bound equipment replacement = %+v", player.Inventory)
+	}
+}
+
+func TestUseItemBroadcastsGeneratedEquipSound(t *testing.T) {
+	world := &game.World{Generator: blockMutationTestGenerator{block: game.Air}}
+
+	runtime := NewRuntime(world)
+
+	actor, actorConnection := newBlockMutationTestSession(runtime, commandTestBobUUID, "Actor", game.GameModeSurvival)
+	observer, observerConnection := newBlockMutationTestSession(runtime, commandTestAliceUUID, "Observer", game.GameModeSurvival)
+
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemDiamondHelmet, Count: 1}
+
+	position := toBlockPosition(actor.Player.Position)
+
+	markChunkLoaded(actor, position)
+	markChunkLoaded(observer, position)
+
+	joinTestSession(t, runtime, actor)
+	joinTestSession(t, runtime, observer)
+
+	actorConnection.reset()
+	observerConnection.reset()
+
+	err := actor.handleUseItem(protocol.UseItem{Hand: protocol.MainHand, Sequence: 78})
+	if err != nil {
+		t.Fatalf("equip helmet: %v", err)
+	}
+
+	assertPacketIDs(t, actorConnection.packetIDs(t), []int32{protocol.ClientboundContainerSetContentID, protocol.ClientboundSoundID, protocol.ClientboundBlockChangedAckID})
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{protocol.ClientboundEntityEquipmentID, protocol.ClientboundSoundID})
+	assertPlayerEquipSound(t, actorConnection.packets(t)[1], game.SoundEvent("minecraft:item.armor.equip_diamond"))
+	assertPlayerEquipSound(t, observerConnection.packets(t)[1], game.SoundEvent("minecraft:item.armor.equip_diamond"))
+}
+
+func assertPlayerEquipSound(t *testing.T, packet protocol.Packet, event game.SoundEvent) {
+	t.Helper()
+
+	reader := protocol.NewPacketReader(packet.Data)
+	if reader.VarInt() != 0 {
+		t.Fatal("equip sound did not use a direct holder")
+	}
+
+	actualEvent := reader.String(32767)
+
+	if reader.Bool() {
+		reader.Float()
+	}
+
+	source := reader.VarInt()
+
+	reader.Int()
+	reader.Int()
+	reader.Int()
+	reader.Float()
+	reader.Float()
+	reader.Long()
+
+	err := reader.Err()
+	if err != nil {
+		t.Fatalf("decode equip sound: %v", err)
+	}
+
+	if actualEvent != string(event) || source != protocol.SoundSourcePlayer {
+		t.Fatalf("equip sound = event %q source %d, want event %q source %d", actualEvent, source, event, protocol.SoundSourcePlayer)
+	}
 }

@@ -170,16 +170,18 @@ func TestGeneratedArmorMetadata(t *testing.T) {
 		}
 
 		armor := definition.Armor
-		if armor.Slot != test.slot || armor.Defense != test.defense || armor.Toughness != test.toughness || armor.KnockbackResistance != test.knockbackResistance {
+		equippable := definition.Equippable
+
+		if equippable.Slot != test.slot || armor.Defense != test.defense || armor.Toughness != test.toughness || armor.KnockbackResistance != test.knockbackResistance {
 			t.Fatalf("armor item %s metadata = %+v, want slot %d defense %d toughness %v knockback resistance %v", definition.Name, armor, test.slot, test.defense, test.toughness, test.knockbackResistance)
 		}
 	}
 
-	nonArmorWearables := []Item{ItemCarvedPumpkin, ItemElytra}
+	nonArmorWearables := []Item{ItemCarvedPumpkin, ItemElytra, ItemPlayerHead, ItemCreeperHead, ItemZombieHead, ItemSkeletonSkull, ItemWitherSkeletonSkull, ItemDragonHead, ItemPiglinHead}
 
 	for _, item := range nonArmorWearables {
 		definition, valid := item.Definition()
-		if !valid || definition.Armor != (ItemArmor{}) {
+		if !valid || definition.Equippable.Slot == ItemEquipmentSlotNone || definition.Armor != (ItemArmor{}) {
 			t.Fatalf("non-armor wearable %d metadata = %+v", item, definition.Armor)
 		}
 	}

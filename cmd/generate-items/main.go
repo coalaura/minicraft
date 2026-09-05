@@ -42,10 +42,22 @@ type ArmorAttributesManifest struct {
 
 type ItemArmorMetadata struct {
 	Name                string  `json:"name"`
-	Slot                string  `json:"slot"`
 	Defense             int     `json:"defense"`
 	Toughness           float32 `json:"toughness"`
 	KnockbackResistance float32 `json:"knockbackResistance"`
+}
+
+type EquippableManifest struct {
+	Version     string                   `json:"version"`
+	Equippables []ItemEquippableMetadata `json:"equippables"`
+}
+
+type ItemEquippableMetadata struct {
+	Name         string `json:"name"`
+	Slot         string `json:"slot"`
+	EquipSound   string `json:"equipSound"`
+	Swappable    bool   `json:"swappable"`
+	DamageOnHurt bool   `json:"damageOnHurt"`
 }
 
 type ConsumableItemMetadata struct {
@@ -102,12 +114,13 @@ func main() {
 	consumablesPath := flag.String("consumables", "", "path to item consumables manifest")
 	attackAttributesPath := flag.String("attack-attributes", "", "path to item attack attributes manifest")
 	armorAttributesPath := flag.String("armor-attributes", "", "path to item armor attributes manifest")
+	equippablesPath := flag.String("equippables", "", "path to item equippables manifest")
 	outputPath := flag.String("output", "", "generated Go output path")
 
 	flag.Parse()
 
-	if *itemsPath == "" || *blocksPath == "" || *consumablesPath == "" || *attackAttributesPath == "" || *armorAttributesPath == "" || *outputPath == "" {
-		fmt.Fprintln(os.Stderr, "items, blocks, consumables, attack-attributes, armor-attributes and output are required")
+	if *itemsPath == "" || *blocksPath == "" || *consumablesPath == "" || *attackAttributesPath == "" || *armorAttributesPath == "" || *equippablesPath == "" || *outputPath == "" {
+		fmt.Fprintln(os.Stderr, "items, blocks, consumables, attack-attributes, armor-attributes, equippables and output are required")
 
 		os.Exit(2)
 	}
@@ -137,7 +150,12 @@ func main() {
 		fail(err)
 	}
 
-	generated, err := generate(items, blocks, consumables, attackAttributes, armorAttributes)
+	equippables, err := readEquippables(*equippablesPath)
+	if err != nil {
+		fail(err)
+	}
+
+	generated, err := generate(items, blocks, consumables, attackAttributes, armorAttributes, equippables)
 	if err != nil {
 		fail(err)
 	}
@@ -208,7 +226,19 @@ func readArmorAttributes(path string) (ArmorAttributesManifest, error) {
 	return manifest, err
 }
 
-func generate(items []ItemDefinition, blocks []BlockDefinition, consumables ConsumableManifest, attackAttributes AttackAttributesManifest, armorAttributes ArmorAttributesManifest) ([]byte, error) {
+func readEquippables(path string) (EquippableManifest, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return EquippableManifest{}, err
+	}
+
+	var manifest EquippableManifest
+
+	err = json.Unmarshal(raw, &manifest)
+	return manifest, err
+}
+
+func generate(items []ItemDefinition, blocks []BlockDefinition, consumables ConsumableManifest, attackAttributes AttackAttributesManifest, armorAttributes ArmorAttributesManifest, equippables EquippableManifest) ([]byte, error) {
 	if len(items) == 0 {
 		return nil, fmt.Errorf("item catalogue is empty")
 	}
@@ -230,6 +260,11 @@ func generate(items []ItemDefinition, blocks []BlockDefinition, consumables Cons
 	}
 
 	armorAttributesByName, err := validateArmorAttributes(items, armorAttributes)
+	if err != nil {
+		return nil, err
+	}
+
+	equippablesByName, err := validateEquippables(items, equippables)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +304,7 @@ func generate(items []ItemDefinition, blocks []BlockDefinition, consumables Cons
 
 		fmt.Fprintf(
 			&output,
-			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, AttackDamageModifier: %g, AttackSpeedModifier: %g, DamagePerAttack: %d%s, Mining: %s, Food: %s, Consumable: %s},\n",
+			"\t{ID: Item%s, Name: %q, StackSize: %d, MaxDurability: %d, AttackDamageModifier: %g, AttackSpeedModifier: %g, DamagePerAttack: %d%s%s, Mining: %s, Food: %s, Consumable: %s},\n",
 			goName(item.Name),
 			item.Name,
 			item.StackSize,
@@ -278,6 +313,7 @@ func generate(items []ItemDefinition, blocks []BlockDefinition, consumables Cons
 			attackAttributesByName[item.Name].SpeedModifier,
 			attackAttributesByName[item.Name].DamagePerAttack,
 			itemArmor(armorAttributesByName[item.Name]),
+			itemEquippable(equippablesByName[item.Name]),
 			itemMining(item.Name),
 			food,
 			consumable,
@@ -488,7 +524,7 @@ func validateArmorAttributes(items []ItemDefinition, manifest ArmorAttributesMan
 			return nil, fmt.Errorf("armor item %q is duplicated", name)
 		}
 
-		if armor.Defense <= 0 || armor.Slot == "" || armor.Slot == "BODY" || armor.Toughness < 0 || armor.KnockbackResistance < 0 {
+		if armor.Defense <= 0 || armor.Toughness < 0 || armor.KnockbackResistance < 0 {
 			return nil, fmt.Errorf("armor item %q has invalid gameplay values", name)
 		}
 
@@ -500,6 +536,46 @@ func validateArmorAttributes(items []ItemDefinition, manifest ArmorAttributesMan
 	}
 
 	return armorAttributes, nil
+}
+
+func validateEquippables(items []ItemDefinition, manifest EquippableManifest) (map[string]ItemEquippableMetadata, error) {
+	if manifest.Version != "1.21.11" {
+		return nil, fmt.Errorf("equippable manifest must target Minecraft Java 1.21.11")
+	}
+
+	itemNames := make(map[string]struct{}, len(items))
+
+	for _, item := range items {
+		itemNames[item.Name] = struct{}{}
+	}
+
+	equippables := make(map[string]ItemEquippableMetadata, len(manifest.Equippables))
+
+	for _, equippable := range manifest.Equippables {
+		if _, exists := itemNames[equippable.Name]; !exists {
+			return nil, fmt.Errorf("equippable item %q is absent from item catalogue", equippable.Name)
+		}
+
+		if _, exists := equippables[equippable.Name]; exists {
+			return nil, fmt.Errorf("equippable item %q is duplicated", equippable.Name)
+		}
+
+		if equippable.Slot != "HEAD" && equippable.Slot != "CHEST" && equippable.Slot != "LEGS" && equippable.Slot != "FEET" {
+			return nil, fmt.Errorf("equippable item %q has invalid slot %q", equippable.Name, equippable.Slot)
+		}
+
+		if !strings.HasPrefix(equippable.EquipSound, "minecraft:") {
+			return nil, fmt.Errorf("equippable item %q has invalid equip sound %q", equippable.Name, equippable.EquipSound)
+		}
+
+		equippables[equippable.Name] = equippable
+	}
+
+	if len(equippables) != 38 {
+		return nil, fmt.Errorf("equippable source has %d player items, want 38", len(equippables))
+	}
+
+	return equippables, nil
 }
 
 func validConsumeEffect(effect ConsumeEffectMetadata) bool {
@@ -570,11 +646,24 @@ func itemArmor(metadata ItemArmorMetadata) string {
 	}
 
 	return fmt.Sprintf(
-		", Armor: ItemArmor{Slot: ItemEquipmentSlot%s, Defense: %d, Toughness: %g, KnockbackResistance: %g}",
-		goName(strings.ToLower(metadata.Slot)),
+		", Armor: ItemArmor{Defense: %d, Toughness: %g, KnockbackResistance: %g}",
 		metadata.Defense,
 		metadata.Toughness,
 		metadata.KnockbackResistance,
+	)
+}
+
+func itemEquippable(metadata ItemEquippableMetadata) string {
+	if metadata.Name == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(
+		", Equippable: ItemEquippable{Slot: ItemEquipmentSlot%s, EquipSound: %q, Swappable: %t, DamageOnHurt: %t}",
+		goName(strings.ToLower(metadata.Slot)),
+		metadata.EquipSound,
+		metadata.Swappable,
+		metadata.DamageOnHurt,
 	)
 }
 

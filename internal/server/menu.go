@@ -210,6 +210,14 @@ func (candidate *menuCandidate) accepts(slot int, stack game.ItemStack) bool {
 	}
 }
 
+func canRemoveFromArmorSlot(mode game.GameMode, slot int, stack game.ItemStack) bool {
+	if mode == game.GameModeCreative || slot < 5 || slot > 8 {
+		return true
+	}
+
+	return !stack.PreventsArmorChange()
+}
+
 func (candidate *menuCandidate) take(slot int, amount int32) game.ItemStack {
 	target := candidate.slot(slot)
 	if target == nil || target.Empty() || amount <= 0 {

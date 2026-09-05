@@ -138,10 +138,16 @@ type ItemConsumable struct {
 }
 
 type ItemArmor struct {
-	Slot                ItemEquipmentSlot
 	Defense             int32
 	Toughness           float32
 	KnockbackResistance float32
+}
+
+type ItemEquippable struct {
+	Slot         ItemEquipmentSlot
+	EquipSound   SoundEvent
+	Swappable    bool
+	DamageOnHurt bool
 }
 
 type ItemDefinition struct {
@@ -153,6 +159,7 @@ type ItemDefinition struct {
 	AttackSpeedModifier  float32
 	DamagePerAttack      int32
 	Armor                ItemArmor
+	Equippable           ItemEquippable
 	Mining               ItemMining
 	Food                 ItemFood
 	Consumable           ItemConsumable
@@ -385,13 +392,31 @@ func (stack ItemStack) PreventsEquipmentDrop() bool {
 	return stack.EnchantmentLevel(EnchantmentVanishingCurse) > 0
 }
 
-func (stack ItemStack) ArmorAttributes(slot ItemEquipmentSlot) (ItemArmor, bool) {
+func (stack ItemStack) PreventsArmorChange() bool {
+	return stack.EnchantmentLevel(EnchantmentBindingCurse) > 0
+}
+
+func (stack ItemStack) Equippable() (ItemEquippable, bool) {
 	if stack.Empty() {
+		return ItemEquippable{}, false
+	}
+
+	definition, valid := stack.Item.Definition()
+	if !valid || definition.Equippable.Slot == ItemEquipmentSlotNone {
+		return ItemEquippable{}, false
+	}
+
+	return definition.Equippable, true
+}
+
+func (stack ItemStack) ArmorAttributes(slot ItemEquipmentSlot) (ItemArmor, bool) {
+	equippable, valid := stack.Equippable()
+	if !valid || equippable.Slot != slot {
 		return ItemArmor{}, false
 	}
 
 	definition, valid := stack.Item.Definition()
-	if !valid || definition.Armor.Slot != slot {
+	if !valid || definition.Armor == (ItemArmor{}) {
 		return ItemArmor{}, false
 	}
 
@@ -581,7 +606,7 @@ func (inventory PlayerInventory) Contents() []ItemStack {
 	return contents
 }
 
-//go:generate go run ../../cmd/generate-items -items ../../data/items.json -blocks ../../data/blocks.json -consumables ../../data/item_consumables.json -attack-attributes ../../data/item_attack_attributes.json -armor-attributes ../../data/item_armor_attributes.json -output items_generated.go
+//go:generate go run ../../cmd/generate-items -items ../../data/items.json -blocks ../../data/blocks.json -consumables ../../data/item_consumables.json -attack-attributes ../../data/item_attack_attributes.json -armor-attributes ../../data/item_armor_attributes.json -equippables ../../data/item_equippables.json -output items_generated.go
 func ItemForBlock(block Block) (Item, bool) {
 	if block == Air {
 		return 0, false

@@ -64,7 +64,8 @@ func (s *Session) handleUseItem(interaction protocol.UseItem) (err error) {
 		return s.Runtime.startUsingConsumable(s, interaction.Hand, stack, definition.Food, definition.Consumable)
 	}
 
-	if armorSlotForItem(stack) < 0 {
+	equippable, valid := stack.Equippable()
+	if !valid || !equippable.Swappable {
 		return nil
 	}
 
@@ -79,8 +80,9 @@ func (r *Runtime) equipHeldItem(session *Session, hand int32, expected game.Item
 	r.lifecycleMu.Lock()
 
 	var (
-		before  game.PlayerInventory
-		dropped game.ItemStack
+		before     game.PlayerInventory
+		dropped    game.ItemStack
+		equipSound game.SoundEvent
 	)
 
 	player, changed := session.updatePlayerState(func(player *game.Player) bool {
@@ -94,12 +96,22 @@ func (r *Runtime) equipHeldItem(session *Session, hand int32, expected game.Item
 			return false
 		}
 
+		equippable, valid := held.Equippable()
+		if !valid || !equippable.Swappable {
+			return false
+		}
+
 		equipped := player.Inventory.Slot(armorSlot)
 		if equipped == nil || held.SameItem(*equipped) {
 			return false
 		}
 
+		if player.GameMode != game.GameModeCreative && equipped.PreventsArmorChange() {
+			return false
+		}
+
 		before = player.Inventory.Clone()
+		equipSound = equippable.EquipSound
 
 		previous := equipped.Clone()
 		replacement := held.Clone()
@@ -109,7 +121,7 @@ func (r *Runtime) equipHeldItem(session *Session, hand int32, expected game.Item
 		*equipped = replacement
 
 		if held.Count <= 1 {
-			if previous.Empty() && player.GameMode == game.GameModeCreative {
+			if player.GameMode == game.GameModeCreative {
 				return true
 			}
 
@@ -146,7 +158,25 @@ func (r *Runtime) equipHeldItem(session *Session, hand int32, expected game.Item
 		return true, err
 	}
 
+	r.broadcastPlayerEquipSound(player, equipSound)
+
 	return true, nil
+}
+
+func (r *Runtime) broadcastPlayerEquipSound(player game.Player, event game.SoundEvent) {
+	if event == "" || player.GameMode == game.GameModeSpectator {
+		return
+	}
+
+	sound := playerConsumptionSound(player, event, protocol.SoundSourcePlayer, 1, 1)
+	position := toBlockPosition(player.Position)
+
+	for _, viewer := range r.snapshotSessions() {
+		err := viewer.sendSoundIfLoaded(sound, position)
+		if err != nil {
+			viewer.Log.Warnf("[play] failed to send armor equip sound: %v\n", err)
+		}
+	}
 }
 
 func (r *Runtime) startUsingConsumable(session *Session, hand int32, stack game.ItemStack, food game.ItemFood, consumable game.ItemConsumable) error {

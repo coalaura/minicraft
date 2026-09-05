@@ -1,34 +1,179 @@
 {
   "version": "1.21.11",
   "attributes": [
-    {"name":"leather_helmet","slot":"HEAD","defense":1,"toughness":0,"knockbackResistance":0},
-    {"name":"leather_chestplate","slot":"CHEST","defense":3,"toughness":0,"knockbackResistance":0},
-    {"name":"leather_leggings","slot":"LEGS","defense":2,"toughness":0,"knockbackResistance":0},
-    {"name":"leather_boots","slot":"FEET","defense":1,"toughness":0,"knockbackResistance":0},
-    {"name":"copper_helmet","slot":"HEAD","defense":2,"toughness":0,"knockbackResistance":0},
-    {"name":"copper_chestplate","slot":"CHEST","defense":4,"toughness":0,"knockbackResistance":0},
-    {"name":"copper_leggings","slot":"LEGS","defense":3,"toughness":0,"knockbackResistance":0},
-    {"name":"copper_boots","slot":"FEET","defense":1,"toughness":0,"knockbackResistance":0},
-    {"name":"chainmail_helmet","slot":"HEAD","defense":2,"toughness":0,"knockbackResistance":0},
-    {"name":"chainmail_chestplate","slot":"CHEST","defense":5,"toughness":0,"knockbackResistance":0},
-    {"name":"chainmail_leggings","slot":"LEGS","defense":4,"toughness":0,"knockbackResistance":0},
-    {"name":"chainmail_boots","slot":"FEET","defense":1,"toughness":0,"knockbackResistance":0},
-    {"name":"iron_helmet","slot":"HEAD","defense":2,"toughness":0,"knockbackResistance":0},
-    {"name":"iron_chestplate","slot":"CHEST","defense":6,"toughness":0,"knockbackResistance":0},
-    {"name":"iron_leggings","slot":"LEGS","defense":5,"toughness":0,"knockbackResistance":0},
-    {"name":"iron_boots","slot":"FEET","defense":2,"toughness":0,"knockbackResistance":0},
-    {"name":"golden_helmet","slot":"HEAD","defense":2,"toughness":0,"knockbackResistance":0},
-    {"name":"golden_chestplate","slot":"CHEST","defense":5,"toughness":0,"knockbackResistance":0},
-    {"name":"golden_leggings","slot":"LEGS","defense":3,"toughness":0,"knockbackResistance":0},
-    {"name":"golden_boots","slot":"FEET","defense":1,"toughness":0,"knockbackResistance":0},
-    {"name":"diamond_helmet","slot":"HEAD","defense":3,"toughness":2,"knockbackResistance":0},
-    {"name":"diamond_chestplate","slot":"CHEST","defense":8,"toughness":2,"knockbackResistance":0},
-    {"name":"diamond_leggings","slot":"LEGS","defense":6,"toughness":2,"knockbackResistance":0},
-    {"name":"diamond_boots","slot":"FEET","defense":3,"toughness":2,"knockbackResistance":0},
-    {"name":"netherite_helmet","slot":"HEAD","defense":3,"toughness":3,"knockbackResistance":0.1},
-    {"name":"netherite_chestplate","slot":"CHEST","defense":8,"toughness":3,"knockbackResistance":0.1},
-    {"name":"netherite_leggings","slot":"LEGS","defense":6,"toughness":3,"knockbackResistance":0.1},
-    {"name":"netherite_boots","slot":"FEET","defense":3,"toughness":3,"knockbackResistance":0.1},
-    {"name":"turtle_helmet","slot":"HEAD","defense":2,"toughness":0,"knockbackResistance":0}
+    {
+      "name": "leather_boots",
+      "defense": 1,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "copper_boots",
+      "defense": 1,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "chainmail_boots",
+      "defense": 1,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "golden_boots",
+      "defense": 1,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "iron_boots",
+      "defense": 2,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "diamond_boots",
+      "defense": 3,
+      "toughness": 2,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "netherite_boots",
+      "defense": 3,
+      "toughness": 3,
+      "knockbackResistance": 0.1
+    },
+    {
+      "name": "leather_leggings",
+      "defense": 2,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "copper_leggings",
+      "defense": 3,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "chainmail_leggings",
+      "defense": 4,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "golden_leggings",
+      "defense": 3,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "iron_leggings",
+      "defense": 5,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "diamond_leggings",
+      "defense": 6,
+      "toughness": 2,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "netherite_leggings",
+      "defense": 6,
+      "toughness": 3,
+      "knockbackResistance": 0.1
+    },
+    {
+      "name": "leather_chestplate",
+      "defense": 3,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "copper_chestplate",
+      "defense": 4,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "chainmail_chestplate",
+      "defense": 5,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "golden_chestplate",
+      "defense": 5,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "iron_chestplate",
+      "defense": 6,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "diamond_chestplate",
+      "defense": 8,
+      "toughness": 2,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "netherite_chestplate",
+      "defense": 8,
+      "toughness": 3,
+      "knockbackResistance": 0.1
+    },
+    {
+      "name": "leather_helmet",
+      "defense": 1,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "copper_helmet",
+      "defense": 2,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "chainmail_helmet",
+      "defense": 2,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "golden_helmet",
+      "defense": 2,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "iron_helmet",
+      "defense": 2,
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "diamond_helmet",
+      "defense": 3,
+      "toughness": 2,
+      "knockbackResistance": 0
+    },
+    {
+      "name": "netherite_helmet",
+      "defense": 3,
+      "toughness": 3,
+      "knockbackResistance": 0.1
+    },
+    {
+      "name": "turtle_helmet",
+      "defense": 2,
+      "toughness": 0,
+      "knockbackResistance": 0
+    }
   ]
 }

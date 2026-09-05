@@ -155,11 +155,35 @@ func TestItemDataAndGeneratedItemsAreCurrent(t *testing.T) {
 	}
 
 	netheriteChestplate := armorAttributesByName["netherite_chestplate"]
-	if netheriteChestplate.Slot != "CHEST" || netheriteChestplate.Defense != 8 || netheriteChestplate.Toughness != 3 || netheriteChestplate.KnockbackResistance != 0.1 {
+	if netheriteChestplate.Defense != 8 || netheriteChestplate.Toughness != 3 || netheriteChestplate.KnockbackResistance != 0.1 {
 		t.Fatalf("netherite chestplate armor = %+v", netheriteChestplate)
 	}
 
-	generated, err := generate(items, blocks, manifest, attackAttributes, armorAttributes)
+	equippables, err := readEquippables(filepath.Join("..", "..", "data", "item_equippables.json"))
+	if err != nil {
+		t.Fatalf("read equippables: %v", err)
+	}
+
+	equippablesByName, err := validateEquippables(items, equippables)
+	if err != nil {
+		t.Fatalf("validate equippables: %v", err)
+	}
+
+	if len(equippablesByName) != 38 {
+		t.Fatalf("equippables = %d, want 38", len(equippablesByName))
+	}
+
+	netheriteChestplateEquipment := equippablesByName["netherite_chestplate"]
+	if netheriteChestplateEquipment.Slot != "CHEST" || netheriteChestplateEquipment.EquipSound != "minecraft:item.armor.equip_netherite" || !netheriteChestplateEquipment.Swappable || !netheriteChestplateEquipment.DamageOnHurt {
+		t.Fatalf("netherite chestplate equippable = %+v", netheriteChestplateEquipment)
+	}
+
+	playerHead := equippablesByName["player_head"]
+	if playerHead.Slot != "HEAD" || playerHead.Swappable || !playerHead.DamageOnHurt {
+		t.Fatalf("player head equippable = %+v", playerHead)
+	}
+
+	generated, err := generate(items, blocks, manifest, attackAttributes, armorAttributes, equippables)
 	if err != nil {
 		t.Fatalf("generate items: %v", err)
 	}

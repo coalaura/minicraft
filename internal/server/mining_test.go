@@ -47,6 +47,13 @@ type miningUnbreakingTestCase struct {
 	wantBound  int
 }
 
+type armorUnbreakingTestCase struct {
+	level      int32
+	random     int
+	wantDamage int32
+	wantBound  int
+}
+
 func TestBaselineMiningSpeeds(t *testing.T) {
 	stone := game.Stone
 
@@ -863,6 +870,60 @@ func TestMiningUnbreakingUsesDeterministicRuntimeRandomness(t *testing.T) {
 
 			if (before != nil) != (test.wantDamage != 0) {
 				t.Fatalf("inventory snapshot present = %v, want %v", before != nil, test.wantDamage != 0)
+			}
+		})
+	}
+}
+
+func TestArmorUnbreakingUsesCanonicalProbabilityBoundaries(t *testing.T) {
+	tests := map[string]armorUnbreakingTestCase{
+		"level one prevents":   {level: 1, random: 1, wantDamage: 0, wantBound: 10},
+		"level one damages":    {level: 1, random: 2, wantDamage: 1, wantBound: 10},
+		"level two prevents":   {level: 2, random: 3, wantDamage: 0, wantBound: 15},
+		"level two damages":    {level: 2, random: 4, wantDamage: 1, wantBound: 15},
+		"level three prevents": {level: 3, random: 5, wantDamage: 0, wantBound: 20},
+		"level three damages":  {level: 3, random: 6, wantDamage: 1, wantBound: 20},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			runtime := NewRuntime(&game.World{})
+
+			stack := game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
+
+			stack.SetEnchantment(game.EnchantmentUnbreaking, test.level)
+
+			calls := 0
+
+			runtime.miningRandomMu.Lock()
+
+			runtime.miningRandom = func(bound int) int {
+				calls++
+
+				if bound != test.wantBound {
+					t.Fatalf("random bound = %d, want %d", bound, test.wantBound)
+				}
+
+				return test.random
+			}
+
+			runtime.miningRandomMu.Unlock()
+
+			broke, changed := runtime.damageItemStack(&stack, 1, 100)
+			if broke {
+				t.Fatal("fresh armor broke")
+			}
+
+			if stack.Damage() != test.wantDamage {
+				t.Fatalf("damage = %d, want %d", stack.Damage(), test.wantDamage)
+			}
+
+			if changed != (test.wantDamage != 0) {
+				t.Fatalf("changed = %v, want %v", changed, test.wantDamage != 0)
+			}
+
+			if calls != 1 {
+				t.Fatalf("random calls = %d, want 1", calls)
 			}
 		})
 	}

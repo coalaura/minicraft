@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -32,10 +34,55 @@ type directoryImport struct {
 	target string
 }
 
+type armorMaterial struct {
+	defense             map[string]int
+	equipSound          string
+	toughness           float32
+	knockbackResistance float32
+}
+
+type armorRegistration struct {
+	material  string
+	armorType string
+}
+
+type armorAttributesManifest struct {
+	Version    string              `json:"version"`
+	Attributes []itemArmorMetadata `json:"attributes"`
+}
+
+type itemArmorMetadata struct {
+	Name                string  `json:"name"`
+	Defense             int     `json:"defense"`
+	Toughness           float32 `json:"toughness"`
+	KnockbackResistance float32 `json:"knockbackResistance"`
+}
+
+type equippableManifest struct {
+	Version     string                   `json:"version"`
+	Equippables []itemEquippableMetadata `json:"equippables"`
+}
+
+type itemEquippableMetadata struct {
+	Name         string `json:"name"`
+	Slot         string `json:"slot"`
+	EquipSound   string `json:"equipSound"`
+	Swappable    bool   `json:"swappable"`
+	DamageOnHurt bool   `json:"damageOnHurt"`
+}
+
+type itemTag struct {
+	Values []string `json:"values"`
+}
+
 var (
 	enchantmentKeyPattern      = regexp.MustCompile(`public static final ResourceKey<Enchantment> ([A-Z0-9_]+) = key\("([a-z0-9_]+)"\);`)
 	enchantmentRegisterPattern = regexp.MustCompile(`(?s)register\(\s*context,\s*([A-Z0-9_]+),`)
 	enchantCategoriesPattern   = regexp.MustCompile(`,\r?\n    "enchantCategories": \[\r?\n(?:      "[^"]+"(?:,\r?\n|\r?\n))*    \](,?)`)
+	armorMaterialPattern       = regexp.MustCompile(`(?s)ArmorMaterial ([A-Z_]+) = new ArmorMaterial\(\s*\d+,\s*makeDefense\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*\d+\),\s*\d+,\s*SoundEvents\.([A-Z_]+),\s*([0-9.]+)F,\s*([0-9.]+)F,`)
+	armorRegistrationPattern   = regexp.MustCompile(`(?s)public static final Item [A-Z0-9_]+ = registerItem\(\s*"([a-z0-9_]+)",[^;]*?humanoidArmor\(ArmorMaterials\.([A-Z_]+), ArmorType\.([A-Z]+)\)`)
+	equipmentSlotPattern       = regexp.MustCompile(`EquipmentSlot\.([A-Z]+)`)
+	equipSoundPattern          = regexp.MustCompile(`setEquipSound\(SoundEvents\.([A-Z_]+)\)`)
 )
 
 func main() {
@@ -94,6 +141,11 @@ func syncData(referencePath string, dataPath string) error {
 	orderPath := filepath.Join(dataPath, "enchantment_order.json")
 
 	err = writeEnchantmentOrder(javaPath, orderPath)
+	if err != nil {
+		return err
+	}
+
+	err = writeEquipmentManifests(clientPath, dataPath)
 	if err != nil {
 		return err
 	}
@@ -287,4 +339,270 @@ func enchantmentOrder(data []byte) ([]string, error) {
 	}
 
 	return order, nil
+}
+
+func writeEquipmentManifests(clientPath string, dataPath string) error {
+	equipment, armor, err := equipmentManifests(clientPath)
+	if err != nil {
+		return err
+	}
+
+	err = writeJSON(filepath.Join(dataPath, "item_armor_attributes.json"), armor)
+	if err != nil {
+		return err
+	}
+
+	return writeJSON(filepath.Join(dataPath, "item_equippables.json"), equipment)
+}
+
+func equipmentManifests(clientPath string) (equippableManifest, armorAttributesManifest, error) {
+	materialsPath := filepath.Join(clientPath, "net", "minecraft", "world", "item", "equipment", "ArmorMaterials.java")
+	itemsPath := filepath.Join(clientPath, "net", "minecraft", "world", "item", "Items.java")
+
+	materialsSource, err := os.ReadFile(materialsPath)
+	if err != nil {
+		return equippableManifest{}, armorAttributesManifest{}, err
+	}
+
+	itemsSource, err := os.ReadFile(itemsPath)
+	if err != nil {
+		return equippableManifest{}, armorAttributesManifest{}, err
+	}
+
+	materials, err := parseArmorMaterials(materialsSource)
+	if err != nil {
+		return equippableManifest{}, armorAttributesManifest{}, err
+	}
+
+	registrations, err := parseArmorRegistrations(itemsSource)
+	if err != nil {
+		return equippableManifest{}, armorAttributesManifest{}, err
+	}
+
+	tagsPath := filepath.Join(clientPath, "data", "minecraft", "tags", "item")
+
+	names, err := resolveItemTag(tagsPath, "enchantable/equippable", nil)
+	if err != nil {
+		return equippableManifest{}, armorAttributesManifest{}, err
+	}
+
+	equipment := equippableManifest{Version: expectedMinecraftVersion}
+	armor := armorAttributesManifest{Version: expectedMinecraftVersion}
+
+	for _, name := range names {
+		registration, isArmor := registrations[name]
+		if isArmor {
+			material, exists := materials[registration.material]
+			if !exists {
+				return equippableManifest{}, armorAttributesManifest{}, fmt.Errorf("armor item %q uses unknown material %s", name, registration.material)
+			}
+
+			slot, exists := armorTypeSlot(registration.armorType)
+			if !exists {
+				return equippableManifest{}, armorAttributesManifest{}, fmt.Errorf("armor item %q uses unsupported type %s", name, registration.armorType)
+			}
+
+			armor.Attributes = append(armor.Attributes, itemArmorMetadata{
+				Name:                name,
+				Defense:             material.defense[registration.armorType],
+				Toughness:           material.toughness,
+				KnockbackResistance: material.knockbackResistance,
+			})
+			equipment.Equippables = append(equipment.Equippables, itemEquippableMetadata{
+				Name:         name,
+				Slot:         slot,
+				EquipSound:   material.equipSound,
+				Swappable:    true,
+				DamageOnHurt: true,
+			})
+
+			continue
+		}
+
+		direct, directErr := parseDirectEquippable(itemsSource, name)
+		if directErr != nil {
+			return equippableManifest{}, armorAttributesManifest{}, directErr
+		}
+
+		equipment.Equippables = append(equipment.Equippables, direct)
+	}
+
+	if len(armor.Attributes) != 29 || len(equipment.Equippables) != 38 {
+		return equippableManifest{}, armorAttributesManifest{}, fmt.Errorf("derived %d armor and %d equippable items, want 29 and 38", len(armor.Attributes), len(equipment.Equippables))
+	}
+
+	return equipment, armor, nil
+}
+
+func parseArmorMaterials(source []byte) (map[string]armorMaterial, error) {
+	matches := armorMaterialPattern.FindAllSubmatch(source, -1)
+	materials := make(map[string]armorMaterial, len(matches))
+
+	for _, match := range matches {
+		boots, err := strconv.Atoi(string(match[2]))
+		if err != nil {
+			return nil, err
+		}
+
+		legs, err := strconv.Atoi(string(match[3]))
+		if err != nil {
+			return nil, err
+		}
+
+		chest, err := strconv.Atoi(string(match[4]))
+		if err != nil {
+			return nil, err
+		}
+
+		helm, err := strconv.Atoi(string(match[5]))
+		if err != nil {
+			return nil, err
+		}
+
+		toughness, err := strconv.ParseFloat(string(match[7]), 32)
+		if err != nil {
+			return nil, err
+		}
+
+		knockback, err := strconv.ParseFloat(string(match[8]), 32)
+		if err != nil {
+			return nil, err
+		}
+
+		materials[string(match[1])] = armorMaterial{
+			defense:             map[string]int{"BOOTS": boots, "LEGGINGS": legs, "CHESTPLATE": chest, "HELMET": helm},
+			equipSound:          armorEquipSound(string(match[6])),
+			toughness:           float32(toughness),
+			knockbackResistance: float32(knockback),
+		}
+	}
+
+	if len(materials) != 9 {
+		return nil, fmt.Errorf("parsed %d armor materials, want 9", len(materials))
+	}
+
+	return materials, nil
+}
+
+func parseArmorRegistrations(source []byte) (map[string]armorRegistration, error) {
+	matches := armorRegistrationPattern.FindAllSubmatch(source, -1)
+	registrations := make(map[string]armorRegistration, len(matches))
+
+	for _, match := range matches {
+		registrations[string(match[1])] = armorRegistration{material: string(match[2]), armorType: string(match[3])}
+	}
+
+	if len(registrations) != 29 {
+		return nil, fmt.Errorf("parsed %d humanoid armor registrations, want 29", len(registrations))
+	}
+
+	return registrations, nil
+}
+
+func parseDirectEquippable(source []byte, name string) (itemEquippableMetadata, error) {
+	constant := strings.ToUpper(name)
+	startMarker := []byte("public static final Item " + constant + " =")
+
+	_, rest, found := bytes.Cut(source, startMarker)
+	if !found {
+		return itemEquippableMetadata{}, fmt.Errorf("cannot locate equippable item %q", name)
+	}
+
+	rest, _, _ = bytes.Cut(rest, []byte("public static final Item "))
+
+	slotMatch := equipmentSlotPattern.FindSubmatch(rest)
+
+	if slotMatch == nil {
+		return itemEquippableMetadata{}, fmt.Errorf("equippable item %q has no equipment slot", name)
+	}
+
+	sound := "minecraft:item.armor.equip_generic"
+
+	soundMatch := equipSoundPattern.FindSubmatch(rest)
+	if soundMatch != nil {
+		sound = armorEquipSound(string(soundMatch[1]))
+	}
+
+	return itemEquippableMetadata{
+		Name:         name,
+		Slot:         string(slotMatch[1]),
+		EquipSound:   sound,
+		Swappable:    !bytes.Contains(rest, []byte("setSwappable(false)")) && !bytes.Contains(rest, []byte("equippableUnswappable")),
+		DamageOnHurt: !bytes.Contains(rest, []byte("setDamageOnHurt(false)")),
+	}, nil
+}
+
+func resolveItemTag(tagsPath string, name string, active map[string]bool) ([]string, error) {
+	if active == nil {
+		active = make(map[string]bool)
+	}
+
+	if active[name] {
+		return nil, fmt.Errorf("item tag cycle at %q", name)
+	}
+
+	active[name] = true
+	defer delete(active, name)
+
+	var tag itemTag
+
+	err := readJSON(filepath.Join(tagsPath, filepath.FromSlash(name)+".json"), &tag)
+	if err != nil {
+		return nil, err
+	}
+
+	var names []string
+
+	for _, value := range tag.Values {
+		isTag := strings.HasPrefix(value, "#")
+		value = strings.TrimPrefix(value, "#")
+		value = strings.TrimPrefix(value, "minecraft:")
+
+		if !isTag {
+			names = append(names, value)
+
+			continue
+		}
+
+		nested, nestedErr := resolveItemTag(tagsPath, value, active)
+		if nestedErr != nil {
+			return nil, nestedErr
+		}
+
+		names = append(names, nested...)
+	}
+
+	return names, nil
+}
+
+func armorTypeSlot(armorType string) (string, bool) {
+	switch armorType {
+	case "HELMET":
+		return "HEAD", true
+	case "CHESTPLATE":
+		return "CHEST", true
+	case "LEGGINGS":
+		return "LEGS", true
+	case "BOOTS":
+		return "FEET", true
+	default:
+		return "", false
+	}
+}
+
+func armorEquipSound(constant string) string {
+	name := strings.ToLower(strings.TrimPrefix(constant, "ARMOR_"))
+
+	return "minecraft:item.armor." + name
+}
+
+func writeJSON(path string, value any) error {
+	encoded, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	encoded = append(encoded, '\n')
+
+	return os.WriteFile(path, encoded, 0o644)
 }

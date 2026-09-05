@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -62,5 +66,37 @@ private static void register() {}
 
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("order = %q, want %q", got, want)
+	}
+}
+
+func TestEquipmentManifestsMatchPinnedClientSource(t *testing.T) {
+	clientPath := filepath.Join("..", "..", "..", "reference", "client_source")
+
+	equipment, armor, err := equipmentManifests(clientPath)
+	if err != nil {
+		t.Fatalf("derive equipment manifests: %v", err)
+	}
+
+	assertCurrentManifest(t, filepath.Join("..", "..", "data", "item_equippables.json"), equipment)
+	assertCurrentManifest(t, filepath.Join("..", "..", "data", "item_armor_attributes.json"), armor)
+}
+
+func assertCurrentManifest(t *testing.T, path string, value any) {
+	t.Helper()
+
+	want, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		t.Fatalf("encode %s: %v", path, err)
+	}
+
+	want = append(want, '\n')
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	if !bytes.Equal(got, want) {
+		t.Fatalf("%s is stale; run go run ./cmd/sync-data -reference ../reference", path)
 	}
 }

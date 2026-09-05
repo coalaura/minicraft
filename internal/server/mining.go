@@ -334,14 +334,15 @@ func (r *Runtime) damageItem(session *Session, expected game.ItemStack, amount, 
 func (r *Runtime) damageItemStack(stack *game.ItemStack, amount, maximumDurability int32) (bool, bool) {
 	damage := int32(0)
 	unbreaking := stack.EnchantmentLevel(game.EnchantmentUnbreaking)
+	randomBound, protectedMinimum, protectedMaximum := unbreakingProtectionRange(*stack, unbreaking)
 
 	for range amount {
 		if unbreaking > 0 {
 			r.miningRandomMu.Lock()
-			prevented := r.miningRandom(int(unbreaking)+1) != 0
+			roll := int32(r.miningRandom(int(randomBound)))
 			r.miningRandomMu.Unlock()
 
-			if prevented {
+			if roll >= protectedMinimum && roll < protectedMaximum {
 				continue
 			}
 		}
@@ -369,6 +370,15 @@ func (r *Runtime) damageItemStack(stack *game.ItemStack, amount, maximumDurabili
 	}
 
 	return true, true
+}
+
+func unbreakingProtectionRange(stack game.ItemStack, level int32) (int32, int32, int32) {
+	definition, defined := stack.Item.Definition()
+	if defined && definition.Armor != (game.ItemArmor{}) {
+		return 5 * (level + 1), 0, 2 * level
+	}
+
+	return level + 1, 1, level + 1
 }
 
 func (r *Runtime) commitOrdinaryBlockDrops(records []blockMutationRecord) {

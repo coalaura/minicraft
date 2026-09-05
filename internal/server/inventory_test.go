@@ -7,6 +7,12 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+type equipmentSlotTestCase struct {
+	name string
+	item game.Item
+	slot int
+}
+
 func TestSelectedHotbarSlotTracking(t *testing.T) {
 	session, _ := newMovementTestSession(NewRuntime(&game.World{}), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
 
@@ -570,11 +576,11 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 
 		candidate := newPlayerInventoryMenu(&inventory).candidate()
 
-		if !applyPickup(candidate, 9, 1) || candidate.slots[9].Count != 4 || candidate.carried.Count != 5 {
+		if !applyPickup(candidate, game.GameModeSurvival, 9, 1) || candidate.slots[9].Count != 4 || candidate.carried.Count != 5 {
 			t.Fatalf("candidate after split = %+v", candidate)
 		}
 
-		if !applyPickup(candidate, 36, 1) || candidate.slots[36].Count != 1 || candidate.carried.Count != 4 {
+		if !applyPickup(candidate, game.GameModeSurvival, 36, 1) || candidate.slots[36].Count != 1 || candidate.carried.Count != 4 {
 			t.Fatalf("candidate after place one = %+v", candidate)
 		}
 	})
@@ -587,7 +593,7 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 		playerMenu := newPlayerInventoryMenu(&inventory)
 		candidate := playerMenu.candidate()
 
-		if !applyQuickMove(candidate, 9, 0) || !candidate.slots[9].Empty() || candidate.slots[5].Item != game.ItemIronHelmet {
+		if !applyQuickMove(candidate, game.GameModeSurvival, 9, 0) || !candidate.slots[9].Empty() || candidate.slots[5].Item != game.ItemIronHelmet {
 			t.Fatalf("candidate after armor quick move = %+v", candidate)
 		}
 	})
@@ -600,11 +606,11 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 
 		candidate := newPlayerInventoryMenu(&inventory).candidate()
 
-		if !applySwap(candidate, 9, 3) || candidate.slots[9].Item != game.ItemDirt || candidate.slots[39].Item != game.ItemStone {
+		if !applySwap(candidate, game.GameModeSurvival, 9, 3) || candidate.slots[9].Item != game.ItemDirt || candidate.slots[39].Item != game.ItemStone {
 			t.Fatalf("candidate after hotbar swap = %+v", candidate)
 		}
 
-		if !applySwap(candidate, 9, 40) || candidate.slots[9].Item != game.ItemAir || candidate.slots[45].Item != game.ItemDirt {
+		if !applySwap(candidate, game.GameModeSurvival, 9, 40) || candidate.slots[9].Item != game.ItemAir || candidate.slots[45].Item != game.ItemDirt {
 			t.Fatalf("candidate after offhand swap = %+v", candidate)
 		}
 	})
@@ -616,14 +622,14 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 
 		candidate := newPlayerInventoryMenu(&inventory).candidate()
 
-		if !applyThrow(candidate, 9, 0) || candidate.slots[9].Count != 2 {
+		if !applyThrow(candidate, game.GameModeSurvival, 9, 0) || candidate.slots[9].Count != 2 {
 			t.Fatalf("candidate after throw one = %+v", candidate)
 		}
 
 		candidate.carried = game.ItemStack{Item: game.ItemStone, Count: 60}
 		candidate.slots[36] = game.ItemStack{Item: game.ItemStone, Count: 8}
 
-		if !applyPickupAll(candidate, 10, 0) || candidate.carried.Count != 64 || !candidate.slots[9].Empty() || candidate.slots[36].Count != 6 {
+		if !applyPickupAll(candidate, game.GameModeSurvival, 10, 0) || candidate.carried.Count != 64 || !candidate.slots[9].Empty() || candidate.slots[36].Count != 6 {
 			t.Fatalf("candidate after pickup all = %+v", candidate)
 		}
 	})
@@ -647,6 +653,78 @@ func TestPlayerInventoryStandardOperations(t *testing.T) {
 
 		if applyClone(candidate, game.GameModeSurvival, 9, 2) {
 			t.Fatal("survival clone was accepted")
+		}
+	})
+}
+
+func TestBoundArmorCannotBeRemovedOutsideCreative(t *testing.T) {
+	boundHelmet := game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
+
+	boundHelmet.SetEnchantment(game.EnchantmentBindingCurse, 1)
+
+	if canRemoveFromArmorSlot(game.GameModeSurvival, 5, boundHelmet) {
+		t.Fatal("survival can remove bound armor")
+	}
+
+	if canRemoveFromArmorSlot(game.GameModeAdventure, 5, boundHelmet) {
+		t.Fatal("adventure can remove bound armor")
+	}
+
+	if !canRemoveFromArmorSlot(game.GameModeCreative, 5, boundHelmet) {
+		t.Fatal("creative cannot remove bound armor")
+	}
+
+	t.Run("survival pickup", func(t *testing.T) {
+		var inventory game.PlayerInventory
+
+		inventory.Armor[0] = boundHelmet
+
+		candidate := newPlayerInventoryMenu(&inventory).candidate()
+		if !applyPickup(candidate, game.GameModeSurvival, 5, 0) || !candidate.slots[5].Equal(boundHelmet) || !candidate.carried.Empty() {
+			t.Fatalf("survival pickup changed bound armor = %+v", candidate)
+		}
+	})
+
+	t.Run("survival shift click", func(t *testing.T) {
+		var inventory game.PlayerInventory
+
+		inventory.Armor[0] = boundHelmet
+
+		candidate := newPlayerInventoryMenu(&inventory).candidate()
+		if !applyQuickMove(candidate, game.GameModeSurvival, 5, 0) || !candidate.slots[5].Equal(boundHelmet) {
+			t.Fatalf("survival shift click changed bound armor = %+v", candidate)
+		}
+	})
+
+	t.Run("survival hotbar swap and throw", func(t *testing.T) {
+		var inventory game.PlayerInventory
+
+		inventory.Armor[0] = boundHelmet
+		inventory.Hotbar[0] = game.ItemStack{Item: game.ItemDiamondHelmet, Count: 1}
+
+		candidate := newPlayerInventoryMenu(&inventory).candidate()
+		if !applySwap(candidate, game.GameModeSurvival, 5, 0) || !candidate.slots[5].Equal(boundHelmet) || candidate.slots[36].Item != game.ItemDiamondHelmet {
+			t.Fatalf("survival swap changed bound armor = %+v", candidate)
+		}
+
+		if !applyThrow(candidate, game.GameModeSurvival, 5, 1) || !candidate.slots[5].Equal(boundHelmet) || len(candidate.dropped) != 0 {
+			t.Fatalf("survival throw changed bound armor = %+v", candidate)
+		}
+	})
+
+	t.Run("creative pickup and shift click", func(t *testing.T) {
+		var inventory game.PlayerInventory
+
+		inventory.Armor[0] = boundHelmet
+
+		candidate := newPlayerInventoryMenu(&inventory).candidate()
+		if !applyPickup(candidate, game.GameModeCreative, 5, 0) || !candidate.slots[5].Empty() || !candidate.carried.Equal(boundHelmet) {
+			t.Fatalf("creative pickup did not remove bound armor = %+v", candidate)
+		}
+
+		candidate = newPlayerInventoryMenu(&inventory).candidate()
+		if !applyQuickMove(candidate, game.GameModeCreative, 5, 0) || !candidate.slots[5].Empty() || candidate.slots[9].Item != game.ItemIronHelmet {
+			t.Fatalf("creative shift click did not remove bound armor = %+v", candidate)
 		}
 	})
 }
@@ -823,55 +901,63 @@ func TestGenericMenuSlotRestrictions(t *testing.T) {
 
 	candidate := playerMenu.candidate()
 
-	if !applyPickup(candidate, 0, 0) || !candidate.slots[0].Empty() || candidate.carried.Count != 2 {
+	if !applyPickup(candidate, game.GameModeSurvival, 0, 0) || !candidate.slots[0].Empty() || candidate.carried.Count != 2 {
 		t.Fatal("result slot accepted a carried stack")
 	}
 
-	if !applyPickup(candidate, 5, 0) || !candidate.slots[5].Empty() || candidate.carried.Item != game.ItemStone {
+	if !applyPickup(candidate, game.GameModeSurvival, 5, 0) || !candidate.slots[5].Empty() || candidate.carried.Item != game.ItemStone {
 		t.Fatal("armor slot accepted an invalid item")
 	}
 
 	candidate.carried = game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
 
-	if !applyPickup(candidate, 5, 0) || candidate.slots[5].Item != game.ItemIronHelmet || !candidate.carried.Empty() {
+	if !applyPickup(candidate, game.GameModeSurvival, 5, 0) || candidate.slots[5].Item != game.ItemIronHelmet || !candidate.carried.Empty() {
 		t.Fatal("armor slot rejected matching armor")
 	}
 }
 
-func TestArmorSlotForItemUsesGeneratedMetadataAndSpecialWearables(t *testing.T) {
-	slot := armorSlotForItem(game.ItemStack{Item: game.ItemCopperHelmet, Count: 1})
-	if slot != 5 {
-		t.Fatalf("copper helmet slot = %d, want 5", slot)
+func TestArmorSlotForItemUsesGeneratedEquippableMetadata(t *testing.T) {
+	tests := []equipmentSlotTestCase{
+		{name: "helmet", item: game.ItemCopperHelmet, slot: 5},
+		{name: "chestplate", item: game.ItemNetheriteChestplate, slot: 6},
+		{name: "leggings", item: game.ItemChainmailLeggings, slot: 7},
+		{name: "boots", item: game.ItemLeatherBoots, slot: 8},
+		{name: "carved pumpkin", item: game.ItemCarvedPumpkin, slot: 5},
+		{name: "elytra", item: game.ItemElytra, slot: 6},
+		{name: "player head", item: game.ItemPlayerHead, slot: 5},
+		{name: "creeper head", item: game.ItemCreeperHead, slot: 5},
+		{name: "zombie head", item: game.ItemZombieHead, slot: 5},
+		{name: "skeleton skull", item: game.ItemSkeletonSkull, slot: 5},
+		{name: "wither skeleton skull", item: game.ItemWitherSkeletonSkull, slot: 5},
+		{name: "dragon head", item: game.ItemDragonHead, slot: 5},
+		{name: "piglin head", item: game.ItemPiglinHead, slot: 5},
+		{name: "stone", item: game.ItemStone, slot: -1},
 	}
 
-	slot = armorSlotForItem(game.ItemStack{Item: game.ItemNetheriteChestplate, Count: 1})
-	if slot != 6 {
-		t.Fatalf("netherite chestplate slot = %d, want 6", slot)
-	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stack := game.ItemStack{Item: test.item, Count: 1}
+			slot := armorSlotForItem(stack)
 
-	slot = armorSlotForItem(game.ItemStack{Item: game.ItemChainmailLeggings, Count: 1})
-	if slot != 7 {
-		t.Fatalf("chainmail leggings slot = %d, want 7", slot)
+			if slot != test.slot {
+				t.Fatalf("equipment slot = %d, want %d", slot, test.slot)
+			}
+		})
 	}
+}
 
-	slot = armorSlotForItem(game.ItemStack{Item: game.ItemLeatherBoots, Count: 1})
-	if slot != 8 {
-		t.Fatalf("leather boots slot = %d, want 8", slot)
-	}
+func TestQuickMoveEquipsGeneratedHeadwear(t *testing.T) {
+	headwear := []game.Item{game.ItemCarvedPumpkin, game.ItemPlayerHead, game.ItemCreeperHead, game.ItemZombieHead, game.ItemSkeletonSkull, game.ItemWitherSkeletonSkull, game.ItemDragonHead, game.ItemPiglinHead}
 
-	slot = armorSlotForItem(game.ItemStack{Item: game.ItemCarvedPumpkin, Count: 1})
-	if slot != 5 {
-		t.Fatalf("carved pumpkin slot = %d, want 5", slot)
-	}
+	for _, item := range headwear {
+		var inventory game.PlayerInventory
 
-	slot = armorSlotForItem(game.ItemStack{Item: game.ItemElytra, Count: 1})
-	if slot != 6 {
-		t.Fatalf("elytra slot = %d, want 6", slot)
-	}
+		inventory.Main[0] = game.ItemStack{Item: item, Count: 1}
 
-	slot = armorSlotForItem(game.ItemStack{Item: game.ItemStone, Count: 1})
-	if slot != -1 {
-		t.Fatalf("stone slot = %d, want -1", slot)
+		candidate := newPlayerInventoryMenu(&inventory).candidate()
+		if !applyQuickMove(candidate, game.GameModeSurvival, 9, 0) || candidate.slots[5].Item != item || !candidate.slots[9].Empty() {
+			t.Fatalf("quick move item %d = head %+v source %+v", item, candidate.slots[5], candidate.slots[9])
+		}
 	}
 }
 
@@ -935,12 +1021,12 @@ func TestNineByThreeMenuSlotsAndQuickMoveRouting(t *testing.T) {
 	}
 
 	candidate := menu.candidate()
-	if !applyQuickMove(candidate, 0, 0) || !candidate.slots[0].Empty() || candidate.slots[61].Count != 5 {
+	if !applyQuickMove(candidate, game.GameModeSurvival, 0, 0) || !candidate.slots[0].Empty() || candidate.slots[61].Count != 5 {
 		t.Fatalf("container quick move = %+v", candidate)
 	}
 
 	candidate = menu.candidate()
-	if !applyQuickMove(candidate, 53, 0) || !candidate.slots[53].Empty() || candidate.slots[1].Item != game.ItemDirt || candidate.slots[1].Count != 3 {
+	if !applyQuickMove(candidate, game.GameModeSurvival, 53, 0) || !candidate.slots[53].Empty() || candidate.slots[1].Item != game.ItemDirt || candidate.slots[1].Count != 3 {
 		t.Fatalf("player quick move = %+v", candidate)
 	}
 }
@@ -1062,7 +1148,7 @@ func TestMenuMappingsDefaultToUnmapped(t *testing.T) {
 
 	candidate := menu.candidate()
 
-	if applySwap(candidate, 1, 0) || !candidate.slots[0].Equal(slots[0]) || !candidate.slots[1].Equal(slots[1]) {
+	if applySwap(candidate, game.GameModeSurvival, 1, 0) || !candidate.slots[0].Equal(slots[0]) || !candidate.slots[1].Equal(slots[1]) {
 		t.Fatal("zero-value hotbar mapping swapped slot zero")
 	}
 

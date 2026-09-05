@@ -604,15 +604,15 @@ func applyMenuClick(candidate *menuCandidate, mode game.GameMode, click protocol
 	case clickModePickup:
 		candidate.menu.resetDrag()
 
-		applied = applyPickup(candidate, int(click.Slot), click.MouseButton)
+		applied = applyPickup(candidate, mode, int(click.Slot), click.MouseButton)
 	case clickModeQuickMove:
 		candidate.menu.resetDrag()
 
-		applied = applyQuickMove(candidate, int(click.Slot), click.MouseButton)
+		applied = applyQuickMove(candidate, mode, int(click.Slot), click.MouseButton)
 	case clickModeSwap:
 		candidate.menu.resetDrag()
 
-		applied = applySwap(candidate, int(click.Slot), click.MouseButton)
+		applied = applySwap(candidate, mode, int(click.Slot), click.MouseButton)
 	case clickModeClone:
 		candidate.menu.resetDrag()
 
@@ -620,13 +620,13 @@ func applyMenuClick(candidate *menuCandidate, mode game.GameMode, click protocol
 	case clickModeThrow:
 		candidate.menu.resetDrag()
 
-		applied = applyThrow(candidate, int(click.Slot), click.MouseButton)
+		applied = applyThrow(candidate, mode, int(click.Slot), click.MouseButton)
 	case clickModeQuickCraft:
 		applied = applyQuickCraft(candidate, mode, int(click.Slot), click.MouseButton)
 	case clickModePickupAll:
 		candidate.menu.resetDrag()
 
-		applied = applyPickupAll(candidate, int(click.Slot), click.MouseButton)
+		applied = applyPickupAll(candidate, mode, int(click.Slot), click.MouseButton)
 	default:
 		candidate.menu.resetDrag()
 
@@ -640,7 +640,7 @@ func applyMenuClick(candidate *menuCandidate, mode game.GameMode, click protocol
 	return applied
 }
 
-func applyPickup(candidate *menuCandidate, slot int, button int8) bool {
+func applyPickup(candidate *menuCandidate, mode game.GameMode, slot int, button int8) bool {
 	if button != 0 && button != 1 {
 		return false
 	}
@@ -674,6 +674,10 @@ func applyPickup(candidate *menuCandidate, slot int, button int8) bool {
 	target := candidate.slot(slot)
 	if target == nil {
 		return false
+	}
+
+	if !canRemoveFromArmorSlot(mode, slot, *target) {
+		return true
 	}
 
 	if candidate.menu.slots[slot].onTake != nil {
@@ -814,7 +818,7 @@ func applyRightPickup(candidate *menuCandidate, slot int, target *game.ItemStack
 	return true
 }
 
-func applyQuickMove(candidate *menuCandidate, slot int, button int8) bool {
+func applyQuickMove(candidate *menuCandidate, mode game.GameMode, slot int, button int8) bool {
 	if button != 0 && button != 1 {
 		return false
 	}
@@ -825,6 +829,10 @@ func applyQuickMove(candidate *menuCandidate, slot int, button int8) bool {
 	}
 
 	if source.Empty() {
+		return true
+	}
+
+	if !canRemoveFromArmorSlot(mode, slot, *source) {
 		return true
 	}
 
@@ -868,7 +876,7 @@ func applyResultQuickMove(candidate *menuCandidate, slot int) bool {
 	}
 }
 
-func applySwap(candidate *menuCandidate, slot int, button int8) bool {
+func applySwap(candidate *menuCandidate, mode game.GameMode, slot int, button int8) bool {
 	target := candidate.slot(slot)
 	if target == nil {
 		return false
@@ -898,6 +906,10 @@ func applySwap(candidate *menuCandidate, slot int, button int8) bool {
 	}
 
 	if target == other {
+		return true
+	}
+
+	if !canRemoveFromArmorSlot(mode, slot, *target) {
 		return true
 	}
 
@@ -950,7 +962,7 @@ func applyClone(candidate *menuCandidate, mode game.GameMode, slot int, _ int8) 
 	return true
 }
 
-func applyThrow(candidate *menuCandidate, slot int, button int8) bool {
+func applyThrow(candidate *menuCandidate, mode game.GameMode, slot int, button int8) bool {
 	if button != 0 && button != 1 {
 		return false
 	}
@@ -965,6 +977,10 @@ func applyThrow(candidate *menuCandidate, slot int, button int8) bool {
 	}
 
 	if !candidate.carried.Empty() || target.Empty() {
+		return true
+	}
+
+	if !canRemoveFromArmorSlot(mode, slot, *target) {
 		return true
 	}
 
@@ -1054,7 +1070,7 @@ func applyQuickCraft(candidate *menuCandidate, mode game.GameMode, slot int, but
 
 		if len(slots) == 1 {
 			if dragButton == 0 || dragButton == 1 {
-				return applyPickup(candidate, slots[0], dragButton)
+				return applyPickup(candidate, mode, slots[0], dragButton)
 			}
 
 			return true
@@ -1121,7 +1137,7 @@ func applyDragDistribution(candidate *menuCandidate, slots []int, button int8) {
 	normalizeStack(&candidate.carried)
 }
 
-func applyPickupAll(candidate *menuCandidate, slot int, button int8) bool {
+func applyPickupAll(candidate *menuCandidate, mode game.GameMode, slot int, button int8) bool {
 	if button != 0 && button != 1 || candidate.slot(slot) == nil {
 		return false
 	}
@@ -1144,7 +1160,7 @@ func applyPickupAll(candidate *menuCandidate, slot int, button int8) bool {
 	for pass := 0; pass < 2 && candidate.carried.Count < limit; pass++ {
 		for current := first; current != last && candidate.carried.Count < limit; current += step {
 			stack := candidate.slot(current)
-			if candidate.menu.slots[current].role == menuSlotResult || stack.Empty() || !stack.SameItem(candidate.carried) || pass == 0 && stack.Count == candidate.stackLimit(current, *stack) {
+			if candidate.menu.slots[current].role == menuSlotResult || !canRemoveFromArmorSlot(mode, current, *stack) || stack.Empty() || !stack.SameItem(candidate.carried) || pass == 0 && stack.Count == candidate.stackLimit(current, *stack) {
 				continue
 			}
 
@@ -1377,12 +1393,12 @@ func changedEquipmentSlots(before, after game.PlayerInventory, selected int) []b
 }
 
 func armorSlotForItem(stack game.ItemStack) int {
-	definition, valid := stack.Item.Definition()
+	equippable, valid := stack.Equippable()
 	if !valid {
 		return -1
 	}
 
-	switch definition.Armor.Slot {
+	switch equippable.Slot {
 	case game.ItemEquipmentSlotHead:
 		return 5
 	case game.ItemEquipmentSlotChest:
@@ -1391,14 +1407,6 @@ func armorSlotForItem(stack game.ItemStack) int {
 		return 7
 	case game.ItemEquipmentSlotFeet:
 		return 8
-	}
-
-	if stack.Item == game.ItemCarvedPumpkin {
-		return 5
-	}
-
-	if stack.Item == game.ItemElytra {
-		return 6
 	}
 
 	return -1

@@ -85,17 +85,17 @@ func TestPlayerArmorDamageSemantics(t *testing.T) {
 		randomCalls := 0
 
 		runtime.miningRandom = func(bound int) int {
-			if bound != 4 {
-				t.Fatalf("unbreaking random bound = %d, want 4", bound)
+			if bound != 20 {
+				t.Fatalf("unbreaking random bound = %d, want 20", bound)
 			}
 
 			randomCalls++
 
 			if randomCalls == 1 {
-				return 1
+				return 5
 			}
 
-			return 0
+			return 6
 		}
 
 		connection.reset()
@@ -579,7 +579,12 @@ func TestPlayerDeathDropsInventoryOnlyOnce(t *testing.T) {
 
 	session.Player.Inventory.CraftingResult = game.ItemStack{Item: game.ItemStone, Count: 1}
 	session.Player.Inventory.Crafting[0] = game.ItemStack{Item: game.ItemDirt, Count: 2}
-	session.Player.Inventory.Armor[0] = game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
+
+	boundHelmet := game.ItemStack{Item: game.ItemIronHelmet, Count: 1}
+
+	boundHelmet.SetEnchantment(game.EnchantmentBindingCurse, 1)
+
+	session.Player.Inventory.Armor[0] = boundHelmet
 	session.Player.Inventory.Main[0] = game.ItemStack{Item: game.ItemOakLog, Count: 3}
 	session.Player.Inventory.Offhand = game.ItemStack{Item: game.ItemShield, Count: 1}
 
@@ -596,6 +601,19 @@ func TestPlayerDeathDropsInventoryOnlyOnce(t *testing.T) {
 	entities := runtime.snapshotRuntimeEntities()
 	if len(entities) != 4 {
 		t.Fatalf("death drops = %d, want 4", len(entities))
+	}
+
+	foundBoundHelmet := false
+
+	for _, entity := range entities {
+		item := entity.(*runtimeItemEntity)
+		if item.Stack.Equal(boundHelmet) {
+			foundBoundHelmet = true
+		}
+	}
+
+	if !foundBoundHelmet {
+		t.Fatal("bound equipped helmet did not drop on death")
 	}
 
 	applied = runtime.DamagePlayer(session, PlayerDamage{Type: PlayerDamageGenericKill, Amount: math.MaxFloat32})
