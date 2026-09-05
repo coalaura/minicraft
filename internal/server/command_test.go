@@ -58,7 +58,7 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 		commandNames = append(commandNames, child.Name)
 	}
 
-	expectedCommands := []string{"help", "seed", "time", "kill", "gamemode", "give", "enchant", "clear", "teleport", "tp", "setblock", "fill"}
+	expectedCommands := []string{"help", "seed", "time", "kill", "gamemode", "give", "enchant", "clear", "teleport", "tp", "summon", "setblock", "fill"}
 	if strings.Join(commandNames, ",") != strings.Join(expectedCommands, ",") {
 		t.Fatalf("root command literals = %v, want %v", commandNames, expectedCommands)
 	}
@@ -219,6 +219,22 @@ func TestCommandDeclarationDescribesBuiltinCommands(t *testing.T) {
 		t.Fatalf("tp targets location argument = %+v, want executable", tpTargetLocation)
 	}
 
+	summonLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "summon")
+	summonEntity := commandNodeChild(declaration.Nodes, summonLiteral, protocol.CommandNodeArgument, "entity")
+	summonPosition := commandNodeChild(declaration.Nodes, summonEntity, protocol.CommandNodeArgument, "pos")
+
+	if summonEntity == nil || !summonEntity.Executable || summonEntity.Parser != protocol.CommandParserResource || summonEntity.Properties != (protocol.CommandResourceProperties{Registry: "minecraft:entity_type"}) {
+		t.Fatalf("summon entity argument = %+v", summonEntity)
+	}
+
+	if summonEntity.SuggestionType != commandSuggestionProvider {
+		t.Fatalf("summon entity suggestion type = %q, want %q", summonEntity.SuggestionType, commandSuggestionProvider)
+	}
+
+	if summonPosition == nil || !summonPosition.Executable || summonPosition.Parser != protocol.CommandParserVec3 {
+		t.Fatalf("summon position argument = %+v", summonPosition)
+	}
+
 	setblockLiteral := commandNodeChild(declaration.Nodes, root, protocol.CommandNodeLiteral, "setblock")
 	setblockPosition := commandNodeChild(declaration.Nodes, setblockLiteral, protocol.CommandNodeArgument, "position")
 	setblockBlock := commandNodeChild(declaration.Nodes, setblockPosition, protocol.CommandNodeArgument, "block")
@@ -312,6 +328,7 @@ func TestCommandHelpUsageAndSeedFeedback(t *testing.T) {
 		"/clear", "/clear <targets>", "/clear <targets> <item>", "/clear <targets> <item> <maxCount>",
 		"/teleport <location>", "/teleport <destination>", "/teleport <targets> <destination>", "/teleport <targets> <location>",
 		"/tp <location>", "/tp <destination>", "/tp <targets> <destination>", "/tp <targets> <location>",
+		"/summon <entity>", "/summon <entity> <pos>",
 		"/setblock <position> <block>", "/setblock <position> <block> replace", "/setblock <position> <block> keep", "/setblock <position> <block> strict",
 		"/fill <from> <to> <block>", "/fill <from> <to> <block> replace", "/fill <from> <to> <block> keep", "/fill <from> <to> <block> outline", "/fill <from> <to> <block> hollow", "/fill <from> <to> <block> strict")
 
@@ -638,13 +655,13 @@ func TestCommandSuggestions(t *testing.T) {
 
 	source := playerCommandSource{session: bob}
 
-	commandNames := []string{"clear", "enchant", "fill", "gamemode", "give", "help", "kill", "seed", "setblock", "teleport", "time", "tp"}
+	commandNames := []string{"clear", "enchant", "fill", "gamemode", "give", "help", "kill", "seed", "setblock", "summon", "teleport", "time", "tp"}
 	targets := []string{"@a", "@p", "@r", "@s", "Alice", "Bob"}
 
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/"), 1, 0, commandNames)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/he"), 1, 2, []string{"help"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help"), 1, 4, []string{"help"})
-	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help "), 6, 0, []string{"clear", "enchant", "fill", "gamemode", "give", "help", "kill", "seed", "setblock", "teleport", "time", "time add", "time query", "time query day", "time query daytime", "time query gametime", "time set", "time set day", "time set midnight", "time set night", "time set noon", "tp"})
+	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/help "), 6, 0, []string{"clear", "enchant", "fill", "gamemode", "give", "help", "kill", "seed", "setblock", "summon", "teleport", "time", "time add", "time query", "time query day", "time query daytime", "time query gametime", "time set", "time set day", "time set midnight", "time set night", "time set noon", "tp"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/gamemode "), 10, 0, []string{"adventure", "creative", "spectator", "survival"})
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/gamemode creative "), 19, 0, targets)
 	assertCommandSuggestions(t, runtime.commands.suggestions(source, "/time set "), 10, 0, []string{"day", "midnight", "night", "noon"})
@@ -1503,6 +1520,95 @@ func TestCommandTeleportToPlayerAndMultipleTargets(t *testing.T) {
 	executeCommand(t, bob, "tp @a")
 
 	assertSyntaxError(t, bobConnection, "tp @a", 5, game.TranslatableText("command.unknown.argument"))
+}
+
+func TestCommandSummonZombie(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	session, connection := newCommandTestSession(runtime, commandTestBobUUID, "Bob")
+
+	session.Player.Position = game.Position{X: 4.5, Y: 70, Z: -2.5}
+	session.Config = &config.Config{Server: config.ServerConfig{RenderDistance: new(int32(1))}}
+
+	prepareCommandSessionChunks(session)
+
+	joinTestSession(t, runtime, session)
+
+	connection.reset()
+
+	suggestions := runtime.commands.suggestions(playerCommandSource{session: session}, "/summon minecraft:z")
+
+	assertCommandSuggestions(t, suggestions, 8, 11, []string{"minecraft:zombie"})
+
+	executeCommand(t, session, "summon minecraft:zombie")
+
+	entities := runtime.snapshotRuntimeEntities()
+	if len(entities) != 1 {
+		t.Fatalf("summoned entities = %d, want 1", len(entities))
+	}
+
+	zombie, zombieEntity := entities[0].(*runtimeZombieEntity)
+	if !zombieEntity || zombie.State.Position != session.snapshotPlayer().Position {
+		t.Fatalf("summoned entity = %T at %+v", entities[0], entities[0].RuntimeEntityState().Position)
+	}
+
+	assertSystemComponents(t, connection, game.TranslatableText(
+		"commands.summon.success",
+		game.TranslatableText("entity.minecraft.zombie"),
+	))
+
+	connection.reset()
+
+	executeCommand(t, session, "summon zombie ~2 ~1 ~-3")
+
+	entities = runtime.snapshotRuntimeEntities()
+	if len(entities) != 2 {
+		t.Fatalf("summoned entities after positioned summon = %d, want 2", len(entities))
+	}
+
+	wantPosition := game.Position{X: 6.5, Y: 71, Z: -5.5}
+	positioned := false
+
+	for _, entity := range entities {
+		candidate, valid := entity.(*runtimeZombieEntity)
+		if valid && candidate.State.Position == wantPosition {
+			positioned = true
+		}
+	}
+
+	if !positioned {
+		t.Fatalf("no zombie spawned at %+v", wantPosition)
+	}
+
+	runtime.Difficulty = game.DifficultyPeaceful
+
+	connection.reset()
+
+	executeCommand(t, session, "summon zombie")
+
+	if len(runtime.snapshotRuntimeEntities()) != 2 {
+		t.Fatal("Peaceful summon created a zombie")
+	}
+
+	assertSystemComponents(t, connection, game.TranslatableText("commands.summon.failed.peaceful").WithColor(game.TextColorRed))
+
+	runtime.Difficulty = game.DifficultyNormal
+
+	connection.reset()
+
+	executeCommand(t, session, "summon zombie 30000000 0 0")
+
+	if len(runtime.snapshotRuntimeEntities()) != 2 {
+		t.Fatal("out-of-bounds summon created a zombie")
+	}
+
+	assertSystemComponents(t, connection, game.TranslatableText("commands.summon.invalidPosition").WithColor(game.TextColorRed))
+
+	connection.reset()
+
+	executeCommand(t, session, "summon minecraft:cow")
+
+	assertSyntaxError(t, connection, "summon minecraft:cow", 7, game.LiteralText("Unknown entity 'minecraft:cow'"))
 }
 
 func TestCommandSetBlockMutatesWorldAndNotifiesSessions(t *testing.T) {

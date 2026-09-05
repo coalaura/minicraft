@@ -14,6 +14,11 @@ import (
 const maxFillVolume int64 = 32768
 
 const (
+	summonHorizontalBound = 30000000
+	summonVerticalBound   = 20000000
+)
+
+const (
 	fillModeReplace fillMode = iota
 	fillModeKeep
 	fillModeOutline
@@ -47,8 +52,9 @@ type commandFillMode struct {
 type fillMode uint8
 
 var (
-	supportedSelectors = []string{"@a", "@p", "@r", "@s"}
-	gameModeNames      = []string{"adventure", "creative", "spectator", "survival"}
+	supportedSelectors    = []string{"@a", "@p", "@r", "@s"}
+	gameModeNames         = []string{"adventure", "creative", "spectator", "survival"}
+	summonableEntityNames = []string{"minecraft:zombie"}
 )
 
 func (registry *commandRegistry) registerEnchant() {
@@ -535,6 +541,55 @@ func (registry *commandRegistry) registerTeleport() {
 	registry.registerRedirect("tp", command)
 }
 
+func (registry *commandRegistry) registerSummon() {
+	entity := summonEntityArgument()
+	position := positionArgument("pos", protocol.CommandParserVec3)
+
+	execute := func(source CommandSource, values []any) error {
+		entityType := values[0].(game.EntityType)
+		spawnPosition := source.Position()
+
+		if len(values) > 1 {
+			spawnPosition = values[1].(commandPosition).position
+		}
+
+		if !summonPositionValid(spawnPosition) {
+			return commandFailure{message: game.TranslatableText("commands.summon.invalidPosition")}
+		}
+
+		if entityType == game.EntityZombie && registry.runtime.Difficulty == game.DifficultyPeaceful {
+			return commandFailure{message: game.TranslatableText("commands.summon.failed.peaceful")}
+		}
+
+		definition, valid := entityType.Definition()
+		if !valid {
+			return commandFailure{message: game.TranslatableText("commands.summon.failed")}
+		}
+
+		switch entityType {
+		case game.EntityZombie:
+			spawned := registry.runtime.SpawnZombie(spawnPosition)
+			if spawned == nil {
+				return commandFailure{message: game.TranslatableText("commands.summon.failed")}
+			}
+		default:
+			return commandFailure{message: game.TranslatableText("commands.summon.failed")}
+		}
+
+		displayName := game.TranslatableText("entity.minecraft." + definition.Name)
+
+		return source.Feedback(game.TranslatableText("commands.summon.success", displayName))
+	}
+
+	registry.register(&registeredCommand{
+		Name: "summon",
+		Patterns: []commandPattern{
+			{Elements: []commandElement{entity}, Execute: execute},
+			{Elements: []commandElement{entity, position}, Execute: execute},
+		},
+	})
+}
+
 func (registry *commandRegistry) registerSetBlock() {
 	position := positionArgument("position", protocol.CommandParserBlockPosition)
 	block := blockArgument()
@@ -971,6 +1026,7 @@ func registerBuiltinCommands(registry *commandRegistry) {
 	registry.registerEnchant()
 	registry.registerClear()
 	registry.registerTeleport()
+	registry.registerSummon()
 	registry.registerSetBlock()
 	registry.registerFill()
 }
@@ -1038,6 +1094,16 @@ func positionDistanceSquared(first, second game.Position) float64 {
 	return x*x + y*y + z*z
 }
 
+func summonPositionValid(position game.Position) bool {
+	x := math.Floor(position.X)
+	y := math.Floor(position.Y)
+	z := math.Floor(position.Z)
+
+	return x >= -summonHorizontalBound && x < summonHorizontalBound &&
+		y >= -summonVerticalBound && y < summonVerticalBound &&
+		z >= -summonHorizontalBound && z < summonHorizontalBound
+}
+
 func gameModeArgument() commandArgument {
 	return commandArgument{
 		name:          "gamemode",
@@ -1074,6 +1140,28 @@ func itemArgument() commandArgument {
 			}
 
 			return item, nil
+		},
+	}
+}
+
+func summonEntityArgument() commandArgument {
+	return commandArgument{
+		name:           "entity",
+		parser:         protocol.CommandParserResource,
+		properties:     protocol.CommandResourceProperties{Registry: "minecraft:entity_type"},
+		width:          1,
+		suggestValues:  staticSuggestions(summonableEntityNames),
+		clientSuggests: true,
+		parseValue: func(_ CommandSource, tokens []commandToken) (any, error) {
+			entityType, valid := game.EntityByName(tokens[0].value)
+			if !valid || entityType != game.EntityZombie {
+				return nil, commandSyntaxError{
+					message: game.LiteralText("Unknown entity '" + tokens[0].value + "'"),
+					cursor:  tokens[0].start,
+				}
+			}
+
+			return entityType, nil
 		},
 	}
 }
