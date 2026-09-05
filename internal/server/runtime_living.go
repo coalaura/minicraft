@@ -1,13 +1,16 @@
 package server
 
 import (
+	"math"
+
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
 const (
-	runtimeLivingDeathEvent = 3
-	runtimeLivingPoofEvent  = 60
+	runtimeLivingDeathEvent       = 3
+	runtimeLivingPoofEvent        = 60
+	runtimeLivingSafeFallDistance = 3
 )
 
 type RuntimeLivingState struct {
@@ -15,6 +18,9 @@ type RuntimeLivingState struct {
 
 	Velocity            game.Velocity
 	OnGround            bool
+	FallDistance        float32
+	MoveDistance        float32
+	NextStepDistance    int32
 	KnockbackResistance float32
 	Width               float64
 	Height              float64
@@ -29,6 +35,10 @@ type RuntimeLivingEntity interface {
 
 type runtimeLivingDeathHandler interface {
 	RuntimeLivingDied(*Runtime)
+}
+
+type runtimeLivingSoundProvider interface {
+	RuntimeLivingDamageSound(bool) (game.SoundEvent, float32, float32)
 }
 
 type runtimeLivingDamageUpdate struct {
@@ -49,6 +59,14 @@ func (state *RuntimeLivingState) CollisionBox(position game.Position) game.AABB 
 		MaxY: position.Y + state.Height,
 		MaxZ: position.Z + halfWidth,
 	}
+}
+
+func (state *RuntimeLivingState) EntityFlags() byte {
+	if state.RemainingFireTicks > 0 {
+		return protocol.EntityFlagOnFire
+	}
+
+	return 0
 }
 
 func (r *Runtime) damageRuntimeLivingEntityLocked(entity RuntimeLivingEntity, damage game.Damage) (runtimeLivingDamageUpdate, bool) {
@@ -172,6 +190,12 @@ func (r *Runtime) sendRuntimeLivingDamageUpdate(update runtimeLivingDamageUpdate
 		}
 
 		r.broadcastRuntimeEntityPacket(entityID, runtimeEntityPacket{ID: protocol.ClientboundDamageEventID, Encoder: packet})
+
+		sounds, hasSounds := update.entity.(runtimeLivingSoundProvider)
+		if hasSounds {
+			event, volume, pitch := sounds.RuntimeLivingDamageSound(update.died)
+			r.broadcastRuntimeEntitySound(update.entity, event, volume, pitch)
+		}
 	}
 
 	r.synchronizeRuntimeEntity(update.entity)
@@ -181,8 +205,39 @@ func (r *Runtime) sendRuntimeLivingDamageUpdate(update runtimeLivingDamageUpdate
 	}
 }
 
+func (r *Runtime) broadcastRuntimeEntitySound(entity RuntimeEntity, event game.SoundEvent, volume, pitch float32) {
+	state := entity.RuntimeEntityState()
+
+	state.mu.RLock()
+	entityID := state.ID
+	position := state.Position
+	state.mu.RUnlock()
+
+	sound := protocol.Sound{
+		Event:  protocol.SoundEventHolder{Name: string(event)},
+		Source: protocol.SoundSourceHostile,
+		X:      position.X,
+		Y:      position.Y,
+		Z:      position.Z,
+		Volume: volume,
+		Pitch:  pitch,
+		Seed:   int64(entityID),
+	}
+
+	r.broadcastRuntimeEntityPacket(entityID, runtimeEntityPacket{ID: protocol.ClientboundSoundID, Encoder: sound})
+}
+
 func (r *Runtime) broadcastRuntimeLivingEvent(entityID int32, event byte) {
 	packet := protocol.EntityEvent{EntityID: entityID, Event: event}
 
 	r.broadcastRuntimeEntityPacket(entityID, runtimeEntityPacket{ID: protocol.ClientboundEntityEventID, Encoder: packet})
+}
+
+func calculateRuntimeLivingFallDamage(fallDistance float32) float32 {
+	damage := float32(math.Floor(float64(fallDistance + 1e-6 - runtimeLivingSafeFallDistance)))
+	if damage <= 0 {
+		return 0
+	}
+
+	return damage
 }

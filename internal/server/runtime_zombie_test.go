@@ -80,8 +80,8 @@ func TestSpawnZombieTracksLoadedViewerWithZombieDefinition(t *testing.T) {
 	metadataPacket := packetsByID(t, loadedConnection, protocol.ClientboundEntityMetadataID)[0]
 	metadataReader := protocol.NewPacketReader(metadataPacket.Data)
 
-	if metadataReader.VarInt() != zombie.State.ID || metadataReader.Byte() != protocol.LivingHealthMetadataIndex || metadataReader.VarInt() != protocol.MetadataTypeFloat || metadataReader.Float() != 20 || metadataReader.Byte() != protocol.MobFlagsMetadataIndex || metadataReader.VarInt() != protocol.MetadataTypeByte || metadataReader.Byte() != 0 || metadataReader.Byte() != 0xff {
-		t.Fatal("zombie spawn metadata did not contain health and idle mob flags")
+	if metadataReader.VarInt() != zombie.State.ID || metadataReader.Byte() != protocol.EntityFlagsMetadataIndex || metadataReader.VarInt() != protocol.MetadataTypeByte || metadataReader.Byte() != 0 || metadataReader.Byte() != protocol.LivingHealthMetadataIndex || metadataReader.VarInt() != protocol.MetadataTypeFloat || metadataReader.Float() != 20 || metadataReader.Byte() != protocol.MobFlagsMetadataIndex || metadataReader.VarInt() != protocol.MetadataTypeByte || metadataReader.Byte() != 0 || metadataReader.Byte() != 0xff {
+		t.Fatal("zombie spawn metadata did not contain entity flags, health, and idle mob flags")
 	}
 }
 
@@ -540,6 +540,7 @@ func TestZombieDeathDropsLootAndRemovesAfterTwentyTicks(t *testing.T) {
 		protocol.ClientboundAddEntityID,
 		protocol.ClientboundEntityMetadataID,
 		protocol.ClientboundDamageEventID,
+		protocol.ClientboundSoundID,
 		protocol.ClientboundUpdateEntityPositionID,
 		protocol.ClientboundEntityMetadataID,
 		protocol.ClientboundEntityEventID,

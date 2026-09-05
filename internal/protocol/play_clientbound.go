@@ -65,6 +65,7 @@ const (
 	LevelEventLavaFizz   = 1501
 	LevelEventBlockBreak = 2001
 	SoundSourceBlock     = 4
+	SoundSourceHostile   = 5
 	SoundSourceNeutral   = 6
 	SoundSourcePlayer    = 7
 

@@ -39,6 +39,13 @@ const (
 	zombieTrackingRangeChunks          = 8
 	zombieTrackingInterval             = 3
 	zombieLootPickupDelay              = 10
+	zombieAmbientSoundInterval         = 80
+	zombieFireDurationTicks            = 8 * 20
+	zombieLavaFireDurationTicks        = 15 * 20
+	zombieBurningDamage                = 1
+	zombieLavaDamage                   = 4
+	zombieStepDistanceScale            = 0.6
+	zombieEyeHeight                    = 1.74
 	groundMovementInputScale           = float32(0.21600002)
 	groundMovementInputMinimumSquared  = 1e-7
 	groundMovementPositionEpsilonSq    = 2.5000003e-7
@@ -112,10 +119,11 @@ type runtimeZombieEntity struct {
 	Melee       zombieMeleeState
 	Idle        zombieIdleState
 
-	TickCount    int32
-	NoActionTime int32
-	Aggressive   bool
-	LootDropped  bool
+	TickCount        int32
+	NoActionTime     int32
+	AmbientSoundTime int32
+	Aggressive       bool
+	LootDropped      bool
 }
 
 func (navigation *groundNavigationState) Done() bool {
@@ -296,6 +304,7 @@ func (entity *runtimeZombieEntity) EntityMetadata() []protocol.EntityMetadataEnt
 	}
 
 	return []protocol.EntityMetadataEntry{
+		{Index: protocol.EntityFlagsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(entity.Living.EntityFlags())},
 		{Index: protocol.LivingHealthMetadataIndex, Type: protocol.MetadataTypeFloat, Value: protocol.MetadataFloat(entity.Living.Health)},
 		{Index: protocol.MobFlagsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(mobFlags)},
 	}
@@ -352,15 +361,235 @@ func (entity *runtimeZombieEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	entity.NoActionTime++
 	entity.State.mu.Unlock()
 
+	entity.tickBaseEnvironment(runtime)
+	entity.tickAmbientSound(runtime)
+	entity.tickDaylightBurning(runtime)
+
+	if entity.dead() {
+		runtime.tickRuntimeLivingEntity(entity)
+		runtime.synchronizeRuntimeEntity(entity)
+
+		return
+	}
+
 	fullGoalTick := entity.TickCount <= 1 || (entity.TickCount+entity.State.ID)%2 == 0
 	target := entity.tickTarget(runtime, fullGoalTick)
 
 	entity.tickGoals(runtime, target, fullGoalTick)
-	entity.tickControlsAndMovement(runtime)
-	entity.tickAttack(runtime, target)
+
+	fallDamage, step := entity.tickControlsAndMovement(runtime)
+	if fallDamage > 0 {
+		entity.applyEnvironmentDamage(runtime, game.Damage{Type: game.DamageFall, Amount: fallDamage})
+	}
+
+	entity.tickBlockEnvironment(runtime)
+
+	if step {
+		runtime.broadcastRuntimeEntitySound(entity, game.SoundEntityZombieStep, 0.15, 1)
+	}
+
+	if !entity.dead() {
+		entity.tickAttack(runtime, target)
+	}
 
 	runtime.tickRuntimeLivingEntity(entity)
 	runtime.synchronizeRuntimeEntity(entity)
+}
+
+func (entity *runtimeZombieEntity) RuntimeLivingDamageSound(died bool) (game.SoundEvent, float32, float32) {
+	entity.State.mu.Lock()
+	defer entity.State.mu.Unlock()
+
+	if died {
+		return game.SoundEntityZombieDeath, 1, 1
+	}
+
+	entity.AmbientSoundTime = -zombieAmbientSoundInterval
+
+	return game.SoundEntityZombieHurt, 1, 1
+}
+
+func (entity *runtimeZombieEntity) dead() bool {
+	entity.State.mu.RLock()
+	defer entity.State.mu.RUnlock()
+
+	return entity.Living.Dead
+}
+
+func (entity *runtimeZombieEntity) tickBaseEnvironment(runtime *Runtime) {
+	entity.State.mu.Lock()
+
+	box := entity.Living.CollisionBox(entity.State.Position)
+	inWater := runtime.fluidContact(box, game.FluidTypeWater, false).Depth > 0
+	inLava := runtime.fluidContact(box, game.FluidTypeLava, false).Depth > 0
+	wasBurning := entity.Living.RemainingFireTicks > 0
+	burningDamageDue := wasBurning && entity.Living.RemainingFireTicks%20 == 0 && !inLava
+
+	if entity.Living.RemainingFireTicks > 0 {
+		entity.Living.RemainingFireTicks--
+	}
+
+	if inWater {
+		entity.Living.RemainingFireTicks = 0
+		entity.Living.FallDistance = 0
+	}
+
+	if inLava {
+		entity.Living.FallDistance *= 0.5
+	}
+
+	if wasBurning != (entity.Living.RemainingFireTicks > 0) {
+		entity.State.metadataDirty = true
+	}
+
+	entity.State.mu.Unlock()
+
+	if burningDamageDue && !inWater {
+		entity.applyEnvironmentDamage(runtime, game.Damage{Type: game.DamageOnFire, Amount: zombieBurningDamage})
+	}
+}
+
+func (entity *runtimeZombieEntity) tickAmbientSound(runtime *Runtime) {
+	entity.State.mu.RLock()
+	alive := !entity.Living.Dead
+	entity.State.mu.RUnlock()
+
+	if !alive {
+		return
+	}
+
+	selection := int32(zombieRandomInt(runtime, 1000))
+
+	entity.State.mu.Lock()
+	ambientSoundTime := entity.AmbientSoundTime
+	entity.AmbientSoundTime++
+	play := selection < ambientSoundTime
+
+	if play {
+		entity.AmbientSoundTime = -zombieAmbientSoundInterval
+	}
+
+	entity.State.mu.Unlock()
+
+	if play {
+		runtime.broadcastRuntimeEntitySound(entity, game.SoundEntityZombieAmbient, 1, 1)
+	}
+}
+
+func (entity *runtimeZombieEntity) tickDaylightBurning(runtime *Runtime) {
+	dayTime := floorMod(runtime.World.Time().DayTime, 24000)
+	if dayTime > 12541 && dayTime < 23460 {
+		return
+	}
+
+	entity.State.mu.RLock()
+	position := entity.State.Position
+
+	box := entity.Living.CollisionBox(position)
+
+	alive := !entity.Living.Dead
+	entity.State.mu.RUnlock()
+
+	if !alive {
+		return
+	}
+
+	eyePosition := game.BlockPosition{
+		X: int32(math.Floor(position.X)),
+		Y: int32(math.Floor(position.Y + zombieEyeHeight)),
+		Z: int32(math.Floor(position.Z)),
+	}
+
+	brightness, seesSky := zombieDaylightBrightness(runtime.World, eyePosition, dayTime)
+	if brightness <= 0.5 || runtime.nextEntityRandom()*30 >= (brightness-0.4)*2 {
+		return
+	}
+
+	inWater := runtime.fluidContact(box, game.FluidTypeWater, false).Depth > 0
+	inPowderSnow := runtime.World.BlockAt(eyePosition) == game.PowderSnow
+
+	if inWater || inPowderSnow || !seesSky {
+		return
+	}
+
+	entity.State.mu.Lock()
+
+	wasBurning := entity.Living.RemainingFireTicks > 0
+	entity.Living.RemainingFireTicks = max(entity.Living.RemainingFireTicks, zombieFireDurationTicks)
+
+	if !wasBurning {
+		entity.State.metadataDirty = true
+	}
+
+	entity.State.mu.Unlock()
+}
+
+func (entity *runtimeZombieEntity) tickBlockEnvironment(runtime *Runtime) {
+	entity.State.mu.Lock()
+
+	box := entity.Living.CollisionBox(entity.State.Position)
+
+	inWater := runtime.fluidContact(box, game.FluidTypeWater, false).Depth > 0
+	inLava := runtime.fluidContact(box, game.FluidTypeLava, false).Depth > 0
+	fireDamage := runtime.fireContactDamage(box)
+	wasBurning := entity.Living.RemainingFireTicks > 0
+
+	if !inWater && fireDamage > 0 {
+		entity.Living.RemainingFireTicks = max(entity.Living.RemainingFireTicks, zombieFireDurationTicks)
+	}
+
+	if inLava {
+		entity.Living.RemainingFireTicks = max(entity.Living.RemainingFireTicks, zombieLavaFireDurationTicks)
+	}
+
+	if wasBurning != (entity.Living.RemainingFireTicks > 0) {
+		entity.State.metadataDirty = true
+	}
+
+	entity.State.mu.Unlock()
+
+	if !inWater && fireDamage > 0 {
+		entity.applyEnvironmentDamage(runtime, game.Damage{Type: game.DamageInFire, Amount: fireDamage})
+	}
+
+	if inLava && !entity.dead() {
+		applied := entity.applyEnvironmentDamage(runtime, game.Damage{Type: game.DamageLava, Amount: zombieLavaDamage})
+		if applied {
+			pitch := 2 + runtime.nextEntityRandom()*0.4
+			runtime.broadcastRuntimeEntitySound(entity, game.SoundEntityGenericBurn, 0.4, pitch)
+		}
+	}
+}
+
+func (entity *runtimeZombieEntity) applyEnvironmentDamage(runtime *Runtime, damage game.Damage) bool {
+	update, applied := runtime.damageRuntimeLivingEntityLocked(entity, damage)
+	if applied {
+		runtime.sendRuntimeLivingDamageUpdate(update)
+	}
+
+	return applied
+}
+
+func (r *Runtime) runtimeLivingTouchesFallResettingBlock(box game.AABB) bool {
+	minX := int32(math.Floor(box.MinX))
+	minY := int32(math.Floor(box.MinY))
+	minZ := int32(math.Floor(box.MinZ))
+	maxX := int32(math.Ceil(box.MaxX)) - 1
+	maxY := int32(math.Ceil(box.MaxY)) - 1
+	maxZ := int32(math.Ceil(box.MaxZ)) - 1
+
+	for x := minX; x <= maxX; x++ {
+		for y := minY; y <= maxY; y++ {
+			for z := minZ; z <= maxZ; z++ {
+				block := r.World.BlockAt(game.BlockPosition{X: x, Y: y, Z: z})
+				if block.HasTrait(game.BlockTraitFallDamageResetting) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 func (entity *runtimeZombieEntity) RuntimeLivingDied(runtime *Runtime) {
@@ -638,7 +867,7 @@ func (entity *runtimeZombieEntity) randomStrollPathCandidates(runtime *Runtime, 
 	return best
 }
 
-func (entity *runtimeZombieEntity) tickControlsAndMovement(runtime *Runtime) {
+func (entity *runtimeZombieEntity) tickControlsAndMovement(runtime *Runtime) (float32, bool) {
 	entity.State.mu.Lock()
 
 	previous := entity.State.Position
@@ -652,11 +881,59 @@ func (entity *runtimeZombieEntity) tickControlsAndMovement(runtime *Runtime) {
 	}
 
 	entity.applyGroundLivingPhysics(runtime)
+
 	entity.BodyControl.Tick(previous, entity.State.Position, &entity.Rotation)
+
+	deltaX := entity.State.Position.X - previous.X
+	deltaY := entity.State.Position.Y - previous.Y
+	deltaZ := entity.State.Position.Z - previous.Z
+
+	box := entity.Living.CollisionBox(entity.State.Position)
+
+	inWater := runtime.fluidContact(box, game.FluidTypeWater, false).Depth > 0
+	resetFallDistance := inWater || runtime.runtimeLivingTouchesFallResettingBlock(box)
+
+	if !resetFallDistance && entity.Living.FallDistance != 0 && deltaX*deltaX+deltaY*deltaY+deltaZ*deltaZ >= 1 {
+		distance := math.Sqrt(deltaX*deltaX + deltaY*deltaY + deltaZ*deltaZ)
+		traceDistance := min(distance, fallResetTraceMaximum)
+		scale := traceDistance / distance
+
+		traceEnd := game.Position{
+			X: previous.X + deltaX*scale,
+			Y: previous.Y + deltaY*scale,
+			Z: previous.Z + deltaZ*scale,
+		}
+
+		resetFallDistance = runtime.fallResetTraceHits(previous, traceEnd)
+	}
+
+	if resetFallDistance {
+		entity.Living.FallDistance = 0
+	} else if deltaY < 0 {
+		entity.Living.FallDistance -= float32(deltaY)
+	}
+
+	var fallDamage float32
+
+	if entity.Living.OnGround {
+		fallDamage = calculateRuntimeLivingFallDamage(entity.Living.FallDistance)
+
+		entity.Living.FallDistance = 0
+	}
+
+	entity.Living.MoveDistance += float32(math.Hypot(deltaX, deltaZ) * zombieStepDistanceScale)
+
+	step := entity.Living.OnGround && entity.Living.MoveDistance > float32(entity.Living.NextStepDistance) && runtime.blockBelowItem(entity.State.Position) != game.Air
+
+	if step {
+		entity.Living.NextStepDistance = int32(entity.Living.MoveDistance) + 1
+	}
 
 	entity.State.mu.Unlock()
 
 	runtime.runtimeEntityMoved(entity, previous)
+
+	return fallDamage, step
 }
 
 func (entity *runtimeZombieEntity) applyGroundLivingPhysics(runtime *Runtime) {
@@ -832,6 +1109,7 @@ func (r *Runtime) SpawnZombie(position game.Position) *runtimeZombieEntity {
 			Chunk:    positionLoadedChunk(position),
 		},
 		Living: RuntimeLivingState{
+			NextStepDistance:    1,
 			KnockbackResistance: zombieKnockbackResistance,
 			Width:               definition.Width,
 			Height:              definition.Height,
@@ -1045,6 +1323,69 @@ func zombieRandomInt(runtime *Runtime, bound int) int {
 	value := int(runtime.nextEntityRandom() * float32(bound))
 
 	return min(value, bound-1)
+}
+
+func zombieDaylightBrightness(world *game.World, position game.BlockPosition, dayTime int64) (float32, bool) {
+	sky, block, err := rawLightLevelsAt(world, position)
+	if err != nil {
+		return 0, false
+	}
+
+	skyLevel := zombieSkyLightLevel(dayTime)
+	skyDarkening := uint8(15 - skyLevel)
+	localSky := byte(0)
+
+	if sky > skyDarkening {
+		localSky = sky - skyDarkening
+	}
+
+	raw := max(localSky, block)
+	value := float32(raw) / 15
+	brightness := value / (4 - 3*value)
+
+	seesSky := sky == 15
+
+	if world.Lighting == game.LightingFullbright {
+		seesSky = zombieCanSeeSky(world, position)
+	}
+
+	return brightness, seesSky
+}
+
+func zombieCanSeeSky(world *game.World, position game.BlockPosition) bool {
+	maximumY := int32(protocol.OverworldMinY + protocol.OverworldSectionCount*game.ChunkWidth - 1)
+
+	for y := position.Y + 1; y <= maximumY; y++ {
+		block := world.BlockAt(game.BlockPosition{X: position.X, Y: y, Z: position.Z})
+
+		_, filter := block.LightProperties()
+		if filter != 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+func zombieSkyLightLevel(dayTime int64) float32 {
+	switch {
+	case dayTime >= 133 && dayTime <= 11867:
+		return 15
+	case dayTime > 11867 && dayTime < 13670:
+		progress := float32(dayTime-11867) / float32(13670-11867)
+		return 15 - 11*progress
+	case dayTime >= 13670 && dayTime <= 22330:
+		return 4
+	default:
+		adjusted := dayTime
+		if adjusted < 133 {
+			adjusted += 24000
+		}
+
+		progress := float32(adjusted-22330) / float32(24000+133-22330)
+
+		return 4 + 11*progress
+	}
 }
 
 func rotateTowards(current, wanted, maximum float32) float32 {

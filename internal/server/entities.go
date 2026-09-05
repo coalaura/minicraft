@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	cryptorand "crypto/rand"
 	"fmt"
 	"maps"
@@ -597,6 +598,10 @@ func (r *Runtime) snapshotRuntimeEntities() []RuntimeEntity {
 	for _, entity := range r.entities {
 		entities = append(entities, entity)
 	}
+
+	slices.SortFunc(entities, func(first, second RuntimeEntity) int {
+		return cmp.Compare(first.RuntimeEntityState().ID, second.RuntimeEntityState().ID)
+	})
 
 	return entities
 }

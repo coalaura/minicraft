@@ -121,6 +121,11 @@ const (
 
 	SoundEntityGenericDrink   SoundEvent = "minecraft:entity.generic.drink"
 	SoundEntityGenericEat     SoundEvent = "minecraft:entity.generic.eat"
+	SoundEntityGenericBurn    SoundEvent = "minecraft:entity.generic.burn"
+	SoundEntityZombieAmbient  SoundEvent = "minecraft:entity.zombie.ambient"
+	SoundEntityZombieDeath    SoundEvent = "minecraft:entity.zombie.death"
+	SoundEntityZombieHurt     SoundEvent = "minecraft:entity.zombie.hurt"
+	SoundEntityZombieStep     SoundEvent = "minecraft:entity.zombie.step"
 	SoundEntityPlayerBurp     SoundEvent = "minecraft:entity.player.burp"
 	SoundItemHoneyBottleDrink SoundEvent = "minecraft:item.honey_bottle.drink"
 )

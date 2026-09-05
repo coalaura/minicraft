@@ -90,8 +90,17 @@ func (buffer *pointLightBuffer) spread(light []byte, target int, sourceLevel byt
 }
 
 func rawBrightnessAt(world *game.World, position game.BlockPosition) (uint8, error) {
+	sky, block, err := rawLightLevelsAt(world, position)
+	if err != nil {
+		return 0, err
+	}
+
+	return max(sky, block), nil
+}
+
+func rawLightLevelsAt(world *game.World, position game.BlockPosition) (uint8, uint8, error) {
 	if world.Lighting == game.LightingFullbright {
-		return 15, nil
+		return 15, 15, nil
 	}
 
 	buffer := pointLightBuffer{
@@ -104,13 +113,13 @@ func rawBrightnessAt(world *game.World, position game.BlockPosition) (uint8, err
 
 	err := populatePointLight(world, position, &buffer)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	propagatePointLight(&buffer)
 
 	center := pointLightIndex(pointLightRadius, pointLightRadius, pointLightRadius)
-	return max(buffer.sky[center], buffer.block[center]), nil
+	return buffer.sky[center], buffer.block[center], nil
 }
 
 func populatePointLight(world *game.World, position game.BlockPosition, buffer *pointLightBuffer) error {
