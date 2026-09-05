@@ -98,14 +98,14 @@ func TestZombieInactiveChunkPausesMovementAttackAndDeath(t *testing.T) {
 
 	position := zombie.State.Position
 	health := session.snapshotPlayer().Health
-	cooldown := zombie.AttackCooldown
+	cooldown := zombie.Melee.TicksUntilNextAttack
 
 	runtime.releaseSessionActiveChunks(session)
 
 	runtime.Tick()
 
-	if zombie.State.Position != position || session.snapshotPlayer().Health != health || zombie.AttackCooldown != cooldown || zombie.TickCount != 1 {
-		t.Fatalf("inactive zombie changed: position %+v health %v cooldown %d ticks %d", zombie.State.Position, session.snapshotPlayer().Health, zombie.AttackCooldown, zombie.TickCount)
+	if zombie.State.Position != position || session.snapshotPlayer().Health != health || zombie.Melee.TicksUntilNextAttack != cooldown || zombie.TickCount != 1 {
+		t.Fatalf("inactive zombie changed: position %+v health %v cooldown %d ticks %d", zombie.State.Position, session.snapshotPlayer().Health, zombie.Melee.TicksUntilNextAttack, zombie.TickCount)
 	}
 
 	runtime.setSessionActiveChunks(session, []LoadedChunk{{}})
@@ -171,7 +171,7 @@ func TestZombieTargetSelectionRejectsInvalidPlayers(t *testing.T) {
 
 	valid.Player.GameMode = game.GameModeSpectator
 
-	if runtime.zombieTarget(zombie) != nil || zombie.Target != nil {
+	if runtime.zombieTarget(zombie) != nil || zombie.Target.Session != nil {
 		t.Fatal("zombie retained an invalid target")
 	}
 
@@ -183,7 +183,7 @@ func TestZombieTargetSelectionRejectsInvalidPlayers(t *testing.T) {
 
 	runtime.LeaveSession(valid)
 
-	if runtime.zombieTarget(zombie) != nil || zombie.Target != nil {
+	if runtime.zombieTarget(zombie) != nil || zombie.Target.Session != nil {
 		t.Fatal("zombie retained a disconnected target")
 	}
 }
@@ -224,7 +224,7 @@ func TestGroundNavigationSupportsChaseCollisionRoutingAndTerrain(t *testing.T) {
 	world.SetBlock(game.BlockPosition{X: 2, Y: 1, Z: 0}, game.Air)
 	world.SetBlock(game.BlockPosition{X: 2, Z: 0}, game.Stone)
 
-	path = runtime.findGroundPath(game.Position{X: 0.5, Z: 0.5}, game.Position{X: 4.5, Y: 1, Z: 0.5}, 0.6, 1.95, 35)
+	path = runtime.findGroundPath(game.Position{X: 0.5, Z: 0.5}, game.Position{X: 2.5, Y: 1, Z: 0.5}, 0.6, 1.95, 35)
 
 	steppedUp := false
 
@@ -255,9 +255,10 @@ func TestZombieFollowsGroundPathAroundWall(t *testing.T) {
 
 	runtime := NewRuntime(world)
 
-	newZombieTestSession(t, runtime, game.Position{X: 4.5, Z: 0.5})
+	session, _ := newZombieTestSession(t, runtime, game.Position{X: 4.5, Z: 0.5})
 
 	zombie := runtime.SpawnZombie(game.Position{X: 0.5, Z: 0.5})
+	zombie.Target.Session = session
 
 	maximumDeviation := 0.0
 
@@ -323,6 +324,10 @@ func TestZombieGravityChaseAndChunkMigration(t *testing.T) {
 
 	runtime := NewRuntime(world)
 
+	runtime.entityRandom = func() float32 {
+		return 0
+	}
+
 	newZombieTestSession(t, runtime, game.Position{X: 6.5, Y: 0, Z: 0.5})
 
 	zombie := runtime.SpawnZombie(game.Position{X: 0.5, Y: 3, Z: 0.5})
@@ -371,6 +376,10 @@ func TestZombieAttackUsesPlayerSurvivalDamageAndCooldown(t *testing.T) {
 
 	runtime := NewRuntime(world)
 
+	runtime.entityRandom = func() float32 {
+		return 0
+	}
+
 	session, connection := newZombieTestSession(t, runtime, game.Position{X: 1.1, Y: 0, Z: 0.5})
 
 	session.updatePlayerState(func(player *game.Player) bool {
@@ -390,8 +399,8 @@ func TestZombieAttackUsesPlayerSurvivalDamageAndCooldown(t *testing.T) {
 
 	player := session.snapshotPlayer()
 
-	if player.Health >= 20 || player.Absorption != 0 || zombie.AttackCooldown != 20 {
-		t.Fatalf("zombie attack defense = health %v absorption %v cooldown %d", player.Health, player.Absorption, zombie.AttackCooldown)
+	if player.Health >= 20 || player.Absorption != 0 || zombie.Melee.TicksUntilNextAttack != 20 {
+		t.Fatalf("zombie attack defense = health %v absorption %v cooldown %d", player.Health, player.Absorption, zombie.Melee.TicksUntilNextAttack)
 	}
 
 	if countPacketID(connection.packets(t), protocol.ClientboundEntityAnimationID) != 1 || countPacketID(connection.packets(t), protocol.ClientboundDamageEventID) != 1 || countPacketID(connection.packets(t), protocol.ClientboundSetEntityMotionID) == 0 {
@@ -410,7 +419,7 @@ func TestZombieAttackUsesPlayerSurvivalDamageAndCooldown(t *testing.T) {
 
 	runtime.Tick()
 
-	if session.snapshotPlayer().Health != player.Health || session.snapshotPlayer().Velocity != velocity || zombie.AttackCooldown != 19 {
+	if session.snapshotPlayer().Health != player.Health || session.snapshotPlayer().Velocity != velocity || zombie.Melee.TicksUntilNextAttack != 19 {
 		t.Fatal("zombie attack cooldown did not prevent a second hit")
 	}
 }

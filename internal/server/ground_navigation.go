@@ -14,6 +14,17 @@ const (
 	groundSupportProbe       = 0.05
 )
 
+var groundNavigationDirections = [...]game.BlockPosition{
+	{X: 1},
+	{X: -1},
+	{Z: 1},
+	{Z: -1},
+	{X: 1, Z: 1},
+	{X: 1, Z: -1},
+	{X: -1, Z: 1},
+	{X: -1, Z: -1},
+}
+
 type groundMovement struct {
 	Position             game.Position
 	OnGround             bool
@@ -142,7 +153,6 @@ func (r *Runtime) findGroundPath(start, goal game.Position, width, height, maxim
 
 	heap.Init(&queue)
 
-	directions := [...]game.BlockPosition{{X: 1}, {X: -1}, {Z: 1}, {Z: -1}}
 	expanded := 0
 
 	for queue.Len() > 0 && expanded < groundNavigationMaxNodes {
@@ -159,15 +169,13 @@ func (r *Runtime) findGroundPath(start, goal game.Position, width, height, maxim
 			return reconstructGroundPath(records, startNode, goalNode)
 		}
 
-		for _, direction := range directions {
+		for _, direction := range groundNavigationDirections {
 			candidate, walkable := r.groundNeighbor(current.Position, direction, width, height)
 			if !walkable || groundNodeDistance(startNode, candidate) > maximumRange {
 				continue
 			}
 
-			verticalCost := math.Abs(float64(candidate.Y-current.Position.Y)) * 0.5
-
-			cost := record.Cost + 1 + verticalCost
+			cost := record.Cost + groundNodeDistance(current.Position, candidate)
 			known := records[candidate]
 
 			if known.Set && cost >= known.Cost {
@@ -201,17 +209,45 @@ func (r *Runtime) closestGroundNode(position game.Position, width, height float6
 }
 
 func (r *Runtime) groundNeighbor(current, direction game.BlockPosition, width, height float64) (game.BlockPosition, bool) {
+	if direction.X != 0 && direction.Z != 0 {
+		firstSide, firstWalkable := r.groundNeighbor(current, game.BlockPosition{X: direction.X}, width, height)
+		secondSide, secondWalkable := r.groundNeighbor(current, game.BlockPosition{Z: direction.Z}, width, height)
+
+		if !firstWalkable || !secondWalkable || firstSide.Y > current.Y || secondSide.Y > current.Y {
+			return game.BlockPosition{}, false
+		}
+	}
+
 	candidate := game.BlockPosition{X: current.X + direction.X, Y: current.Y, Z: current.Z + direction.Z}
 
 	for offset := int32(1); offset >= -groundNavigationMaxDrop; offset-- {
 		candidate.Y = current.Y + offset
 
-		if r.groundNodeWalkable(candidate, width, height) {
+		if r.groundNodeWalkable(candidate, width, height) && r.groundTransitionWalkable(current, candidate, width, height) {
 			return candidate, true
 		}
 	}
 
 	return game.BlockPosition{}, false
+}
+
+func (r *Runtime) groundTransitionWalkable(current, candidate game.BlockPosition, width, height float64) bool {
+	from := game.Position{X: float64(current.X) + 0.5, Y: float64(current.Y), Z: float64(current.Z) + 0.5}
+	to := game.Position{X: float64(candidate.X) + 0.5, Y: float64(candidate.Y), Z: float64(candidate.Z) + 0.5}
+
+	if candidate.Y > current.Y {
+		from.Y = to.Y
+	}
+
+	velocity := game.Velocity{X: to.X - from.X, Z: to.Z - from.Z}
+
+	box := entityBox(from, width, height)
+
+	blocks := r.entityCollisionBoxes(box, velocity)
+
+	delta := collideAABBWithBlocks(box, blocks, velocity)
+
+	return math.Abs(delta.X-velocity.X) < 1e-7 && math.Abs(delta.Z-velocity.Z) < 1e-7
 }
 
 func (r *Runtime) groundNodeWalkable(node game.BlockPosition, width, height float64) bool {
@@ -247,9 +283,9 @@ func reconstructGroundPath(records map[game.BlockPosition]groundPathRecord, star
 
 	slices.Reverse(nodes)
 
-	path := make([]game.Position, 0, len(nodes))
+	path := make([]game.Position, 0, max(0, len(nodes)-1))
 
-	for _, node := range nodes {
+	for _, node := range nodes[1:] {
 		path = append(path, game.Position{X: float64(node.X) + 0.5, Y: float64(node.Y), Z: float64(node.Z) + 0.5})
 	}
 
