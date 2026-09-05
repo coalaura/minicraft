@@ -53,8 +53,8 @@ type Player struct {
 	Rotation Rotation
 	Velocity Velocity
 
-	GameMode             GameMode
-	Health               float32
+	GameMode GameMode
+	LivingState
 	FoodLevel            int32
 	Saturation           float32
 	Exhaustion           float32
@@ -62,13 +62,6 @@ type Player struct {
 	SurvivalTickCount    int64
 	AirSupply            int32
 	FallDistance         float32
-	RemainingFireTicks   int32
-	InvulnerableTime     int32
-	LastHurt             float32
-	Absorption           float32
-	ActiveEffects        ActiveMobEffects
-	Dead                 bool
-	DeathTime            int32
 	DeathEntityRemoved   bool
 	SurvivalInitialized  bool
 	AttackStrengthTicker int32
@@ -92,7 +85,7 @@ type Player struct {
 }
 
 func (player *Player) ResetSurvivalState() {
-	player.Health = DefaultPlayerHealth
+	player.Reset(DefaultPlayerHealth)
 	player.FoodLevel = DefaultPlayerFoodLevel
 	player.Saturation = DefaultPlayerSaturation
 	player.Exhaustion = 0
@@ -100,15 +93,6 @@ func (player *Player) ResetSurvivalState() {
 	player.SurvivalTickCount = 0
 	player.AirSupply = DefaultPlayerAirSupply
 	player.FallDistance = 0
-	player.RemainingFireTicks = 0
-	player.InvulnerableTime = 0
-	player.LastHurt = 0
-	player.Absorption = 0
-
-	player.ActiveEffects.Clear()
-
-	player.Dead = false
-	player.DeathTime = 0
 	player.DeathEntityRemoved = false
 
 	player.StopUsingItem()

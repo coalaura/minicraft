@@ -298,7 +298,11 @@ func playerEffectEntityFlags(player game.Player) byte {
 }
 
 func (s *Session) sendPlayerAnimation(player game.Player, animation byte) error {
-	packet := protocol.EntityAnimation{EntityID: player.EntityID, Animation: animation}
+	return s.sendEntityAnimation(player.EntityID, animation)
+}
+
+func (s *Session) sendEntityAnimation(entityID int32, animation byte) error {
+	packet := protocol.EntityAnimation{EntityID: entityID, Animation: animation}
 
 	return s.writePacket(protocol.ClientboundEntityAnimationID, packet)
 }

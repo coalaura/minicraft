@@ -72,6 +72,15 @@ private static void register() {}
 func TestEquipmentManifestsMatchPinnedClientSource(t *testing.T) {
 	clientPath := filepath.Join("..", "..", "..", "reference", "client_source")
 
+	_, err := os.Stat(clientPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("pinned client source is not available")
+		}
+
+		t.Fatalf("inspect pinned client source: %v", err)
+	}
+
 	equipment, armor, err := equipmentManifests(clientPath)
 	if err != nil {
 		t.Fatalf("derive equipment manifests: %v", err)

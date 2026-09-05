@@ -8,8 +8,7 @@ import (
 )
 
 const (
-	playerHurtCooldownTicks      = 20
-	playerHurtCooldownThreshold  = 10
+	playerHurtCooldownTicks      = game.LivingHurtCooldownTicks
 	playerDrowningThreshold      = -20
 	playerDrowningDamage         = 2
 	playerLavaDamage             = 4
@@ -27,39 +26,22 @@ const (
 	playerFeetArmorBreakEvent    = 52
 )
 
-type PlayerDamageType uint8
-
 const (
-	PlayerDamageFall PlayerDamageType = iota
-	PlayerDamageDrown
-	PlayerDamageInFire
-	PlayerDamageLava
-	PlayerDamageOnFire
-	PlayerDamageOutOfWorld
-	PlayerDamageGenericKill
-	PlayerDamageStarve
-	PlayerDamageMagic
-	PlayerDamagePlayerAttack
+	PlayerDamageFall         = game.DamageFall
+	PlayerDamageDrown        = game.DamageDrown
+	PlayerDamageInFire       = game.DamageInFire
+	PlayerDamageLava         = game.DamageLava
+	PlayerDamageOnFire       = game.DamageOnFire
+	PlayerDamageOutOfWorld   = game.DamageOutOfWorld
+	PlayerDamageGenericKill  = game.DamageGenericKill
+	PlayerDamageStarve       = game.DamageStarve
+	PlayerDamageMagic        = game.DamageMagic
+	PlayerDamagePlayerAttack = game.DamagePlayerAttack
 )
 
-type PlayerDamage struct {
-	Type           PlayerDamageType
-	Amount         float32
-	CauseEntityID  int32
-	DirectEntityID int32
-	SourcePosition *game.Position
-}
+type PlayerDamage = game.Damage
 
-type playerDamageProperties struct {
-	registryID              int32
-	deathTranslation        string
-	fire                    bool
-	bypassesArmor           bool
-	damagesArmor            bool
-	bypassesEffects         bool
-	bypassesResistance      bool
-	bypassesInvulnerability bool
-}
+type PlayerDamageType = game.DamageType
 
 type playerArmorDamageSlot struct {
 	index int
@@ -247,9 +229,7 @@ func (r *Runtime) tickPlayerSurvivalLocked(session *Session) []playerSurvivalUpd
 	player, _ = session.updatePlayerState(func(player *game.Player) bool {
 		changed := false
 
-		if player.InvulnerableTime > 0 {
-			player.InvulnerableTime--
-		}
+		player.TickHurtCooldown()
 
 		if player.RemainingFireTicks > 0 {
 			player.RemainingFireTicks--
@@ -540,7 +520,7 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 		armorBreakEvents []byte
 	)
 
-	properties := propertiesForPlayerDamage(damage.Type)
+	properties := damage.Type.Traits()
 
 	player, applied := session.updatePlayerState(func(player *game.Player) bool {
 		if !player.SurvivalInitialized {
@@ -551,26 +531,7 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 			return false
 		}
 
-		if properties.fire && playerHasMobEffect(*player, game.MobEffectFireResistance) {
-			return false
-		}
-
-		amount := damage.Amount
-
-		if player.InvulnerableTime > playerHurtCooldownThreshold {
-			if amount <= player.LastHurt {
-				return false
-			}
-
-			amount -= player.LastHurt
-			player.LastHurt = damage.Amount
-		} else {
-			player.LastHurt = damage.Amount
-			player.InvulnerableTime = playerHurtCooldownTicks
-			fullHurt = true
-		}
-
-		if properties.damagesArmor {
+		damageArmor := func(amount float32) {
 			before := player.Inventory.Clone()
 
 			armorDamage := int32(max(float32(1), amount/4))
@@ -611,27 +572,20 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 			}
 		}
 
-		if !properties.bypassesArmor {
+		defense := func() game.LivingDefense {
 			attributes := player.ArmorAttributes()
-			amount = game.DamageAfterArmorAbsorb(amount, attributes.Armor, attributes.Toughness)
+
+			return game.LivingDefense{Armor: attributes.Armor, Toughness: attributes.Toughness}
 		}
 
-		if !properties.bypassesEffects {
-			resistance, valid := player.ActiveEffects.Find(game.MobEffectResistance)
-			if valid && !properties.bypassesResistance {
-				multiplier := max(float32(25-5*(resistance.Amplifier+1))/25, 0)
-				amount *= multiplier
-			}
+		result := game.ResolveLivingDamage(&player.LivingState, damage, defense, damageArmor)
+		if !result.Applied {
+			return false
 		}
 
-		absorbed := min(amount, player.Absorption)
-		player.Absorption -= absorbed
-		amount -= absorbed
+		fullHurt = result.FullHurt
 
-		player.Health = max(0, player.Health-amount)
-		if player.Health == 0 {
-			player.Dead = true
-
+		if result.Died {
 			player.StopUsingItem()
 
 			player.RemainingFireTicks = 0
@@ -908,8 +862,8 @@ func playerEffectsRefillAir(player game.Player) bool {
 	return !nautilus || waterBreathing || conduitPower
 }
 
-func playerCanTakeDamage(player game.Player, properties playerDamageProperties) bool {
-	if properties.bypassesInvulnerability {
+func playerCanTakeDamage(player game.Player, properties game.DamageTraits) bool {
+	if properties.BypassesInvulnerability {
 		return true
 	}
 
@@ -925,37 +879,33 @@ func capInvulnerablePlayerFireTicks(player *game.Player) {
 }
 
 func playerDamageRegistryID(damageType PlayerDamageType) int32 {
-	return propertiesForPlayerDamage(damageType).registryID
+	return damageType.Traits().RegistryID
 }
 
 func playerDeathTranslation(damageType PlayerDamageType) string {
-	return propertiesForPlayerDamage(damageType).deathTranslation
-}
-
-func propertiesForPlayerDamage(damageType PlayerDamageType) playerDamageProperties {
 	switch damageType {
 	case PlayerDamageDrown:
-		return playerDamageProperties{registryID: 6, deathTranslation: "death.attack.drown", bypassesArmor: true}
+		return "death.attack.drown"
 	case PlayerDamageFall:
-		return playerDamageProperties{registryID: 10, deathTranslation: "death.attack.fall", bypassesArmor: true}
+		return "death.attack.fall"
 	case PlayerDamageGenericKill:
-		return playerDamageProperties{registryID: 19, deathTranslation: "death.attack.genericKill", bypassesArmor: true, bypassesResistance: true, bypassesInvulnerability: true}
+		return "death.attack.genericKill"
 	case PlayerDamageInFire:
-		return playerDamageProperties{registryID: 21, deathTranslation: "death.attack.inFire", fire: true, damagesArmor: true}
+		return "death.attack.inFire"
 	case PlayerDamageLava:
-		return playerDamageProperties{registryID: 24, deathTranslation: "death.attack.lava", fire: true, damagesArmor: true}
+		return "death.attack.lava"
 	case PlayerDamageOnFire:
-		return playerDamageProperties{registryID: 31, deathTranslation: "death.attack.onFire", fire: true, bypassesArmor: true}
+		return "death.attack.onFire"
 	case PlayerDamageOutOfWorld:
-		return playerDamageProperties{registryID: 32, deathTranslation: "death.attack.outOfWorld", bypassesArmor: true, bypassesResistance: true, bypassesInvulnerability: true}
+		return "death.attack.outOfWorld"
 	case PlayerDamageStarve:
-		return playerDamageProperties{registryID: 40, deathTranslation: "death.attack.starve", bypassesArmor: true, bypassesEffects: true}
+		return "death.attack.starve"
 	case PlayerDamageMagic:
-		return playerDamageProperties{registryID: 27, deathTranslation: "death.attack.magic", bypassesArmor: true}
+		return "death.attack.magic"
 	case PlayerDamagePlayerAttack:
-		return playerDamageProperties{registryID: 34, deathTranslation: "death.attack.player", damagesArmor: true}
+		return "death.attack.player"
 	default:
-		return playerDamageProperties{registryID: 18, deathTranslation: "death.attack.generic", bypassesArmor: true}
+		return "death.attack.generic"
 	}
 }
 

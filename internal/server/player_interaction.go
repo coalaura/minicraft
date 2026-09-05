@@ -14,8 +14,6 @@ const (
 	playerSprintKnockback               = 0.5
 	playerFullAttackStrength            = 0.9
 	playerCriticalDamageMultiplier      = 1.5
-	playerKnockbackMinimumDirection     = 1.0e-5
-	playerKnockbackRandomScale          = 0.01
 	playerAttackCriticalSound           = "minecraft:entity.player.attack.crit"
 	playerAttackKnockbackSound          = "minecraft:entity.player.attack.knockback"
 	playerAttackNoDamageSound           = "minecraft:entity.player.attack.nodamage"
@@ -26,6 +24,7 @@ const (
 type playerAttackResult struct {
 	targetSession   *Session
 	update          playerSurvivalUpdate
+	runtimeUpdate   runtimeLivingDamageUpdate
 	attacker        game.Player
 	target          game.Player
 	heldItem        game.ItemStack
@@ -37,6 +36,15 @@ type playerAttackResult struct {
 	critical        bool
 	attempted       bool
 	applied         bool
+	targetEntityID  int32
+}
+
+type playerAttackTarget struct {
+	session       *Session
+	player        game.Player
+	runtimeLiving RuntimeLivingEntity
+	entityID      int32
+	position      game.Position
 }
 
 func (r *Runtime) handlePlayerInteraction(attackerSession *Session, interaction protocol.Interact) {
@@ -49,7 +57,7 @@ func (r *Runtime) handlePlayerInteraction(attackerSession *Session, interaction 
 		return true
 	})
 
-	targetSession, target, valid := r.playerInteractionTargetLocked(attackerSession, interaction)
+	target, valid := r.playerInteractionTargetLocked(attackerSession, interaction)
 	if !valid || interaction.Action != protocol.InteractActionAttack {
 		r.lifecycleMu.Unlock()
 		r.worldMutationMu.Unlock()
@@ -57,7 +65,7 @@ func (r *Runtime) handlePlayerInteraction(attackerSession *Session, interaction 
 		return
 	}
 
-	result := r.attackPlayerLocked(attackerSession, targetSession, target)
+	result := r.attackLivingTargetLocked(attackerSession, target)
 
 	r.lifecycleMu.Unlock()
 	r.worldMutationMu.Unlock()
@@ -74,11 +82,15 @@ func (r *Runtime) handlePlayerInteraction(attackerSession *Session, interaction 
 		return
 	}
 
-	result.update.attackerName = result.attacker.Name
+	if result.targetSession != nil {
+		result.update.attackerName = result.attacker.Name
 
-	r.sendPlayerSurvivalUpdate(result.targetSession, result.update)
+		r.sendPlayerSurvivalUpdate(result.targetSession, result.update)
+	} else {
+		r.sendRuntimeLivingDamageUpdate(result.runtimeUpdate)
+	}
 
-	if result.targetMotion {
+	if result.targetMotion && result.targetSession != nil {
 		r.sendPlayerKnockback(result.target)
 	}
 
@@ -89,7 +101,7 @@ func (r *Runtime) handlePlayerInteraction(attackerSession *Session, interaction 
 	r.sendPlayerAttackSounds(result.attacker, result.postSounds)
 
 	if result.critical {
-		err := attackerSession.sendPlayerAnimation(result.target, protocol.EntityAnimationCriticalHit)
+		err := attackerSession.sendEntityAnimation(result.targetEntityID, protocol.EntityAnimationCriticalHit)
 		if err != nil && attackerSession.Log != nil {
 			attackerSession.Log.Warnf("[play] failed to synchronize critical attack: %v\n", err)
 		}
@@ -104,28 +116,59 @@ func (r *Runtime) handlePlayerInteraction(attackerSession *Session, interaction 
 
 }
 
-func (r *Runtime) playerInteractionTargetLocked(attackerSession *Session, interaction protocol.Interact) (*Session, game.Player, bool) {
+func (r *Runtime) playerInteractionTargetLocked(attackerSession *Session, interaction protocol.Interact) (playerAttackTarget, bool) {
 	attacker := attackerSession.snapshotPlayer()
 	if attacker.Dead || attacker.GameMode == game.GameModeSpectator || attacker.EntityID == interaction.EntityID {
-		return nil, game.Player{}, false
+		return playerAttackTarget{}, false
 	}
 
 	targetSession := r.playerSessionByEntityIDLocked(interaction.EntityID)
-	if targetSession == nil {
-		return nil, game.Player{}, false
+	if targetSession != nil {
+		target := targetSession.snapshotPlayer()
+		if target.Dead {
+			return playerAttackTarget{}, false
+		}
+
+		inclusive := interaction.Action == protocol.InteractActionAttack
+		if !attacker.IsWithinEntityInteractionRange(target.CollisionBox(), playerInteractionVerificationBuffer, inclusive) {
+			return playerAttackTarget{}, false
+		}
+
+		return playerAttackTarget{session: targetSession, player: target, entityID: target.EntityID, position: target.Position}, true
 	}
 
-	target := targetSession.snapshotPlayer()
-	if target.Dead {
-		return nil, game.Player{}, false
+	r.entityMu.RLock()
+	runtimeEntity := r.entities[interaction.EntityID]
+	r.entityMu.RUnlock()
+
+	runtimeLiving, living := runtimeEntity.(RuntimeLivingEntity)
+	if !living {
+		return playerAttackTarget{}, false
+	}
+
+	state := runtimeLiving.RuntimeEntityState()
+	livingState := runtimeLiving.RuntimeLivingState()
+
+	state.mu.RLock()
+	removed := state.Removed
+	dead := livingState.Dead
+	position := state.Position
+
+	box := livingState.CollisionBox(position)
+
+	validDimensions := livingState.Width > 0 && livingState.Height > 0
+	state.mu.RUnlock()
+
+	if removed || dead || !validDimensions {
+		return playerAttackTarget{}, false
 	}
 
 	inclusive := interaction.Action == protocol.InteractActionAttack
-	if !attacker.IsWithinEntityInteractionRange(target.CollisionBox(), playerInteractionVerificationBuffer, inclusive) {
-		return nil, game.Player{}, false
+	if !attacker.IsWithinEntityInteractionRange(box, playerInteractionVerificationBuffer, inclusive) {
+		return playerAttackTarget{}, false
 	}
 
-	return targetSession, target, true
+	return playerAttackTarget{runtimeLiving: runtimeLiving, entityID: interaction.EntityID, position: position}, true
 }
 
 func (r *Runtime) playerSessionByEntityIDLocked(entityID int32) *Session {
@@ -138,8 +181,13 @@ func (r *Runtime) playerSessionByEntityIDLocked(entityID int32) *Session {
 	return nil
 }
 
-func (r *Runtime) attackPlayerLocked(attackerSession, targetSession *Session, target game.Player) playerAttackResult {
-	result := playerAttackResult{targetSession: targetSession, target: target, attempted: true}
+func (r *Runtime) attackLivingTargetLocked(attackerSession *Session, target playerAttackTarget) playerAttackResult {
+	result := playerAttackResult{
+		targetSession:  target.session,
+		target:         target.player,
+		targetEntityID: target.entityID,
+		attempted:      true,
+	}
 
 	attacker := attackerSession.snapshotPlayer()
 
@@ -170,12 +218,25 @@ func (r *Runtime) attackPlayerLocked(attackerSession, targetSession *Session, ta
 		result.heldItem = held.Clone()
 	}
 
-	update, applied := r.damagePlayerLocked(targetSession, PlayerDamage{
+	damage := game.Damage{
 		Type:           PlayerDamagePlayerAttack,
 		Amount:         baseDamage,
 		CauseEntityID:  attacker.EntityID,
 		DirectEntityID: attacker.EntityID,
-	})
+	}
+
+	var (
+		fullHurt bool
+		applied  bool
+	)
+
+	if target.session != nil {
+		result.update, applied = r.damagePlayerLocked(target.session, damage)
+		fullHurt = result.update.fullHurt
+	} else {
+		result.runtimeUpdate, applied = r.damageRuntimeLivingEntityLocked(target.runtimeLiving, damage)
+		fullHurt = result.runtimeUpdate.fullHurt
+	}
 
 	if !applied {
 		result.attacker = attacker
@@ -184,18 +245,25 @@ func (r *Runtime) attackPlayerLocked(attackerSession, targetSession *Session, ta
 		return result
 	}
 
-	originalVelocity := target.Velocity
+	originalVelocity := target.player.Velocity
 	targetMotion := false
 
-	if update.fullHurt {
-		target, _ = targetSession.updatePlayerState(func(player *game.Player) bool {
-			directionX := attacker.Position.X - player.Position.X
-			directionZ := attacker.Position.Z - player.Position.Z
+	if fullHurt {
+		if target.session != nil {
+			result.target, _ = target.session.updatePlayerState(func(player *game.Player) bool {
+				directionX := attacker.Position.X - player.Position.X
+				directionZ := attacker.Position.Z - player.Position.Z
 
-			r.applyPlayerKnockback(player, directionX, directionZ, playerHurtKnockback)
+				r.applyPlayerKnockback(player, directionX, directionZ, playerHurtKnockback)
 
-			return true
-		})
+				return true
+			})
+		} else {
+			directionX := attacker.Position.X - target.position.X
+			directionZ := attacker.Position.Z - target.position.Z
+
+			r.applyRuntimeLivingKnockback(target.runtimeLiving, directionX, directionZ, playerHurtKnockback)
+		}
 
 		targetMotion = true
 	}
@@ -207,15 +275,20 @@ func (r *Runtime) attackPlayerLocked(attackerSession, targetSession *Session, ta
 	})
 
 	if knockbackAttack {
-		target, _ = targetSession.updatePlayerState(func(player *game.Player) bool {
-			yaw := float64(attacker.Rotation.Yaw) * math.Pi / 180
-			directionX := math.Sin(yaw)
-			directionZ := -math.Cos(yaw)
+		yaw := float64(attacker.Rotation.Yaw) * math.Pi / 180
 
-			r.applyPlayerKnockback(player, directionX, directionZ, playerSprintKnockback)
+		directionX := math.Sin(yaw)
+		directionZ := -math.Cos(yaw)
 
-			return true
-		})
+		if target.session != nil {
+			result.target, _ = target.session.updatePlayerState(func(player *game.Player) bool {
+				r.applyPlayerKnockback(player, directionX, directionZ, playerSprintKnockback)
+
+				return true
+			})
+		} else {
+			r.applyRuntimeLivingKnockback(target.runtimeLiving, directionX, directionZ, playerSprintKnockback)
+		}
 
 		targetMotion = true
 
@@ -228,10 +301,10 @@ func (r *Runtime) attackPlayerLocked(attackerSession, targetSession *Session, ta
 		})
 	}
 
-	if targetMotion {
-		update.player = target
+	if targetMotion && target.session != nil {
+		result.update.player = result.target
 
-		targetSession.updatePlayerState(func(player *game.Player) bool {
+		target.session.updatePlayerState(func(player *game.Player) bool {
 			player.Velocity = originalVelocity
 
 			return true
@@ -246,9 +319,7 @@ func (r *Runtime) attackPlayerLocked(attackerSession, targetSession *Session, ta
 		result.postSounds = append(result.postSounds, playerAttackSound(attacker, playerAttackWeakSound))
 	}
 
-	result.update = update
 	result.attacker = attacker
-	result.target = target
 
 	if attacker.GameMode != game.GameModeCreative {
 		result.damagePerAttack = attacker.MainHandDamagePerAttack()
@@ -348,29 +419,9 @@ func (r *Runtime) playerCanCriticalAttack(attacker game.Player) bool {
 }
 
 func (r *Runtime) applyPlayerKnockback(target *game.Player, directionX, directionZ, strength float64) {
-	resistance := min(max(float64(target.ArmorAttributes().KnockbackResistance), 0), 1)
-	strength *= 1 - resistance
+	resistance := target.ArmorAttributes().KnockbackResistance
 
-	if strength <= 0 {
-		return
-	}
-
-	for directionX*directionX+directionZ*directionZ < playerKnockbackMinimumDirection {
-		directionX = float64(r.nextEntityRandom()-r.nextEntityRandom()) * playerKnockbackRandomScale
-		directionZ = float64(r.nextEntityRandom()-r.nextEntityRandom()) * playerKnockbackRandomScale
-	}
-
-	length := math.Hypot(directionX, directionZ)
-	directionX /= length
-	directionZ /= length
-
-	target.Velocity.X = target.Velocity.X/2 - directionX*strength
-
-	if target.OnGround {
-		target.Velocity.Y = min(0.4, target.Velocity.Y/2+strength)
-	}
-
-	target.Velocity.Z = target.Velocity.Z/2 - directionZ*strength
+	game.ApplyLivingKnockback(&target.Velocity, target.OnGround, resistance, directionX, directionZ, strength, r.nextEntityRandom)
 }
 
 func playerAttackSound(attacker game.Player, name string) protocol.Sound {
