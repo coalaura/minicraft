@@ -107,8 +107,9 @@ type zombieIdleState struct {
 }
 
 type runtimeZombieEntity struct {
-	State    RuntimeEntityState
-	Living   RuntimeLivingState
+	State  RuntimeEntityState
+	Living RuntimeLivingState
+	RuntimeMobState
 	Rotation game.Rotation
 
 	Navigation  groundNavigationState
@@ -120,7 +121,6 @@ type runtimeZombieEntity struct {
 	Idle        zombieIdleState
 
 	TickCount        int32
-	NoActionTime     int32
 	AmbientSoundTime int32
 	Aggressive       bool
 	LootDropped      bool
@@ -269,6 +269,25 @@ func (entity *runtimeZombieEntity) RuntimeLivingState() *RuntimeLivingState {
 	return &entity.Living
 }
 
+func (entity *runtimeZombieEntity) RuntimeMob() *RuntimeMobState {
+	return &entity.RuntimeMobState
+}
+
+func (entity *runtimeZombieEntity) RuntimeMobDespawnConfig() RuntimeMobDespawnConfig {
+	return RuntimeMobDespawnConfig{
+		NoDespawnDistance: runtimeMobNoDespawnDistance,
+		DespawnDistance:   runtimeMobDespawnDistance,
+	}
+}
+
+func (entity *runtimeZombieEntity) RuntimeMobRemoveWhenFarAway(float64) bool {
+	return true
+}
+
+func (entity *runtimeZombieEntity) RuntimeMobRequiresCustomPersistence() bool {
+	return false
+}
+
 func (entity *runtimeZombieEntity) RuntimeEntityTrackingConfig() RuntimeEntityTrackingConfig {
 	return RuntimeEntityTrackingConfig{ClientRangeChunks: zombieTrackingRangeChunks, UpdateInterval: zombieTrackingInterval, TrackDeltas: true}
 }
@@ -344,22 +363,36 @@ func (entity *runtimeZombieEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		return
 	}
 
-	if runtime.Difficulty == game.DifficultyPeaceful {
-		runtime.removeRuntimeEntity(entity.State.ID)
+	if dead && runtime.Difficulty != game.DifficultyPeaceful {
+		runtime.tickRuntimeLivingEntity(entity)
 
 		return
 	}
 
-	if dead {
-		runtime.tickRuntimeLivingEntity(entity)
-
+	if runtime.checkRuntimeMobDespawn(entity) {
 		return
 	}
 
 	entity.State.mu.Lock()
 	entity.TickCount++
 	entity.NoActionTime++
+
+	position := entity.State.Position
 	entity.State.mu.Unlock()
+
+	dayTime := floorMod(runtime.World.Time().DayTime, 24000)
+	eyePosition := game.BlockPosition{
+		X: int32(math.Floor(position.X)),
+		Y: int32(math.Floor(position.Y + zombieEyeHeight)),
+		Z: int32(math.Floor(position.Z)),
+	}
+	brightness, _ := zombieDaylightBrightness(runtime.World, eyePosition, dayTime)
+
+	if brightness > 0.5 {
+		entity.State.mu.Lock()
+		entity.NoActionTime += 2
+		entity.State.mu.Unlock()
+	}
 
 	entity.tickBaseEnvironment(runtime)
 	entity.tickAmbientSound(runtime)
@@ -621,15 +654,6 @@ func (entity *runtimeZombieEntity) tickTarget(runtime *Runtime, fullGoalTick boo
 	position := entity.State.Position
 	entity.State.mu.Unlock()
 
-	for _, session := range runtime.snapshotSessions() {
-		player := session.snapshotPlayer()
-		if distanceSquared(position, player.Position) <= 32*32 {
-			entity.NoActionTime = 0
-
-			break
-		}
-	}
-
 	if current != nil {
 		if !fullGoalTick {
 			return current
@@ -666,7 +690,6 @@ func (entity *runtimeZombieEntity) tickTarget(runtime *Runtime, fullGoalTick boo
 
 	entity.Target.Session = nearest
 	entity.Target.UnseenTicks = 0
-	entity.NoActionTime = 0
 
 	return nearest
 }

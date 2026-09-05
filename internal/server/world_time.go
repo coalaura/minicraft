@@ -53,6 +53,8 @@ func (r *Runtime) Tick() game.TimeState {
 
 	r.tickActiveChunks()
 
+	r.cleanupInactiveRuntimeMobs()
+
 	swimmingChanges := r.updateActivePlayerSwimmingLocked()
 
 	for _, session := range r.snapshotSessions() {
