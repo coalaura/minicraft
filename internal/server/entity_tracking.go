@@ -141,7 +141,7 @@ func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker,
 	sentPosition := false
 	sentRotation := false
 
-	packets := make([]runtimeEntityPacket, 0, 2)
+	packets := make([]runtimeEntityPacket, 0, 3)
 
 	if configuration.TrackDeltas || forcedMovementSync {
 		velocityDifference := velocityDistanceSquared(view.Velocity, tracker.LastVelocity)
@@ -235,6 +235,19 @@ func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker,
 	if sentRotation {
 		tracker.LastYaw = yaw
 		tracker.LastPitch = pitch
+	}
+
+	headYaw := protocolAngle(view.Rotation.HeadYaw)
+	if headYaw != tracker.LastHeadYaw {
+		tracker.LastHeadYaw = headYaw
+
+		packets = append(packets, runtimeEntityPacket{
+			ID: protocol.ClientboundSetHeadRotationID,
+			Encoder: protocol.SetHeadRotation{
+				EntityID: view.ID,
+				HeadYaw:  headYaw,
+			},
+		})
 	}
 
 	return packets

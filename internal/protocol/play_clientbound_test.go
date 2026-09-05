@@ -697,7 +697,7 @@ func TestAddEntityEncode(t *testing.T) {
 	entity := AddEntity{
 		EntityID: 300,
 		UUID:     "00010203-0405-0607-0809-0a0b0c0d0e0f",
-		Type:     PlayerEntityType,
+		Type:     int32(game.EntityPlayer),
 
 		Pitch:   4,
 		Yaw:     5,
@@ -778,10 +778,6 @@ func TestEntityMetadataEncode(t *testing.T) {
 }
 
 func TestItemEntityMetadataEncode(t *testing.T) {
-	if ItemEntityType != 71 {
-		t.Fatalf("item entity type = %d, want 71", ItemEntityType)
-	}
-
 	if ItemEntityItemMetadataIndex != 8 {
 		t.Fatalf("item entity item metadata index = %d, want 8", ItemEntityItemMetadataIndex)
 	}

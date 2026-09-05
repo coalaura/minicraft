@@ -11,7 +11,8 @@ const (
 )
 
 const (
-	DamageFall DamageType = iota
+	DamageGeneric DamageType = iota
+	DamageFall
 	DamageDrown
 	DamageInFire
 	DamageLava
@@ -20,6 +21,7 @@ const (
 	DamageGenericKill
 	DamageStarve
 	DamageMagic
+	DamageMobAttack
 	DamagePlayerAttack
 )
 
@@ -53,7 +55,6 @@ type DamageTraits struct {
 	BypassesEffects         bool
 	BypassesResistance      bool
 	BypassesInvulnerability bool
-	BypassesCooldown        bool
 }
 
 type LivingDefense struct {
@@ -105,6 +106,8 @@ func (state *LivingState) TickDeath() bool {
 
 func (damageType DamageType) Traits() DamageTraits {
 	switch damageType {
+	case DamageGeneric:
+		return DamageTraits{RegistryID: 18, BypassesArmor: true}
 	case DamageDrown:
 		return DamageTraits{RegistryID: 6, BypassesArmor: true}
 	case DamageFall:
@@ -123,6 +126,8 @@ func (damageType DamageType) Traits() DamageTraits {
 		return DamageTraits{RegistryID: 40, BypassesArmor: true, BypassesEffects: true}
 	case DamageMagic:
 		return DamageTraits{RegistryID: 27, BypassesArmor: true}
+	case DamageMobAttack:
+		return DamageTraits{RegistryID: 28, DamagesArmor: true}
 	case DamagePlayerAttack:
 		return DamageTraits{RegistryID: 34, DamagesArmor: true}
 	default:
@@ -153,7 +158,7 @@ func ResolveLivingDamage(state *LivingState, damage Damage, defense LivingDefens
 
 	result := LivingDamageResult{Applied: true}
 
-	if state.InvulnerableTime > LivingHurtCooldownThreshold && !traits.BypassesCooldown {
+	if state.InvulnerableTime > LivingHurtCooldownThreshold {
 		if amount <= state.LastHurt {
 			return LivingDamageResult{}
 		}

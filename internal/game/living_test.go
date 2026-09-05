@@ -17,6 +17,22 @@ type livingDamageTest struct {
 	wantHealthDamage float32
 }
 
+func TestDamageTypeZeroAndMobAttackTraits(t *testing.T) {
+	generic := DamageType(0).Traits()
+	if DamageGeneric != 0 || generic.RegistryID != 18 || !generic.BypassesArmor || generic.DamagesArmor {
+		t.Fatalf("generic damage traits = %+v", generic)
+	}
+
+	if DamageFall == 0 {
+		t.Fatal("fall damage retained zero value")
+	}
+
+	mobAttack := DamageMobAttack.Traits()
+	if mobAttack.RegistryID != 28 || mobAttack.BypassesArmor || !mobAttack.DamagesArmor {
+		t.Fatalf("mob attack traits = %+v", mobAttack)
+	}
+}
+
 func TestResolveLivingDamageMitigationOrdering(t *testing.T) {
 	resistance := MobEffectInstance{Effect: MobEffectResistance, Amplifier: 0, Duration: 20}
 

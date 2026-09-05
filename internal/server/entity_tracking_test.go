@@ -80,6 +80,24 @@ func TestRuntimeEntityPacketsPositionAndGroundState(t *testing.T) {
 	assertRuntimeEntityPacketID(t, packets, protocol.ClientboundSynchronizeEntityPositionID)
 }
 
+func TestRuntimeEntityPacketsHeadRotation(t *testing.T) {
+	view := runtimeEntityView{ID: 7, Rotation: game.Rotation{HeadYaw: 90}}
+
+	tracker := newRuntimeEntityTracker(runtimeEntityView{ID: view.ID})
+
+	tracker.UpdateTick = 1
+
+	packets := runtimeEntityPackets(view, &tracker, RuntimeEntityTrackingConfig{}, false)
+	if len(packets) != 1 || packets[0].ID != protocol.ClientboundSetHeadRotationID {
+		t.Fatalf("head rotation packets = %+v", packets)
+	}
+
+	head, valid := packets[0].Encoder.(protocol.SetHeadRotation)
+	if !valid || head.EntityID != view.ID || head.HeadYaw != protocolAngle(view.Rotation.HeadYaw) {
+		t.Fatalf("head rotation packet = %+v", packets[0].Encoder)
+	}
+}
+
 func TestLateViewerItemSpawnUsesTransmittedTrackerBaseline(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 

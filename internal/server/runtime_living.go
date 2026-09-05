@@ -27,6 +27,10 @@ type RuntimeLivingEntity interface {
 	RuntimeLivingState() *RuntimeLivingState
 }
 
+type runtimeLivingDeathHandler interface {
+	RuntimeLivingDied(*Runtime)
+}
+
 type runtimeLivingDamageUpdate struct {
 	entity   RuntimeLivingEntity
 	damage   game.Damage
@@ -52,9 +56,10 @@ func (r *Runtime) damageRuntimeLivingEntityLocked(entity RuntimeLivingEntity, da
 	living := entity.RuntimeLivingState()
 
 	state.mu.Lock()
-	defer state.mu.Unlock()
 
 	if state.Removed {
+		state.mu.Unlock()
+
 		return runtimeLivingDamageUpdate{}, false
 	}
 
@@ -64,6 +69,8 @@ func (r *Runtime) damageRuntimeLivingEntityLocked(entity RuntimeLivingEntity, da
 
 	result := game.ResolveLivingDamage(&living.LivingState, damage, defense, nil)
 	if !result.Applied {
+		state.mu.Unlock()
+
 		return runtimeLivingDamageUpdate{}, false
 	}
 
@@ -74,6 +81,13 @@ func (r *Runtime) damageRuntimeLivingEntityLocked(entity RuntimeLivingEntity, da
 		damage:   damage,
 		fullHurt: result.FullHurt,
 		died:     result.Died,
+	}
+
+	state.mu.Unlock()
+
+	deathHandler, handlesDeath := entity.(runtimeLivingDeathHandler)
+	if result.Died && handlesDeath {
+		deathHandler.RuntimeLivingDied(r)
 	}
 
 	return update, true
@@ -130,16 +144,7 @@ func (r *Runtime) tickRuntimeLivingEntity(entity RuntimeLivingEntity) {
 		return
 	}
 
-	previous := state.Position
-
-	state.Position.X += living.Velocity.X
-	state.Position.Y += living.Velocity.Y
-	state.Position.Z += living.Velocity.Z
-
 	state.mu.Unlock()
-
-	r.runtimeEntityMoved(entity, previous)
-	r.synchronizeRuntimeEntity(entity)
 }
 
 func (r *Runtime) sendRuntimeLivingDamageUpdate(update runtimeLivingDamageUpdate) {

@@ -13,14 +13,12 @@ const (
 	PlayerInfoActionUpdateGameMode = 1 << 2
 	PlayerInfoActionUpdateListed   = 1 << 3
 
-	PlayerEntityType = 155
-	ItemEntityType   = 71
-
 	EntityFlagsMetadataIndex      = 0
 	EntityAirMetadataIndex        = 1
 	EntityPoseMetadataIndex       = 6
 	LivingFlagsMetadataIndex      = 8
 	LivingHealthMetadataIndex     = 9
+	MobFlagsMetadataIndex         = 15
 	ItemEntityItemMetadataIndex   = 8
 	PlayerAbsorptionMetadataIndex = 17
 	PlayerSkinPartsMetadataIndex  = 16
@@ -42,6 +40,7 @@ const (
 
 	LivingFlagUsingItem    = 0x01
 	LivingFlagUsingOffhand = 0x02
+	MobFlagAggressive      = 0x04
 
 	MobEffectFlagAmbient       = 0x01
 	MobEffectFlagShowParticles = 0x02

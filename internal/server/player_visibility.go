@@ -57,7 +57,7 @@ func (s *Session) sendPlayerEntity(player game.Player) error {
 	entity := protocol.AddEntity{
 		EntityID: player.EntityID,
 		UUID:     player.UUID,
-		Type:     protocol.PlayerEntityType,
+		Type:     int32(game.EntityPlayer),
 
 		X: player.Position.X,
 		Y: player.Position.Y,

@@ -189,7 +189,7 @@ func (entity *runtimeItemEntity) AddEntityPacket(snapshot runtimeEntitySpawnSnap
 	return protocol.AddEntity{
 		EntityID:  snapshot.ID,
 		UUID:      snapshot.UUID,
-		Type:      protocol.ItemEntityType,
+		Type:      int32(game.EntityItem),
 		X:         snapshot.Position.X,
 		Y:         snapshot.Position.Y,
 		Z:         snapshot.Position.Z,
@@ -1102,7 +1102,7 @@ func (r *Runtime) itemEntityInsideCollision(position game.Position) bool {
 	box.MaxY -= 1e-7
 	box.MaxZ -= 1e-7
 
-	return slices.ContainsFunc(r.itemCollisionBoxes(box, game.Velocity{}), box.Intersects)
+	return slices.ContainsFunc(r.entityCollisionBoxes(box, game.Velocity{}), box.Intersects)
 }
 
 func (r *Runtime) itemVelocityTowardsClosestSpace(position game.Position, velocity game.Velocity) game.Velocity {
@@ -1167,7 +1167,7 @@ func (r *Runtime) itemVelocityTowardsClosestSpace(position game.Position, veloci
 func (r *Runtime) moveItemEntity(position game.Position, velocity game.Velocity) itemEntityMovement {
 	box := itemEntityBox(position)
 
-	blocks := r.itemCollisionBoxes(box, velocity)
+	blocks := r.entityCollisionBoxes(box, velocity)
 
 	resolved := collideAABBWithBlocks(box, blocks, velocity)
 	deltaX := resolved.X
@@ -1191,7 +1191,7 @@ func (r *Runtime) moveItemEntity(position game.Position, velocity game.Velocity)
 	}
 }
 
-func (r *Runtime) itemCollisionBoxes(box game.AABB, velocity game.Velocity) []game.AABB {
+func (r *Runtime) entityCollisionBoxes(box game.AABB, velocity game.Velocity) []game.AABB {
 	minX := int32(math.Floor(min(box.MinX, box.MinX+velocity.X)))
 	minY := int32(math.Floor(min(box.MinY, box.MinY+velocity.Y)))
 	minZ := int32(math.Floor(min(box.MinZ, box.MinZ+velocity.Z)))

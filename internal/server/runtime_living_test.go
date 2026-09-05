@@ -72,7 +72,7 @@ func (entity *testRuntimeLivingEntity) AddEntityPacket(snapshot runtimeEntitySpa
 	return protocol.AddEntity{
 		EntityID: snapshot.ID,
 		UUID:     snapshot.UUID,
-		Type:     protocol.ItemEntityType,
+		Type:     int32(game.EntityItem),
 		X:        snapshot.Position.X,
 		Y:        snapshot.Position.Y,
 		Z:        snapshot.Position.Z,
@@ -82,13 +82,22 @@ func (entity *testRuntimeLivingEntity) AddEntityPacket(snapshot runtimeEntitySpa
 func (entity *testRuntimeLivingEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	entity.State.mu.Lock()
 
+	previous := entity.State.Position
+
 	if !entity.State.Removed {
 		entity.TickCount++
+		entity.State.Position.X += entity.Living.Velocity.X
+		entity.State.Position.Y += entity.Living.Velocity.Y
+		entity.State.Position.Z += entity.Living.Velocity.Z
 	}
 
 	entity.State.mu.Unlock()
 
+	runtime.runtimeEntityMoved(entity, previous)
+
 	runtime.tickRuntimeLivingEntity(entity)
+
+	runtime.synchronizeRuntimeEntity(entity)
 }
 
 func TestPlayerAttackRuntimeLivingUsesSharedCombat(t *testing.T) {

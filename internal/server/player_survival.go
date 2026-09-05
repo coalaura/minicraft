@@ -27,6 +27,7 @@ const (
 )
 
 const (
+	PlayerDamageGeneric      = game.DamageGeneric
 	PlayerDamageFall         = game.DamageFall
 	PlayerDamageDrown        = game.DamageDrown
 	PlayerDamageInFire       = game.DamageInFire
