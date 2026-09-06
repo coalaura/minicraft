@@ -2,13 +2,38 @@ package game
 
 //go:generate go run ../../cmd/generate-entities -input ../../data/entities.json -output entities_generated.go
 
+const (
+	EntityKindAmbient    = "ambient"
+	EntityKindAnimal     = "animal"
+	EntityKindHostile    = "hostile"
+	EntityKindLiving     = "living"
+	EntityKindMob        = "mob"
+	EntityKindOther      = "other"
+	EntityKindPassive    = "passive"
+	EntityKindPlayer     = "player"
+	EntityKindProjectile = "projectile"
+
+	EntityCategoryHostileMobs = "Hostile mobs"
+	EntityCategoryImmobile    = "Immobile"
+	EntityCategoryPassiveMobs = "Passive mobs"
+	EntityCategoryProjectiles = "Projectiles"
+	EntityCategoryUnknown     = "UNKNOWN"
+	EntityCategoryVehicles    = "Vehicles"
+)
+
 type EntityType int32
 
+type EntityKind string
+
+type EntityCategory string
+
 type EntityDefinition struct {
-	ID     EntityType
-	Name   string
-	Width  float64
-	Height float64
+	ID       EntityType
+	Name     string
+	Kind     EntityKind
+	Category EntityCategory
+	Width    float64
+	Height   float64
 }
 
 func (entityType EntityType) Valid() bool {

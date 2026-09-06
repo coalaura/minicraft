@@ -19,6 +19,7 @@ const (
 	LivingFlagsMetadataIndex      = 8
 	LivingHealthMetadataIndex     = 9
 	MobFlagsMetadataIndex         = 15
+	SheepWoolMetadataIndex        = 17
 	ItemEntityItemMetadataIndex   = 8
 	PlayerAbsorptionMetadataIndex = 17
 	PlayerSkinPartsMetadataIndex  = 16

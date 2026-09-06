@@ -41,6 +41,10 @@ type runtimeLivingSoundProvider interface {
 	RuntimeLivingDamageSound(bool) (game.SoundEvent, float32, float32)
 }
 
+type runtimeEntitySoundSourceProvider interface {
+	RuntimeEntitySoundSource() int32
+}
+
 type runtimeLivingDamageUpdate struct {
 	entity   RuntimeLivingEntity
 	damage   game.Damage
@@ -206,6 +210,18 @@ func (r *Runtime) sendRuntimeLivingDamageUpdate(update runtimeLivingDamageUpdate
 }
 
 func (r *Runtime) broadcastRuntimeEntitySound(entity RuntimeEntity, event game.SoundEvent, volume, pitch float32) {
+	source := int32(protocol.SoundSourceNeutral)
+
+	provider, provided := entity.(runtimeEntitySoundSourceProvider)
+
+	if provided {
+		source = provider.RuntimeEntitySoundSource()
+	}
+
+	r.broadcastRuntimeEntitySoundFromSource(entity, event, source, volume, pitch)
+}
+
+func (r *Runtime) broadcastRuntimeEntitySoundFromSource(entity RuntimeEntity, event game.SoundEvent, source int32, volume, pitch float32) {
 	state := entity.RuntimeEntityState()
 
 	state.mu.RLock()
@@ -215,7 +231,7 @@ func (r *Runtime) broadcastRuntimeEntitySound(entity RuntimeEntity, event game.S
 
 	sound := protocol.Sound{
 		Event:  protocol.SoundEventHolder{Name: string(event)},
-		Source: protocol.SoundSourceHostile,
+		Source: source,
 		X:      position.X,
 		Y:      position.Y,
 		Z:      position.Z,

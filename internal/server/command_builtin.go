@@ -52,9 +52,8 @@ type commandFillMode struct {
 type fillMode uint8
 
 var (
-	supportedSelectors    = []string{"@a", "@p", "@r", "@s"}
-	gameModeNames         = []string{"adventure", "creative", "spectator", "survival"}
-	summonableEntityNames = []string{"minecraft:zombie"}
+	supportedSelectors = []string{"@a", "@p", "@r", "@s"}
+	gameModeNames      = []string{"adventure", "creative", "spectator", "survival"}
 )
 
 func (registry *commandRegistry) registerEnchant() {
@@ -566,13 +565,8 @@ func (registry *commandRegistry) registerSummon() {
 			return commandFailure{message: game.TranslatableText("commands.summon.failed")}
 		}
 
-		switch entityType {
-		case game.EntityZombie:
-			spawned := registry.runtime.SpawnZombie(spawnPosition)
-			if spawned == nil {
-				return commandFailure{message: game.TranslatableText("commands.summon.failed")}
-			}
-		default:
+		_, spawned := registry.runtime.SpawnEntity(entityType, spawnPosition)
+		if !spawned {
 			return commandFailure{message: game.TranslatableText("commands.summon.failed")}
 		}
 
@@ -1150,11 +1144,11 @@ func summonEntityArgument() commandArgument {
 		parser:         protocol.CommandParserResource,
 		properties:     protocol.CommandResourceProperties{Registry: "minecraft:entity_type"},
 		width:          1,
-		suggestValues:  staticSuggestions(summonableEntityNames),
+		suggestValues:  staticSuggestions(runtimeEntityImplementationNames()),
 		clientSuggests: true,
 		parseValue: func(_ CommandSource, tokens []commandToken) (any, error) {
 			entityType, valid := game.EntityByName(tokens[0].value)
-			if !valid || entityType != game.EntityZombie {
+			if !valid || !runtimeEntityImplemented(entityType) {
 				return nil, commandSyntaxError{
 					message: game.LiteralText("Unknown entity '" + tokens[0].value + "'"),
 					cursor:  tokens[0].start,

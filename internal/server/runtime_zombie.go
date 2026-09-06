@@ -9,78 +9,44 @@ import (
 )
 
 const (
-	zombieMaxHealth                    = 20
-	zombieMovementSpeed                = float32(0.23)
-	zombieFlyingSpeed                  = float32(0.02)
-	zombieAttackDamage                 = float32(3)
-	zombieArmor                        = 2
-	zombieKnockbackResistance          = 0
-	zombieFollowRange                  = 35
-	zombieGravity                      = 0.08
-	zombieGroundFriction               = float32(0.91)
-	zombieAirFriction                  = float32(0.91)
-	zombieVerticalDrag                 = 0.98
-	zombieJumpStrength                 = 0.42
-	zombieStepHeight                   = 0.6
-	zombieAttackInterval               = 20
-	zombieAttackReachExpansion         = 0.8284271247461903
-	zombieMoveMaximumTurn              = float32(90)
-	zombieLookMaximumYaw               = float32(30)
-	zombieLookMaximumPitch             = float32(30)
-	zombieIdleLookMaximumYaw           = float32(10)
-	zombieIdleLookMaximumPitch         = float32(40)
-	zombieMaximumHeadYaw               = float32(75)
-	zombieTargetInterval               = 5
-	zombieTargetUnseenTicks            = 30
-	zombieStrollInterval               = 60
-	zombieIdleLookProbability          = float32(0.02)
-	zombieIdleLookDistance             = 8
-	zombieRandomPositionAttempts       = 10
-	zombieTrackingRangeChunks          = 8
-	zombieTrackingInterval             = 3
-	zombieLootPickupDelay              = 10
-	zombieAmbientSoundInterval         = 80
-	zombieFireDurationTicks            = 8 * 20
-	zombieLavaFireDurationTicks        = 15 * 20
-	zombieBurningDamage                = 1
-	zombieLavaDamage                   = 4
-	zombieStepDistanceScale            = 0.6
-	zombieEyeHeight                    = 1.74
-	groundMovementInputScale           = float32(0.21600002)
-	groundMovementInputMinimumSquared  = 1e-7
-	groundMovementPositionEpsilonSq    = 2.5000003e-7
-	groundMovementWaypointVertical     = 1.0
-	groundMovementOvershootDistanceSq  = 4.0
-	groundMovementOvershootNearNodeSq  = 0.5
-	groundMovementWantedMinimumSquared = 2.5000003e-7
+	zombieMaxHealth              = 20
+	zombieMovementSpeed          = float32(0.23)
+	zombieFlyingSpeed            = float32(0.02)
+	zombieAttackDamage           = float32(3)
+	zombieArmor                  = 2
+	zombieKnockbackResistance    = 0
+	zombieFollowRange            = 35
+	zombieGravity                = 0.08
+	zombieGroundFriction         = float32(0.91)
+	zombieAirFriction            = float32(0.91)
+	zombieVerticalDrag           = 0.98
+	zombieJumpStrength           = 0.42
+	zombieStepHeight             = 0.6
+	zombieAttackInterval         = 20
+	zombieAttackReachExpansion   = 0.8284271247461903
+	zombieMoveMaximumTurn        = float32(90)
+	zombieLookMaximumYaw         = float32(30)
+	zombieLookMaximumPitch       = float32(30)
+	zombieIdleLookMaximumYaw     = float32(10)
+	zombieIdleLookMaximumPitch   = float32(40)
+	zombieMaximumHeadYaw         = float32(75)
+	zombieTargetInterval         = 5
+	zombieTargetUnseenTicks      = 30
+	zombieStrollInterval         = 60
+	zombieIdleLookProbability    = float32(0.02)
+	zombieIdleLookDistance       = 8
+	zombieRandomPositionAttempts = 10
+	zombieTrackingRangeChunks    = 8
+	zombieTrackingInterval       = 3
+	zombieLootPickupDelay        = 10
+	zombieAmbientSoundInterval   = 80
+	zombieFireDurationTicks      = 8 * 20
+	zombieLavaFireDurationTicks  = 15 * 20
+	zombieBurningDamage          = 1
+	zombieLavaDamage             = 4
+	zombieStepDistanceScale      = 0.6
+	zombieEyeHeight              = 1.74
 )
-
-type groundNavigationState struct {
-	Path          []game.Position
-	Index         int
-	SpeedModifier float64
-}
-
-type groundMoveControlState struct {
-	Wanted        game.Position
-	SpeedModifier float64
-	Moving        bool
-	ForwardInput  float32
-	SidewaysInput float32
-	Jump          bool
-}
-
-type groundLookControlState struct {
-	Wanted       game.Position
-	Cooldown     int32
-	MaximumYaw   float32
-	MaximumPitch float32
-}
-
-type groundBodyRotationState struct {
-	LastStableHead float32
-	StableTicks    int32
-}
 
 type zombieTargetState struct {
 	Session     *Session
@@ -106,19 +72,30 @@ type zombieIdleState struct {
 	RandomLookZ     float64
 }
 
+type zombieMeleeGoal struct {
+	Entity *runtimeZombieEntity
+}
+
+type zombieIdleGoal struct {
+	Entity *runtimeZombieEntity
+}
+
 type runtimeZombieEntity struct {
 	State  RuntimeEntityState
 	Living RuntimeLivingState
 	RuntimeMobState
 	Rotation game.Rotation
 
-	Navigation  groundNavigationState
-	MoveControl groundMoveControlState
-	LookControl groundLookControlState
-	BodyControl groundBodyRotationState
-	Target      zombieTargetState
-	Melee       zombieMeleeState
-	Idle        zombieIdleState
+	Navigation   groundNavigationState
+	MoveControl  groundMoveControlState
+	LookControl  groundLookControlState
+	BodyControl  groundBodyRotationState
+	Target       zombieTargetState
+	Melee        zombieMeleeState
+	Idle         zombieIdleState
+	Goals        runtimeGoalSelector
+	GoalTarget   *Session
+	FullGoalTick bool
 
 	TickCount        int32
 	AmbientSoundTime int32
@@ -126,143 +103,48 @@ type runtimeZombieEntity struct {
 	LootDropped      bool
 }
 
-func (navigation *groundNavigationState) Done() bool {
-	return navigation.Index >= len(navigation.Path)
-}
-
-func (navigation *groundNavigationState) Stop() {
-	navigation.Path = nil
-	navigation.Index = 0
-	navigation.SpeedModifier = 0
-}
-
-func (navigation *groundNavigationState) MoveTo(path []game.Position, speedModifier float64) bool {
-	if len(path) == 0 {
-		navigation.Stop()
-
-		return false
-	}
-
-	navigation.Path = path
-	navigation.Index = 0
-	navigation.SpeedModifier = speedModifier
-
-	return true
-}
-
-func (navigation *groundNavigationState) Tick(position game.Position, width float64, control *groundMoveControlState) {
-	for !navigation.Done() && groundNavigationNodeReached(position, navigation.Path, navigation.Index, width) {
-		navigation.Index++
-	}
-
-	if navigation.Done() {
-		control.Moving = false
-
-		return
-	}
-
-	control.Wanted = navigation.Path[navigation.Index]
-	control.SpeedModifier = navigation.SpeedModifier
-	control.Moving = true
-}
-
-func (control *groundMoveControlState) Tick(position game.Position, rotation *game.Rotation) {
-	control.ForwardInput = 0
-	control.SidewaysInput = 0
-	control.Jump = false
-
-	if !control.Moving {
-		return
-	}
-
-	deltaX := control.Wanted.X - position.X
-	deltaY := control.Wanted.Y - position.Y
-	deltaZ := control.Wanted.Z - position.Z
-	distanceSquared := deltaX*deltaX + deltaY*deltaY + deltaZ*deltaZ
-
-	if distanceSquared < groundMovementWantedMinimumSquared {
-		control.Moving = false
-
-		return
-	}
-
-	wantedYaw := float32(math.Atan2(deltaZ, deltaX)*180/math.Pi - 90)
-	rotation.Yaw = rotateTowards(rotation.Yaw, wantedYaw, zombieMoveMaximumTurn)
-
-	speed := float32(control.SpeedModifier) * zombieMovementSpeed
-	control.ForwardInput = speed
-
-	horizontalDistanceSquared := deltaX*deltaX + deltaZ*deltaZ
-	if deltaY > zombieStepHeight && horizontalDistanceSquared < max(1, 0.6) {
-		control.Jump = true
-	}
-}
-
-func (control *groundLookControlState) SetWanted(position game.Position, maximumYaw, maximumPitch float32) {
-	control.Wanted = position
-	control.Cooldown = 2
-	control.MaximumYaw = maximumYaw
-	control.MaximumPitch = maximumPitch
-}
-
-func (control *groundLookControlState) Tick(position game.Position, rotation *game.Rotation, navigating bool) {
-	if control.Cooldown > 0 {
-		control.Cooldown--
-
-		deltaX := control.Wanted.X - position.X
-		deltaY := control.Wanted.Y - (position.Y + 1.74)
-		deltaZ := control.Wanted.Z - position.Z
-		horizontalDistance := math.Hypot(deltaX, deltaZ)
-
-		wantedYaw := float32(math.Atan2(deltaZ, deltaX)*180/math.Pi - 90)
-		wantedPitch := float32(-math.Atan2(deltaY, horizontalDistance) * 180 / math.Pi)
-
-		rotation.HeadYaw = rotateTowards(rotation.HeadYaw, wantedYaw, control.MaximumYaw)
-		rotation.Pitch = rotateTowards(rotation.Pitch, wantedPitch, control.MaximumPitch)
-	} else {
-		rotation.HeadYaw = rotateTowards(rotation.HeadYaw, rotation.Yaw, zombieIdleLookMaximumYaw)
-		rotation.Pitch = rotateTowards(rotation.Pitch, 0, zombieIdleLookMaximumPitch)
-	}
-
-	if navigating {
-		rotation.HeadYaw = clampAngleAround(rotation.HeadYaw, rotation.Yaw, zombieMaximumHeadYaw)
-	}
-}
-
-func (control *groundBodyRotationState) Tick(previous, position game.Position, rotation *game.Rotation) {
-	deltaX := position.X - previous.X
-	deltaZ := position.Z - previous.Z
-	moving := deltaX*deltaX+deltaZ*deltaZ > groundMovementPositionEpsilonSq
-
-	if moving {
-		rotation.HeadYaw = clampAngleAround(rotation.HeadYaw, rotation.Yaw, zombieMaximumHeadYaw)
-		control.LastStableHead = rotation.HeadYaw
-		control.StableTicks = 0
-
-		return
-	}
-
-	if math.Abs(float64(wrapDegrees(rotation.HeadYaw-control.LastStableHead))) > 15 {
-		control.StableTicks = 0
-		control.LastStableHead = rotation.HeadYaw
-		rotation.Yaw = clampAngleAround(rotation.Yaw, rotation.HeadYaw, zombieMaximumHeadYaw)
-
-		return
-	}
-
-	control.StableTicks++
-
-	if control.StableTicks <= 10 {
-		return
-	}
-
-	progress := min(float32(control.StableTicks-10)/10, 1)
-	maximumDifference := zombieMaximumHeadYaw * (1 - progress)
-	rotation.Yaw = clampAngleAround(rotation.Yaw, rotation.HeadYaw, maximumDifference)
-}
-
 func (entity *runtimeZombieEntity) RuntimeEntityState() *RuntimeEntityState {
 	return &entity.State
+}
+
+func (goal *zombieMeleeGoal) CanUse(*Runtime) bool {
+	return goal.Entity.GoalTarget != nil
+}
+
+func (goal *zombieMeleeGoal) CanContinue(*Runtime) bool {
+	return goal.Entity.GoalTarget != nil
+}
+
+func (goal *zombieMeleeGoal) Start(*Runtime) {
+	goal.Entity.stopIdleGoals()
+}
+
+func (goal *zombieMeleeGoal) Stop(*Runtime) {
+	goal.Entity.stopMelee()
+}
+
+func (goal *zombieMeleeGoal) Tick(runtime *Runtime) {
+	goal.Entity.tickMeleeGoal(runtime, goal.Entity.GoalTarget, goal.Entity.FullGoalTick)
+}
+
+func (goal *zombieIdleGoal) CanUse(*Runtime) bool {
+	return goal.Entity.GoalTarget == nil
+}
+
+func (goal *zombieIdleGoal) CanContinue(*Runtime) bool {
+	return goal.Entity.GoalTarget == nil
+}
+
+func (goal *zombieIdleGoal) Start(*Runtime) {
+	goal.Entity.stopMelee()
+}
+
+func (goal *zombieIdleGoal) Stop(*Runtime) {
+	goal.Entity.stopIdleGoals()
+}
+
+func (goal *zombieIdleGoal) Tick(runtime *Runtime) {
+	goal.Entity.tickIdleGoals(runtime, goal.Entity.FullGoalTick)
 }
 
 func (entity *runtimeZombieEntity) RuntimeLivingState() *RuntimeLivingState {
@@ -442,6 +324,10 @@ func (entity *runtimeZombieEntity) RuntimeLivingDamageSound(died bool) (game.Sou
 	return game.SoundEntityZombieHurt, 1, 1
 }
 
+func (entity *runtimeZombieEntity) RuntimeEntitySoundSource() int32 {
+	return protocol.SoundSourceHostile
+}
+
 func (entity *runtimeZombieEntity) dead() bool {
 	entity.State.mu.RLock()
 	defer entity.State.mu.RUnlock()
@@ -450,36 +336,7 @@ func (entity *runtimeZombieEntity) dead() bool {
 }
 
 func (entity *runtimeZombieEntity) tickBaseEnvironment(runtime *Runtime) {
-	entity.State.mu.Lock()
-
-	box := entity.Living.CollisionBox(entity.State.Position)
-	inWater := runtime.fluidContact(box, game.FluidTypeWater, false).Depth > 0
-	inLava := runtime.fluidContact(box, game.FluidTypeLava, false).Depth > 0
-	wasBurning := entity.Living.RemainingFireTicks > 0
-	burningDamageDue := wasBurning && entity.Living.RemainingFireTicks%20 == 0 && !inLava
-
-	if entity.Living.RemainingFireTicks > 0 {
-		entity.Living.RemainingFireTicks--
-	}
-
-	if inWater {
-		entity.Living.RemainingFireTicks = 0
-		entity.Living.FallDistance = 0
-	}
-
-	if inLava {
-		entity.Living.FallDistance *= 0.5
-	}
-
-	if wasBurning != (entity.Living.RemainingFireTicks > 0) {
-		entity.State.metadataDirty = true
-	}
-
-	entity.State.mu.Unlock()
-
-	if burningDamageDue && !inWater {
-		entity.applyEnvironmentDamage(runtime, game.Damage{Type: game.DamageOnFire, Amount: zombieBurningDamage})
-	}
+	runtime.tickRuntimeLivingBaseEnvironment(entity)
 }
 
 func (entity *runtimeZombieEntity) tickAmbientSound(runtime *Runtime) {
@@ -558,40 +415,7 @@ func (entity *runtimeZombieEntity) tickDaylightBurning(runtime *Runtime) {
 }
 
 func (entity *runtimeZombieEntity) tickBlockEnvironment(runtime *Runtime) {
-	entity.State.mu.Lock()
-
-	box := entity.Living.CollisionBox(entity.State.Position)
-
-	inWater := runtime.fluidContact(box, game.FluidTypeWater, false).Depth > 0
-	inLava := runtime.fluidContact(box, game.FluidTypeLava, false).Depth > 0
-	fireDamage := runtime.fireContactDamage(box)
-	wasBurning := entity.Living.RemainingFireTicks > 0
-
-	if !inWater && fireDamage > 0 {
-		entity.Living.RemainingFireTicks = max(entity.Living.RemainingFireTicks, zombieFireDurationTicks)
-	}
-
-	if inLava {
-		entity.Living.RemainingFireTicks = max(entity.Living.RemainingFireTicks, zombieLavaFireDurationTicks)
-	}
-
-	if wasBurning != (entity.Living.RemainingFireTicks > 0) {
-		entity.State.metadataDirty = true
-	}
-
-	entity.State.mu.Unlock()
-
-	if !inWater && fireDamage > 0 {
-		entity.applyEnvironmentDamage(runtime, game.Damage{Type: game.DamageInFire, Amount: fireDamage})
-	}
-
-	if inLava && !entity.dead() {
-		applied := entity.applyEnvironmentDamage(runtime, game.Damage{Type: game.DamageLava, Amount: zombieLavaDamage})
-		if applied {
-			pitch := 2 + runtime.nextEntityRandom()*0.4
-			runtime.broadcastRuntimeEntitySound(entity, game.SoundEntityGenericBurn, 0.4, pitch)
-		}
-	}
+	runtime.tickRuntimeLivingBlockEnvironment(entity)
 }
 
 func (entity *runtimeZombieEntity) applyEnvironmentDamage(runtime *Runtime, damage game.Damage) bool {
@@ -695,17 +519,9 @@ func (entity *runtimeZombieEntity) tickTarget(runtime *Runtime, fullGoalTick boo
 }
 
 func (entity *runtimeZombieEntity) tickGoals(runtime *Runtime, target *Session, fullGoalTick bool) {
-	if target != nil {
-		entity.stopIdleGoals()
-
-		entity.tickMeleeGoal(runtime, target, fullGoalTick)
-
-		return
-	}
-
-	entity.stopMelee()
-
-	entity.tickIdleGoals(runtime, fullGoalTick)
+	entity.GoalTarget = target
+	entity.FullGoalTick = fullGoalTick
+	entity.Goals.Tick(runtime)
 }
 
 func (entity *runtimeZombieEntity) tickMeleeGoal(runtime *Runtime, target *Session, fullGoalTick bool) {
@@ -891,133 +707,17 @@ func (entity *runtimeZombieEntity) randomStrollPathCandidates(runtime *Runtime, 
 }
 
 func (entity *runtimeZombieEntity) tickControlsAndMovement(runtime *Runtime) (float32, bool) {
-	entity.State.mu.Lock()
+	configuration := zombieGroundControlConfig()
 
-	previous := entity.State.Position
-
-	entity.Navigation.Tick(entity.State.Position, entity.Living.Width, &entity.MoveControl)
-	entity.MoveControl.Tick(entity.State.Position, &entity.Rotation)
-	entity.LookControl.Tick(entity.State.Position, &entity.Rotation, !entity.Navigation.Done())
-
-	if entity.MoveControl.Jump && entity.Living.OnGround {
-		entity.Living.Velocity.Y = max(entity.Living.Velocity.Y, zombieJumpStrength)
-	}
-
-	entity.applyGroundLivingPhysics(runtime)
-
-	entity.BodyControl.Tick(previous, entity.State.Position, &entity.Rotation)
-
-	deltaX := entity.State.Position.X - previous.X
-	deltaY := entity.State.Position.Y - previous.Y
-	deltaZ := entity.State.Position.Z - previous.Z
-
-	box := entity.Living.CollisionBox(entity.State.Position)
-
-	inWater := runtime.fluidContact(box, game.FluidTypeWater, false).Depth > 0
-	resetFallDistance := inWater || runtime.runtimeLivingTouchesFallResettingBlock(box)
-
-	if !resetFallDistance && entity.Living.FallDistance != 0 && deltaX*deltaX+deltaY*deltaY+deltaZ*deltaZ >= 1 {
-		distance := math.Sqrt(deltaX*deltaX + deltaY*deltaY + deltaZ*deltaZ)
-		traceDistance := min(distance, fallResetTraceMaximum)
-		scale := traceDistance / distance
-
-		traceEnd := game.Position{
-			X: previous.X + deltaX*scale,
-			Y: previous.Y + deltaY*scale,
-			Z: previous.Z + deltaZ*scale,
-		}
-
-		resetFallDistance = runtime.fallResetTraceHits(previous, traceEnd)
-	}
-
-	if resetFallDistance {
-		entity.Living.FallDistance = 0
-	} else if deltaY < 0 {
-		entity.Living.FallDistance -= float32(deltaY)
-	}
-
-	var fallDamage float32
-
-	if entity.Living.OnGround {
-		fallDamage = calculateRuntimeLivingFallDamage(entity.Living.FallDistance)
-
-		entity.Living.FallDistance = 0
-	}
-
-	entity.Living.MoveDistance += float32(math.Hypot(deltaX, deltaZ) * zombieStepDistanceScale)
-
-	step := entity.Living.OnGround && entity.Living.MoveDistance > float32(entity.Living.NextStepDistance) && runtime.blockBelowItem(entity.State.Position) != game.Air
-
-	if step {
-		entity.Living.NextStepDistance = int32(entity.Living.MoveDistance) + 1
-	}
-
-	entity.State.mu.Unlock()
-
-	runtime.runtimeEntityMoved(entity, previous)
-
-	return fallDamage, step
+	return runtime.tickGroundMobMovement(entity, &entity.Living, &entity.Rotation, &entity.Navigation, &entity.MoveControl, &entity.LookControl, &entity.BodyControl, configuration, false)
 }
 
 func (entity *runtimeZombieEntity) applyGroundLivingPhysics(runtime *Runtime) {
-	wasOnGround := entity.Living.OnGround
-	blockFriction := float32(1)
-	acceleration := zombieFlyingSpeed
+	configuration := zombieGroundControlConfig()
 
-	if wasOnGround {
-		blockFriction = runtime.blockFrictionBelow(entity.State.Position)
-		acceleration = zombieMovementSpeed * (groundMovementInputScale / (blockFriction * blockFriction * blockFriction))
-	}
-
-	inputX := entity.MoveControl.SidewaysInput
-	inputZ := entity.MoveControl.ForwardInput
-	inputLengthSquared := inputX*inputX + inputZ*inputZ
-
-	if inputLengthSquared >= groundMovementInputMinimumSquared {
-		if inputLengthSquared > 1 {
-			inverseLength := float32(1 / math.Sqrt(float64(inputLengthSquared)))
-			inputX *= inverseLength
-			inputZ *= inverseLength
-		}
-
-		inputX *= acceleration
-		inputZ *= acceleration
-
-		yaw := float64(entity.Rotation.Yaw) * math.Pi / 180
-		sine := float64(minecraftSin(yaw))
-		cosine := float64(minecraftCos(yaw))
-
-		entity.Living.Velocity.X += float64(inputX)*cosine - float64(inputZ)*sine
-		entity.Living.Velocity.Z += float64(inputZ)*cosine + float64(inputX)*sine
-	}
-
-	movement := runtime.moveGroundEntity(entity.State.Position, entity.Living.Velocity, entity.Living.Width, entity.Living.Height, zombieStepHeight, wasOnGround)
-	entity.State.Position = movement.Position
-	entity.Living.OnGround = movement.OnGround
-
-	if movement.HorizontalCollisionX {
-		entity.Living.Velocity.X = 0
-	}
-
-	if movement.HorizontalCollisionZ {
-		entity.Living.Velocity.Z = 0
-	}
-
-	if movement.VerticalCollision {
-		entity.Living.Velocity.Y = 0
-	}
-
-	entity.Living.Velocity.Y -= zombieGravity
-
-	horizontalDrag := zombieAirFriction
-
-	if wasOnGround {
-		horizontalDrag = blockFriction * zombieGroundFriction
-	}
-
-	entity.Living.Velocity.X *= float64(horizontalDrag)
-	entity.Living.Velocity.Y *= zombieVerticalDrag
-	entity.Living.Velocity.Z *= float64(horizontalDrag)
+	entity.State.mu.Lock()
+	runtime.applyGroundLivingPhysics(&entity.State, &entity.Living, &entity.Rotation, &entity.MoveControl, configuration)
+	entity.State.mu.Unlock()
 }
 
 func (entity *runtimeZombieEntity) tickAttack(runtime *Runtime, target *Session) {
@@ -1125,12 +825,6 @@ func (r *Runtime) SpawnZombie(position game.Position) *runtimeZombieEntity {
 	}
 
 	entity := &runtimeZombieEntity{
-		State: RuntimeEntityState{
-			ID:       r.allocateEntityID(),
-			UUID:     randomEntityUUID(),
-			Position: position,
-			Chunk:    positionLoadedChunk(position),
-		},
 		Living: RuntimeLivingState{
 			NextStepDistance:    1,
 			KnockbackResistance: zombieKnockbackResistance,
@@ -1142,19 +836,11 @@ func (r *Runtime) SpawnZombie(position game.Position) *runtimeZombieEntity {
 	}
 
 	entity.Living.Reset(zombieMaxHealth)
-	entity.State.tracker = newRuntimeEntityTracker(entity.runtimeEntityViewLocked())
 
-	r.entityMu.Lock()
-	r.entities[entity.State.ID] = entity
-	r.addEntityToChunkIndexLocked(entity)
-	r.entityMu.Unlock()
+	entity.Goals.Add(2, runtimeGoalMove|runtimeGoalLook, &zombieMeleeGoal{Entity: entity})
+	entity.Goals.Add(7, runtimeGoalMove|runtimeGoalLook, &zombieIdleGoal{Entity: entity})
 
-	chunk, active := r.ActiveChunk(entity.State.Chunk)
-	if active {
-		chunk.SetEntity(entity.State.ID, entity)
-	}
-
-	r.reconcileRuntimeEntityTracking(entity)
+	r.registerRuntimeEntity(entity, position)
 
 	return entity
 }
@@ -1346,6 +1032,25 @@ func zombieRandomInt(runtime *Runtime, bound int) int {
 	value := int(runtime.nextEntityRandom() * float32(bound))
 
 	return min(value, bound-1)
+}
+
+func zombieGroundControlConfig() groundMobControlConfig {
+	return groundMobControlConfig{
+		MovementSpeed:        zombieMovementSpeed,
+		FlyingSpeed:          zombieFlyingSpeed,
+		GroundFriction:       zombieGroundFriction,
+		AirFriction:          zombieAirFriction,
+		Gravity:              zombieGravity,
+		VerticalDrag:         zombieVerticalDrag,
+		JumpStrength:         zombieJumpStrength,
+		StepHeight:           zombieStepHeight,
+		StepDistanceScale:    zombieStepDistanceScale,
+		EyeHeight:            zombieEyeHeight,
+		MoveMaximumTurn:      zombieMoveMaximumTurn,
+		IdleLookMaximumYaw:   zombieIdleLookMaximumYaw,
+		IdleLookMaximumPitch: zombieIdleLookMaximumPitch,
+		MaximumHeadYaw:       zombieMaximumHeadYaw,
+	}
 }
 
 func zombieDaylightBrightness(world *game.World, position game.BlockPosition, dayTime int64) (float32, bool) {

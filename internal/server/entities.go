@@ -475,31 +475,13 @@ func (r *Runtime) SpawnItemEntity(stack game.ItemStack, position game.Position, 
 	}
 
 	entity := &runtimeItemEntity{
-		State: RuntimeEntityState{
-			ID:       r.allocateEntityID(),
-			UUID:     randomEntityUUID(),
-			Position: position,
-			Chunk:    positionLoadedChunk(position),
-		},
 		Stack:       stack.Clone(),
 		Velocity:    velocity,
 		Health:      5,
 		PickupDelay: pickupDelay,
 	}
-	entity.State.tracker = newRuntimeEntityTracker(entity.runtimeEntityViewLocked())
 
-	r.entityMu.Lock()
-	r.entities[entity.State.ID] = entity
-
-	r.addEntityToChunkIndexLocked(entity)
-	r.entityMu.Unlock()
-
-	chunk, active := r.ActiveChunk(entity.State.Chunk)
-	if active {
-		chunk.SetEntity(entity.State.ID, entity)
-	}
-
-	r.reconcileRuntimeEntityTracking(entity)
+	r.registerRuntimeEntity(entity, position)
 
 	return entity
 }

@@ -5,15 +5,17 @@ import "testing"
 type entityRegistryTest struct {
 	name       string
 	entityType EntityType
+	kind       EntityKind
+	category   EntityCategory
 	width      float64
 	height     float64
 }
 
 func TestEntityRegistry(t *testing.T) {
 	tests := []entityRegistryTest{
-		{name: "item", entityType: EntityItem, width: 0.25, height: 0.25},
-		{name: "zombie", entityType: EntityZombie, width: 0.6, height: 1.95},
-		{name: "player", entityType: EntityPlayer, width: 0.6, height: 1.8},
+		{name: "item", entityType: EntityItem, kind: EntityKindOther, category: EntityCategoryUnknown, width: 0.25, height: 0.25},
+		{name: "zombie", entityType: EntityZombie, kind: EntityKindHostile, category: EntityCategoryHostileMobs, width: 0.6, height: 1.95},
+		{name: "player", entityType: EntityPlayer, kind: EntityKindPlayer, category: EntityCategoryUnknown, width: 0.6, height: 1.8},
 	}
 
 	if EntityItem != EntityType(71) || EntityZombie != EntityType(150) || EntityPlayer != EntityType(155) {
@@ -26,7 +28,7 @@ func TestEntityRegistry(t *testing.T) {
 			t.Fatalf("entity %s is invalid", test.name)
 		}
 
-		if definition.ID != test.entityType || definition.Name != test.name || definition.Width != test.width || definition.Height != test.height {
+		if definition.ID != test.entityType || definition.Name != test.name || definition.Kind != test.kind || definition.Category != test.category || definition.Width != test.width || definition.Height != test.height {
 			t.Fatalf("entity %s definition = %+v", test.name, definition)
 		}
 	}

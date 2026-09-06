@@ -1608,7 +1608,26 @@ func TestCommandSummonZombie(t *testing.T) {
 
 	executeCommand(t, session, "summon minecraft:cow")
 
-	assertSyntaxError(t, connection, "summon minecraft:cow", 7, game.LiteralText("Unknown entity 'minecraft:cow'"))
+	entities = runtime.snapshotRuntimeEntities()
+	if len(entities) != 3 {
+		t.Fatalf("summoned entities after cow = %d, want 3", len(entities))
+	}
+
+	_, cowEntity := entities[2].(*runtimeCowEntity)
+	if !cowEntity {
+		t.Fatalf("summoned cow entity = %T", entities[2])
+	}
+
+	assertSystemComponents(t, connection, game.TranslatableText(
+		"commands.summon.success",
+		game.TranslatableText("entity.minecraft.cow"),
+	))
+
+	connection.reset()
+
+	executeCommand(t, session, "summon minecraft:pig")
+
+	assertSyntaxError(t, connection, "summon minecraft:pig", 7, game.LiteralText("Unknown entity 'minecraft:pig'"))
 }
 
 func TestCommandSetBlockMutatesWorldAndNotifiesSessions(t *testing.T) {

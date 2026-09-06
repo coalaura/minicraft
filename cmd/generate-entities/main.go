@@ -17,6 +17,8 @@ type entityDefinition struct {
 	ID         int     `json:"id"`
 	InternalID int     `json:"internalId"`
 	Name       string  `json:"name"`
+	Kind       string  `json:"type"`
+	Category   string  `json:"category"`
 	Width      float64 `json:"width"`
 	Height     float64 `json:"height"`
 }
@@ -83,7 +85,7 @@ func generate(definitions []entityDefinition) ([]byte, error) {
 	fmt.Fprintln(&output, "var entityDefinitions = [...]EntityDefinition{")
 
 	for _, definition := range definitions {
-		fmt.Fprintf(&output, "\t{ID: Entity%s, Name: %q, Width: %g, Height: %g},\n", goName(definition.Name), definition.Name, definition.Width, definition.Height)
+		fmt.Fprintf(&output, "\t{ID: Entity%s, Name: %q, Kind: EntityKind%s, Category: EntityCategory%s, Width: %g, Height: %g},\n", goName(definition.Name), definition.Name, entityKindName(definition.Kind), entityCategoryName(definition.Category), definition.Width, definition.Height)
 	}
 
 	fmt.Fprintln(&output, "}")
@@ -115,6 +117,14 @@ func validate(definitions []entityDefinition) error {
 
 		if definition.Name == "" {
 			return fmt.Errorf("entity at index %d has an empty name", index)
+		}
+
+		if !validEntityKind(definition.Kind) {
+			return fmt.Errorf("entity %q has unsupported type %q", definition.Name, definition.Kind)
+		}
+
+		if !validEntityCategory(definition.Category) {
+			return fmt.Errorf("entity %q has unsupported category %q", definition.Name, definition.Category)
 		}
 
 		if definition.Width < 0 || definition.Height < 0 {
@@ -150,6 +160,58 @@ func goName(name string) string {
 	}
 
 	return strings.Join(parts, "")
+}
+
+func validEntityKind(kind string) bool {
+	return entityKindName(kind) != ""
+}
+
+func entityKindName(kind string) string {
+	switch kind {
+	case "ambient":
+		return "Ambient"
+	case "animal":
+		return "Animal"
+	case "hostile":
+		return "Hostile"
+	case "living":
+		return "Living"
+	case "mob":
+		return "Mob"
+	case "other":
+		return "Other"
+	case "passive":
+		return "Passive"
+	case "player":
+		return "Player"
+	case "projectile":
+		return "Projectile"
+	}
+
+	return ""
+}
+
+func validEntityCategory(category string) bool {
+	return entityCategoryName(category) != ""
+}
+
+func entityCategoryName(category string) string {
+	switch category {
+	case "Hostile mobs":
+		return "HostileMobs"
+	case "Immobile":
+		return "Immobile"
+	case "Passive mobs":
+		return "PassiveMobs"
+	case "Projectiles":
+		return "Projectiles"
+	case "UNKNOWN":
+		return "Unknown"
+	case "Vehicles":
+		return "Vehicles"
+	}
+
+	return ""
 }
 
 func fail(err error) {

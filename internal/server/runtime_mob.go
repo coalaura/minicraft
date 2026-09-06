@@ -85,7 +85,7 @@ func (r *Runtime) checkRuntimeMobDespawn(entity RuntimeMobEntity) bool {
 	if distanceSquared > despawnDistanceSquared && entity.RuntimeMobRemoveWhenFarAway(distanceSquared) {
 		r.removeRuntimeEntity(state.ID)
 
-		despawned = true
+		return true
 	}
 
 	noDespawnDistanceSquared := configuration.NoDespawnDistance * configuration.NoDespawnDistance

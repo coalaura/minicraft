@@ -42,9 +42,21 @@ type playerAttackResult struct {
 type playerAttackTarget struct {
 	session       *Session
 	player        game.Player
+	runtimeEntity RuntimeEntity
 	runtimeLiving RuntimeLivingEntity
 	entityID      int32
 	position      game.Position
+}
+
+type RuntimeEntityInteraction struct {
+	Target          game.Position
+	Hand            int32
+	HasTarget       bool
+	SecondaryAction bool
+}
+
+type RuntimeEntityInteractor interface {
+	RuntimeEntityInteract(*Runtime, *Session, RuntimeEntityInteraction) bool
 }
 
 func (r *Runtime) handlePlayerInteraction(attackerSession *Session, interaction protocol.Interact) {
@@ -58,9 +70,25 @@ func (r *Runtime) handlePlayerInteraction(attackerSession *Session, interaction 
 	})
 
 	target, valid := r.playerInteractionTargetLocked(attackerSession, interaction)
-	if !valid || interaction.Action != protocol.InteractActionAttack {
+	if !valid {
 		r.lifecycleMu.Unlock()
 		r.worldMutationMu.Unlock()
+
+		return
+	}
+
+	if interaction.Action != protocol.InteractActionAttack {
+		inventoryChanged := r.interactRuntimeEntityLocked(attackerSession, target, interaction)
+
+		r.lifecycleMu.Unlock()
+		r.worldMutationMu.Unlock()
+
+		if inventoryChanged {
+			err := attackerSession.sendPlayerInventory()
+			if err != nil && attackerSession.Log != nil {
+				attackerSession.Log.Warnf("[play] failed to synchronize entity interaction inventory: %v\n", err)
+			}
+		}
 
 		return
 	}
@@ -168,7 +196,33 @@ func (r *Runtime) playerInteractionTargetLocked(attackerSession *Session, intera
 		return playerAttackTarget{}, false
 	}
 
-	return playerAttackTarget{runtimeLiving: runtimeLiving, entityID: interaction.EntityID, position: position}, true
+	return playerAttackTarget{runtimeEntity: runtimeEntity, runtimeLiving: runtimeLiving, entityID: interaction.EntityID, position: position}, true
+}
+
+func (r *Runtime) interactRuntimeEntityLocked(session *Session, target playerAttackTarget, interaction protocol.Interact) bool {
+	interactor, supported := target.runtimeEntity.(RuntimeEntityInteractor)
+	if !supported {
+		return false
+	}
+
+	entityInteraction := RuntimeEntityInteraction{
+		Hand:            interaction.Hand,
+		SecondaryAction: interaction.SecondaryAction,
+	}
+
+	if interaction.Action == protocol.InteractActionInteractAt {
+		entityInteraction.Target = game.Position{
+			X: float64(interaction.TargetX),
+			Y: float64(interaction.TargetY),
+			Z: float64(interaction.TargetZ),
+		}
+		entityInteraction.HasTarget = true
+	}
+
+	inventoryChanged := interactor.RuntimeEntityInteract(r, session, entityInteraction)
+	r.synchronizeRuntimeEntity(target.runtimeEntity)
+
+	return inventoryChanged
 }
 
 func (r *Runtime) playerSessionByEntityIDLocked(entityID int32) *Session {
