@@ -61,6 +61,7 @@ type Runtime struct {
 	entitiesByChunk           map[LoadedChunk]map[int32]RuntimeEntity
 	entityRandomMu            sync.Mutex
 	entityRandom              func() float32
+	groundPathfindStarted     func()
 	mu                        sync.RWMutex
 	nextEntityID              int32
 	reserved                  int

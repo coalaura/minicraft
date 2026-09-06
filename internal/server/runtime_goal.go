@@ -19,6 +19,10 @@ type runtimeGoal interface {
 	Tick(*Runtime)
 }
 
+type runtimeEveryTickGoal interface {
+	RequiresUpdateEveryTick() bool
+}
+
 type runtimeGoalEntry struct {
 	Goal     runtimeGoal
 	Priority int
@@ -48,7 +52,14 @@ func (selector *runtimeGoalSelector) Add(priority int, flags runtimeGoalFlag, go
 	})
 }
 
-func (selector *runtimeGoalSelector) Tick(runtime *Runtime) {
+func (selector *runtimeGoalSelector) Tick(runtime *Runtime, fullPass ...bool) {
+	full := len(fullPass) == 0 || fullPass[0]
+	if !full {
+		selector.tickRunning(runtime, false)
+
+		return
+	}
+
 	for index := range selector.Entries {
 		entry := &selector.Entries[index]
 		if entry.Running && !entry.Goal.CanContinue(runtime) {
@@ -70,12 +81,25 @@ func (selector *runtimeGoalSelector) Tick(runtime *Runtime) {
 		entry.Running = true
 	}
 
+	selector.tickRunning(runtime, true)
+}
+
+func (selector *runtimeGoalSelector) tickRunning(runtime *Runtime, force bool) {
 	for index := range selector.Entries {
 		entry := &selector.Entries[index]
-		if entry.Running {
+		if !entry.Running {
+			continue
+		}
+
+		everyTick, supported := entry.Goal.(runtimeEveryTickGoal)
+		if force || supported && everyTick.RequiresUpdateEveryTick() {
 			entry.Goal.Tick(runtime)
 		}
 	}
+}
+
+func reducedTickDelay(ticks int) int {
+	return (ticks + 1) / 2
 }
 
 func (selector *runtimeGoalSelector) blocked(candidateIndex int) bool {

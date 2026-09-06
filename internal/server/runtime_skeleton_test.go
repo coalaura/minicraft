@@ -1,11 +1,25 @@
 package server
 
 import (
+	"math"
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
+
+type skeletonStrafeTestCase struct {
+	name     string
+	forward  float32
+	sideways float32
+	wantX    float64
+	wantZ    float64
+}
+
+type skeletonStaticPathfindTestCase struct {
+	name    string
+	blocked bool
+}
 
 func TestSpawnSkeletonTracksBowWithoutFakeEquipment(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
@@ -152,10 +166,48 @@ func TestSkeletonDaylightBurningAndSunGoals(t *testing.T) {
 	}
 
 	skeleton.Head = game.ItemStack{}
+
+	skeleton.Navigation.MoveTo([]game.Position{{X: 1.5, Z: .5}}, 1)
+
+	var (
+		fleeEntry     *runtimeGoalEntry
+		bowEntry      *runtimeGoalEntry
+		restrictEntry *runtimeGoalEntry
+	)
+
+	for index := range skeleton.Goals.Entries {
+		entry := &skeleton.Goals.Entries[index]
+
+		switch entry.Goal.(type) {
+		case *skeletonRestrictSunGoal:
+			restrictEntry = entry
+		case *skeletonFleeSunGoal:
+			fleeEntry = entry
+		case *skeletonBowGoal:
+			bowEntry = entry
+		}
+	}
+
+	if restrictEntry == nil || fleeEntry == nil || bowEntry == nil || restrictEntry.Priority != 2 || restrictEntry.Flags != 0 || fleeEntry.Priority != 3 || fleeEntry.Flags != runtimeGoalMove || bowEntry.Priority != 4 || bowEntry.Flags != runtimeGoalMove|runtimeGoalLook {
+		t.Fatal("skeleton sun and combat priorities are wrong")
+	}
+
+	fleeEntry.Running = true
+
 	skeleton.GoalTarget = runtimeLivingTarget{entity: spawnTestRuntimeLivingEntity(runtime, game.Position{X: 2}, 20)}
 
-	if (&skeletonFleeSunGoal{Entity: skeleton}).CanUse(runtime) {
-		t.Fatal("targeted skeleton fled from sun over combat")
+	skeleton.Goals.Tick(runtime, true)
+
+	if !fleeEntry.Running || bowEntry.Running {
+		t.Fatal("target acquisition interrupted an active flee-sun goal")
+	}
+
+	skeleton.Navigation.Stop()
+
+	skeleton.Goals.Tick(runtime, true)
+
+	if fleeEntry.Running || !bowEntry.Running {
+		t.Fatal("combat did not resume after shelter navigation completed")
 	}
 
 	skeleton.GoalTarget = runtimeLivingTarget{}
@@ -170,6 +222,291 @@ func TestSkeletonDaylightBurningAndSunGoals(t *testing.T) {
 
 	if skeleton.shouldRestrictSun(runtime) || skeleton.shouldFleeSun(runtime) {
 		t.Fatal("nighttime skeleton restricted or fled sun")
+	}
+}
+
+func TestSkeletonStrafeUsesVanillaSpeedAndInputScaling(t *testing.T) {
+	tests := []skeletonStrafeTestCase{
+		{name: "straight", forward: .5, wantZ: .0078125},
+		{name: "diagonal", forward: .5, sideways: .5, wantX: .0078125, wantZ: .0078125},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := NewRuntime(zombieGroundWorld(-2, 2, -2, 2))
+
+			skeleton := runtime.SpawnSkeleton(game.Position{X: .5, Z: .5})
+
+			skeleton.Living.OnGround = true
+
+			skeleton.MoveControl.Strafe(test.forward, test.sideways)
+
+			skeleton.MoveControl.TickConfigured(skeleton.State.Position, &skeleton.Rotation, skeletonGroundControlConfig(), func(float64, float64) bool {
+				return true
+			})
+
+			runtime.applyGroundLivingPhysics(&skeleton.State, &skeleton.Living, &skeleton.Rotation, &skeleton.MoveControl, skeletonGroundControlConfig())
+
+			deltaX := skeleton.State.Position.X - .5
+			deltaZ := skeleton.State.Position.Z - .5
+
+			if math.Abs(deltaX-test.wantX) > 1e-8 || math.Abs(deltaZ-test.wantZ) > 1e-8 {
+				t.Fatalf("strafe displacement = (%0.8f, %0.8f), want (%0.8f, %0.8f)", deltaX, deltaZ, test.wantX, test.wantZ)
+			}
+		})
+	}
+}
+
+func TestSkeletonStrafeWalkabilityFallbackAndOneShotOperation(t *testing.T) {
+	skeleton := NewRuntime(&game.World{}).SpawnSkeleton(game.Position{X: .5, Z: .5})
+
+	probeX := 0.0
+	probeZ := 0.0
+
+	skeleton.Rotation.Yaw = 90
+
+	skeleton.MoveControl.Strafe(.5, .5)
+
+	skeleton.MoveControl.TickConfigured(skeleton.State.Position, &skeleton.Rotation, skeletonGroundControlConfig(), func(deltaX, deltaZ float64) bool {
+		probeX = deltaX
+		probeZ = deltaZ
+
+		return false
+	})
+
+	if math.Abs(probeX+.03125) > 1e-8 || math.Abs(probeZ-.03125) > 1e-8 {
+		t.Fatalf("rotated walkability probe = (%0.8f, %0.8f)", probeX, probeZ)
+	}
+
+	if skeleton.MoveControl.ForwardInput != 1 || skeleton.MoveControl.SidewaysInput != 0 || skeleton.MoveControl.MovementSpeed != skeletonMovementSpeed*.25 {
+		t.Fatal("non-walkable strafe did not fall back to vanilla forward input")
+	}
+
+	skeleton.MoveControl.TickConfigured(skeleton.State.Position, &skeleton.Rotation, skeletonGroundControlConfig(), nil)
+
+	if skeleton.MoveControl.ForwardInput != 0 || skeleton.MoveControl.SidewaysInput != 0 {
+		t.Fatal("strafe operation was not consumed after one tick")
+	}
+}
+
+func TestSkeletonTargetAcquisitionUsesReducedFullPassCadence(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	player := addRuntimeMobTestPlayer(t, runtime, game.Position{X: 5}, game.GameModeSurvival)
+
+	draws := 0
+
+	runtime.entityRandom = func() float32 {
+		draws++
+
+		return .1
+	}
+
+	skeleton := runtime.SpawnSkeleton(game.Position{})
+
+	skeleton.tickTarget(runtime, false)
+
+	if draws != 0 || skeleton.Target.Target.present() {
+		t.Fatal("lightweight goal pass attempted target acquisition")
+	}
+
+	skeleton.tickTarget(runtime, true)
+
+	if draws != 1 || skeleton.Target.Target.session != player {
+		t.Fatalf("first full-pass target acquisition = draws %d target %+v", draws, skeleton.Target.Target)
+	}
+
+	skeleton.Target.Target = runtimeLivingTarget{}
+	player.Player.GameMode = game.GameModeCreative
+	draws = 0
+
+	for tick := range 10 {
+		skeleton.tickTarget(runtime, tick%2 == 0)
+	}
+
+	if draws != 5 || skeletonTargetInterval != reducedTickDelay(10) {
+		t.Fatalf("ten-tick target cadence = draws %d interval %d", draws, skeletonTargetInterval)
+	}
+}
+
+func TestSkeletonBowNavigationPathfindOperationCounts(t *testing.T) {
+	staticCases := []skeletonStaticPathfindTestCase{
+		{name: "visible"},
+		{name: "blocked LOS", blocked: true},
+	}
+
+	for _, test := range staticCases {
+		t.Run(test.name, func(t *testing.T) {
+			world := zombieGroundWorld(-2, 16, -3, 3)
+
+			if test.blocked {
+				world.SetBlock(game.BlockPosition{X: 8, Y: 1}, game.Stone)
+			}
+
+			runtime := NewRuntime(world)
+
+			target := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 10.5, Z: .5}, 20)
+
+			skeleton := runtime.SpawnSkeleton(game.Position{X: .5, Z: .5})
+
+			skeleton.GoalTarget = runtimeLivingTarget{entity: target}
+			operations := 0
+
+			runtime.groundPathfindStarted = func() {
+				operations++
+			}
+
+			for range 10 {
+				skeleton.tickBowGoal(runtime)
+			}
+
+			if operations != 1 {
+				t.Fatalf("static target pathfind operations = %d, want 1 (path %d index %d target %t)", operations, len(skeleton.Navigation.Path), skeleton.Navigation.Index, skeleton.Navigation.HasTarget)
+			}
+		})
+	}
+
+	t.Run("moving target", func(t *testing.T) {
+		runtime := NewRuntime(zombieGroundWorld(-2, 16, -3, 3))
+
+		target := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 10.5, Z: .5}, 20)
+
+		skeleton := runtime.SpawnSkeleton(game.Position{X: .5, Z: .5})
+
+		skeleton.GoalTarget = runtimeLivingTarget{entity: target}
+		operations := 0
+
+		runtime.groundPathfindStarted = func() {
+			operations++
+		}
+
+		for step := range 4 {
+			target.State.Position.X = 10.5 + float64(step)
+
+			skeleton.tickBowGoal(runtime)
+		}
+
+		if operations != 4 {
+			t.Fatalf("moving target pathfind operations = %d, want 4", operations)
+		}
+	})
+
+	t.Run("failed target path retains current path", func(t *testing.T) {
+		runtime := NewRuntime(zombieGroundWorld(-2, 12, -3, 3))
+
+		target := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 8.5, Z: .5}, 20)
+
+		skeleton := runtime.SpawnSkeleton(game.Position{X: .5, Z: .5})
+
+		skeleton.GoalTarget = runtimeLivingTarget{entity: target}
+		operations := 0
+
+		runtime.groundPathfindStarted = func() {
+			operations++
+		}
+
+		skeleton.tickBowGoal(runtime)
+
+		path := skeleton.Navigation.Path
+
+		if len(path) == 0 {
+			t.Fatal("initial target did not produce a path")
+		}
+
+		target.State.Position.X = 30.5
+
+		skeleton.tickBowGoal(runtime)
+
+		if operations != 2 || len(skeleton.Navigation.Path) != len(path) || skeleton.Navigation.Path[0] != path[0] {
+			t.Fatalf("failed target path replaced current path: operations %d old %d new %d", operations, len(path), len(skeleton.Navigation.Path))
+		}
+	})
+
+	t.Run("several skeletons", func(t *testing.T) {
+		runtime := NewRuntime(zombieGroundWorld(-2, 16, -6, 6))
+
+		target := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 10.5, Z: .5}, 20)
+
+		operations := 0
+
+		runtime.groundPathfindStarted = func() {
+			operations++
+		}
+
+		for index := range 4 {
+			skeleton := runtime.SpawnSkeleton(game.Position{X: .5, Z: float64(index) + .5})
+
+			skeleton.GoalTarget = runtimeLivingTarget{entity: target}
+
+			for range 5 {
+				skeleton.tickBowGoal(runtime)
+			}
+		}
+
+		if operations != 4 {
+			t.Fatalf("four-skeleton pathfind operations = %d, want 4", operations)
+		}
+	})
+}
+
+func TestSkeletonFireDamageAndDaylightReignitionOrdering(t *testing.T) {
+	world := zombieGroundWorld(-1, 1, -1, 1)
+
+	world.SetLightingMode(game.LightingNormal)
+	world.SetDayTime(6000)
+
+	runtime := NewRuntime(world)
+
+	runtime.entityRandom = func() float32 {
+		return 0
+	}
+
+	skeleton := runtime.SpawnSkeleton(game.Position{X: .5, Z: .5})
+
+	skeleton.Living.RemainingFireTicks = 20
+
+	runtime.tickRuntimeLivingBaseEnvironment(skeleton)
+
+	if skeleton.Living.Health != 19 || skeleton.Living.RemainingFireTicks != 19 {
+		t.Fatalf("fire cadence = health %v ticks %d", skeleton.Living.Health, skeleton.Living.RemainingFireTicks)
+	}
+
+	skeleton.Living.RemainingFireTicks = 1
+
+	skeleton.Tick(runtime, nil)
+
+	if skeleton.Living.RemainingFireTicks != skeletonFireDurationTicks {
+		t.Fatalf("daylight reignition ticks = %d, want %d", skeleton.Living.RemainingFireTicks, skeletonFireDurationTicks)
+	}
+}
+
+func TestSkeletonBowGoalDoesNotReplacePathAfterTargetLoss(t *testing.T) {
+	runtime := NewRuntime(zombieGroundWorld(-2, 12, -2, 2))
+
+	target := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 8.5, Z: .5}, 20)
+
+	skeleton := runtime.SpawnSkeleton(game.Position{X: .5, Z: .5})
+
+	skeleton.GoalTarget = runtimeLivingTarget{entity: target}
+
+	skeleton.tickBowGoal(runtime)
+
+	path := skeleton.Navigation.Path
+
+	if len(path) == 0 {
+		t.Fatal("bow chase did not create an initial path")
+	}
+
+	skeleton.GoalTarget = runtimeLivingTarget{}
+
+	if !(&skeletonBowGoal{Entity: skeleton}).CanContinue(runtime) {
+		t.Fatal("bow goal did not continue while its navigation remained active")
+	}
+
+	skeleton.tickBowGoal(runtime)
+
+	if len(skeleton.Navigation.Path) != len(path) || skeleton.Navigation.Path[0] != path[0] {
+		t.Fatal("bow goal replaced its path after target loss")
 	}
 }
 

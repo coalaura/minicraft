@@ -15,7 +15,7 @@ const (
 	skeletonEyeHeight              = 1.74
 	skeletonTrackingRangeChunks    = 8
 	skeletonTrackingInterval       = 3
-	skeletonTargetInterval         = 10
+	skeletonTargetInterval         = (10 + 1) / 2
 	skeletonNearestUnseenChecks    = 30
 	skeletonRetaliateUnseenChecks  = 150
 	skeletonBowRangeSquared        = 225
@@ -147,9 +147,7 @@ func (goal *skeletonFleeSunGoal) CanUse(runtime *Runtime) bool {
 }
 
 func (goal *skeletonFleeSunGoal) CanContinue(*Runtime) bool {
-	entity := goal.Entity
-
-	return !entity.GoalTarget.present() && !entity.Navigation.Done()
+	return !goal.Entity.Navigation.Done()
 }
 
 func (goal *skeletonFleeSunGoal) Start(*Runtime) {
@@ -171,7 +169,11 @@ func (goal *skeletonBowGoal) CanUse(*Runtime) bool {
 func (goal *skeletonBowGoal) CanContinue(*Runtime) bool {
 	entity := goal.Entity
 
-	return entity.GoalTarget.present() && entity.holdingBow()
+	return (entity.GoalTarget.present() || !entity.Navigation.Done()) && entity.holdingBow()
+}
+
+func (*skeletonBowGoal) RequiresUpdateEveryTick() bool {
+	return true
 }
 
 func (goal *skeletonBowGoal) Start(*Runtime) {
@@ -187,7 +189,7 @@ func (goal *skeletonBowGoal) Stop(*Runtime) {
 	entity.stopUsingBow()
 
 	entity.Bow.SeeTime = 0
-	entity.Bow.StrafeTime = -1
+	entity.Bow.AttackTime = -1
 
 	entity.setAggressive(false)
 }
@@ -223,6 +225,10 @@ func (goal *skeletonMeleeGoal) Stop(*Runtime) {
 
 func (goal *skeletonMeleeGoal) Tick(runtime *Runtime) {
 	goal.Entity.tickMeleeGoal(runtime)
+}
+
+func (*skeletonMeleeGoal) RequiresUpdateEveryTick() bool {
+	return true
 }
 
 func (goal *skeletonIdleGoal) CanUse(*Runtime) bool {
@@ -455,7 +461,7 @@ func (entity *runtimeSkeletonEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	entity.GoalTarget = entity.Target.Target
 	entity.FullGoalTick = fullGoalTick
 
-	entity.Goals.Tick(runtime)
+	entity.Goals.Tick(runtime, fullGoalTick)
 
 	fallDamage, step := runtime.tickGroundMobMovement(entity, &entity.Living, &entity.Rotation, &entity.Navigation, &entity.MoveControl, &entity.LookControl, &entity.BodyControl, skeletonGroundControlConfig(), false)
 	if fallDamage > 0 {
@@ -658,6 +664,9 @@ func (entity *runtimeSkeletonEntity) findSunShelterPath(runtime *Runtime) []game
 
 func (entity *runtimeSkeletonEntity) tickBowGoal(runtime *Runtime) {
 	target := entity.GoalTarget
+	if !target.present() {
+		return
+	}
 
 	entity.State.mu.RLock()
 	position := entity.State.Position
@@ -871,10 +880,19 @@ func (entity *runtimeSkeletonEntity) moveToTarget(runtime *Runtime, target game.
 	position := entity.State.Position
 	entity.State.mu.RUnlock()
 
+	targetBlock := game.BlockPosition{X: int32(math.Floor(target.X)), Y: int32(math.Floor(target.Y)), Z: int32(math.Floor(target.Z))}
+	if !entity.Navigation.Done() && entity.Navigation.HasTarget && entity.Navigation.Target == targetBlock {
+		entity.Navigation.SpeedModifier = speed
+
+		return
+	}
+
 	path := runtime.findGroundPath(position, target, entity.Living.Width, entity.Living.Height, skeletonFollowRange)
 	path = entity.restrictSunPath(runtime, path)
 
-	entity.Navigation.MoveTo(path, speed)
+	if len(path) > 0 {
+		entity.Navigation.MoveToTarget(path, targetBlock, speed)
+	}
 }
 
 func (entity *runtimeSkeletonEntity) shoot(runtime *Runtime, target runtimeLivingTarget) {

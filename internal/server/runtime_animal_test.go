@@ -20,6 +20,7 @@ type runtimeGoalTestGoal struct {
 	starts      int
 	stops       int
 	ticks       int
+	everyTick   bool
 }
 
 func (goal *runtimeGoalTestGoal) CanUse(*Runtime) bool {
@@ -40,6 +41,10 @@ func (goal *runtimeGoalTestGoal) Stop(*Runtime) {
 
 func (goal *runtimeGoalTestGoal) Tick(*Runtime) {
 	goal.ticks++
+}
+
+func (goal *runtimeGoalTestGoal) RequiresUpdateEveryTick() bool {
+	return goal.everyTick
 }
 
 func TestRuntimeEntityRegistryContainsImplementedEntities(t *testing.T) {

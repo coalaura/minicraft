@@ -2,6 +2,7 @@ package server
 
 import (
 	"math"
+	"slices"
 
 	"github.com/coalaura/minicraft/internal/game"
 )
@@ -38,6 +39,8 @@ type groundNavigationState struct {
 	Path          []game.Position
 	Index         int
 	SpeedModifier float64
+	Target        game.BlockPosition
+	HasTarget     bool
 }
 
 type groundMoveControlState struct {
@@ -51,6 +54,7 @@ type groundMoveControlState struct {
 	Strafing      bool
 	StrafeForward float32
 	StrafeSideway float32
+	MovementSpeed float32
 }
 
 type groundLookControlState struct {
@@ -73,9 +77,12 @@ func (navigation *groundNavigationState) Stop() {
 	navigation.Path = nil
 	navigation.Index = 0
 	navigation.SpeedModifier = 0
+	navigation.HasTarget = false
 }
 
 func (navigation *groundNavigationState) MoveTo(path []game.Position, speedModifier float64) bool {
+	navigation.HasTarget = false
+
 	if len(path) == 0 {
 		navigation.Stop()
 
@@ -87,6 +94,25 @@ func (navigation *groundNavigationState) MoveTo(path []game.Position, speedModif
 	navigation.SpeedModifier = speedModifier
 
 	return true
+}
+
+func (navigation *groundNavigationState) MoveToTarget(path []game.Position, target game.BlockPosition, speedModifier float64) bool {
+	if len(path) == 0 {
+		navigation.Stop()
+
+		return false
+	}
+
+	if !slices.Equal(navigation.Path, path) {
+		navigation.Path = path
+		navigation.Index = 0
+	}
+
+	navigation.SpeedModifier = speedModifier
+	navigation.Target = target
+	navigation.HasTarget = true
+
+	return !navigation.Done()
 }
 
 func (navigation *groundNavigationState) Tick(position game.Position, width float64, control *groundMoveControlState) {
@@ -106,18 +132,44 @@ func (navigation *groundNavigationState) Tick(position game.Position, width floa
 }
 
 func (control *groundMoveControlState) Tick(position game.Position, rotation *game.Rotation) {
-	control.TickConfigured(position, rotation, zombieGroundControlConfig())
+	control.TickConfigured(position, rotation, zombieGroundControlConfig(), nil)
 }
 
-func (control *groundMoveControlState) TickConfigured(position game.Position, rotation *game.Rotation, configuration groundMobControlConfig) {
+func (control *groundMoveControlState) TickConfigured(position game.Position, rotation *game.Rotation, configuration groundMobControlConfig, strafeWalkable func(float64, float64) bool) {
 	control.ForwardInput = 0
 	control.SidewaysInput = 0
+	control.MovementSpeed = configuration.MovementSpeed
 	control.Jump = control.JumpRequested
 	control.JumpRequested = false
 
 	if control.Strafing {
-		control.ForwardInput = control.StrafeForward
-		control.SidewaysInput = control.StrafeSideway
+		speed := float32(control.SpeedModifier) * configuration.MovementSpeed
+		forward := control.StrafeForward
+		sideways := control.StrafeSideway
+		distance := float32(math.Sqrt(float64(forward*forward + sideways*sideways)))
+
+		if distance < 1 {
+			distance = 1
+		}
+
+		scale := speed / distance
+		xa := forward * scale
+		za := sideways * scale
+		yaw := float64(rotation.Yaw) * math.Pi / 180
+		sine := float64(minecraftSin(yaw))
+		cosine := float64(minecraftCos(yaw))
+
+		deltaX := float64(xa)*cosine - float64(za)*sine
+		deltaZ := float64(za)*cosine + float64(xa)*sine
+
+		if strafeWalkable != nil && !strafeWalkable(deltaX, deltaZ) {
+			forward = 1
+			sideways = 0
+		}
+
+		control.ForwardInput = forward
+		control.SidewaysInput = sideways
+		control.MovementSpeed = speed
 		control.Strafing = false
 
 		return
@@ -141,8 +193,8 @@ func (control *groundMoveControlState) TickConfigured(position game.Position, ro
 	wantedYaw := float32(math.Atan2(deltaZ, deltaX)*180/math.Pi - 90)
 	rotation.Yaw = rotateTowards(rotation.Yaw, wantedYaw, configuration.MoveMaximumTurn)
 
-	speed := float32(control.SpeedModifier) * configuration.MovementSpeed
-	control.ForwardInput = speed
+	control.MovementSpeed = float32(control.SpeedModifier) * configuration.MovementSpeed
+	control.ForwardInput = 1
 
 	horizontalDistanceSquared := deltaX*deltaX + deltaZ*deltaZ
 	if deltaY > configuration.StepHeight && horizontalDistanceSquared < 1 {
@@ -154,6 +206,7 @@ func (control *groundMoveControlState) Strafe(forward, sideways float32) {
 	control.Strafing = true
 	control.StrafeForward = forward
 	control.StrafeSideway = sideways
+	control.SpeedModifier = 0.25
 }
 
 func (control *groundLookControlState) SetWanted(position game.Position, maximumYaw, maximumPitch float32) {
@@ -234,7 +287,17 @@ func (runtime *Runtime) tickGroundMobMovement(entity RuntimeEntity, living *Runt
 
 	navigation.Tick(state.Position, living.Width, moveControl)
 
-	moveControl.TickConfigured(state.Position, rotation, configuration)
+	strafeWalkable := func(deltaX, deltaZ float64) bool {
+		candidate := game.BlockPosition{
+			X: int32(math.Floor(state.Position.X + deltaX)),
+			Y: int32(math.Floor(state.Position.Y)),
+			Z: int32(math.Floor(state.Position.Z + deltaZ)),
+		}
+
+		return runtime.groundNodeWalkable(candidate, living.Width, living.Height)
+	}
+
+	moveControl.TickConfigured(state.Position, rotation, configuration, strafeWalkable)
 	lookControl.TickConfigured(state.Position, rotation, !navigation.Done(), configuration)
 
 	if moveControl.Jump {
@@ -308,11 +371,18 @@ func (runtime *Runtime) tickGroundMobMovement(entity RuntimeEntity, living *Runt
 func (runtime *Runtime) applyGroundLivingPhysics(state *RuntimeEntityState, living *RuntimeLivingState, rotation *game.Rotation, moveControl *groundMoveControlState, configuration groundMobControlConfig) {
 	blockFriction := float32(1)
 	acceleration := configuration.FlyingSpeed
+	movementSpeed := moveControl.MovementSpeed
+
+	if movementSpeed == 0 {
+		movementSpeed = configuration.MovementSpeed
+	} else {
+		movementSpeed *= configuration.MovementSpeed
+	}
 
 	wasOnGround := living.OnGround
 	if wasOnGround {
 		blockFriction = runtime.blockFrictionBelow(state.Position)
-		acceleration = configuration.MovementSpeed * (groundMovementInputScale / (blockFriction * blockFriction * blockFriction))
+		acceleration = movementSpeed * (groundMovementInputScale / (blockFriction * blockFriction * blockFriction))
 	}
 
 	inputX := moveControl.SidewaysInput

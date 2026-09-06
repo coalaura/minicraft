@@ -6,6 +6,11 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
+type reducedTickDelayTestCase struct {
+	input int
+	want  int
+}
+
 func TestRuntimeGoalSelectorKeepsEqualPriorityRegistrationOrder(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
@@ -21,6 +26,43 @@ func TestRuntimeGoalSelectorKeepsEqualPriorityRegistrationOrder(t *testing.T) {
 
 	if first.starts != 1 || second.starts != 0 || !selector.Entries[0].Running || selector.Entries[1].Running {
 		t.Fatalf("equal-priority goals = first starts %d second starts %d", first.starts, second.starts)
+	}
+}
+
+func TestRuntimeGoalSelectorFullAndEveryTickPasses(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	selector := runtimeGoalSelector{}
+
+	ordinary := &runtimeGoalTestGoal{canUse: true, canContinue: true}
+	everyTick := &runtimeGoalTestGoal{canUse: true, canContinue: true, everyTick: true}
+
+	selector.Add(1, runtimeGoalMove, ordinary)
+	selector.Add(1, runtimeGoalLook, everyTick)
+
+	selector.Tick(runtime, true)
+	selector.Tick(runtime, false)
+
+	if ordinary.starts != 1 || ordinary.ticks != 1 || everyTick.starts != 1 || everyTick.ticks != 2 {
+		t.Fatalf("goal cadence = ordinary starts %d ticks %d, every-tick starts %d ticks %d", ordinary.starts, ordinary.ticks, everyTick.starts, everyTick.ticks)
+	}
+}
+
+func TestReducedTickDelayMatchesVanilla(t *testing.T) {
+	tests := []reducedTickDelayTestCase{
+		{input: 0, want: 0},
+		{input: 1, want: 1},
+		{input: 2, want: 1},
+		{input: 3, want: 2},
+		{input: 10, want: 5},
+		{input: 11, want: 6},
+	}
+
+	for _, test := range tests {
+		got := reducedTickDelay(test.input)
+		if got != test.want {
+			t.Fatalf("reducedTickDelay(%d) = %d, want %d", test.input, got, test.want)
+		}
 	}
 }
 

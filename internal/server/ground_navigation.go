@@ -137,6 +137,10 @@ func (r *Runtime) moveGroundEntity(position game.Position, velocity game.Velocit
 }
 
 func (r *Runtime) findGroundPath(start, goal game.Position, width, height, maximumRange float64) []game.Position {
+	if r.groundPathfindStarted != nil {
+		r.groundPathfindStarted()
+	}
+
 	startNode, valid := r.closestGroundNode(start, width, height)
 	if !valid {
 		return nil
