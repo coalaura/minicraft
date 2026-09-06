@@ -14,6 +14,7 @@ const (
 	groundMovementOvershootDistanceSq  = 4.0
 	groundMovementOvershootNearNodeSq  = 0.5
 	groundMovementWantedMinimumSquared = 2.5000003e-7
+	groundMovementLiquidJumpImpulse    = 0.04
 )
 
 type groundMobControlConfig struct {
@@ -46,6 +47,7 @@ type groundMoveControlState struct {
 	ForwardInput  float32
 	SidewaysInput float32
 	Jump          bool
+	JumpRequested bool
 }
 
 type groundLookControlState struct {
@@ -107,7 +109,8 @@ func (control *groundMoveControlState) Tick(position game.Position, rotation *ga
 func (control *groundMoveControlState) TickConfigured(position game.Position, rotation *game.Rotation, configuration groundMobControlConfig) {
 	control.ForwardInput = 0
 	control.SidewaysInput = 0
-	control.Jump = false
+	control.Jump = control.JumpRequested
+	control.JumpRequested = false
 
 	if !control.Moving {
 		return
@@ -217,8 +220,17 @@ func (runtime *Runtime) tickGroundMobMovement(entity RuntimeEntity, living *Runt
 	moveControl.TickConfigured(state.Position, rotation, configuration)
 	lookControl.TickConfigured(state.Position, rotation, !navigation.Done(), configuration)
 
-	if moveControl.Jump && living.OnGround {
-		living.Velocity.Y = max(living.Velocity.Y, configuration.JumpStrength)
+	if moveControl.Jump {
+		box := living.CollisionBox(state.Position)
+
+		inWater := runtime.fluidContact(box, game.FluidTypeWater, false).Depth > 0
+		inLava := runtime.fluidContact(box, game.FluidTypeLava, false).Depth > 0
+
+		if inWater || inLava {
+			living.Velocity.Y += groundMovementLiquidJumpImpulse
+		} else if living.OnGround {
+			living.Velocity.Y = max(living.Velocity.Y, configuration.JumpStrength)
+		}
 	}
 
 	runtime.applyGroundLivingPhysics(state, living, rotation, moveControl, configuration)

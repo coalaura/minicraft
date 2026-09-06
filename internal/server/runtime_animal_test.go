@@ -161,6 +161,10 @@ func TestRuntimeGoalSelectorExcludesFlagsAndPanicPreemptsStroll(t *testing.T) {
 func TestAnimalPanicInterruptsStrollNavigation(t *testing.T) {
 	runtime := NewRuntime(zombieGroundWorld(-2, 2, -2, 2))
 
+	runtime.entityRandom = func() float32 {
+		return 0.7
+	}
+
 	cow := runtime.SpawnCow(game.Position{X: 0.5, Z: 0.5})
 
 	cow.Navigation.MoveTo([]game.Position{{X: 1.5, Z: 0.5}}, 1)
@@ -173,12 +177,13 @@ func TestAnimalPanicInterruptsStrollNavigation(t *testing.T) {
 		}
 	}
 
-	cow.HurtTicks = 10
+	cow.Living.LastDamageType = game.DamagePlayerAttack
+	cow.Living.HasLastDamage = true
 
 	cow.Goals.Tick(runtime)
 
-	if !cow.Navigation.Done() {
-		t.Fatal("panic goal did not interrupt stroll navigation")
+	if cow.Navigation.Done() || cow.Navigation.SpeedModifier != cow.Spec.PanicSpeed {
+		t.Fatal("panic goal did not replace stroll with a panic path")
 	}
 }
 

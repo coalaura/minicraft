@@ -67,7 +67,6 @@ type runtimeAnimal struct {
 	TickCount        int32
 	AmbientSoundTime int32
 	LootDropped      bool
-	HurtTicks        int32
 }
 
 type runtimeCowEntity struct {
@@ -226,7 +225,6 @@ func (entity *runtimeAnimal) RuntimeLivingDamageSound(died bool) (game.SoundEven
 
 	entity.State.mu.Lock()
 	entity.AmbientSoundTime = -animalAmbientSoundInterval
-	entity.HurtTicks = game.LivingHurtCooldownTicks
 	entity.State.mu.Unlock()
 
 	return entity.Spec.HurtSound, 1, 1
@@ -419,11 +417,6 @@ func (runtime *Runtime) tickAnimal(concrete RuntimeEntity, entity *runtimeAnimal
 	entity.State.mu.Lock()
 	entity.TickCount++
 	entity.NoActionTime++
-
-	if entity.HurtTicks > 0 {
-		entity.HurtTicks--
-	}
-
 	entity.State.mu.Unlock()
 
 	runtime.tickRuntimeLivingBaseEnvironment(livingEntity)

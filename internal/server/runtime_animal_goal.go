@@ -7,17 +7,27 @@ import (
 )
 
 const (
-	animalTemptRangeSquared = 100
-	animalLookRangeSquared  = 36
-	animalStrollChance      = 120
-	animalLookMinimumTicks  = 40
-	animalLookRandomTicks   = 40
-	animalRandomLookTicks   = 20
+	animalTemptRangeSquared       = 100
+	animalLookRangeSquared        = 36
+	animalStrollChance            = 120
+	animalLookMinimumTicks        = 40
+	animalLookRandomTicks         = 40
+	animalRandomLookTicks         = 20
+	animalPanicHorizontalRange    = 5
+	animalPanicVerticalRange      = 4
+	animalPanicPositionAttempts   = 10
+	animalPanicWaterVerticalRange = 1
+	animalFloatWaterThreshold     = 0.4
 )
 
 type animalPanicGoal struct {
 	Entity *runtimeAnimal
 	Speed  float64
+	Goal   game.Position
+}
+
+type animalFloatGoal struct {
+	Entity *runtimeAnimal
 }
 
 type animalTemptGoal struct {
@@ -44,35 +54,99 @@ type animalRandomLookGoal struct {
 	Direction game.Position
 }
 
-func (goal *animalPanicGoal) CanUse(*Runtime) bool {
-	goal.Entity.State.mu.RLock()
-	defer goal.Entity.State.mu.RUnlock()
+func (goal *animalPanicGoal) CanUse(runtime *Runtime) bool {
+	goal.Entity.State.mu.Lock()
+	damageType, damaged := goal.Entity.Living.LastDamageTypeAt(runtime.World.Time().Age)
 
-	return goal.Entity.HurtTicks > 0
+	position := goal.Entity.State.Position
+	burning := goal.Entity.Living.RemainingFireTicks > 0
+	goal.Entity.State.mu.Unlock()
+
+	if !damaged || !animalPanicCausedBy(damageType) {
+		return false
+	}
+
+	if burning {
+		water, found := animalPanicWaterPosition(runtime, goal.Entity, position)
+		if found {
+			goal.Goal = water
+
+			return true
+		}
+	}
+
+	destination, found := animalPanicRandomPosition(runtime, goal.Entity, position)
+	if !found {
+		return false
+	}
+
+	goal.Goal = destination
+
+	return true
 }
 
 func (goal *animalPanicGoal) CanContinue(*Runtime) bool {
 	goal.Entity.State.mu.RLock()
 	defer goal.Entity.State.mu.RUnlock()
 
-	return goal.Entity.HurtTicks > 0 && !goal.Entity.Navigation.Done()
+	return !goal.Entity.Navigation.Done()
 }
 
 func (goal *animalPanicGoal) Start(runtime *Runtime) {
 	goal.Entity.State.mu.Lock()
-	path := animalRandomStrollPath(runtime, goal.Entity)
+	position := goal.Entity.State.Position
+	goal.Entity.State.mu.Unlock()
 
+	path := runtime.findGroundPath(position, goal.Goal, goal.Entity.Living.Width, goal.Entity.Living.Height, animalFollowRange)
+
+	goal.Entity.State.mu.Lock()
 	goal.Entity.Navigation.MoveTo(path, goal.Speed)
 	goal.Entity.State.mu.Unlock()
 }
 
-func (goal *animalPanicGoal) Stop(*Runtime) {
-	goal.Entity.State.mu.Lock()
-	goal.Entity.Navigation.Stop()
-	goal.Entity.State.mu.Unlock()
-}
+func (goal *animalPanicGoal) Stop(*Runtime) {}
 
 func (goal *animalPanicGoal) Tick(*Runtime) {}
+
+func (goal *animalFloatGoal) CanUse(runtime *Runtime) bool {
+	goal.Entity.State.mu.RLock()
+	position := goal.Entity.State.Position
+
+	box := goal.Entity.Living.CollisionBox(position)
+
+	threshold := animalFloatWaterThreshold
+
+	if goal.Entity.Spec.EyeHeight < animalFloatWaterThreshold {
+		threshold = 0
+	}
+
+	goal.Entity.State.mu.RUnlock()
+
+	waterDepth := runtime.fluidContact(box, game.FluidTypeWater, false).Depth
+	if waterDepth > threshold {
+		return true
+	}
+
+	return runtime.fluidContact(box, game.FluidTypeLava, false).Depth > 0
+}
+
+func (goal *animalFloatGoal) CanContinue(runtime *Runtime) bool {
+	return goal.CanUse(runtime)
+}
+
+func (goal *animalFloatGoal) Start(*Runtime) {}
+
+func (goal *animalFloatGoal) Stop(*Runtime) {}
+
+func (goal *animalFloatGoal) Tick(runtime *Runtime) {
+	if runtime.nextEntityRandom() >= 0.8 {
+		return
+	}
+
+	goal.Entity.State.mu.Lock()
+	goal.Entity.MoveControl.JumpRequested = true
+	goal.Entity.State.mu.Unlock()
+}
 
 func (goal *animalTemptGoal) CanUse(runtime *Runtime) bool {
 	goal.Target = nearestTemptingPlayer(runtime, goal.Entity)
@@ -222,11 +296,83 @@ func (goal *animalRandomLookGoal) Tick(*Runtime) {
 }
 
 func (runtime *Runtime) configureAnimalGoals(entity *runtimeAnimal) {
+	entity.Goals.Add(0, runtimeGoalJump, &animalFloatGoal{Entity: entity})
 	entity.Goals.Add(1, runtimeGoalMove, &animalPanicGoal{Entity: entity, Speed: entity.Spec.PanicSpeed})
 	entity.Goals.Add(3, runtimeGoalMove|runtimeGoalLook, &animalTemptGoal{Entity: entity, Speed: animalTemptSpeed(entity.Spec.EntityType)})
 	entity.Goals.Add(animalStrollPriority(entity.Spec.EntityType), runtimeGoalMove, &animalStrollGoal{Entity: entity, Speed: 1})
 	entity.Goals.Add(animalLookPriority(entity.Spec.EntityType), runtimeGoalLook, &animalLookAtPlayerGoal{Entity: entity})
 	entity.Goals.Add(animalLookPriority(entity.Spec.EntityType)+1, runtimeGoalMove|runtimeGoalLook, &animalRandomLookGoal{Entity: entity})
+}
+
+func animalPanicCausedBy(damageType game.DamageType) bool {
+	switch damageType {
+	case game.DamageInFire, game.DamageLava, game.DamageOnFire, game.DamageMagic, game.DamageMobAttack, game.DamagePlayerAttack:
+		return true
+	default:
+		return false
+	}
+}
+
+func animalPanicRandomPosition(runtime *Runtime, entity *runtimeAnimal, position game.Position) (game.Position, bool) {
+	for range animalPanicPositionAttempts {
+		offsetX := runtimeMobRandomInt(runtime, animalPanicHorizontalRange*2+1) - animalPanicHorizontalRange
+		offsetY := runtimeMobRandomInt(runtime, animalPanicVerticalRange*2+1) - animalPanicVerticalRange
+		offsetZ := runtimeMobRandomInt(runtime, animalPanicHorizontalRange*2+1) - animalPanicHorizontalRange
+
+		candidate := game.Position{X: position.X + float64(offsetX), Y: position.Y + float64(offsetY), Z: position.Z + float64(offsetZ)}
+
+		node, valid := runtime.closestGroundNode(candidate, entity.Living.Width, entity.Living.Height)
+		if !valid {
+			continue
+		}
+
+		return game.Position{X: float64(node.X) + 0.5, Y: float64(node.Y), Z: float64(node.Z) + 0.5}, true
+	}
+
+	return game.Position{}, false
+}
+
+func animalPanicWaterPosition(runtime *Runtime, entity *runtimeAnimal, position game.Position) (game.Position, bool) {
+	origin := game.BlockPosition{X: int32(math.Floor(position.X)), Y: int32(math.Floor(position.Y)), Z: int32(math.Floor(position.Z))}
+	block := runtime.World.BlockAt(origin)
+
+	if len(block.CollisionBoxes(origin)) != 0 {
+		return game.Position{}, false
+	}
+
+	maximumDepth := animalPanicHorizontalRange*2 + animalPanicWaterVerticalRange
+
+	for depth := 0; depth <= maximumDepth; depth++ {
+		maximumX := min(animalPanicHorizontalRange, depth)
+
+		for offsetX := -maximumX; offsetX <= maximumX; offsetX++ {
+			maximumY := min(animalPanicWaterVerticalRange, depth-animalIntegerAbs(offsetX))
+
+			for offsetY := -maximumY; offsetY <= maximumY; offsetY++ {
+				offsetZ := depth - animalIntegerAbs(offsetX) - animalIntegerAbs(offsetY)
+				if offsetZ > animalPanicHorizontalRange {
+					continue
+				}
+
+				candidate := game.BlockPosition{X: origin.X + int32(offsetX), Y: origin.Y + int32(offsetY), Z: origin.Z + int32(offsetZ)}
+				if runtime.World.FluidAt(candidate).Type() == game.FluidTypeWater {
+					return game.Position{X: float64(candidate.X), Y: float64(candidate.Y), Z: float64(candidate.Z)}, true
+				}
+
+				if offsetZ == 0 {
+					continue
+				}
+
+				candidate.Z = origin.Z - int32(offsetZ)
+
+				if runtime.World.FluidAt(candidate).Type() == game.FluidTypeWater {
+					return game.Position{X: float64(candidate.X), Y: float64(candidate.Y), Z: float64(candidate.Z)}, true
+				}
+			}
+		}
+	}
+
+	return game.Position{}, false
 }
 
 func nearestTemptingPlayer(runtime *Runtime, entity *runtimeAnimal) *Session {
@@ -311,4 +457,12 @@ func animalDistanceSquared(first, second game.Position) float64 {
 	deltaZ := first.Z - second.Z
 
 	return math.FMA(deltaX, deltaX, math.FMA(deltaY, deltaY, deltaZ*deltaZ))
+}
+
+func animalIntegerAbs(value int) int {
+	if value < 0 {
+		return -value
+	}
+
+	return value
 }

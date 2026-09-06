@@ -135,6 +135,54 @@ func TestPlayerAttackRuntimeLivingUsesSharedCombat(t *testing.T) {
 	assertRuntimeLivingHealthMetadata(t, attackerConnection, entity.State.ID, 13)
 }
 
+func TestRuntimeLivingDamageMemoryUsesAcceptedDamageAndWorldTime(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	entity := spawnTestRuntimeLivingEntity(runtime, game.Position{}, 20)
+
+	first := game.Damage{Type: game.DamagePlayerAttack, Amount: 4, CauseEntityID: 12, DirectEntityID: 12}
+
+	_, applied := runtime.damageRuntimeLivingEntityLocked(entity, first)
+	if !applied {
+		t.Fatal("initial player damage was rejected")
+	}
+
+	damageType, remembered := entity.Living.LastDamageTypeAt(runtime.World.Time().Age)
+	if !remembered || damageType != game.DamagePlayerAttack || entity.Living.LastDamageStamp != 0 {
+		t.Fatalf("accepted damage memory = type %d remembered %t stamp %d", damageType, remembered, entity.Living.LastDamageStamp)
+	}
+
+	runtime.World.AdvanceTime()
+
+	rejected := game.Damage{Type: game.DamageMagic, Amount: 2}
+
+	_, applied = runtime.damageRuntimeLivingEntityLocked(entity, rejected)
+	if applied {
+		t.Fatal("weaker i-frame damage was accepted")
+	}
+
+	damageType, remembered = entity.Living.LastDamageTypeAt(runtime.World.Time().Age)
+	if !remembered || damageType != game.DamagePlayerAttack || entity.Living.LastDamageStamp != 0 {
+		t.Fatalf("rejected damage refreshed memory = type %d remembered %t stamp %d", damageType, remembered, entity.Living.LastDamageStamp)
+	}
+
+	for range runtimeLivingDamageMemoryTicks - 1 {
+		runtime.World.AdvanceTime()
+	}
+
+	_, remembered = entity.Living.LastDamageTypeAt(runtime.World.Time().Age)
+	if !remembered {
+		t.Fatal("damage memory expired at age 40")
+	}
+
+	runtime.World.AdvanceTime()
+
+	_, remembered = entity.Living.LastDamageTypeAt(runtime.World.Time().Age)
+	if remembered {
+		t.Fatal("damage memory remained after age 40")
+	}
+}
+
 func TestRuntimeLivingAttackStrengthAndCriticalDamage(t *testing.T) {
 	tests := []runtimeLivingAttackDamageTest{
 		{name: "weak", attackTicker: 0, onGround: true, wantHealth: 18.59104},

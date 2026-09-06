@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	runtimeLivingDeathEvent       = 3
-	runtimeLivingPoofEvent        = 60
-	runtimeLivingSafeFallDistance = 3
+	runtimeLivingDeathEvent        = 3
+	runtimeLivingPoofEvent         = 60
+	runtimeLivingSafeFallDistance  = 3
+	runtimeLivingDamageMemoryTicks = 40
 )
 
 type RuntimeLivingState struct {
@@ -26,6 +27,9 @@ type RuntimeLivingState struct {
 	Height              float64
 	Armor               int32
 	ArmorToughness      float32
+	LastDamageType      game.DamageType
+	LastDamageStamp     int64
+	HasLastDamage       bool
 }
 
 type RuntimeLivingEntity interface {
@@ -73,6 +77,14 @@ func (state *RuntimeLivingState) EntityFlags() byte {
 	return 0
 }
 
+func (state *RuntimeLivingState) LastDamageTypeAt(gameTime int64) (game.DamageType, bool) {
+	if state.HasLastDamage && gameTime-state.LastDamageStamp > runtimeLivingDamageMemoryTicks {
+		state.HasLastDamage = false
+	}
+
+	return state.LastDamageType, state.HasLastDamage
+}
+
 func (r *Runtime) damageRuntimeLivingEntityLocked(entity RuntimeLivingEntity, damage game.Damage) (runtimeLivingDamageUpdate, bool) {
 	state := entity.RuntimeEntityState()
 	living := entity.RuntimeLivingState()
@@ -95,6 +107,10 @@ func (r *Runtime) damageRuntimeLivingEntityLocked(entity RuntimeLivingEntity, da
 
 		return runtimeLivingDamageUpdate{}, false
 	}
+
+	living.LastDamageType = damage.Type
+	living.LastDamageStamp = r.World.Time().Age
+	living.HasLastDamage = true
 
 	state.metadataDirty = true
 
