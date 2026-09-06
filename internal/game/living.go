@@ -23,6 +23,7 @@ const (
 	DamageMagic
 	DamageMobAttack
 	DamagePlayerAttack
+	DamageArrow
 )
 
 type DamageType uint8
@@ -55,6 +56,7 @@ type DamageTraits struct {
 	BypassesEffects         bool
 	BypassesResistance      bool
 	BypassesInvulnerability bool
+	PanicCauses             bool
 }
 
 type LivingDefense struct {
@@ -115,21 +117,23 @@ func (damageType DamageType) Traits() DamageTraits {
 	case DamageGenericKill:
 		return DamageTraits{RegistryID: 19, BypassesArmor: true, BypassesResistance: true, BypassesInvulnerability: true}
 	case DamageInFire:
-		return DamageTraits{RegistryID: 21, Fire: true, DamagesArmor: true}
+		return DamageTraits{RegistryID: 21, Fire: true, DamagesArmor: true, PanicCauses: true}
 	case DamageLava:
-		return DamageTraits{RegistryID: 24, Fire: true, DamagesArmor: true}
+		return DamageTraits{RegistryID: 24, Fire: true, DamagesArmor: true, PanicCauses: true}
 	case DamageOnFire:
-		return DamageTraits{RegistryID: 31, Fire: true, BypassesArmor: true}
+		return DamageTraits{RegistryID: 31, Fire: true, BypassesArmor: true, PanicCauses: true}
 	case DamageOutOfWorld:
 		return DamageTraits{RegistryID: 32, BypassesArmor: true, BypassesResistance: true, BypassesInvulnerability: true}
 	case DamageStarve:
 		return DamageTraits{RegistryID: 40, BypassesArmor: true, BypassesEffects: true}
 	case DamageMagic:
-		return DamageTraits{RegistryID: 27, BypassesArmor: true}
+		return DamageTraits{RegistryID: 27, BypassesArmor: true, PanicCauses: true}
 	case DamageMobAttack:
-		return DamageTraits{RegistryID: 28, DamagesArmor: true}
+		return DamageTraits{RegistryID: 28, DamagesArmor: true, PanicCauses: true}
 	case DamagePlayerAttack:
-		return DamageTraits{RegistryID: 34, DamagesArmor: true}
+		return DamageTraits{RegistryID: 34, DamagesArmor: true, PanicCauses: true}
+	case DamageArrow:
+		return DamageTraits{RegistryID: 0, DamagesArmor: true, PanicCauses: true}
 	default:
 		return DamageTraits{RegistryID: 18, BypassesArmor: true}
 	}

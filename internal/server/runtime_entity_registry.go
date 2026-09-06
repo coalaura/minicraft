@@ -9,6 +9,9 @@ import (
 type runtimeEntityConstructor func(*Runtime, game.Position) RuntimeEntity
 
 var runtimeEntityConstructors = map[game.EntityType]runtimeEntityConstructor{
+	game.EntityArrow: func(runtime *Runtime, position game.Position) RuntimeEntity {
+		return runtime.SpawnArrow(position, game.Velocity{}, 0)
+	},
 	game.EntityChicken: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnChicken(position)
 	},
@@ -17,6 +20,9 @@ var runtimeEntityConstructors = map[game.EntityType]runtimeEntityConstructor{
 	},
 	game.EntitySheep: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnSheep(position)
+	},
+	game.EntitySkeleton: func(runtime *Runtime, position game.Position) RuntimeEntity {
+		return runtime.SpawnSkeleton(position)
 	},
 	game.EntityZombie: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnZombie(position)

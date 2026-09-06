@@ -156,6 +156,10 @@ func (entity *runtimeAnimal) RuntimeLivingState() *RuntimeLivingState {
 	return &entity.Living
 }
 
+func (entity *runtimeAnimal) RuntimeLivingEyeHeight() float64 {
+	return entity.Spec.EyeHeight
+}
+
 func (entity *runtimeAnimal) RuntimeMob() *RuntimeMobState {
 	return &entity.RuntimeMobState
 }

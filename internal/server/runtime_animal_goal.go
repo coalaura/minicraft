@@ -62,7 +62,7 @@ func (goal *animalPanicGoal) CanUse(runtime *Runtime) bool {
 	burning := goal.Entity.Living.RemainingFireTicks > 0
 	goal.Entity.State.mu.Unlock()
 
-	if !damaged || !animalPanicCausedBy(damageType) {
+	if !damaged || !damageType.Traits().PanicCauses {
 		return false
 	}
 
@@ -302,15 +302,6 @@ func (runtime *Runtime) configureAnimalGoals(entity *runtimeAnimal) {
 	entity.Goals.Add(animalStrollPriority(entity.Spec.EntityType), runtimeGoalMove, &animalStrollGoal{Entity: entity, Speed: 1})
 	entity.Goals.Add(animalLookPriority(entity.Spec.EntityType), runtimeGoalLook, &animalLookAtPlayerGoal{Entity: entity})
 	entity.Goals.Add(animalLookPriority(entity.Spec.EntityType)+1, runtimeGoalMove|runtimeGoalLook, &animalRandomLookGoal{Entity: entity})
-}
-
-func animalPanicCausedBy(damageType game.DamageType) bool {
-	switch damageType {
-	case game.DamageInFire, game.DamageLava, game.DamageOnFire, game.DamageMagic, game.DamageMobAttack, game.DamagePlayerAttack:
-		return true
-	default:
-		return false
-	}
 }
 
 func animalPanicRandomPosition(runtime *Runtime, entity *runtimeAnimal, position game.Position) (game.Position, bool) {

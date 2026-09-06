@@ -81,6 +81,10 @@ type RuntimeEntityMetadata interface {
 	EntityMetadata() []protocol.EntityMetadataEntry
 }
 
+type RuntimeEntityEquipment interface {
+	EntityEquipment() []protocol.EquipmentEntry
+}
+
 type RuntimeEntityVelocity interface {
 	EntityVelocity() game.Velocity
 }
@@ -823,6 +827,16 @@ func (s *Session) trackRuntimeEntity(entity RuntimeEntity) {
 		metadata, present := entity.(RuntimeEntityMetadata)
 		if present {
 			err = s.writePacket(protocol.ClientboundEntityMetadataID, protocol.EntityMetadata{EntityID: view.ID, Entries: metadata.EntityMetadata()})
+		}
+
+		if err == nil {
+			equipment, present := entity.(RuntimeEntityEquipment)
+			if present {
+				entries := equipment.EntityEquipment()
+				if len(entries) != 0 {
+					err = s.writePacket(protocol.ClientboundEntityEquipmentID, protocol.EntityEquipment{EntityID: view.ID, Equipment: entries})
+				}
+			}
 		}
 	}
 

@@ -21,6 +21,9 @@ const (
 	MobFlagsMetadataIndex         = 15
 	SheepWoolMetadataIndex        = 17
 	ItemEntityItemMetadataIndex   = 8
+	ArrowFlagsMetadataIndex       = 8
+	ArrowPierceLevelMetadataIndex = 9
+	ArrowInGroundMetadataIndex    = 10
 	PlayerAbsorptionMetadataIndex = 17
 	PlayerSkinPartsMetadataIndex  = 16
 
@@ -28,6 +31,7 @@ const (
 	MetadataTypeInt       = 1
 	MetadataTypeFloat     = 3
 	MetadataTypeItemStack = 7
+	MetadataTypeBoolean   = 8
 	MetadataTypePose      = 20
 
 	MetadataTerminator = 0xFF
@@ -38,6 +42,9 @@ const (
 	EntityFlagSwimming  = 0x10
 	EntityFlagInvisible = 0x20
 	EntityFlagGlowing   = 0x40
+
+	ArrowFlagCritical = 0x01
+	ArrowFlagNoClip   = 0x02
 
 	LivingFlagUsingItem    = 0x01
 	LivingFlagUsingOffhand = 0x02
@@ -128,6 +135,8 @@ type MetadataByte byte
 type MetadataVarInt int32
 
 type MetadataFloat float32
+
+type MetadataBoolean bool
 
 type MetadataItemStack struct {
 	Stack game.ItemStack
@@ -644,6 +653,10 @@ func (p MetadataVarInt) EncodeMetadata(wr *PacketWriter) {
 
 func (p MetadataFloat) EncodeMetadata(wr *PacketWriter) {
 	wr.Float(float32(p))
+}
+
+func (p MetadataBoolean) EncodeMetadata(wr *PacketWriter) {
+	wr.Bool(bool(p))
 }
 
 func (p MetadataItemStack) EncodeMetadata(wr *PacketWriter) {

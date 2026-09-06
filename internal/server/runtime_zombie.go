@@ -2,7 +2,6 @@ package server
 
 import (
 	"math"
-	"slices"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
@@ -149,6 +148,10 @@ func (goal *zombieIdleGoal) Tick(runtime *Runtime) {
 
 func (entity *runtimeZombieEntity) RuntimeLivingState() *RuntimeLivingState {
 	return &entity.Living
+}
+
+func (*runtimeZombieEntity) RuntimeLivingEyeHeight() float64 {
+	return zombieEyeHeight
 }
 
 func (entity *runtimeZombieEntity) RuntimeMob() *RuntimeMobState {
@@ -484,10 +487,9 @@ func (entity *runtimeZombieEntity) tickTarget(runtime *Runtime, fullGoalTick boo
 		}
 
 		player := current.snapshotPlayer()
-		connected := slices.Contains(runtime.snapshotSessions(), current)
 
-		if connected && zombieTargetRetained(player, position) {
-			if runtime.zombieHasLineOfSight(position, player.Position) {
+		if runtime.playerTargetValid(current, position, zombieFollowRange) {
+			if runtime.playerTargetHasLineOfSight(position, zombieEyeHeight, player.Position) {
 				entity.Target.UnseenTicks = 0
 			} else {
 				entity.Target.UnseenTicks++
@@ -558,7 +560,7 @@ func (entity *runtimeZombieEntity) tickMeleeGoal(runtime *Runtime, target *Sessi
 
 	entity.Melee.TicksUntilNextPathRecalculation = max(entity.Melee.TicksUntilNextPathRecalculation-1, 0)
 
-	lineOfSight := runtime.zombieHasLineOfSight(entity.State.Position, player.Position)
+	lineOfSight := runtime.playerTargetHasLineOfSight(entity.State.Position, zombieEyeHeight, player.Position)
 
 	pathedTargetUnset := entity.Melee.PathedTarget == (game.Position{})
 
@@ -739,7 +741,7 @@ func (entity *runtimeZombieEntity) tickAttack(runtime *Runtime, target *Session)
 	entityID := entity.State.ID
 	entity.State.mu.Unlock()
 
-	if !runtime.zombieHasLineOfSight(position, player.Position) {
+	if !runtime.playerTargetHasLineOfSight(position, zombieEyeHeight, player.Position) {
 		return
 	}
 
@@ -846,24 +848,7 @@ func (r *Runtime) SpawnZombie(position game.Position) *runtimeZombieEntity {
 }
 
 func (r *Runtime) nearestZombieTarget(position game.Position) *Session {
-	var nearest *Session
-
-	nearestDistance := float64(zombieFollowRange * zombieFollowRange)
-
-	for _, session := range r.snapshotSessions() {
-		player := session.snapshotPlayer()
-		if !zombieTargetAcquirable(player, position) || !r.zombieHasLineOfSight(position, player.Position) {
-			continue
-		}
-
-		distance := distanceSquared(position, player.Position)
-		if distance < nearestDistance {
-			nearest = session
-			nearestDistance = distance
-		}
-	}
-
-	return nearest
+	return r.nearestValidPlayer(position, zombieEyeHeight, zombieFollowRange)
 }
 
 func (r *Runtime) zombieTarget(entity *runtimeZombieEntity) *Session {
@@ -871,10 +856,7 @@ func (r *Runtime) zombieTarget(entity *runtimeZombieEntity) *Session {
 	current := entity.Target.Session
 
 	if current != nil {
-		connected := slices.Contains(r.snapshotSessions(), current)
-		player := current.snapshotPlayer()
-
-		if connected && zombieTargetRetained(player, position) {
+		if r.playerTargetValid(current, position, zombieFollowRange) {
 			return current
 		}
 	}
@@ -906,37 +888,7 @@ func (r *Runtime) nearestZombieLookTarget(position game.Position) *Session {
 }
 
 func (r *Runtime) zombieHasLineOfSight(from, to game.Position) bool {
-	from.Y += 1.74
-	to.Y += 1.62
-
-	deltaX := to.X - from.X
-	deltaY := to.Y - from.Y
-	deltaZ := to.Z - from.Z
-
-	minimumX := int32(math.Floor(min(from.X, to.X)))
-	minimumY := int32(math.Floor(min(from.Y, to.Y)))
-	minimumZ := int32(math.Floor(min(from.Z, to.Z)))
-	maximumX := int32(math.Floor(max(from.X, to.X)))
-	maximumY := int32(math.Floor(max(from.Y, to.Y)))
-	maximumZ := int32(math.Floor(max(from.Z, to.Z)))
-
-	for x := minimumX; x <= maximumX; x++ {
-		for y := minimumY; y <= maximumY; y++ {
-			for z := minimumZ; z <= maximumZ; z++ {
-				position := game.BlockPosition{X: x, Y: y, Z: z}
-				block := r.World.BlockAt(position)
-
-				for _, box := range block.CollisionBoxes(position) {
-					distance, _, intersects := raycastAABB(from, deltaX, deltaY, deltaZ, box)
-					if intersects && distance >= 0 && distance <= 1 {
-						return false
-					}
-				}
-			}
-		}
-	}
-
-	return true
+	return r.playerTargetHasLineOfSight(from, zombieEyeHeight, to)
 }
 
 func groundNavigationNodeReached(position game.Position, path []game.Position, index int, width float64) bool {
@@ -988,18 +940,6 @@ func groundNavigationNodeReached(position game.Position, path []game.Position, i
 	dot := (toCurrentX*toNextX + toCurrentY*toNextY + toCurrentZ*toNextZ) / (currentLength * nextLength)
 
 	return dot < 0
-}
-
-func zombieTargetAcquirable(player game.Player, zombiePosition game.Position) bool {
-	return zombieTargetRetained(player, zombiePosition)
-}
-
-func zombieTargetRetained(player game.Player, zombiePosition game.Position) bool {
-	if player.Dead || player.GameMode == game.GameModeCreative || player.GameMode == game.GameModeSpectator {
-		return false
-	}
-
-	return distanceSquared(zombiePosition, player.Position) <= zombieFollowRange*zombieFollowRange
 }
 
 func zombieMeleeBoxesIntersect(zombie, target game.AABB) bool {

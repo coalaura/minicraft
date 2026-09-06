@@ -744,6 +744,10 @@ func TestEntityMetadataEncode(t *testing.T) {
 		t.Fatalf("player absorption metadata index = %d, want 17", PlayerAbsorptionMetadataIndex)
 	}
 
+	if ArrowInGroundMetadataIndex != 10 {
+		t.Fatalf("arrow in-ground metadata index = %d, want 10", ArrowInGroundMetadataIndex)
+	}
+
 	metadata := EntityMetadata{
 		EntityID: 300,
 		Entries: []EntityMetadataEntry{
@@ -751,6 +755,7 @@ func TestEntityMetadataEncode(t *testing.T) {
 			{Index: EntityPoseMetadataIndex, Type: MetadataTypePose, Value: MetadataVarInt(EntityPoseCrouching)},
 			{Index: PlayerAbsorptionMetadataIndex, Type: MetadataTypeFloat, Value: MetadataFloat(4.5)},
 			{Index: PlayerSkinPartsMetadataIndex, Type: MetadataTypeByte, Value: MetadataByte(0x7F)},
+			{Index: ArrowInGroundMetadataIndex, Type: MetadataTypeBoolean, Value: MetadataBoolean(true)},
 		},
 	}
 
@@ -769,6 +774,7 @@ func TestEntityMetadataEncode(t *testing.T) {
 		0x06, 0x14, 0x05,
 		0x11, 0x03, 0x40, 0x90, 0x00, 0x00,
 		0x10, 0x00, 0x7F,
+		0x0A, 0x08, 0x01,
 		0xFF,
 	}
 

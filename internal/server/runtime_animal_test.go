@@ -42,8 +42,8 @@ func (goal *runtimeGoalTestGoal) Tick(*Runtime) {
 	goal.ticks++
 }
 
-func TestRuntimeEntityRegistryContainsOnlyImplementedAnimalsAndZombie(t *testing.T) {
-	wantNames := []string{"minecraft:chicken", "minecraft:cow", "minecraft:sheep", "minecraft:zombie"}
+func TestRuntimeEntityRegistryContainsImplementedEntities(t *testing.T) {
+	wantNames := []string{"minecraft:arrow", "minecraft:chicken", "minecraft:cow", "minecraft:sheep", "minecraft:skeleton", "minecraft:zombie"}
 	names := runtimeEntityImplementationNames()
 
 	if len(names) != len(wantNames) {

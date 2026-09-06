@@ -48,6 +48,9 @@ type groundMoveControlState struct {
 	SidewaysInput float32
 	Jump          bool
 	JumpRequested bool
+	Strafing      bool
+	StrafeForward float32
+	StrafeSideway float32
 }
 
 type groundLookControlState struct {
@@ -112,6 +115,14 @@ func (control *groundMoveControlState) TickConfigured(position game.Position, ro
 	control.Jump = control.JumpRequested
 	control.JumpRequested = false
 
+	if control.Strafing {
+		control.ForwardInput = control.StrafeForward
+		control.SidewaysInput = control.StrafeSideway
+		control.Strafing = false
+
+		return
+	}
+
 	if !control.Moving {
 		return
 	}
@@ -137,6 +148,12 @@ func (control *groundMoveControlState) TickConfigured(position game.Position, ro
 	if deltaY > configuration.StepHeight && horizontalDistanceSquared < 1 {
 		control.Jump = true
 	}
+}
+
+func (control *groundMoveControlState) Strafe(forward, sideways float32) {
+	control.Strafing = true
+	control.StrafeForward = forward
+	control.StrafeSideway = sideways
 }
 
 func (control *groundLookControlState) SetWanted(position game.Position, maximumYaw, maximumPitch float32) {

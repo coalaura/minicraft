@@ -8,6 +8,15 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+type runtimeEquipmentTestEntity struct {
+	runtimeItemEntity
+	equipment []protocol.EquipmentEntry
+}
+
+func (entity *runtimeEquipmentTestEntity) EntityEquipment() []protocol.EquipmentEntry {
+	return entity.equipment
+}
+
 func TestRuntimeEntityIDsSharePlayerNamespace(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
@@ -127,6 +136,92 @@ func TestRuntimeEntityTrackingRetriesAfterWriteFailure(t *testing.T) {
 	runtime.reconcileRuntimeEntityTracking(item)
 
 	assertPacketIDs(t, retryConnection.packetIDs(t), []int32{protocol.ClientboundAddEntityID, protocol.ClientboundEntityMetadataID})
+}
+
+func TestRuntimeEntityTrackingSendsOptionalEquipment(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	session, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	entity := &runtimeEquipmentTestEntity{
+		runtimeItemEntity{
+			State: RuntimeEntityState{ID: 7, UUID: "10111213-1415-1617-1819-1a1b1c1d1e1f"},
+			Stack: game.ItemStack{Item: game.ItemDirt, Count: 2},
+		},
+		[]protocol.EquipmentEntry{{
+			Slot: protocol.EquipmentSlotMainHand,
+			Item: game.ItemStack{Item: game.ItemStone, Count: 3},
+		}},
+	}
+
+	session.trackRuntimeEntity(entity)
+
+	packets := connection.packets(t)
+
+	assertPacketIDs(t, connection.packetIDs(t), []int32{
+		protocol.ClientboundAddEntityID,
+		protocol.ClientboundEntityMetadataID,
+		protocol.ClientboundEntityEquipmentID,
+	})
+
+	assertEquipmentUpdate(t, packets[2], entity.State.ID, protocol.EquipmentSlotMainHand, game.ItemStone, 3)
+
+	connection.reset()
+
+	ordinary := &runtimeItemEntity{
+		State: RuntimeEntityState{ID: 8, UUID: "20212223-2425-2627-2829-2a2b2c2d2e2f"},
+		Stack: game.ItemStack{Item: game.ItemDirt, Count: 2},
+	}
+
+	session.trackRuntimeEntity(ordinary)
+
+	assertPacketIDs(t, connection.packetIDs(t), []int32{
+		protocol.ClientboundAddEntityID,
+		protocol.ClientboundEntityMetadataID,
+	})
+}
+
+func TestRuntimeEntityTrackingRollsBackAfterEquipmentWriteFailure(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	session, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	connection.writeErr = errors.New("write failed")
+	connection.writeErrAt = 3
+
+	entity := &runtimeEquipmentTestEntity{
+		runtimeItemEntity{
+			State: RuntimeEntityState{ID: 7, UUID: "10111213-1415-1617-1819-1a1b1c1d1e1f"},
+			Stack: game.ItemStack{Item: game.ItemDirt, Count: 2},
+		},
+		[]protocol.EquipmentEntry{{
+			Slot: protocol.EquipmentSlotMainHand,
+			Item: game.ItemStack{Item: game.ItemStone, Count: 3},
+		}},
+	}
+
+	session.trackRuntimeEntity(entity)
+
+	assertPacketIDs(t, connection.packetIDs(t), []int32{
+		protocol.ClientboundAddEntityID,
+		protocol.ClientboundEntityMetadataID,
+	})
+
+	if session.tracksRuntimeEntity(entity.State.ID) {
+		t.Fatal("equipment write failure left entity tracked")
+	}
+
+	retryConnection := &recordingConnection{}
+
+	session.Conn = protocol.NewConnection(retryConnection, nil)
+
+	session.trackRuntimeEntity(entity)
+
+	assertPacketIDs(t, retryConnection.packetIDs(t), []int32{
+		protocol.ClientboundAddEntityID,
+		protocol.ClientboundEntityMetadataID,
+		protocol.ClientboundEntityEquipmentID,
+	})
 }
 
 func TestRuntimeEntityInactiveChunkPausesWithoutDeleting(t *testing.T) {

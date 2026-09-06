@@ -17,7 +17,7 @@ type livingDamageTest struct {
 	wantHealthDamage float32
 }
 
-func TestDamageTypeZeroAndMobAttackTraits(t *testing.T) {
+func TestDamageTypeZeroMobAttackAndArrowTraits(t *testing.T) {
 	generic := DamageType(0).Traits()
 	if DamageGeneric != 0 || generic.RegistryID != 18 || !generic.BypassesArmor || generic.DamagesArmor {
 		t.Fatalf("generic damage traits = %+v", generic)
@@ -28,8 +28,13 @@ func TestDamageTypeZeroAndMobAttackTraits(t *testing.T) {
 	}
 
 	mobAttack := DamageMobAttack.Traits()
-	if mobAttack.RegistryID != 28 || mobAttack.BypassesArmor || !mobAttack.DamagesArmor {
+	if mobAttack.RegistryID != 28 || mobAttack.BypassesArmor || !mobAttack.DamagesArmor || !mobAttack.PanicCauses {
 		t.Fatalf("mob attack traits = %+v", mobAttack)
+	}
+
+	arrow := DamageArrow.Traits()
+	if arrow.RegistryID != 0 || arrow.BypassesArmor || arrow.BypassesResistance || !arrow.DamagesArmor || !arrow.PanicCauses {
+		t.Fatalf("arrow damage traits = %+v", arrow)
 	}
 }
 
@@ -39,6 +44,7 @@ func TestResolveLivingDamageMitigationOrdering(t *testing.T) {
 	tests := []livingDamageTest{
 		{name: "unmitigated", damage: Damage{Amount: 10}, wantHealth: 10, wantHealthDamage: 10},
 		{name: "armor and toughness", damage: Damage{Type: DamagePlayerAttack, Amount: 10}, armor: 20, toughness: 8, wantHealth: 17, wantHealthDamage: 3},
+		{name: "arrow armor and resistance", damage: Damage{Type: DamageArrow, Amount: 10}, armor: 20, toughness: 8, resistance: &resistance, wantHealth: 17.6, wantHealthDamage: 2.4},
 		{name: "resistance", damage: Damage{Amount: 10}, resistance: &resistance, wantHealth: 12, wantHealthDamage: 8},
 		{name: "absorption after resistance", damage: Damage{Amount: 10}, resistance: &resistance, absorption: 3, wantHealth: 15, wantAbsorption: 0, wantHealthDamage: 5},
 		{name: "effects bypass", damage: Damage{Type: DamageStarve, Amount: 10}, resistance: &resistance, wantHealth: 10, wantHealthDamage: 10},

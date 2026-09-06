@@ -100,6 +100,32 @@ func (entity *testRuntimeLivingEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	runtime.synchronizeRuntimeEntity(entity)
 }
 
+func TestRuntimeLivingTargetLookupIncludesPlayersAndEntities(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	player, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	runtime.AssignEntityID(player)
+
+	joinTestSession(t, runtime, player)
+
+	entity := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 1}, 20)
+
+	playerTarget := runtime.runtimeLivingTargetByID(player.snapshotPlayer().EntityID)
+	if !playerTarget.present() || playerTarget.session != player || playerTarget.entity != nil {
+		t.Fatalf("player target = %+v", playerTarget)
+	}
+
+	entityTarget := runtime.runtimeLivingTargetByID(entity.State.ID)
+	if !entityTarget.present() || entityTarget.session != nil || entityTarget.entity != entity {
+		t.Fatalf("entity target = %+v", entityTarget)
+	}
+
+	if runtime.runtimeLivingTargetByID(9999).present() {
+		t.Fatal("unknown entity ID resolved to a living target")
+	}
+}
+
 func TestPlayerAttackRuntimeLivingUsesSharedCombat(t *testing.T) {
 	runtime, attacker, _, attackerConnection, _ := newPlayerCombatTest(t)
 
@@ -147,39 +173,39 @@ func TestRuntimeLivingDamageMemoryUsesAcceptedDamageAndWorldTime(t *testing.T) {
 		t.Fatal("initial player damage was rejected")
 	}
 
-	damageType, remembered := entity.Living.LastDamageTypeAt(runtime.World.Time().Age)
-	if !remembered || damageType != game.DamagePlayerAttack || entity.Living.LastDamageStamp != 0 {
-		t.Fatalf("accepted damage memory = type %d remembered %t stamp %d", damageType, remembered, entity.Living.LastDamageStamp)
+	damageType, causeEntityID, remembered := entity.Living.LastDamageAt(runtime.World.Time().Age)
+	if !remembered || damageType != game.DamagePlayerAttack || causeEntityID != 12 || entity.Living.LastDamageStamp != 0 {
+		t.Fatalf("accepted damage memory = type %d cause %d remembered %t stamp %d", damageType, causeEntityID, remembered, entity.Living.LastDamageStamp)
 	}
 
 	runtime.World.AdvanceTime()
 
-	rejected := game.Damage{Type: game.DamageMagic, Amount: 2}
+	rejected := game.Damage{Type: game.DamageMagic, Amount: 2, CauseEntityID: 34}
 
 	_, applied = runtime.damageRuntimeLivingEntityLocked(entity, rejected)
 	if applied {
 		t.Fatal("weaker i-frame damage was accepted")
 	}
 
-	damageType, remembered = entity.Living.LastDamageTypeAt(runtime.World.Time().Age)
-	if !remembered || damageType != game.DamagePlayerAttack || entity.Living.LastDamageStamp != 0 {
-		t.Fatalf("rejected damage refreshed memory = type %d remembered %t stamp %d", damageType, remembered, entity.Living.LastDamageStamp)
+	damageType, causeEntityID, remembered = entity.Living.LastDamageAt(runtime.World.Time().Age)
+	if !remembered || damageType != game.DamagePlayerAttack || causeEntityID != 12 || entity.Living.LastDamageStamp != 0 {
+		t.Fatalf("rejected damage refreshed memory = type %d cause %d remembered %t stamp %d", damageType, causeEntityID, remembered, entity.Living.LastDamageStamp)
 	}
 
 	for range runtimeLivingDamageMemoryTicks - 1 {
 		runtime.World.AdvanceTime()
 	}
 
-	_, remembered = entity.Living.LastDamageTypeAt(runtime.World.Time().Age)
+	_, _, remembered = entity.Living.LastDamageAt(runtime.World.Time().Age)
 	if !remembered {
 		t.Fatal("damage memory expired at age 40")
 	}
 
 	runtime.World.AdvanceTime()
 
-	_, remembered = entity.Living.LastDamageTypeAt(runtime.World.Time().Age)
-	if remembered {
-		t.Fatal("damage memory remained after age 40")
+	damageType, causeEntityID, remembered = entity.Living.LastDamageAt(runtime.World.Time().Age)
+	if remembered || damageType != game.DamageGeneric || causeEntityID != 0 || entity.Living.LastDamageStamp != 0 {
+		t.Fatalf("expired damage memory = type %d cause %d remembered %t stamp %d", damageType, causeEntityID, remembered, entity.Living.LastDamageStamp)
 	}
 }
 

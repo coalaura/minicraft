@@ -17,19 +17,23 @@ const (
 type RuntimeLivingState struct {
 	game.LivingState
 
-	Velocity            game.Velocity
-	OnGround            bool
-	FallDistance        float32
-	MoveDistance        float32
-	NextStepDistance    int32
-	KnockbackResistance float32
-	Width               float64
-	Height              float64
-	Armor               int32
-	ArmorToughness      float32
-	LastDamageType      game.DamageType
-	LastDamageStamp     int64
-	HasLastDamage       bool
+	Velocity                game.Velocity
+	OnGround                bool
+	FallDistance            float32
+	MoveDistance            float32
+	NextStepDistance        int32
+	KnockbackResistance     float32
+	Width                   float64
+	Height                  float64
+	Armor                   int32
+	ArmorToughness          float32
+	LastDamageType          game.DamageType
+	LastDamageCauseEntityID int32
+	LastDamageStamp         int64
+	HasLastDamage           bool
+	UsingItem               bool
+	UsingOffhand            bool
+	ItemUseTicks            int32
 }
 
 type RuntimeLivingEntity interface {
@@ -77,12 +81,55 @@ func (state *RuntimeLivingState) EntityFlags() byte {
 	return 0
 }
 
+func (state *RuntimeLivingState) ItemUseFlags() byte {
+	if !state.UsingItem {
+		return 0
+	}
+
+	flags := byte(protocol.LivingFlagUsingItem)
+
+	if state.UsingOffhand {
+		flags |= protocol.LivingFlagUsingOffhand
+	}
+
+	return flags
+}
+
+func (state *RuntimeLivingState) StartUsingItem(offhand bool) {
+	state.UsingItem = true
+	state.UsingOffhand = offhand
+	state.ItemUseTicks = 0
+}
+
+func (state *RuntimeLivingState) TickUsingItem() int32 {
+	if state.UsingItem {
+		state.ItemUseTicks++
+	}
+
+	return state.ItemUseTicks
+}
+
+func (state *RuntimeLivingState) StopUsingItem() {
+	state.UsingItem = false
+	state.UsingOffhand = false
+	state.ItemUseTicks = 0
+}
+
 func (state *RuntimeLivingState) LastDamageTypeAt(gameTime int64) (game.DamageType, bool) {
+	damageType, _, remembered := state.LastDamageAt(gameTime)
+
+	return damageType, remembered
+}
+
+func (state *RuntimeLivingState) LastDamageAt(gameTime int64) (game.DamageType, int32, bool) {
 	if state.HasLastDamage && gameTime-state.LastDamageStamp > runtimeLivingDamageMemoryTicks {
+		state.LastDamageType = game.DamageGeneric
+		state.LastDamageCauseEntityID = 0
+		state.LastDamageStamp = 0
 		state.HasLastDamage = false
 	}
 
-	return state.LastDamageType, state.HasLastDamage
+	return state.LastDamageType, state.LastDamageCauseEntityID, state.HasLastDamage
 }
 
 func (r *Runtime) damageRuntimeLivingEntityLocked(entity RuntimeLivingEntity, damage game.Damage) (runtimeLivingDamageUpdate, bool) {
@@ -109,6 +156,7 @@ func (r *Runtime) damageRuntimeLivingEntityLocked(entity RuntimeLivingEntity, da
 	}
 
 	living.LastDamageType = damage.Type
+	living.LastDamageCauseEntityID = damage.CauseEntityID
 	living.LastDamageStamp = r.World.Time().Age
 	living.HasLastDamage = true
 

@@ -26,11 +26,13 @@ type statusResponse struct {
 }
 
 type recordingConnection struct {
-	mu       sync.Mutex
-	input    bytes.Buffer
-	buffer   bytes.Buffer
-	writeErr error
-	closed   bool
+	mu         sync.Mutex
+	input      bytes.Buffer
+	buffer     bytes.Buffer
+	writeErr   error
+	writeErrAt int
+	writeCount int
+	closed     bool
 }
 
 func (c *recordingConnection) Read(data []byte) (int, error) {
@@ -63,7 +65,9 @@ func (c *recordingConnection) Write(data []byte) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.writeErr != nil {
+	c.writeCount++
+
+	if c.writeErr != nil && (c.writeErrAt == 0 || c.writeCount == c.writeErrAt) {
 		return 0, c.writeErr
 	}
 
