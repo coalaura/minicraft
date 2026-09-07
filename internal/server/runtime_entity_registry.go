@@ -28,7 +28,7 @@ var runtimeEntityConstructors = map[game.EntityType]runtimeEntityConstructor{
 		return runtime.SpawnSkeleton(position)
 	},
 	game.EntityTnt: func(runtime *Runtime, position game.Position) RuntimeEntity {
-		return runtime.SpawnTnt(position, game.Velocity{}, 0)
+		return runtime.SpawnTnt(position, game.Velocity{}, 0, false)
 	},
 	game.EntityZombie: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnZombie(position)

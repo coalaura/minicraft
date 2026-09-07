@@ -23,6 +23,8 @@ type runtimeTntEntity struct {
 	OwnerID  int32
 	Fuse     int32
 	OnGround bool
+
+	OwnerIsPlayer bool
 }
 
 func (entity *runtimeTntEntity) RuntimeEntityState() *RuntimeEntityState {
@@ -101,6 +103,7 @@ func (entity *runtimeTntEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 
 	entityID := entity.State.ID
 	ownerID := entity.OwnerID
+	ownerIsPlayer := entity.OwnerIsPlayer
 	position := entity.State.Position
 	fuse := entity.Fuse
 
@@ -117,25 +120,26 @@ func (entity *runtimeTntEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	runtime.removeRuntimeEntity(entityID)
 
 	position.Y += definition.Height * 0.0625
-	_, players, living := runtime.explodeLocked(RuntimeExplosion{Position: position, Radius: tntExplosionPower, DirectEntityID: entityID, CauseEntityID: ownerID, BlockInteraction: ExplosionDestroyBlocksWithDecay})
+
+	_, players, living := runtime.explodeLocked(RuntimeExplosion{Position: position, Radius: tntExplosionPower, DirectEntityID: entityID, CauseEntityID: ownerID, CauseIsPlayer: ownerIsPlayer, BlockInteraction: ExplosionDestroyBlocksWithDecay})
 
 	runtime.sendExplosionEntityUpdates(players, living)
 }
 
-func (runtime *Runtime) SpawnTnt(position game.Position, velocity game.Velocity, ownerID int32) *runtimeTntEntity {
-	entity := &runtimeTntEntity{Velocity: velocity, OwnerID: ownerID, Fuse: tntDefaultFuse}
+func (runtime *Runtime) SpawnTnt(position game.Position, velocity game.Velocity, ownerID int32, ownerIsPlayer bool) *runtimeTntEntity {
+	entity := &runtimeTntEntity{Velocity: velocity, OwnerID: ownerID, Fuse: tntDefaultFuse, OwnerIsPlayer: ownerIsPlayer}
 
 	runtime.registerRuntimeEntity(entity, position)
 
 	return entity
 }
 
-func (runtime *Runtime) primeTnt(position game.BlockPosition, ownerID, fuse int32) *runtimeTntEntity {
+func (runtime *Runtime) primeTnt(position game.BlockPosition, ownerID int32, ownerIsPlayer bool, fuse int32) *runtimeTntEntity {
 	angle := float64(runtime.nextEntityRandom()) * math.Pi * 2
 	spawn := game.Position{X: float64(position.X) + 0.5, Y: float64(position.Y), Z: float64(position.Z) + 0.5}
 	velocity := game.Velocity{X: -math.Sin(angle) * 0.02, Y: 0.2, Z: -math.Cos(angle) * 0.02}
 
-	entity := runtime.SpawnTnt(spawn, velocity, ownerID)
+	entity := runtime.SpawnTnt(spawn, velocity, ownerID, ownerIsPlayer)
 
 	entity.State.mu.Lock()
 	entity.Fuse = fuse

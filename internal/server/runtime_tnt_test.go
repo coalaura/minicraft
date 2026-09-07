@@ -26,7 +26,7 @@ func TestSpawnTntMetadataTrackingAndPhysicsTrace(t *testing.T) {
 
 	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
 
-	tnt := runtime.SpawnTnt(game.Position{Y: 10, Z: .5}, game.Velocity{X: .3, Y: .2, Z: -.1}, 42)
+	tnt := runtime.SpawnTnt(game.Position{Y: 10, Z: .5}, game.Velocity{X: .3, Y: .2, Z: -.1}, 42, false)
 	if tnt.RuntimeEntityTrackingConfig() != (RuntimeEntityTrackingConfig{ClientRangeChunks: 10, UpdateInterval: 10, TrackDeltas: true}) {
 		t.Fatalf("TNT tracking config = %+v", tnt.RuntimeEntityTrackingConfig())
 	}
@@ -72,7 +72,7 @@ func TestTntInactiveChunkPausesAndDefaultFuseExplodesOnce(t *testing.T) {
 
 	joinTestSession(t, runtime, viewer)
 
-	tnt := runtime.SpawnTnt(game.Position{X: .5, Y: 1, Z: .5}, game.Velocity{}, 0)
+	tnt := runtime.SpawnTnt(game.Position{X: .5, Y: 1, Z: .5}, game.Velocity{}, 0, false)
 
 	connection.reset()
 
@@ -129,7 +129,7 @@ func TestPlayerOwnedTntUsesPlayerExplosionAndDamagesOwner(t *testing.T) {
 
 	runtime.setSessionActiveChunks(owner, []LoadedChunk{{}})
 
-	tnt := runtime.SpawnTnt(game.Position{X: .5, Y: 1, Z: .5}, game.Velocity{}, owner.Player.EntityID)
+	tnt := runtime.SpawnTnt(game.Position{X: .5, Y: 1, Z: .5}, game.Velocity{}, owner.Player.EntityID, true)
 
 	tnt.Fuse = 1
 
@@ -143,6 +143,34 @@ func TestPlayerOwnedTntUsesPlayerExplosionAndDamagesOwner(t *testing.T) {
 	}
 
 	assertExplosionDamagePacket(t, connection, owner.Player.EntityID, game.DamagePlayerExplosion, owner.Player.EntityID, tnt.State.ID)
+}
+
+func TestPlayerOwnedTntKeepsPlayerSourceWithoutOwnerSession(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	viewer, connection := newBlockMutationTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Viewer", game.GameModeSpectator)
+
+	viewer.loadedChunks = map[LoadedChunk]struct{}{{}: {}}
+
+	joinTestSession(t, runtime, viewer)
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+	victim := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 1.5, Y: 1, Z: .5}, 20)
+
+	tnt := runtime.SpawnTnt(game.Position{X: .5, Y: 1, Z: .5}, game.Velocity{}, 42, true)
+
+	tnt.Fuse = 1
+
+	connection.reset()
+
+	runtime.Tick()
+
+	if victim.Living.LastDamageType != game.DamagePlayerExplosion || victim.Living.LastDamageCauseEntityID != 42 {
+		t.Fatalf("disconnected owner TNT attribution = type %v cause %d", victim.Living.LastDamageType, victim.Living.LastDamageCauseEntityID)
+	}
+
+	assertExplosionDamagePacket(t, connection, victim.State.ID, game.DamagePlayerExplosion, 42, tnt.State.ID)
 }
 
 func TestTntBlockIgnitionPreservesOwnerAndConsumesItem(t *testing.T) {
@@ -185,7 +213,7 @@ func TestTntBlockIgnitionPreservesOwnerAndConsumesItem(t *testing.T) {
 			}
 
 			primed, valid := entities[0].(*runtimeTntEntity)
-			if !valid || primed.OwnerID != owner.Player.EntityID || primed.Fuse != tntDefaultFuse {
+			if !valid || primed.OwnerID != owner.Player.EntityID || !primed.OwnerIsPlayer || primed.Fuse != tntDefaultFuse {
 				t.Fatalf("primed TNT = %#v", entities[0])
 			}
 
@@ -217,6 +245,7 @@ func TestExplosionChainPrimesTntWithShortFuseAndCause(t *testing.T) {
 		Position:         game.Position{X: .5, Y: .5, Z: .5},
 		Radius:           2,
 		CauseEntityID:    42,
+		CauseIsPlayer:    true,
 		BlockInteraction: ExplosionDestroyBlocks,
 		Random:           random,
 	})
@@ -231,7 +260,7 @@ func TestExplosionChainPrimesTntWithShortFuseAndCause(t *testing.T) {
 	}
 
 	primed, valid := entities[0].(*runtimeTntEntity)
-	if !valid || primed.OwnerID != 42 || primed.Fuse != 10 {
+	if !valid || primed.OwnerID != 42 || !primed.OwnerIsPlayer || primed.Fuse != 10 {
 		t.Fatalf("chain primed TNT = %#v", entities[0])
 	}
 }

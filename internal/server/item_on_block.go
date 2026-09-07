@@ -89,7 +89,7 @@ func (r *Runtime) useIgnitionItemOnTnt(session *Session, interaction protocol.Us
 
 	result, err = r.completeBlockMutation(result, delivery, err)
 	if err == nil && result.Changed {
-		r.primeTnt(interaction.Position, ownerID, tntDefaultFuse)
+		r.primeTnt(interaction.Position, ownerID, true, tntDefaultFuse)
 	}
 
 	return result.Changed, result, []game.BlockPosition{interaction.Position}, err

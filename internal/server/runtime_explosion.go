@@ -28,6 +28,7 @@ type RuntimeExplosion struct {
 	Radius           float32
 	DirectEntityID   int32
 	CauseEntityID    int32
+	CauseIsPlayer    bool
 	BlockInteraction ExplosionBlockInteraction
 	Random           func() float32
 }
@@ -260,18 +261,11 @@ func (r *Runtime) damageExplosionEntities(explosion RuntimeExplosion, result *Ru
 }
 
 func (r *Runtime) explosionDamageType(explosion RuntimeExplosion) game.DamageType {
-	if explosion.DirectEntityID == 0 || explosion.CauseEntityID == 0 {
+	if explosion.DirectEntityID == 0 || explosion.CauseEntityID == 0 || !explosion.CauseIsPlayer {
 		return game.DamageExplosion
 	}
 
-	for _, session := range r.snapshotSessions() {
-		player := session.snapshotPlayer()
-		if player.EntityID == explosion.CauseEntityID {
-			return game.DamagePlayerExplosion
-		}
-	}
-
-	return game.DamageExplosion
+	return game.DamagePlayerExplosion
 }
 
 func (r *Runtime) explosionImpact(center game.Position, diameter float64, position, origin game.Position, box game.AABB, resistance float32) (game.Velocity, float32, bool) {
@@ -435,7 +429,7 @@ func (r *Runtime) destroyExplosionBlocksLocked(affected []game.BlockPosition, ex
 				fuse := int32(random()*20) + 10
 				fuse = min(fuse, 29)
 
-				r.primeTnt(change.Position, explosion.CauseEntityID, fuse)
+				r.primeTnt(change.Position, explosion.CauseEntityID, explosion.CauseIsPlayer, fuse)
 			}
 		}
 	}
