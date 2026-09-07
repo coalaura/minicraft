@@ -11,6 +11,11 @@ type blockSoundTestCase struct {
 	replaceable bool
 }
 
+type blockExplosionResistanceTestCase struct {
+	block      Block
+	resistance float32
+}
+
 func TestGeneratedBlockCatalogueCoversVanillaStates(t *testing.T) {
 	if MaxBlockID != 1165 {
 		t.Fatalf("max block ID = %d, want 1165", MaxBlockID)
@@ -160,6 +165,28 @@ func TestGeneratedBlockSoundAndReplaceabilityMetadata(t *testing.T) {
 
 	if Dandelion.Replaceable() {
 		t.Fatal("flower is replaceable")
+	}
+}
+
+func TestGeneratedBlockExplosionResistance(t *testing.T) {
+	tests := map[string]blockExplosionResistanceTestCase{
+		"air":      {block: Air, resistance: 0},
+		"dirt":     {block: Dirt, resistance: 0.5},
+		"stone":    {block: Stone, resistance: 6},
+		"obsidian": {block: Obsidian, resistance: 1200},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			definition, valid := test.block.Definition()
+			if !valid {
+				t.Fatal("block definition is missing")
+			}
+
+			if definition.ExplosionResistance != test.resistance {
+				t.Fatalf("explosion resistance = %v, want %v", definition.ExplosionResistance, test.resistance)
+			}
+		})
 	}
 }
 

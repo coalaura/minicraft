@@ -20,6 +20,7 @@ const (
 	BlockMutationPlace
 	BlockMutationInteract
 	blockMutationLiteral
+	blockMutationExplosion
 )
 
 const (
@@ -28,12 +29,14 @@ const (
 	blockMutationDirectBreak
 	blockMutationInteract
 	blockMutationSupportLoss
+	blockMutationExplosionBreak
 )
 
 const (
 	blockLootNone blockLootContext = iota
 	blockLootPlayer
 	blockLootNoBreaker
+	blockLootExplosion
 )
 
 type BlockMutationAction uint8
@@ -64,6 +67,8 @@ type blockMutationRecord struct {
 	cause             blockMutationCause
 	lootContext       blockLootContext
 	lootTool          game.ItemStack
+	lootSurvival      float32
+	lootRandom        func() float32
 }
 
 type blockLootContext uint8
@@ -311,7 +316,9 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 
 		cause := blockMutationStructural
 
-		if !authoritative && index < requiredChanges {
+		if action == blockMutationExplosion && index < requiredChanges {
+			cause = blockMutationExplosionBreak
+		} else if !authoritative && index < requiredChanges {
 			switch action {
 			case BlockMutationPlace:
 				cause = blockMutationDirectPlace
@@ -425,7 +432,11 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	var poseChanges []game.Player
 
 	if recalculatePlayerPoses {
-		poseChanges = r.recalculateActivePlayerPoses()
+		if len(lifecycleLocked) != 0 && lifecycleLocked[0] {
+			poseChanges = r.recalculateActivePlayerPosesLocked()
+		} else {
+			poseChanges = r.recalculateActivePlayerPoses()
+		}
 	}
 
 	result.Block = committed[0].Replacement
@@ -515,7 +526,7 @@ func (r *Runtime) deliverBlockMutation(delivery blockMutationDelivery, lightUpda
 		}
 
 		for _, record := range delivery.records {
-			if record.cause != blockMutationSupportLoss && (record.cause != blockMutationDirectBreak || other == delivery.session) {
+			if record.cause != blockMutationSupportLoss && record.cause != blockMutationExplosionBreak && (record.cause != blockMutationDirectBreak || other == delivery.session) {
 				continue
 			}
 

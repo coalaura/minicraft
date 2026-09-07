@@ -124,6 +124,19 @@ func TestDamageEventEncode(t *testing.T) {
 	}, decodeTestHex(t, "ac0205ac02ad02013ff8000000000000c0020000000000004008000000000000"))
 }
 
+func TestExplodeEncode(t *testing.T) {
+	assertPacketEncoding(t, Explode{
+		X: 1.5, Y: -2.25, Z: 3,
+		Radius: 2.5, Blocks: 2,
+		PlayerKnockback: game.Velocity{X: 0.25, Y: 0.5, Z: -0.75}, HasPlayerKnockback: true,
+		Particle: 300, Sound: SoundEventHolder{RegistryID: 668},
+		BlockParticles: []ExplosionParticleInfo{
+			{Particle: 57, Scaling: 0.5, Speed: 1, Weight: 1},
+			{Particle: 60, Scaling: 1, Speed: 0.25, Weight: 2},
+		},
+	}, decodeTestHex(t, "3ff8000000000000c00200000000000040080000000000004020000000000002013fd00000000000003fe0000000000000bfe8000000000000ac029d0502393f0000003f800000013c3f8000003e80000002"))
+}
+
 func TestCombatKillEncode(t *testing.T) {
 	assertPacketEncoding(t, CombatKill{PlayerID: 300, Message: game.LiteralText("bye")}, []byte{
 		0xAC, 0x02,

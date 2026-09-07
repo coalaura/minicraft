@@ -107,6 +107,7 @@ const (
 	ClientboundPlayDisconnectID               = 0x20
 	ClientboundEntityEventID                  = 0x22
 	ClientboundSynchronizeEntityPositionID    = 0x23
+	ClientboundExplodeID                      = 0x24
 	ClientboundForgetLevelChunkID             = 0x25
 	ClientboundGameEventID                    = 0x26
 	ClientboundPlayKeepAliveID                = 0x2B

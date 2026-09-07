@@ -1625,6 +1625,34 @@ func TestCommandSummonZombie(t *testing.T) {
 
 	connection.reset()
 
+	executeCommand(t, session, "summon minecraft:creeper")
+
+	entities = runtime.snapshotRuntimeEntities()
+	if len(entities) != 4 {
+		t.Fatalf("summoned entities after creeper = %d, want 4", len(entities))
+	}
+
+	_, creeperEntity := entities[3].(*runtimeCreeperEntity)
+	if !creeperEntity {
+		t.Fatalf("summoned creeper entity = %T", entities[3])
+	}
+
+	runtime.Difficulty = game.DifficultyPeaceful
+
+	connection.reset()
+
+	executeCommand(t, session, "summon creeper")
+
+	if len(runtime.snapshotRuntimeEntities()) != 4 {
+		t.Fatal("Peaceful summon created a creeper")
+	}
+
+	assertSystemComponents(t, connection, game.TranslatableText("commands.summon.failed.peaceful").WithColor(game.TextColorRed))
+
+	runtime.Difficulty = game.DifficultyNormal
+
+	connection.reset()
+
 	executeCommand(t, session, "summon minecraft:pig")
 
 	assertSyntaxError(t, connection, "summon minecraft:pig", 7, game.LiteralText("Unknown entity 'minecraft:pig'"))

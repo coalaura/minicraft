@@ -115,21 +115,22 @@ type BlockPropertyValue struct {
 }
 
 type BlockDefinition struct {
-	ID              BlockID
-	Name            string
-	DefaultState    Block
-	MinState        Block
-	MaxState        Block
-	Behavior        BlockBehavior
-	Collision       BlockCollision
-	Emission        uint8
-	LightFilter     uint8
-	Sound           BlockSoundType
-	Traits          BlockTrait
-	BlockEntityType BlockEntityType
-	Mining          BlockMining
-	Properties      []BlockProperty
-	Waterloggable   bool
+	ID                  BlockID
+	Name                string
+	DefaultState        Block
+	MinState            Block
+	MaxState            Block
+	Behavior            BlockBehavior
+	Collision           BlockCollision
+	Emission            uint8
+	LightFilter         uint8
+	Sound               BlockSoundType
+	Traits              BlockTrait
+	BlockEntityType     BlockEntityType
+	ExplosionResistance float32
+	Mining              BlockMining
+	Properties          []BlockProperty
+	Waterloggable       bool
 }
 
 type BlockPosition struct {

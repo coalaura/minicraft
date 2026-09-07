@@ -398,9 +398,33 @@ func (r *Runtime) commitOrdinaryBlockDrops(records []blockMutationRecord) {
 		r.lootRandomMu.Unlock()
 
 		for _, drop := range drops {
+			if record.lootContext == blockLootExplosion {
+				drop.Count = survivingExplosionDropCount(drop.Count, record.lootSurvival, record.lootRandom)
+			}
+
+			if drop.Empty() {
+				continue
+			}
+
 			r.popBlockResource(record.change.Position, drop)
 		}
 	}
+}
+
+func survivingExplosionDropCount(count int32, survival float32, random func() float32) int32 {
+	if random == nil || survival >= 1 {
+		return count
+	}
+
+	remaining := int32(0)
+
+	for range count {
+		if random() <= survival {
+			remaining++
+		}
+	}
+
+	return remaining
 }
 
 func (random runtimeBlockLootRandom) IntN(bound int) int {

@@ -145,6 +145,10 @@ func (r *Runtime) recalculateActivePlayerPoses() []game.Player {
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
 
+	return r.recalculateActivePlayerPosesLocked()
+}
+
+func (r *Runtime) recalculateActivePlayerPosesLocked() []game.Player {
 	changedPlayers := make([]game.Player, 0)
 
 	for _, session := range r.snapshotSessions() {

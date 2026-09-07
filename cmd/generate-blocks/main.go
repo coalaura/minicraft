@@ -32,6 +32,7 @@ type BlockDefinition struct {
 	EmitLight    uint8           `json:"emitLight"`
 	FilterLight  uint8           `json:"filterLight"`
 	Hardness     float32         `json:"hardness"`
+	Resistance   float32         `json:"resistance"`
 	Diggable     bool            `json:"diggable"`
 	HarvestTools map[string]bool `json:"harvestTools"`
 	Drops        []uint16        `json:"drops"`
@@ -263,7 +264,7 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, lootPrograms Bloc
 	for _, block := range blocks {
 		fmt.Fprintf(
 			&output,
-			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Collision: %s, Emission: %d, LightFilter: %d, Sound: %s, Traits: %s, BlockEntityType: %s, Mining: %s, Waterloggable: %t",
+			"\t{ID: %sID, Name: %q, DefaultState: %s, MinState: %d, MaxState: %d, Behavior: %s, Collision: %s, Emission: %d, LightFilter: %d, Sound: %s, Traits: %s, BlockEntityType: %s, ExplosionResistance: %g, Mining: %s, Waterloggable: %t",
 			goName(block.Name),
 			block.Name,
 			goName(block.Name),
@@ -276,6 +277,7 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, lootPrograms Bloc
 			blockSoundType(block),
 			blockTraits(miningTags, block.Name),
 			blockEntityType(block.Name),
+			block.Resistance,
 			blockMining(block, miningTags, lootPrograms.Indexes[block.Name]),
 			hasBlockProperty(block.Properties, "waterlogged"),
 		)

@@ -556,7 +556,7 @@ func (registry *commandRegistry) registerSummon() {
 			return commandFailure{message: game.TranslatableText("commands.summon.invalidPosition")}
 		}
 
-		if (entityType == game.EntityZombie || entityType == game.EntitySkeleton) && registry.runtime.Difficulty == game.DifficultyPeaceful {
+		if (entityType == game.EntityCreeper || entityType == game.EntityZombie || entityType == game.EntitySkeleton) && registry.runtime.Difficulty == game.DifficultyPeaceful {
 			return commandFailure{message: game.TranslatableText("commands.summon.failed.peaceful")}
 		}
 

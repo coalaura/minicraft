@@ -137,6 +137,9 @@ const (
 	SoundEntityChickenEgg      SoundEvent = "minecraft:entity.chicken.egg"
 	SoundEntityChickenHurt     SoundEvent = "minecraft:entity.chicken.hurt"
 	SoundEntityChickenStep     SoundEvent = "minecraft:entity.chicken.step"
+	SoundEntityCreeperDeath    SoundEvent = "minecraft:entity.creeper.death"
+	SoundEntityCreeperHurt     SoundEvent = "minecraft:entity.creeper.hurt"
+	SoundEntityCreeperPrimed   SoundEvent = "minecraft:entity.creeper.primed"
 	SoundEntityZombieAmbient   SoundEvent = "minecraft:entity.zombie.ambient"
 	SoundEntityZombieDeath     SoundEvent = "minecraft:entity.zombie.death"
 	SoundEntityZombieHurt      SoundEvent = "minecraft:entity.zombie.hurt"
@@ -148,6 +151,8 @@ const (
 	SoundEntitySkeletonShoot   SoundEvent = "minecraft:entity.skeleton.shoot"
 	SoundEntityPlayerBurp      SoundEvent = "minecraft:entity.player.burp"
 	SoundItemHoneyBottleDrink  SoundEvent = "minecraft:item.honey_bottle.drink"
+	SoundItemFireChargeUse     SoundEvent = "minecraft:item.firecharge.use"
+	SoundItemFlintAndSteelUse  SoundEvent = "minecraft:item.flintandsteel.use"
 )
 
 type SoundEvent string

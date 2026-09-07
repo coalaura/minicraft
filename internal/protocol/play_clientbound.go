@@ -19,6 +19,9 @@ const (
 	LivingFlagsMetadataIndex      = 8
 	LivingHealthMetadataIndex     = 9
 	MobFlagsMetadataIndex         = 15
+	CreeperSwellMetadataIndex     = 16
+	CreeperPoweredMetadataIndex   = 17
+	CreeperIgnitedMetadataIndex   = 18
 	SheepWoolMetadataIndex        = 17
 	ItemEntityItemMetadataIndex   = 8
 	ArrowFlagsMetadataIndex       = 8
@@ -535,6 +538,28 @@ type Sound struct {
 	Volume float32
 	Pitch  float32
 	Seed   int64
+}
+
+type ExplosionParticleInfo struct {
+	Particle int32
+	Scaling  float32
+	Speed    float32
+	Weight   int32
+}
+
+type Explode struct {
+	X float64
+	Y float64
+	Z float64
+
+	Radius float32
+	Blocks int32
+
+	PlayerKnockback    game.Velocity
+	HasPlayerKnockback bool
+	Particle           int32
+	Sound              SoundEventHolder
+	BlockParticles     []ExplosionParticleInfo
 }
 
 type SystemChat struct {
@@ -1166,6 +1191,33 @@ func (p Sound) Encode(wr *PacketWriter) {
 	wr.Float(p.Volume)
 	wr.Float(p.Pitch)
 	wr.Long(p.Seed)
+}
+
+func (p Explode) Encode(wr *PacketWriter) {
+	wr.Double(p.X)
+	wr.Double(p.Y)
+	wr.Double(p.Z)
+	wr.Float(p.Radius)
+	wr.Int(p.Blocks)
+	wr.Bool(p.HasPlayerKnockback)
+
+	if p.HasPlayerKnockback {
+		wr.Double(p.PlayerKnockback.X)
+		wr.Double(p.PlayerKnockback.Y)
+		wr.Double(p.PlayerKnockback.Z)
+	}
+
+	wr.VarInt(p.Particle)
+	p.Sound.Encode(wr)
+
+	wr.VarInt(int32(len(p.BlockParticles)))
+
+	for _, particle := range p.BlockParticles {
+		wr.VarInt(particle.Particle)
+		wr.Float(particle.Scaling)
+		wr.Float(particle.Speed)
+		wr.VarInt(particle.Weight)
+	}
 }
 
 func (p SystemChat) Encode(wr *PacketWriter) {
