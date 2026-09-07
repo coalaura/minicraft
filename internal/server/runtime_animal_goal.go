@@ -148,6 +148,10 @@ func (goal *animalFloatGoal) Tick(runtime *Runtime) {
 	goal.Entity.State.mu.Unlock()
 }
 
+func (*animalFloatGoal) RequiresUpdateEveryTick() bool {
+	return true
+}
+
 func (goal *animalTemptGoal) CanUse(runtime *Runtime) bool {
 	goal.Target = nearestTemptingPlayer(runtime, goal.Entity)
 
@@ -293,6 +297,10 @@ func (goal *animalRandomLookGoal) Tick(*Runtime) {
 	goal.Entity.State.mu.Unlock()
 
 	goal.LookTicks--
+}
+
+func (*animalRandomLookGoal) RequiresUpdateEveryTick() bool {
+	return true
 }
 
 func (runtime *Runtime) configureAnimalGoals(entity *runtimeAnimal) {

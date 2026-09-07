@@ -169,7 +169,7 @@ func (control *groundMoveControlState) TickConfigured(position game.Position, ro
 
 		control.ForwardInput = forward
 		control.SidewaysInput = sideways
-		control.MovementSpeed = speed
+		control.MovementSpeed = float32(control.SpeedModifier)
 		control.Strafing = false
 
 		return

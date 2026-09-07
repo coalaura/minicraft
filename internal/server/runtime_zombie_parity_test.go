@@ -321,8 +321,14 @@ func TestZombieTargetInterruptsIdleAndLineOfSightMemoryExpires(t *testing.T) {
 
 	zombie.tickGoals(runtime, session, false)
 
+	if !zombie.Idle.Strolling {
+		t.Fatal("lightweight goal pass interrupted idle stroll")
+	}
+
+	zombie.tickGoals(runtime, session, true)
+
 	if zombie.Idle.Strolling {
-		t.Fatal("hostile target did not interrupt idle stroll")
+		t.Fatal("full goal pass did not interrupt idle stroll")
 	}
 
 	zombie.Target.Session = session

@@ -126,6 +126,10 @@ func (goal *zombieMeleeGoal) Tick(runtime *Runtime) {
 	goal.Entity.tickMeleeGoal(runtime, goal.Entity.GoalTarget, goal.Entity.FullGoalTick)
 }
 
+func (*zombieMeleeGoal) RequiresUpdateEveryTick() bool {
+	return true
+}
+
 func (goal *zombieIdleGoal) CanUse(*Runtime) bool {
 	return goal.Entity.GoalTarget == nil
 }
@@ -144,6 +148,10 @@ func (goal *zombieIdleGoal) Stop(*Runtime) {
 
 func (goal *zombieIdleGoal) Tick(runtime *Runtime) {
 	goal.Entity.tickIdleGoals(runtime, goal.Entity.FullGoalTick)
+}
+
+func (*zombieIdleGoal) RequiresUpdateEveryTick() bool {
+	return true
 }
 
 func (entity *runtimeZombieEntity) RuntimeLivingState() *RuntimeLivingState {
@@ -523,7 +531,7 @@ func (entity *runtimeZombieEntity) tickTarget(runtime *Runtime, fullGoalTick boo
 func (entity *runtimeZombieEntity) tickGoals(runtime *Runtime, target *Session, fullGoalTick bool) {
 	entity.GoalTarget = target
 	entity.FullGoalTick = fullGoalTick
-	entity.Goals.Tick(runtime)
+	entity.Goals.Tick(runtime, fullGoalTick)
 }
 
 func (entity *runtimeZombieEntity) tickMeleeGoal(runtime *Runtime, target *Session, fullGoalTick bool) {

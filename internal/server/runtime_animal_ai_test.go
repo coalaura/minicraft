@@ -48,6 +48,54 @@ func TestRuntimeGoalSelectorFullAndEveryTickPasses(t *testing.T) {
 	}
 }
 
+func TestRuntimeGoalSelectorDefersTransitionsUntilFullPass(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	selector := runtimeGoalSelector{}
+
+	high := &runtimeGoalTestGoal{}
+	low := &runtimeGoalTestGoal{canUse: true, canContinue: true}
+
+	selector.Add(1, runtimeGoalMove, high)
+	selector.Add(2, runtimeGoalMove, low)
+
+	selector.Tick(runtime, true)
+
+	if low.starts != 1 || low.ticks != 1 || high.starts != 0 {
+		t.Fatalf("tick 1 = low starts %d ticks %d, high starts %d", low.starts, low.ticks, high.starts)
+	}
+
+	high.canUse = true
+	high.canContinue = true
+
+	selector.Tick(runtime, false)
+
+	if low.stops != 0 || high.starts != 0 || low.ticks != 1 {
+		t.Fatalf("tick 2 = low stops %d ticks %d, high starts %d", low.stops, low.ticks, high.starts)
+	}
+
+	selector.Tick(runtime, true)
+
+	if low.stops != 1 || high.starts != 1 || high.ticks != 1 {
+		t.Fatalf("tick 3 = low stops %d, high starts %d ticks %d", low.stops, high.starts, high.ticks)
+	}
+
+	high.canUse = false
+	high.canContinue = false
+
+	selector.Tick(runtime, false)
+
+	if high.stops != 0 || low.starts != 1 || high.ticks != 1 {
+		t.Fatalf("tick 4 = high stops %d ticks %d, low starts %d", high.stops, high.ticks, low.starts)
+	}
+
+	selector.Tick(runtime, true)
+
+	if high.stops != 1 || low.starts != 2 || low.ticks != 2 {
+		t.Fatalf("tick 5 = high stops %d, low starts %d ticks %d", high.stops, low.starts, low.ticks)
+	}
+}
+
 func TestReducedTickDelayMatchesVanilla(t *testing.T) {
 	tests := []reducedTickDelayTestCase{
 		{input: 0, want: 0},

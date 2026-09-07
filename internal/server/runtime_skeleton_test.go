@@ -227,8 +227,8 @@ func TestSkeletonDaylightBurningAndSunGoals(t *testing.T) {
 
 func TestSkeletonStrafeUsesVanillaSpeedAndInputScaling(t *testing.T) {
 	tests := []skeletonStrafeTestCase{
-		{name: "straight", forward: .5, wantZ: .0078125},
-		{name: "diagonal", forward: .5, sideways: .5, wantX: .0078125, wantZ: .0078125},
+		{name: "straight", forward: .5, wantZ: .03125},
+		{name: "diagonal", forward: .5, sideways: .5, wantX: .03125, wantZ: .03125},
 	}
 
 	for _, test := range tests {
@@ -257,6 +257,60 @@ func TestSkeletonStrafeUsesVanillaSpeedAndInputScaling(t *testing.T) {
 	}
 }
 
+func TestSkeletonStrafeMatchesVanillaSteadyStateTrace(t *testing.T) {
+	runtime := NewRuntime(zombieGroundWorld(-2, 12, -2, 12))
+
+	skeleton := runtime.SpawnSkeleton(game.Position{X: .5, Z: .5})
+
+	skeleton.Living.OnGround = true
+
+	wantSteps := []float64{
+		.03125,
+		.048312502,
+		.0576286291,
+		.0627152352,
+		.0654925224,
+		.0670089214,
+		.0678368753,
+		.0682889382,
+	}
+
+	previousZ := skeleton.State.Position.Z
+
+	for tick, want := range wantSteps {
+		skeleton.MoveControl.Strafe(.5, 0)
+		skeleton.MoveControl.TickConfigured(skeleton.State.Position, &skeleton.Rotation, skeletonGroundControlConfig(), nil)
+
+		runtime.applyGroundLivingPhysics(&skeleton.State, &skeleton.Living, &skeleton.Rotation, &skeleton.MoveControl, skeletonGroundControlConfig())
+
+		step := skeleton.State.Position.Z - previousZ
+		if math.Abs(step-want) > 1e-8 {
+			t.Fatalf("strafe tick %d displacement = %.10f, want %.10f", tick+1, step, want)
+		}
+
+		previousZ = skeleton.State.Position.Z
+	}
+
+	for range 91 {
+		skeleton.MoveControl.Strafe(.5, 0)
+		skeleton.MoveControl.TickConfigured(skeleton.State.Position, &skeleton.Rotation, skeletonGroundControlConfig(), nil)
+
+		runtime.applyGroundLivingPhysics(&skeleton.State, &skeleton.Living, &skeleton.Rotation, &skeleton.MoveControl, skeletonGroundControlConfig())
+
+		previousZ = skeleton.State.Position.Z
+	}
+
+	skeleton.MoveControl.Strafe(.5, 0)
+	skeleton.MoveControl.TickConfigured(skeleton.State.Position, &skeleton.Rotation, skeletonGroundControlConfig(), nil)
+
+	runtime.applyGroundLivingPhysics(&skeleton.State, &skeleton.Living, &skeleton.Rotation, &skeleton.MoveControl, skeletonGroundControlConfig())
+
+	step := skeleton.State.Position.Z - previousZ
+	if math.Abs(step-.0688326087) > 1e-8 {
+		t.Fatalf("steady-state strafe displacement = %.10f, want %.10f", step, .0688326087)
+	}
+}
+
 func TestSkeletonStrafeWalkabilityFallbackAndOneShotOperation(t *testing.T) {
 	skeleton := NewRuntime(&game.World{}).SpawnSkeleton(game.Position{X: .5, Z: .5})
 
@@ -278,7 +332,7 @@ func TestSkeletonStrafeWalkabilityFallbackAndOneShotOperation(t *testing.T) {
 		t.Fatalf("rotated walkability probe = (%0.8f, %0.8f)", probeX, probeZ)
 	}
 
-	if skeleton.MoveControl.ForwardInput != 1 || skeleton.MoveControl.SidewaysInput != 0 || skeleton.MoveControl.MovementSpeed != skeletonMovementSpeed*.25 {
+	if skeleton.MoveControl.ForwardInput != 1 || skeleton.MoveControl.SidewaysInput != 0 || skeleton.MoveControl.MovementSpeed != .25 {
 		t.Fatal("non-walkable strafe did not fall back to vanilla forward input")
 	}
 
@@ -534,6 +588,14 @@ func TestSkeletonFleeSunSelectsReachableShelter(t *testing.T) {
 	skeleton.Living.RemainingFireTicks = skeletonFireDurationTicks
 
 	goal := &skeletonFleeSunGoal{Entity: skeleton}
+
+	skeleton.GoalTarget = runtimeLivingTarget{entity: spawnTestRuntimeLivingEntity(runtime, game.Position{X: 6.5, Z: .5}, 20)}
+
+	if goal.CanUse(runtime) {
+		t.Fatal("burning skeleton with a target started fleeing sun")
+	}
+
+	skeleton.GoalTarget = runtimeLivingTarget{}
 
 	if !goal.CanUse(runtime) {
 		t.Fatal("exposed burning skeleton did not find reachable shelter")

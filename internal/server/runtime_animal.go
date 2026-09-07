@@ -421,6 +421,9 @@ func (runtime *Runtime) tickAnimal(concrete RuntimeEntity, entity *runtimeAnimal
 	entity.State.mu.Lock()
 	entity.TickCount++
 	entity.NoActionTime++
+
+	tickCount := entity.TickCount
+	entityID := entity.State.ID
 	entity.State.mu.Unlock()
 
 	runtime.tickRuntimeLivingBaseEnvironment(livingEntity)
@@ -432,7 +435,9 @@ func (runtime *Runtime) tickAnimal(concrete RuntimeEntity, entity *runtimeAnimal
 		return
 	}
 
-	entity.Goals.Tick(runtime)
+	fullGoalTick := tickCount <= 1 || (tickCount+entityID)%2 == 0
+
+	entity.Goals.Tick(runtime, fullGoalTick)
 
 	configuration := animalGroundControlConfig(entity.Spec)
 
