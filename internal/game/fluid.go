@@ -73,6 +73,14 @@ func (state FluidState) Empty() bool {
 	return state.fluidType == FluidTypeEmpty
 }
 
+func (state FluidState) ExplosionResistance() float32 {
+	if state.Empty() {
+		return 0
+	}
+
+	return 100
+}
+
 func (state FluidState) IsSource() bool {
 	return !state.Empty() && state.level == 0
 }

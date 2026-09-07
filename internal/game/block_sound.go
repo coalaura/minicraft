@@ -149,6 +149,7 @@ const (
 	SoundEntitySkeletonHurt    SoundEvent = "minecraft:entity.skeleton.hurt"
 	SoundEntitySkeletonStep    SoundEvent = "minecraft:entity.skeleton.step"
 	SoundEntitySkeletonShoot   SoundEvent = "minecraft:entity.skeleton.shoot"
+	SoundEntityTntPrimed       SoundEvent = "minecraft:entity.tnt.primed"
 	SoundEntityPlayerBurp      SoundEvent = "minecraft:entity.player.burp"
 	SoundItemHoneyBottleDrink  SoundEvent = "minecraft:item.honey_bottle.drink"
 	SoundItemFireChargeUse     SoundEvent = "minecraft:item.firecharge.use"

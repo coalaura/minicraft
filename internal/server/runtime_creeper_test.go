@@ -33,6 +33,11 @@ func TestSpawnCreeperTracksViewerAndPublishesMetadata(t *testing.T) {
 		t.Fatalf("creeper spawn state = %+v", creeper)
 	}
 
+	floatEntry := groundMobFloatGoalEntry(creeper.Goals)
+	if floatEntry == nil || floatEntry.Priority != 1 || floatEntry.Flags != runtimeGoalJump {
+		t.Fatalf("creeper float registration = %+v", floatEntry)
+	}
+
 	if creeper.RuntimeEntityTrackingConfig() != (RuntimeEntityTrackingConfig{ClientRangeChunks: 8, UpdateInterval: 3, TrackDeltas: true}) || !viewer.tracksRuntimeEntity(creeper.State.ID) {
 		t.Fatal("creeper tracking configuration or viewer tracking is wrong")
 	}
@@ -115,6 +120,8 @@ func TestCreeperFusePrimesOnceExplodesOnThirtiethTickAndUsesPoweredRadius(t *tes
 
 	creeper := runtime.SpawnCreeper(game.Position{})
 
+	victim := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 1}, 20)
+
 	creeper.Powered = true
 	creeper.SwellDirection = 1
 
@@ -138,6 +145,12 @@ func TestCreeperFusePrimesOnceExplodesOnThirtiethTickAndUsesPoweredRadius(t *tes
 	if len(explosions) != 1 || countPacketID(connection.packets(t), protocol.ClientboundRemoveEntitiesID) != 1 || countPacketID(connection.packets(t), protocol.ClientboundSoundID) != 1 {
 		t.Fatalf("creeper fuse packets = %v", connection.packetIDs(t))
 	}
+
+	if victim.Living.LastDamageType != game.DamageExplosion || victim.Living.LastDamageCauseEntityID != creeper.State.ID {
+		t.Fatalf("creeper damage attribution = type %v cause %d", victim.Living.LastDamageType, victim.Living.LastDamageCauseEntityID)
+	}
+
+	assertExplosionDamagePacket(t, connection, victim.State.ID, game.DamageExplosion, creeper.State.ID, creeper.State.ID)
 
 	reader := protocol.NewPacketReader(explosions[0].Data)
 

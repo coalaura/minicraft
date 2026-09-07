@@ -27,15 +27,18 @@ const (
 	ArrowFlagsMetadataIndex       = 8
 	ArrowPierceLevelMetadataIndex = 9
 	ArrowInGroundMetadataIndex    = 10
+	TntFuseMetadataIndex          = 8
+	TntBlockStateMetadataIndex    = 9
 	PlayerAbsorptionMetadataIndex = 17
 	PlayerSkinPartsMetadataIndex  = 16
 
-	MetadataTypeByte      = 0
-	MetadataTypeInt       = 1
-	MetadataTypeFloat     = 3
-	MetadataTypeItemStack = 7
-	MetadataTypeBoolean   = 8
-	MetadataTypePose      = 20
+	MetadataTypeByte       = 0
+	MetadataTypeInt        = 1
+	MetadataTypeFloat      = 3
+	MetadataTypeItemStack  = 7
+	MetadataTypeBoolean    = 8
+	MetadataTypeBlockState = 14
+	MetadataTypePose       = 20
 
 	MetadataTerminator = 0xFF
 

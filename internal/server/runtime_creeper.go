@@ -503,7 +503,7 @@ func (entity *runtimeCreeperEntity) tickFuse(runtime *Runtime) {
 		radius = creeperPoweredRadius
 	}
 
-	_, players, living := runtime.explodeLocked(RuntimeExplosion{Position: position, Radius: radius, SourceEntityID: entityID, BlockInteraction: ExplosionDestroyBlocksWithDecay})
+	_, players, living := runtime.explodeLocked(RuntimeExplosion{Position: position, Radius: radius, DirectEntityID: entityID, CauseEntityID: entityID, BlockInteraction: ExplosionDestroyBlocksWithDecay})
 
 	runtime.sendExplosionEntityUpdates(players, living)
 	runtime.removeRuntimeEntity(entityID)
@@ -714,6 +714,7 @@ func (runtime *Runtime) SpawnCreeper(position game.Position) *runtimeCreeperEnti
 
 	entity.SwellDirection = -1
 
+	entity.Goals.Add(1, runtimeGoalJump, &groundMobFloatGoal{Entity: entity, EyeHeight: creeperEyeHeight, MoveControl: &entity.MoveControl})
 	entity.Goals.Add(2, runtimeGoalMove, &creeperSwellGoal{Entity: entity})
 	entity.Goals.Add(4, runtimeGoalMove|runtimeGoalLook, &creeperMeleeGoal{Entity: entity})
 	entity.Goals.Add(5, runtimeGoalMove, &creeperStrollGoal{Entity: entity})

@@ -202,7 +202,7 @@ func TestAnimalPanicUsesSharedRegistrationsAndStopsWithNavigation(t *testing.T) 
 		panicEntry := animalPanicGoalEntry(animal)
 		panicGoal := panicEntry.Goal.(*animalPanicGoal)
 
-		floatEntry := animalFloatGoalEntry(animal)
+		floatEntry := groundMobFloatGoalEntry(animal.Goals)
 
 		randomLookEntry := animalRandomLookGoalEntry(animal)
 
@@ -314,7 +314,7 @@ func TestAnimalFloatGoalJumpsInWaterAndPausesInactive(t *testing.T) {
 
 	runtime.Tick()
 
-	floatEntry := animalFloatGoalEntry(&cow.runtimeAnimal)
+	floatEntry := groundMobFloatGoalEntry(cow.Goals)
 	if !floatEntry.Running || !cow.MoveControl.Jump || cow.State.Position.Y <= start.Y {
 		t.Fatalf("active float state = running %t jump %t position %+v", floatEntry.Running, cow.MoveControl.Jump, cow.State.Position)
 	}
@@ -333,11 +333,11 @@ func animalPanicGoalEntry(animal *runtimeAnimal) *runtimeGoalEntry {
 	return nil
 }
 
-func animalFloatGoalEntry(animal *runtimeAnimal) *runtimeGoalEntry {
-	for index := range animal.Goals.Entries {
-		entry := &animal.Goals.Entries[index]
+func groundMobFloatGoalEntry(selector runtimeGoalSelector) *runtimeGoalEntry {
+	for index := range selector.Entries {
+		entry := &selector.Entries[index]
 
-		_, floatGoal := entry.Goal.(*animalFloatGoal)
+		_, floatGoal := entry.Goal.(*groundMobFloatGoal)
 		if floatGoal {
 			return entry
 		}

@@ -120,6 +120,21 @@ func TestFluidStateSupportsWaterloggedBlocks(t *testing.T) {
 	}
 }
 
+func TestFluidStateExplosionResistance(t *testing.T) {
+	stairs, valid := OakStairs.WithProperties(BlockPropertyValue{Name: "waterlogged", Value: "true"})
+	if !valid {
+		t.Fatal("resolve waterlogged stairs")
+	}
+
+	if Air.FluidState().ExplosionResistance() != 0 {
+		t.Fatal("empty fluid has explosion resistance")
+	}
+
+	if Water.FluidState().ExplosionResistance() != 100 || Lava.FluidState().ExplosionResistance() != 100 || stairs.FluidState().ExplosionResistance() != 100 {
+		t.Fatal("water, lava, or waterlogged terrain lacks fluid explosion resistance")
+	}
+}
+
 func TestWorldFluidAtAndEffectiveHeight(t *testing.T) {
 	world := NewOverworld(nil)
 

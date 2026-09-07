@@ -8,11 +8,91 @@ import (
 )
 
 func (r *Runtime) UseHeldItemOnBlock(session *Session, interaction protocol.UseItemOn, expected game.Item) (bool, BlockMutationResult, []game.BlockPosition, error) {
+	if expected == game.ItemFlintAndSteel || expected == game.ItemFireCharge {
+		return r.useIgnitionItemOnTnt(session, interaction, expected)
+	}
+
 	if expected.OnBlockBehavior() != game.ItemOnBlockBehaviorHoe {
 		return false, BlockMutationResult{}, nil, nil
 	}
 
 	return r.useHoeOnBlock(session, interaction, expected)
+}
+
+func (r *Runtime) useIgnitionItemOnTnt(session *Session, interaction protocol.UseItemOn, expected game.Item) (bool, BlockMutationResult, []game.BlockPosition, error) {
+	r.worldMutationMu.Lock()
+
+	ownerID := int32(0)
+
+	result, delivery, err := func() (BlockMutationResult, blockMutationDelivery, error) {
+		defer r.worldMutationMu.Unlock()
+
+		player := session.snapshotPlayer()
+
+		held, valid := heldItemFromPlayer(player, interaction.Hand)
+		if !valid || held.Empty() || held.Item != expected {
+			return BlockMutationResult{}, blockMutationDelivery{}, nil
+		}
+
+		block := r.World.BlockAt(interaction.Position)
+		if !sameBlockType(block, game.Tnt) {
+			return BlockMutationResult{Block: block}, blockMutationDelivery{}, nil
+		}
+
+		changes := r.withStructuralNeighborChanges([]game.BlockChange{{Position: interaction.Position, Replacement: game.Air}})
+
+		result, delivery, err := r.mutateBlocksLocked(session, BlockMutationInteract, changes, 1, true, false, false, true)
+		if err != nil || !result.Changed {
+			return result, delivery, err
+		}
+
+		delivery.runtimeSounds = append(delivery.runtimeSounds, positionalSound(interaction.Position, game.SoundEntityTntPrimed, 1, 1))
+
+		ownerID = player.EntityID
+
+		if player.GameMode != game.GameModeSurvival {
+			return result, delivery, nil
+		}
+
+		if expected == game.ItemFlintAndSteel {
+			inventoryBefore, toolBroke := r.damageHeldItem(session, interaction.Hand, held, 1)
+
+			delivery.miningInventory = inventoryBefore
+			delivery.miningToolBroke = toolBroke
+
+			return result, delivery, nil
+		}
+
+		inventoryBefore := player.Inventory
+
+		_, changed := session.updatePlayerState(func(current *game.Player) bool {
+			stack, found := heldItemPointer(current, interaction.Hand)
+			if !found || !stack.SameItem(held) {
+				return false
+			}
+
+			stack.Count--
+
+			if stack.Count == 0 {
+				*stack = game.ItemStack{}
+			}
+
+			return true
+		})
+
+		if changed {
+			delivery.miningInventory = &inventoryBefore
+		}
+
+		return result, delivery, nil
+	}()
+
+	result, err = r.completeBlockMutation(result, delivery, err)
+	if err == nil && result.Changed {
+		r.primeTnt(interaction.Position, ownerID, tntDefaultFuse)
+	}
+
+	return result.Changed, result, []game.BlockPosition{interaction.Position}, err
 }
 
 func (r *Runtime) useHoeOnBlock(session *Session, interaction protocol.UseItemOn, expected game.Item) (bool, BlockMutationResult, []game.BlockPosition, error) {

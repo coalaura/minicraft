@@ -17,17 +17,12 @@ const (
 	animalPanicVerticalRange      = 4
 	animalPanicPositionAttempts   = 10
 	animalPanicWaterVerticalRange = 1
-	animalFloatWaterThreshold     = 0.4
 )
 
 type animalPanicGoal struct {
 	Entity *runtimeAnimal
 	Speed  float64
 	Goal   game.Position
-}
-
-type animalFloatGoal struct {
-	Entity *runtimeAnimal
 }
 
 type animalTemptGoal struct {
@@ -107,50 +102,6 @@ func (goal *animalPanicGoal) Start(runtime *Runtime) {
 func (goal *animalPanicGoal) Stop(*Runtime) {}
 
 func (goal *animalPanicGoal) Tick(*Runtime) {}
-
-func (goal *animalFloatGoal) CanUse(runtime *Runtime) bool {
-	goal.Entity.State.mu.RLock()
-	position := goal.Entity.State.Position
-
-	box := goal.Entity.Living.CollisionBox(position)
-
-	threshold := animalFloatWaterThreshold
-
-	if goal.Entity.Spec.EyeHeight < animalFloatWaterThreshold {
-		threshold = 0
-	}
-
-	goal.Entity.State.mu.RUnlock()
-
-	waterDepth := runtime.fluidContact(box, game.FluidTypeWater, false).Depth
-	if waterDepth > threshold {
-		return true
-	}
-
-	return runtime.fluidContact(box, game.FluidTypeLava, false).Depth > 0
-}
-
-func (goal *animalFloatGoal) CanContinue(runtime *Runtime) bool {
-	return goal.CanUse(runtime)
-}
-
-func (goal *animalFloatGoal) Start(*Runtime) {}
-
-func (goal *animalFloatGoal) Stop(*Runtime) {}
-
-func (goal *animalFloatGoal) Tick(runtime *Runtime) {
-	if runtime.nextEntityRandom() >= 0.8 {
-		return
-	}
-
-	goal.Entity.State.mu.Lock()
-	goal.Entity.MoveControl.JumpRequested = true
-	goal.Entity.State.mu.Unlock()
-}
-
-func (*animalFloatGoal) RequiresUpdateEveryTick() bool {
-	return true
-}
 
 func (goal *animalTemptGoal) CanUse(runtime *Runtime) bool {
 	goal.Target = nearestTemptingPlayer(runtime, goal.Entity)
@@ -304,7 +255,7 @@ func (*animalRandomLookGoal) RequiresUpdateEveryTick() bool {
 }
 
 func (runtime *Runtime) configureAnimalGoals(entity *runtimeAnimal) {
-	entity.Goals.Add(0, runtimeGoalJump, &animalFloatGoal{Entity: entity})
+	entity.Goals.Add(0, runtimeGoalJump, &groundMobFloatGoal{Entity: entity, EyeHeight: entity.Spec.EyeHeight, MoveControl: &entity.MoveControl})
 	entity.Goals.Add(1, runtimeGoalMove, &animalPanicGoal{Entity: entity, Speed: entity.Spec.PanicSpeed})
 	entity.Goals.Add(3, runtimeGoalMove|runtimeGoalLook, &animalTemptGoal{Entity: entity, Speed: animalTemptSpeed(entity.Spec.EntityType)})
 	entity.Goals.Add(animalStrollPriority(entity.Spec.EntityType), runtimeGoalMove, &animalStrollGoal{Entity: entity, Speed: 1})

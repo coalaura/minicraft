@@ -26,8 +26,8 @@ type ExplosionBlockInteraction uint8
 type RuntimeExplosion struct {
 	Position         game.Position
 	Radius           float32
-	SourceEntityID   int32
-	SourceIsPlayer   bool
+	DirectEntityID   int32
+	CauseEntityID    int32
 	BlockInteraction ExplosionBlockInteraction
 	Random           func() float32
 }
@@ -125,10 +125,18 @@ func (r *Runtime) explosionAffectedBlocks(center game.Position, radius float32, 
 					}
 
 					block := r.World.BlockAt(blockPosition)
-					definition, defined := block.Definition()
 
-					if block != game.Air && defined {
-						power -= (definition.ExplosionResistance + 0.3) * 0.3
+					definition, defined := block.Definition()
+					fluidResistance := r.World.FluidAt(blockPosition).ExplosionResistance()
+
+					if defined || fluidResistance > 0 {
+						blockResistance := float32(0)
+
+						if defined {
+							blockResistance = definition.ExplosionResistance
+						}
+
+						power -= (max(blockResistance, fluidResistance) + 0.3) * 0.3
 					}
 
 					if power > 0 && block != game.Air {
@@ -167,18 +175,14 @@ func (r *Runtime) explosionAffectedBlocks(center game.Position, radius float32, 
 
 func (r *Runtime) damageExplosionEntities(explosion RuntimeExplosion, result *RuntimeExplosionResult) ([]explosionPlayerUpdate, []explosionLivingUpdate) {
 	diameter := float64(explosion.Radius * 2)
-	damageType := game.DamageExplosion
-
-	if explosion.SourceIsPlayer {
-		damageType = game.DamagePlayerExplosion
-	}
+	damageType := r.explosionDamageType(explosion)
 
 	playerUpdates := make([]explosionPlayerUpdate, 0)
 
 	for _, session := range r.snapshotSessions() {
 		player := session.snapshotPlayer()
 
-		if (explosion.SourceEntityID != 0 && player.EntityID == explosion.SourceEntityID) || player.GameMode == game.GameModeSpectator {
+		if (explosion.DirectEntityID != 0 && player.EntityID == explosion.DirectEntityID) || player.GameMode == game.GameModeSpectator {
 			continue
 		}
 
@@ -187,7 +191,7 @@ func (r *Runtime) damageExplosionEntities(explosion RuntimeExplosion, result *Ru
 			continue
 		}
 
-		survival, damaged := r.damagePlayerLocked(session, game.Damage{Type: damageType, Amount: damage, CauseEntityID: explosion.SourceEntityID, DirectEntityID: explosion.SourceEntityID, SourcePosition: &explosion.Position})
+		survival, damaged := r.damagePlayerLocked(session, game.Damage{Type: damageType, Amount: damage, CauseEntityID: explosion.CauseEntityID, DirectEntityID: explosion.DirectEntityID, SourcePosition: &explosion.Position})
 
 		player, _ = session.updatePlayerState(func(player *game.Player) bool {
 			player.Velocity.X += knockback.X
@@ -218,7 +222,7 @@ func (r *Runtime) damageExplosionEntities(explosion RuntimeExplosion, result *Ru
 		removed := state.Removed
 		state.mu.RUnlock()
 
-		if (explosion.SourceEntityID != 0 && entityID == explosion.SourceEntityID) || removed {
+		if (explosion.DirectEntityID != 0 && entityID == explosion.DirectEntityID) || removed {
 			continue
 		}
 
@@ -235,7 +239,7 @@ func (r *Runtime) damageExplosionEntities(explosion RuntimeExplosion, result *Ru
 			continue
 		}
 
-		update, applied := r.damageRuntimeLivingEntityLocked(living, game.Damage{Type: damageType, Amount: damage, CauseEntityID: explosion.SourceEntityID, DirectEntityID: explosion.SourceEntityID, SourcePosition: &explosion.Position})
+		update, applied := r.damageRuntimeLivingEntityLocked(living, game.Damage{Type: damageType, Amount: damage, CauseEntityID: explosion.CauseEntityID, DirectEntityID: explosion.DirectEntityID, SourcePosition: &explosion.Position})
 
 		state.mu.Lock()
 
@@ -253,6 +257,21 @@ func (r *Runtime) damageExplosionEntities(explosion RuntimeExplosion, result *Ru
 	}
 
 	return playerUpdates, livingUpdates
+}
+
+func (r *Runtime) explosionDamageType(explosion RuntimeExplosion) game.DamageType {
+	if explosion.DirectEntityID == 0 || explosion.CauseEntityID == 0 {
+		return game.DamageExplosion
+	}
+
+	for _, session := range r.snapshotSessions() {
+		player := session.snapshotPlayer()
+		if player.EntityID == explosion.CauseEntityID {
+			return game.DamagePlayerExplosion
+		}
+	}
+
+	return game.DamageExplosion
 }
 
 func (r *Runtime) explosionImpact(center game.Position, diameter float64, position, origin game.Position, box game.AABB, resistance float32) (game.Velocity, float32, bool) {
@@ -349,6 +368,7 @@ func (r *Runtime) explosionSegmentBlocked(start, end game.Position) bool {
 
 func (r *Runtime) destroyExplosionBlocksLocked(affected []game.BlockPosition, explosion RuntimeExplosion, random func() float32) []game.BlockPosition {
 	shuffled := append([]game.BlockPosition(nil), affected...)
+	primedTnt := make(map[game.BlockPosition]struct{})
 
 	for index := len(shuffled) - 1; index > 0; index-- {
 		swap := int(random() * float32(index+1))
@@ -360,7 +380,12 @@ func (r *Runtime) destroyExplosionBlocksLocked(affected []game.BlockPosition, ex
 	changes := make([]game.BlockChange, 0, len(shuffled))
 
 	for _, position := range shuffled {
-		if r.World.BlockAt(position) != game.Air {
+		block := r.World.BlockAt(position)
+		if sameBlockType(block, game.Tnt) {
+			primedTnt[position] = struct{}{}
+		}
+
+		if block != game.Air {
 			changes = append(changes, game.BlockChange{Position: position, Replacement: game.Air})
 		}
 	}
@@ -383,6 +408,12 @@ func (r *Runtime) destroyExplosionBlocksLocked(affected []game.BlockPosition, ex
 			continue
 		}
 
+		if _, prime := primedTnt[record.change.Position]; prime {
+			record.lootContext = blockLootNone
+
+			continue
+		}
+
 		record.lootContext = blockLootNoBreaker
 
 		if explosion.BlockInteraction == ExplosionDestroyBlocksWithDecay {
@@ -399,6 +430,13 @@ func (r *Runtime) destroyExplosionBlocksLocked(affected []game.BlockPosition, ex
 	for _, change := range result.Changes {
 		if change.Replacement == game.Air {
 			destroyed = append(destroyed, change.Position)
+
+			if _, prime := primedTnt[change.Position]; prime {
+				fuse := int32(random()*20) + 10
+				fuse = min(fuse, 29)
+
+				r.primeTnt(change.Position, explosion.CauseEntityID, fuse)
+			}
 		}
 	}
 

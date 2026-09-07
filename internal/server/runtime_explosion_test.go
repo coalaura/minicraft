@@ -2,6 +2,7 @@ package server
 
 import (
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -119,4 +120,40 @@ func TestExplosionSolidBlockReducesExposure(t *testing.T) {
 	if obstructed >= unobstructed {
 		t.Fatalf("obstructed exposure = %v, want less than %v", obstructed, unobstructed)
 	}
+}
+
+func TestExplosionUsesWaterloggedTerrainFluidResistance(t *testing.T) {
+	stairs, valid := game.OakStairs.WithProperties(game.BlockPropertyValue{Name: "waterlogged", Value: "true"})
+	if !valid {
+		t.Fatal("resolve waterlogged stairs")
+	}
+
+	position := game.BlockPosition{}
+	center := game.Position{X: .5, Y: .5, Z: .5}
+
+	random := func() float32 {
+		return 1
+	}
+
+	dryWorld := &game.World{}
+
+	dryWorld.SetBlock(position, game.OakStairs)
+
+	dry := NewRuntime(dryWorld).explosionAffectedBlocks(center, 4, random)
+	if !containsBlockPosition(dry, position) {
+		t.Fatalf("dry terrain affected blocks = %+v, want origin", dry)
+	}
+
+	wetWorld := &game.World{}
+
+	wetWorld.SetBlock(position, stairs)
+
+	wet := NewRuntime(wetWorld).explosionAffectedBlocks(center, 4, random)
+	if containsBlockPosition(wet, position) {
+		t.Fatalf("waterlogged terrain affected blocks = %+v, want origin shielded", wet)
+	}
+}
+
+func containsBlockPosition(positions []game.BlockPosition, expected game.BlockPosition) bool {
+	return slices.Contains(positions, expected)
 }

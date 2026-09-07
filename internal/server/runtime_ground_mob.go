@@ -16,6 +16,7 @@ const (
 	groundMovementOvershootNearNodeSq  = 0.5
 	groundMovementWantedMinimumSquared = 2.5000003e-7
 	groundMovementLiquidJumpImpulse    = 0.04
+	groundMobFloatWaterThreshold       = 0.4
 )
 
 type groundMobControlConfig struct {
@@ -67,6 +68,12 @@ type groundLookControlState struct {
 type groundBodyRotationState struct {
 	LastStableHead float32
 	StableTicks    int32
+}
+
+type groundMobFloatGoal struct {
+	Entity      RuntimeLivingEntity
+	EyeHeight   float64
+	MoveControl *groundMoveControlState
 }
 
 func (navigation *groundNavigationState) Done() bool {
@@ -276,6 +283,53 @@ func (control *groundBodyRotationState) Tick(previous, position game.Position, r
 	maximumDifference := maximumHeadYaw * (1 - progress)
 
 	rotation.Yaw = clampAngleAround(rotation.Yaw, rotation.HeadYaw, maximumDifference)
+}
+
+func (goal *groundMobFloatGoal) CanUse(runtime *Runtime) bool {
+	state := goal.Entity.RuntimeEntityState()
+	living := goal.Entity.RuntimeLivingState()
+
+	state.mu.RLock()
+	position := state.Position
+	box := living.CollisionBox(position)
+	state.mu.RUnlock()
+
+	threshold := groundMobFloatWaterThreshold
+
+	if goal.EyeHeight < groundMobFloatWaterThreshold {
+		threshold = 0
+	}
+
+	waterDepth := runtime.fluidContact(box, game.FluidTypeWater, false).Depth
+	if waterDepth > threshold {
+		return true
+	}
+
+	return runtime.fluidContact(box, game.FluidTypeLava, false).Depth > 0
+}
+
+func (goal *groundMobFloatGoal) CanContinue(runtime *Runtime) bool {
+	return goal.CanUse(runtime)
+}
+
+func (*groundMobFloatGoal) Start(*Runtime) {}
+
+func (*groundMobFloatGoal) Stop(*Runtime) {}
+
+func (goal *groundMobFloatGoal) Tick(runtime *Runtime) {
+	if runtime.nextEntityRandom() >= 0.8 {
+		return
+	}
+
+	state := goal.Entity.RuntimeEntityState()
+
+	state.mu.Lock()
+	goal.MoveControl.JumpRequested = true
+	state.mu.Unlock()
+}
+
+func (*groundMobFloatGoal) RequiresUpdateEveryTick() bool {
+	return true
 }
 
 func (runtime *Runtime) tickGroundMobMovement(entity RuntimeEntity, living *RuntimeLivingState, rotation *game.Rotation, navigation *groundNavigationState, moveControl *groundMoveControlState, lookControl *groundLookControlState, bodyControl *groundBodyRotationState, configuration groundMobControlConfig, fallDamageImmune bool) (float32, bool) {
