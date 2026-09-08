@@ -13,8 +13,8 @@ func containerBlockEntityStillValid(runtime *Runtime, session *Session, expected
 		return false
 	}
 
-	player := session.snapshotPlayer()
-	return containerWithinRange(player, position)
+	player := session.playerView()
+	return player.withinBlockInteractionRange(position, containerValidityPadding)
 }
 
 func containerWithinRange(player game.Player, position game.BlockPosition) bool {

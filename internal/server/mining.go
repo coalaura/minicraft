@@ -143,7 +143,7 @@ func (r *Runtime) abortDestroyingBlock(session *Session) {
 func (r *Runtime) tickMiningAttemptsLocked() []queuedBlockMutation {
 	mutations := make([]queuedBlockMutation, 0)
 
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		state := session.mining
 		if !state.active && !state.delayed {
 			continue
@@ -238,7 +238,7 @@ func (r *Runtime) broadcastMiningCrack(session *Session, position game.BlockPosi
 
 	packet := protocol.BlockDestruction{EntityID: breaker.EntityID, Position: position, Stage: stage}
 
-	for _, other := range r.snapshotSessions() {
+	for _, other := range r.sessionView() {
 		if other == session || !other.hasLoadedBlock(position) {
 			continue
 		}
@@ -312,7 +312,7 @@ func (r *Runtime) damageItem(session *Session, expected game.ItemStack, amount, 
 	before := session.snapshotPlayer().Inventory
 	broke := false
 
-	_, changed := session.updatePlayerState(func(player *game.Player) bool {
+	changed := session.mutatePlayer(func(player *game.Player) bool {
 		stack := selectStack(player)
 		if stack == nil || !stack.SameItem(expected) {
 			return false

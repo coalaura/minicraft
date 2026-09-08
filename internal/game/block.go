@@ -218,7 +218,9 @@ func (block Block) IsRedstoneConductor() bool {
 		return false
 	}
 
-	boxes := block.CollisionBoxes(BlockPosition{})
+	var boxBuffer [maxBlockCollisionBoxes]AABB
+
+	boxes := block.AppendCollisionBoxes(boxBuffer[:0], BlockPosition{})
 	if len(boxes) != 1 {
 		return false
 	}

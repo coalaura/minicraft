@@ -306,7 +306,7 @@ func (s *Session) hasLoadedBlock(position game.BlockPosition) bool {
 }
 
 func (s *Session) updatePlayerChunks() error {
-	player := s.snapshotPlayer()
+	player := s.playerView()
 	center := LoadedChunk{
 		X: chunkCoordinate(player.Position.X),
 		Z: chunkCoordinate(player.Position.Z),

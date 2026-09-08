@@ -57,8 +57,8 @@ func (r *Runtime) Tick() game.TimeState {
 
 	swimmingChanges := r.updateActivePlayerSwimmingLocked()
 
-	for _, session := range r.snapshotSessions() {
-		session.updatePlayerState(func(player *game.Player) bool {
+	for _, session := range r.sessionView() {
+		session.mutatePlayer(func(player *game.Player) bool {
 			player.TickAttackStrength()
 
 			return true
@@ -115,8 +115,8 @@ func (r *Runtime) tickPlayerDeathLocked(session *Session) (playerDeathLifecycleU
 	var recipients []*Session
 
 	if player.DeathTime+1 >= playerDeathDuration {
-		for _, recipient := range r.snapshotSessions() {
-			if recipient != session && !playersVisible(recipient.snapshotPlayer(), player, recipient.renderDistance()) {
+		for _, recipient := range r.sessionView() {
+			if recipient != session && !playerViewSeesPlayer(recipient.playerView(), player, recipient.renderDistance()) {
 				continue
 			}
 
@@ -150,7 +150,7 @@ func (r *Runtime) sendPlayerDeathLifecycleUpdate(update playerDeathLifecycleUpda
 			recipient.Log.Warnf("[play] failed to synchronize final player death event: %v\n", err)
 		}
 
-		if recipient.snapshotPlayer().EntityID == update.player.EntityID {
+		if recipient.playerView().EntityID == update.player.EntityID {
 			continue
 		}
 
@@ -162,7 +162,7 @@ func (r *Runtime) sendPlayerDeathLifecycleUpdate(update playerDeathLifecycleUpda
 }
 
 func (r *Runtime) broadcastTime(state game.TimeState) {
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		err := session.sendTimeUpdate(state)
 		if err != nil && session.Log != nil {
 			session.Log.Warnf("[play] failed to synchronize world time: %v\n", err)

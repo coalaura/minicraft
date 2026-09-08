@@ -65,7 +65,7 @@ func (r *Runtime) useIgnitionItemOnTnt(session *Session, interaction protocol.Us
 
 		inventoryBefore := player.Inventory
 
-		_, changed := session.updatePlayerState(func(current *game.Player) bool {
+		changed := session.mutatePlayer(func(current *game.Player) bool {
 			stack, found := heldItemPointer(current, interaction.Hand)
 			if !found || !stack.SameItem(held) {
 				return false

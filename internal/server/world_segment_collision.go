@@ -35,7 +35,9 @@ func (r *Runtime) sweepWorldBlockSegment(from, to game.Position) (worldSegmentBl
 
 				block := r.World.BlockAt(blockPosition)
 
-				for _, box := range block.CollisionBoxes(blockPosition) {
+				var boxBuffer [7]game.AABB
+
+				for _, box := range block.AppendCollisionBoxes(boxBuffer[:0], blockPosition) {
 					fraction, _, intersects := raycastAABB(from, deltaX, deltaY, deltaZ, box)
 					if !intersects || fraction < 0 || fraction > 1 || fraction >= nearestFraction {
 						continue

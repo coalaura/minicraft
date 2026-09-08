@@ -80,7 +80,7 @@ func (r *Runtime) playerEyeSubmerged(player game.Player) bool {
 func (r *Runtime) updateActivePlayerSwimmingLocked() []game.Player {
 	changedPlayers := make([]game.Player, 0)
 
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		player, changed := session.updatePlayerState(func(player *game.Player) bool {
 			previousPose := player.Pose
 			swimmingChanged := r.updatePlayerSwimmingState(player)
@@ -113,7 +113,10 @@ func (r *Runtime) playerFits(player game.Player) bool {
 			for blockZ := minZ; blockZ <= maxZ; blockZ++ {
 				position := game.BlockPosition{X: blockX, Y: blockY, Z: blockZ}
 
-				blockBoxes := r.World.BlockAt(position).CollisionBoxes(position)
+				var boxBuffer [7]game.AABB
+
+				blockBoxes := r.World.BlockAt(position).AppendCollisionBoxes(boxBuffer[:0], position)
+
 				if slices.ContainsFunc(blockBoxes, playerBox.Intersects) {
 					return false
 				}
@@ -125,13 +128,16 @@ func (r *Runtime) playerFits(player game.Player) bool {
 }
 
 func (r *Runtime) placementObstructed(changes []game.BlockChange) bool {
-	players := r.snapshotSessions()
+	players := r.sessionView()
 
 	for _, session := range players {
-		playerBox := session.snapshotPlayer().CollisionBox()
+		playerBox := session.playerView().collisionBox()
 
 		for _, change := range changes {
-			blockBoxes := change.Replacement.CollisionBoxes(change.Position)
+			var boxBuffer [7]game.AABB
+
+			blockBoxes := change.Replacement.AppendCollisionBoxes(boxBuffer[:0], change.Position)
+
 			if slices.ContainsFunc(blockBoxes, playerBox.Intersects) {
 				return true
 			}
@@ -151,7 +157,7 @@ func (r *Runtime) recalculateActivePlayerPoses() []game.Player {
 func (r *Runtime) recalculateActivePlayerPosesLocked() []game.Player {
 	changedPlayers := make([]game.Player, 0)
 
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		player, changed := session.updatePlayerState(func(player *game.Player) bool {
 			pose := r.calculatedPlayerPose(*player)
 			if pose == player.Pose {

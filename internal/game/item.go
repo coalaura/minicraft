@@ -1,7 +1,6 @@
 package game
 
 import (
-	"bytes"
 	"slices"
 	"sort"
 )
@@ -166,15 +165,24 @@ type ItemDefinition struct {
 }
 
 type ItemStack struct {
-	Item              Item
-	Count             int32
-	Components        []ItemComponent
-	RemovedComponents []int32
+	Item       Item
+	Count      int32
+	components *itemStackComponents
 }
 
 type ItemComponent struct {
 	Type int32
 	Data []byte
+}
+
+type itemStackComponent struct {
+	componentType int32
+	data          string
+}
+
+type itemStackComponents struct {
+	added   []itemStackComponent
+	removed []int32
 }
 
 type PlayerInventory struct {
@@ -307,42 +315,39 @@ func (stack ItemStack) Empty() bool {
 }
 
 func (stack ItemStack) Clone() ItemStack {
-	clone := stack
-
-	clone.Components = make([]ItemComponent, len(stack.Components))
-
-	for index, component := range stack.Components {
-		clone.Components[index] = ItemComponent{Type: component.Type, Data: append([]byte(nil), component.Data...)}
-	}
-
-	clone.RemovedComponents = append([]int32(nil), stack.RemovedComponents...)
-
-	return clone
+	return stack
 }
 
 func (stack ItemStack) Equal(other ItemStack) bool {
-	if stack.Item != other.Item || stack.Count != other.Count {
+	return stack.Item == other.Item && stack.Count == other.Count && stack.sameComponents(other)
+}
+
+func (stack ItemStack) SameItem(other ItemStack) bool {
+	return stack.Item == other.Item && stack.sameComponents(other)
+}
+
+func (stack ItemStack) sameComponents(other ItemStack) bool {
+	if stack.components == other.components {
+		return true
+	}
+
+	if stack.components == nil || other.components == nil {
 		return false
 	}
 
-	firstComponents, firstRemoved := normalizedComponentPatch(stack.Components, stack.RemovedComponents)
-	secondComponents, secondRemoved := normalizedComponentPatch(other.Components, other.RemovedComponents)
-
-	if len(firstComponents) != len(secondComponents) || len(firstRemoved) != len(secondRemoved) {
+	if len(stack.components.added) != len(other.components.added) || len(stack.components.removed) != len(other.components.removed) {
 		return false
 	}
 
-	for index := range firstComponents {
-		first := firstComponents[index]
-		second := secondComponents[index]
-
-		if first.Type != second.Type || !bytes.Equal(first.Data, second.Data) {
+	for index, component := range stack.components.added {
+		otherComponent := other.components.added[index]
+		if component != otherComponent {
 			return false
 		}
 	}
 
-	for index := range firstRemoved {
-		if firstRemoved[index] != secondRemoved[index] {
+	for index, componentType := range stack.components.removed {
+		if componentType != other.components.removed[index] {
 			return false
 		}
 	}
@@ -350,14 +355,56 @@ func (stack ItemStack) Equal(other ItemStack) bool {
 	return true
 }
 
-func (stack ItemStack) SameItem(other ItemStack) bool {
-	first := stack
-	second := other
+func NewItemStack(item Item, count int32, components []ItemComponent, removedComponents []int32) ItemStack {
+	return ItemStack{Item: item, Count: count, components: newItemStackComponents(components, removedComponents)}
+}
 
-	first.Count = 1
-	second.Count = 1
+func (stack ItemStack) Components() []ItemComponent {
+	if stack.components == nil {
+		return nil
+	}
 
-	return first.Equal(second)
+	components := make([]ItemComponent, len(stack.components.added))
+
+	for index, component := range stack.components.added {
+		components[index] = ItemComponent{Type: component.componentType, Data: []byte(component.data)}
+	}
+
+	return components
+}
+
+func (stack ItemStack) RemovedComponents() []int32 {
+	if stack.components == nil {
+		return nil
+	}
+
+	return append([]int32(nil), stack.components.removed...)
+}
+
+func (stack ItemStack) ComponentCount() int {
+	if stack.components == nil {
+		return 0
+	}
+
+	return len(stack.components.added)
+}
+
+func (stack ItemStack) ComponentAt(index int) (int32, string) {
+	component := stack.components.added[index]
+
+	return component.componentType, component.data
+}
+
+func (stack ItemStack) RemovedComponentCount() int {
+	if stack.components == nil {
+		return 0
+	}
+
+	return len(stack.components.removed)
+}
+
+func (stack ItemStack) RemovedComponentAt(index int) int32 {
+	return stack.components.removed[index]
 }
 
 func (stack ItemStack) Damage() int32 {
@@ -506,67 +553,57 @@ func (stack *ItemStack) SetEnchantments(enchantments map[Enchantment]int32) {
 	stack.replaceComponent(ItemComponentEnchantments, data)
 }
 
-func (stack ItemStack) component(componentType int32) ([]byte, bool) {
-	if slices.Contains(stack.RemovedComponents, componentType) {
-		return nil, false
+func (stack ItemStack) component(componentType int32) (string, bool) {
+	if stack.components == nil {
+		return "", false
 	}
 
-	for _, component := range slices.Backward(stack.Components) {
-		if component.Type == componentType {
-			return component.Data, true
+	if slices.Contains(stack.components.removed, componentType) {
+		return "", false
+	}
+
+	for _, component := range stack.components.added {
+		if component.componentType == componentType {
+			return component.data, true
 		}
 	}
 
-	return nil, false
+	return "", false
 }
 
 func (stack *ItemStack) replaceComponent(componentType int32, data []byte) {
-	components := stack.Components[:0]
-	inserted := false
+	components := stack.Components()
+	removed := stack.RemovedComponents()
 
-	for _, component := range stack.Components {
-		if component.Type != componentType {
-			components = append(components, component)
-
-			continue
-		}
-
-		if data != nil && !inserted {
-			components = append(components, ItemComponent{Type: componentType, Data: append([]byte(nil), data...)})
-			inserted = true
+	for index, removedType := range slices.Backward(removed) {
+		if removedType == componentType {
+			removed = append(removed[:index], removed[index+1:]...)
 		}
 	}
 
-	if data != nil && !inserted {
-		components = append(components, ItemComponent{Type: componentType, Data: append([]byte(nil), data...)})
-	}
+	for index, component := range components {
+		if component.Type == componentType {
+			if data == nil {
+				components = append(components[:index], components[index+1:]...)
+			} else {
+				components[index].Data = data
+			}
 
-	stack.Components = components
+			stack.components = newItemStackComponents(components, removed)
 
-	removed := stack.RemovedComponents[:0]
-
-	for _, removedType := range stack.RemovedComponents {
-		if removedType != componentType {
-			removed = append(removed, removedType)
+			return
 		}
 	}
 
-	stack.RemovedComponents = removed
-	stack.NormalizeComponents()
-}
+	if data != nil {
+		components = append(components, ItemComponent{Type: componentType, Data: data})
+	}
 
-func (stack *ItemStack) NormalizeComponents() {
-	stack.Components, stack.RemovedComponents = normalizedComponentPatch(stack.Components, stack.RemovedComponents)
+	stack.components = newItemStackComponents(components, removed)
 }
 
 func (inventory PlayerInventory) Clone() PlayerInventory {
-	clone := inventory
-
-	for slot := range PlayerInventorySlots {
-		*clone.Slot(slot) = inventory.Slot(slot).Clone()
-	}
-
-	return clone
+	return inventory
 }
 
 func (inventory *PlayerInventory) Slot(slot int) *ItemStack {
@@ -600,7 +637,7 @@ func (inventory PlayerInventory) Contents() []ItemStack {
 	contents := make([]ItemStack, PlayerInventorySlots)
 
 	for slot := range contents {
-		contents[slot] = inventory.Slot(slot).Clone()
+		contents[slot] = *inventory.Slot(slot)
 	}
 
 	return contents
@@ -626,21 +663,21 @@ func ItemForBlock(block Block) (Item, bool) {
 	return 0, false
 }
 
-func normalizedComponentPatch(components []ItemComponent, removedComponents []int32) ([]ItemComponent, []int32) {
+func newItemStackComponents(components []ItemComponent, removedComponents []int32) *itemStackComponents {
 	removedTypes := make(map[int32]struct{}, len(removedComponents))
 
 	for _, componentType := range removedComponents {
 		removedTypes[componentType] = struct{}{}
 	}
 
-	componentData := make(map[int32][]byte, len(components))
+	componentData := make(map[int32]string, len(components))
 
 	for _, component := range components {
 		if _, removed := removedTypes[component.Type]; removed {
 			continue
 		}
 
-		componentData[component.Type] = component.Data
+		componentData[component.Type] = string(component.Data)
 	}
 
 	componentTypes := make([]int, 0, len(componentData))
@@ -651,11 +688,11 @@ func normalizedComponentPatch(components []ItemComponent, removedComponents []in
 
 	sort.Ints(componentTypes)
 
-	normalizedComponents := make([]ItemComponent, 0, len(componentTypes))
+	normalizedComponents := make([]itemStackComponent, 0, len(componentTypes))
 
 	for _, componentType := range componentTypes {
 		typed := int32(componentType)
-		normalizedComponents = append(normalizedComponents, ItemComponent{Type: typed, Data: componentData[typed]})
+		normalizedComponents = append(normalizedComponents, itemStackComponent{componentType: typed, data: componentData[typed]})
 	}
 
 	removedTypeList := make([]int, 0, len(removedTypes))
@@ -672,7 +709,11 @@ func normalizedComponentPatch(components []ItemComponent, removedComponents []in
 		normalizedRemoved[index] = int32(componentType)
 	}
 
-	return normalizedComponents, normalizedRemoved
+	if len(normalizedComponents) == 0 && len(normalizedRemoved) == 0 {
+		return nil
+	}
+
+	return &itemStackComponents{added: normalizedComponents, removed: normalizedRemoved}
 }
 
 func appendComponentVarInt(data []byte, value int32) []byte {
@@ -694,7 +735,7 @@ func appendComponentVarInt(data []byte, value int32) []byte {
 	}
 }
 
-func readComponentVarInt(data []byte, offset int) (int32, int, bool) {
+func readComponentVarInt(data string, offset int) (int32, int, bool) {
 	var value uint32
 
 	for index := 0; index < 5 && offset+index < len(data); index++ {

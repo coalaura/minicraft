@@ -165,7 +165,7 @@ func (chest *runtimeChest) sendOpenersEvent(runtime *Runtime) {
 		Block:    int32(definition.ID),
 	}
 
-	for _, viewer := range runtime.snapshotSessions() {
+	for _, viewer := range runtime.sessionView() {
 		err := viewer.sendBlockEventIfLoaded(event)
 		if err != nil && viewer.Log != nil {
 			viewer.Log.Warnf("[play] failed to send chest block event: %v\n", err)
@@ -204,7 +204,7 @@ func (chest *runtimeChest) sendSound(runtime *Runtime, event game.SoundEvent) {
 		Seed:   rand.Int64(),
 	}
 
-	for _, viewer := range runtime.snapshotSessions() {
+	for _, viewer := range runtime.sessionView() {
 		err := viewer.sendSoundIfLoaded(sound, soundPosition)
 		if err != nil && viewer.Log != nil {
 			viewer.Log.Warnf("[play] failed to play chest sound: %v\n", err)

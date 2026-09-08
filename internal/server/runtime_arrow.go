@@ -238,14 +238,16 @@ func (runtime *Runtime) SpawnArrow(position game.Position, velocity game.Velocit
 func (runtime *Runtime) arrowTargets() []arrowTarget {
 	targets := make([]arrowTarget, 0)
 
-	for _, session := range runtime.snapshotSessions() {
-		player := session.snapshotPlayer()
+	for _, session := range runtime.sessionView() {
+		player := session.playerView()
 		if !player.Dead {
-			targets = append(targets, arrowTarget{session: session, box: player.CollisionBox(), id: player.EntityID})
+			targets = append(targets, arrowTarget{session: session, box: player.collisionBox(), id: player.EntityID})
 		}
 	}
 
-	for _, entity := range runtime.snapshotRuntimeEntities() {
+	entities := runtime.appendRuntimeEntities(nil)
+
+	for _, entity := range entities {
 		living, valid := entity.(RuntimeLivingEntity)
 		if !valid {
 			continue
@@ -428,7 +430,9 @@ func arrowEmbeddedPointCollides(block game.Block, blockPosition game.BlockPositi
 		MaxZ: position.Z + arrowEmbeddedPointInflation,
 	}
 
-	return slices.ContainsFunc(block.CollisionBoxes(blockPosition), point.Intersects)
+	var boxBuffer [7]game.AABB
+
+	return slices.ContainsFunc(block.AppendCollisionBoxes(boxBuffer[:0], blockPosition), point.Intersects)
 }
 
 func arrowCollisionMarginForTick(tickCount int32) float64 {

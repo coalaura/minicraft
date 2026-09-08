@@ -76,7 +76,7 @@ func (s *Session) sendHealth() error {
 }
 
 func (s *Session) playerAlive() bool {
-	return !s.snapshotPlayer().Dead
+	return !s.playerView().Dead
 }
 
 func (r *Runtime) DamagePlayer(session *Session, damage PlayerDamage) bool {
@@ -174,7 +174,7 @@ func (r *Runtime) RespawnPlayer(session *Session) error {
 		return err
 	}
 
-	for _, other := range r.snapshotSessions() {
+	for _, other := range r.sessionView() {
 		if other == session {
 			continue
 		}
@@ -203,7 +203,7 @@ func (r *Runtime) RespawnPlayer(session *Session) error {
 func (r *Runtime) tickPlayerSurvivalLocked(session *Session) []playerSurvivalUpdate {
 	updates := make([]playerSurvivalUpdate, 0, 4)
 
-	session.updatePlayerState(func(player *game.Player) bool {
+	session.mutatePlayer(func(player *game.Player) bool {
 		if player.SurvivalInitialized {
 			return false
 		}
@@ -496,7 +496,7 @@ func (r *Runtime) addPlayerExhaustion(session *Session, amount float32) {
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
 
-	session.updatePlayerState(func(player *game.Player) bool {
+	session.mutatePlayer(func(player *game.Player) bool {
 		previous := player.Exhaustion
 
 		player.AddExhaustion(amount)
@@ -691,7 +691,7 @@ func (r *Runtime) sendPlayerSurvivalUpdate(session *Session, update playerSurviv
 		}
 	}
 
-	for _, recipient := range r.snapshotSessions() {
+	for _, recipient := range r.sessionView() {
 		recipientPlayer := recipient.snapshotPlayer()
 		if recipient != session && !playersVisible(recipientPlayer, update.player, recipient.renderDistance()) {
 			continue

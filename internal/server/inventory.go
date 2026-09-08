@@ -35,6 +35,11 @@ type equipmentSlotChange struct {
 	slot   byte
 }
 
+type playerEquipmentSlot struct {
+	playerSlot int
+	equipment  byte
+}
+
 func (s *Session) handleSetHeldItem(selection protocol.SetHeldItem) {
 	if !s.playerAlive() || selection.Slot < 0 || selection.Slot >= game.HotbarSlotCount {
 		return
@@ -111,35 +116,19 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 	s.Runtime.lifecycleMu.Lock()
 	defer s.Runtime.lifecycleMu.Unlock()
 
-	var before game.PlayerInventory
+	var mutation playerInventoryMutation
 
-	player, changed := s.updatePlayerState(func(player *game.Player) bool {
-		if player.GameMode != game.GameModeCreative {
-			return false
-		}
-
-		slot := player.Inventory.Slot(int(update.Slot))
-		if slot == nil || slot.Equal(stack) {
-			return false
-		}
-
-		before = player.Inventory.Clone()
-		*slot = stack.Clone()
-
-		return true
-	})
+	changed := s.setCreativeInventorySlot(&mutation, int(update.Slot), stack)
 
 	if !changed {
-		if player.GameMode != game.GameModeCreative {
+		if mutation.gameMode != game.GameModeCreative {
 			s.resynchronizePlayerInventory()
 		}
 
 		return
 	}
 
-	playerSlot := int(update.Slot)
-
-	err := s.synchronizePlayerInventoryMutationSlot(before, &playerSlot)
+	err := s.synchronizePlayerInventoryJournal(&mutation)
 
 	if err != nil {
 		s.Log.Warnf("[play] failed to synchronize creative inventory slot: %v\n", err)
@@ -551,6 +540,93 @@ func (s *Session) synchronizePlayerInventoryMutationSlot(before game.PlayerInven
 	return nil
 }
 
+func (s *Session) synchronizePlayerInventoryJournal(mutation *playerInventoryMutation) error {
+	journal := &mutation.journal
+	if journal.touched == 0 {
+		return nil
+	}
+
+	currentMenu := s.activeMenu()
+	exposesPlayerSlots := false
+
+	for _, definition := range currentMenu.slots {
+		if definition.hasPlayerSlot && journal.touchedSlot(definition.playerSlot) {
+			exposesPlayerSlots = true
+
+			break
+		}
+	}
+
+	if !exposesPlayerSlots {
+		s.synchronizeJournalEquipment(mutation)
+
+		return nil
+	}
+
+	currentMenu.incrementStateID()
+
+	for menuSlot, definition := range currentMenu.slots {
+		if !definition.hasPlayerSlot || !journal.touchedSlot(definition.playerSlot) {
+			continue
+		}
+
+		err := writeSessionPacket(s, protocol.ClientboundContainerSetSlotID, protocol.ContainerSetSlot{
+			WindowID: currentMenu.windowID,
+			StateID:  currentMenu.stateID,
+			Slot:     int16(menuSlot),
+			Item:     currentMenu.slots[menuSlot].stack.Clone(),
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	s.synchronizeJournalEquipment(mutation)
+
+	return nil
+}
+
+func (s *Session) synchronizeJournalEquipment(mutation *playerInventoryMutation) {
+	journal := &mutation.journal
+	selected := mutation.selectedHotbarSlot
+
+	equipmentChanged := journal.touchedSlot(36+selected) || journal.touchedSlot(45) || journal.touchedSlot(5) || journal.touchedSlot(6) || journal.touchedSlot(7) || journal.touchedSlot(8)
+	if !equipmentChanged {
+		return
+	}
+
+	player := s.snapshotPlayer()
+
+	var slots [5]byte
+	count := 0
+
+	if journal.touchedSlot(36+selected) && !journal.before[36+selected].Equal(*player.Inventory.Held(selected)) {
+		slots[count] = protocol.EquipmentSlotMainHand
+		count++
+	}
+
+	equipmentSlots := [...]playerEquipmentSlot{
+		{45, protocol.EquipmentSlotOffHand},
+		{8, protocol.EquipmentSlotFeet},
+		{7, protocol.EquipmentSlotLegs},
+		{6, protocol.EquipmentSlotChest},
+		{5, protocol.EquipmentSlotHead},
+	}
+
+	for _, entry := range equipmentSlots {
+		if !journal.touchedSlot(entry.playerSlot) || journal.before[entry.playerSlot].Equal(*player.Inventory.Slot(entry.playerSlot)) {
+			continue
+		}
+
+		slots[count] = entry.equipment
+		count++
+	}
+
+	if count != 0 {
+		s.Runtime.broadcastPlayerEquipment(s, player, slots[:count]...)
+	}
+}
+
 func (s *Session) resynchronizePlayerInventory() {
 	err := s.sendPlayerInventory()
 	if err != nil {
@@ -567,8 +643,8 @@ func (r *Runtime) broadcastPlayerEquipment(session *Session, player game.Player,
 		return
 	}
 
-	for _, other := range r.snapshotSessions() {
-		if other == session || !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+	for _, other := range r.sessionView() {
+		if other == session || !playerViewSeesPlayer(other.playerView(), player, other.renderDistance()) {
 			continue
 		}
 
@@ -1213,7 +1289,7 @@ func moveIntoSlots(candidate *menuCandidate, stack *game.ItemStack, slots []int)
 		}
 
 		moved := min(candidate.stackLimit(slot, *stack), stack.Count)
-		*target = stack.Clone()
+		*target = *stack
 
 		target.Count = moved
 		stack.Count -= moved
@@ -1271,7 +1347,7 @@ func creativeItemStack(item protocol.UntrustedSlot) (game.ItemStack, bool) {
 		removed[index] = componentType
 	}
 
-	stack := game.ItemStack{Item: itemID, Count: item.ItemCount, Components: components, RemovedComponents: removed}
+	stack := game.NewItemStack(itemID, item.ItemCount, components, removed)
 	if stack.Empty() {
 		return game.ItemStack{}, false
 	}
@@ -1336,16 +1412,16 @@ func hashedSlotMatches(hashed protocol.HashedSlot, stack game.ItemStack) bool {
 		return !hashed.Present
 	}
 
-	if !hashed.Present || hashed.ItemID != int32(stack.Item) || hashed.ItemCount != stack.Count || len(hashed.Components) != len(stack.Components) || len(hashed.RemovedComponents) != len(stack.RemovedComponents) {
+	if !hashed.Present || hashed.ItemID != int32(stack.Item) || hashed.ItemCount != stack.Count || len(hashed.Components) != stack.ComponentCount() || len(hashed.RemovedComponents) != stack.RemovedComponentCount() {
 		return false
 	}
 
-	if len(stack.Components) != 0 {
+	if stack.ComponentCount() != 0 {
 		return false
 	}
 
-	for index, componentType := range stack.RemovedComponents {
-		if hashed.RemovedComponents[index] != componentType {
+	for index := range stack.RemovedComponentCount() {
+		if hashed.RemovedComponents[index] != stack.RemovedComponentAt(index) {
 			return false
 		}
 	}

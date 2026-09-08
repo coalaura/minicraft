@@ -171,7 +171,7 @@ func (r *Runtime) broadcastPlayerEquipSound(player game.Player, event game.Sound
 	sound := playerConsumptionSound(player, event, protocol.SoundSourcePlayer, 1, 1)
 	position := toBlockPosition(player.Position)
 
-	for _, viewer := range r.snapshotSessions() {
+	for _, viewer := range r.sessionView() {
 		err := viewer.sendSoundIfLoaded(sound, position)
 		if err != nil {
 			viewer.Log.Warnf("[play] failed to send armor equip sound: %v\n", err)
@@ -371,7 +371,7 @@ func (r *Runtime) tickUsingItemLocked(session *Session) ([]playerSurvivalUpdate,
 	updates := []playerSurvivalUpdate{update}
 
 	for _, instance := range instantEffects {
-		if session.snapshotPlayer().Dead {
+		if session.playerView().Dead {
 			break
 		}
 
@@ -458,7 +458,7 @@ func playerConsumptionSound(player game.Player, event game.SoundEvent, source in
 }
 
 func (r *Runtime) useBucketOn(session *Session, interaction protocol.UseItemOn, stack game.ItemStack) (bool, error) {
-	if !worldPositionValid(interaction.Position) || !blockWithinInteractionRange(session.snapshotPlayer(), interaction.Position) {
+	if !worldPositionValid(interaction.Position) || !session.playerView().withinBlockInteractionRange(interaction.Position, 0) {
 		return false, nil
 	}
 
@@ -568,7 +568,7 @@ func (r *Runtime) emptyBucketIntoSource(session *Session, hand int32, stack game
 
 	sound := bucketSound(position, bucketEmptySound(fluid.FluidState().Type()))
 
-	for _, viewer := range r.snapshotSessions() {
+	for _, viewer := range r.sessionView() {
 		err := viewer.sendSoundIfLoaded(sound, position)
 		if err != nil {
 			viewer.Log.Warnf("[play] failed to send bucket sound: %v\n", err)

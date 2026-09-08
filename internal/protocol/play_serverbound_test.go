@@ -832,35 +832,19 @@ func TestDecodeSetCreativeModeSlotReferenceFixtures(t *testing.T) {
 		},
 		"damaged diamond pickaxe": {
 			data: []byte{0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x00, 0x03, 0x02, 0xAC, 0x02},
-			item: game.ItemStack{
-				Item:       game.ItemDiamondPickaxe,
-				Count:      1,
-				Components: []game.ItemComponent{{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}}},
-			},
+			item: game.NewItemStack(game.ItemDiamondPickaxe, 1, []game.ItemComponent{{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}}}, nil),
 		},
 		"one enchantment": {
 			data: []byte{0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x00, 0x0D, 0x03, 0x01, 0x14, 0x05},
-			item: game.ItemStack{
-				Item:       game.ItemDiamondPickaxe,
-				Count:      1,
-				Components: []game.ItemComponent{{Type: game.ItemComponentEnchantments, Data: []byte{0x01, 0x14, 0x05}}},
-			},
+			item: game.NewItemStack(game.ItemDiamondPickaxe, 1, []game.ItemComponent{{Type: game.ItemComponentEnchantments, Data: []byte{0x01, 0x14, 0x05}}}, nil),
 		},
 		"multiple enchantments": {
 			data: []byte{0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x00, 0x0D, 0x05, 0x02, 0x14, 0x05, 0x17, 0x03},
-			item: game.ItemStack{
-				Item:       game.ItemDiamondPickaxe,
-				Count:      1,
-				Components: []game.ItemComponent{{Type: game.ItemComponentEnchantments, Data: []byte{0x02, 0x14, 0x05, 0x17, 0x03}}},
-			},
+			item: game.NewItemStack(game.ItemDiamondPickaxe, 1, []game.ItemComponent{{Type: game.ItemComponentEnchantments, Data: []byte{0x02, 0x14, 0x05, 0x17, 0x03}}}, nil),
 		},
 		"added and removed components": {
-			data: []byte{0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x01, 0x03, 0x02, 0xAC, 0x02, 0x01},
-			item: game.ItemStack{
-				Item:       game.ItemDiamondPickaxe,
-				Count:      1,
-				Components: []game.ItemComponent{{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}}},
-			},
+			data:    []byte{0x00, 0x24, 0x01, 0xAA, 0x07, 0x01, 0x01, 0x03, 0x02, 0xAC, 0x02, 0x01},
+			item:    game.NewItemStack(game.ItemDiamondPickaxe, 1, []game.ItemComponent{{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}}}, nil),
 			removed: []int32{1},
 		},
 	}
@@ -876,12 +860,13 @@ func TestDecodeSetCreativeModeSlotReferenceFixtures(t *testing.T) {
 				t.Fatalf("creative slot = %+v", update)
 			}
 
-			if len(update.Item.Components) != len(fixture.item.Components) {
-				t.Fatalf("creative slot components = %v, want %v", update.Item.Components, fixture.item.Components)
+			components := fixture.item.Components()
+			if len(update.Item.Components) != len(components) {
+				t.Fatalf("creative slot components = %v, want %v", update.Item.Components, components)
 			}
 
 			for index, component := range update.Item.Components {
-				expected := fixture.item.Components[index]
+				expected := components[index]
 				if component.Type != expected.Type || !slices.Equal(component.Data, expected.Data) {
 					t.Fatalf("creative slot component = %v, want %v", component, expected)
 				}

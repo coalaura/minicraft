@@ -156,7 +156,7 @@ func (s *Session) handleChatSessionUpdate(update protocol.ChatSessionUpdate) err
 		return nil
 	}
 
-	player := s.snapshotPlayer()
+	player := s.playerView()
 
 	now := s.Runtime.now()
 
@@ -225,7 +225,7 @@ func (s *Session) verifyPlayerChat(message protocol.ChatMessage) (verifiedPlayer
 		return verifiedPlayerChat{}, err
 	}
 
-	player := s.snapshotPlayer()
+	player := s.playerView()
 
 	payload, err := signedChatPayload(player.UUID, active.certificate.UUID, active.nextIndex, message, previous)
 	if err != nil {

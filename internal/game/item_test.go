@@ -188,12 +188,10 @@ func TestGeneratedArmorMetadata(t *testing.T) {
 }
 
 func TestItemStackTypedComponents(t *testing.T) {
-	stack := ItemStack{
-		Components: []ItemComponent{
-			{Type: ItemComponentDamage, Data: []byte{0xAC, 0x02}},
-			{Type: ItemComponentEnchantments, Data: []byte{0x02, 0x17, 0x03, 0x14, 0x05}},
-		},
-	}
+	stack := NewItemStack(0, 0, []ItemComponent{
+		{Type: ItemComponentDamage, Data: []byte{0xAC, 0x02}},
+		{Type: ItemComponentEnchantments, Data: []byte{0x02, 0x17, 0x03, 0x14, 0x05}},
+	}, nil)
 
 	if stack.Damage() != 300 {
 		t.Fatalf("damage = %d, want 300", stack.Damage())
@@ -208,7 +206,7 @@ func TestItemStackTypedComponents(t *testing.T) {
 	expectedEnchantments := []byte{0x02, 0x14, 0x07, 0x17, 0x03}
 	data, exists := stack.component(ItemComponentEnchantments)
 
-	if !exists || !bytes.Equal(data, expectedEnchantments) {
+	if !exists || data != string(expectedEnchantments) {
 		t.Fatalf("upserted enchantments = %x, want %x", data, expectedEnchantments)
 	}
 
@@ -220,7 +218,7 @@ func TestItemStackTypedComponents(t *testing.T) {
 	_, hasEnchantments := stack.component(ItemComponentEnchantments)
 
 	if hasDamage || hasEnchantments {
-		t.Fatalf("default components remain: %+v", stack.Components)
+		t.Fatalf("default components remain: %+v", stack.Components())
 	}
 }
 
@@ -228,7 +226,7 @@ func TestItemStackTypedComponentsRejectInvalidPayloads(t *testing.T) {
 	invalidDamagePayloads := [][]byte{{0x80}, {0xFF, 0xFF, 0xFF, 0xFF, 0x0F}, {0x01, 0x00}}
 
 	for _, data := range invalidDamagePayloads {
-		stack := ItemStack{Components: []ItemComponent{{Type: ItemComponentDamage, Data: data}}}
+		stack := NewItemStack(0, 0, []ItemComponent{{Type: ItemComponentDamage, Data: data}}, nil)
 		if stack.Damage() != 0 {
 			t.Fatalf("damage from invalid payload %x = %d, want 0", data, stack.Damage())
 		}
@@ -237,7 +235,7 @@ func TestItemStackTypedComponentsRejectInvalidPayloads(t *testing.T) {
 	invalidEnchantmentPayloads := [][]byte{{0x80}, {0x01, 0x14}, {0x01, 0x14, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F}, {0x00, 0x00}}
 
 	for _, data := range invalidEnchantmentPayloads {
-		stack := ItemStack{Components: []ItemComponent{{Type: ItemComponentEnchantments, Data: data}}}
+		stack := NewItemStack(0, 0, []ItemComponent{{Type: ItemComponentEnchantments, Data: data}}, nil)
 		if stack.Enchantments() != nil {
 			t.Fatalf("enchantments from invalid payload %x = %v, want nil", data, stack.Enchantments())
 		}
@@ -245,15 +243,13 @@ func TestItemStackTypedComponentsRejectInvalidPayloads(t *testing.T) {
 }
 
 func TestItemStackComponentReplacementPreservesUnknownComponents(t *testing.T) {
-	stack := ItemStack{
-		Components: []ItemComponent{
+	stack := NewItemStack(0, 0,
+		[]ItemComponent{
 			{Type: 99, Data: []byte{0xAA}},
 			{Type: ItemComponentDamage, Data: []byte{0x01}},
 			{Type: 100, Data: []byte{0xBB}},
 			{Type: ItemComponentDamage, Data: []byte{0x02}},
-		},
-		RemovedComponents: []int32{99, ItemComponentDamage},
-	}
+		}, []int32{99, ItemComponentDamage})
 
 	stack.SetDamage(5)
 
@@ -262,50 +258,46 @@ func TestItemStackComponentReplacementPreservesUnknownComponents(t *testing.T) {
 		{Type: 100, Data: []byte{0xBB}},
 	}
 
-	if len(stack.Components) != len(expectedComponents) {
-		t.Fatalf("component count = %d, want %d", len(stack.Components), len(expectedComponents))
+	components := stack.Components()
+	if len(components) != len(expectedComponents) {
+		t.Fatalf("component count = %d, want %d", len(components), len(expectedComponents))
 	}
 
 	for index, expected := range expectedComponents {
-		actual := stack.Components[index]
+		actual := components[index]
 		if actual.Type != expected.Type || !bytes.Equal(actual.Data, expected.Data) {
 			t.Fatalf("component %d = %+v, want %+v", index, actual, expected)
 		}
 	}
 
-	if !slices.Equal(stack.RemovedComponents, []int32{99}) {
-		t.Fatalf("removed components = %v, want [99]", stack.RemovedComponents)
+	if !slices.Equal(stack.RemovedComponents(), []int32{99}) {
+		t.Fatalf("removed components = %v, want [99]", stack.RemovedComponents())
 	}
 }
 
 func TestItemStackComponentPatchEqualityUsesMapSemantics(t *testing.T) {
-	first := ItemStack{
-		Item:  ItemDiamondPickaxe,
-		Count: 1,
-		Components: []ItemComponent{
+	first := NewItemStack(ItemDiamondPickaxe, 1,
+		[]ItemComponent{
 			{Type: 99, Data: []byte{0x01}},
 			{Type: ItemComponentDamage, Data: []byte{0x02}},
 			{Type: 99, Data: []byte{0x03}},
 			{Type: ItemComponentEnchantments, Data: []byte{0x01, 0x14, 0x05}},
-		},
-		RemovedComponents: []int32{100, ItemComponentDamage, 100},
-	}
+		}, []int32{100, ItemComponentDamage, 100})
 
-	second := ItemStack{
-		Item:  ItemDiamondPickaxe,
-		Count: 1,
-		Components: []ItemComponent{
+	second := NewItemStack(ItemDiamondPickaxe, 1,
+		[]ItemComponent{
 			{Type: ItemComponentEnchantments, Data: []byte{0x01, 0x14, 0x05}},
 			{Type: 99, Data: []byte{0x03}},
-		},
-		RemovedComponents: []int32{ItemComponentDamage, 100},
-	}
+		}, []int32{ItemComponentDamage, 100})
 
 	if !first.Equal(second) || !first.SameItem(second) {
 		t.Fatal("semantically identical component patches compare different")
 	}
 
-	second.Components[1].Data = []byte{0x04}
+	second = NewItemStack(ItemDiamondPickaxe, 1, []ItemComponent{
+		{Type: ItemComponentEnchantments, Data: []byte{0x01, 0x14, 0x05}},
+		{Type: 99, Data: []byte{0x04}},
+	}, []int32{ItemComponentDamage, 100})
 
 	if first.Equal(second) {
 		t.Fatal("component patches with different opaque payloads compare equal")
@@ -313,24 +305,22 @@ func TestItemStackComponentPatchEqualityUsesMapSemantics(t *testing.T) {
 }
 
 func TestItemStackNormalizeComponentsUsesLastAdditionAndRemovalWins(t *testing.T) {
-	stack := ItemStack{
-		Components: []ItemComponent{
+	stack := NewItemStack(0, 0,
+		[]ItemComponent{
 			{Type: ItemComponentDamage, Data: []byte{0x01}},
 			{Type: 99, Data: []byte{0xAA, 0xBB}},
 			{Type: ItemComponentDamage, Data: []byte{0x02}},
-		},
-		RemovedComponents: []int32{99, 99},
-	}
-
-	stack.NormalizeComponents()
+		}, []int32{99, 99})
 
 	expected := []ItemComponent{{Type: ItemComponentDamage, Data: []byte{0x02}}}
-	if len(stack.Components) != 1 || stack.Components[0].Type != expected[0].Type || !bytes.Equal(stack.Components[0].Data, expected[0].Data) {
-		t.Fatalf("normalized components = %v, want %v", stack.Components, expected)
+	components := stack.Components()
+
+	if len(components) != 1 || components[0].Type != expected[0].Type || !bytes.Equal(components[0].Data, expected[0].Data) {
+		t.Fatalf("normalized components = %v, want %v", components, expected)
 	}
 
-	if !slices.Equal(stack.RemovedComponents, []int32{99}) {
-		t.Fatalf("normalized removals = %v, want [99]", stack.RemovedComponents)
+	if !slices.Equal(stack.RemovedComponents(), []int32{99}) {
+		t.Fatalf("normalized removals = %v, want [99]", stack.RemovedComponents())
 	}
 }
 
@@ -345,8 +335,77 @@ func TestItemStackEnchantmentsUseDeterministicHolderOrder(t *testing.T) {
 	data, exists := stack.component(ItemComponentEnchantments)
 	expected := []byte{0x02, 0x14, 0x05, 0x17, 0x03}
 
-	if !exists || !bytes.Equal(data, expected) {
+	if !exists || data != string(expected) {
 		t.Fatalf("enchantment holders = %x, want %x", data, expected)
+	}
+}
+
+func TestItemStackAssignmentUsesCopyOnWriteComponents(t *testing.T) {
+	payload := []byte{0x01, 0x0A, 0x00, 0x00, 0x00}
+
+	stack := NewItemStack(ItemPotion, 1, []ItemComponent{{Type: ItemComponentPotionContents, Data: payload}}, []int32{99})
+
+	payload[1] = 0
+	copy := stack
+
+	copy.SetDamage(7)
+
+	if stack.Damage() != 0 || copy.Damage() != 7 {
+		t.Fatalf("damage mutation leaked: original %d, copy %d", stack.Damage(), copy.Damage())
+	}
+
+	copy.SetEnchantments(map[Enchantment]int32{EnchantmentEfficiency: 3})
+
+	if stack.EnchantmentLevel(EnchantmentEfficiency) != 0 || copy.EnchantmentLevel(EnchantmentEfficiency) != 3 {
+		t.Fatalf("enchantment mutation leaked: original %d, copy %d", stack.EnchantmentLevel(EnchantmentEfficiency), copy.EnchantmentLevel(EnchantmentEfficiency))
+	}
+
+	contents, valid := copy.PotionContents()
+	if !valid {
+		t.Fatal("copy lost potion contents")
+	}
+
+	contents.Potion = PotionHealing
+
+	copy.SetPotionContents(contents)
+
+	originalContents, valid := stack.PotionContents()
+	if !valid || originalContents.Potion != PotionStrongLeaping {
+		t.Fatalf("potion mutation leaked: %+v, %v", originalContents, valid)
+	}
+
+	components := stack.Components()
+
+	components[0].Data[0] = 0
+
+	removed := stack.RemovedComponents()
+
+	removed[0] = 0
+
+	originalContents, valid = stack.PotionContents()
+	if !valid || originalContents.Potion != PotionStrongLeaping || stack.RemovedComponentAt(0) != 99 {
+		t.Fatal("component accessors exposed mutable backing")
+	}
+}
+
+func TestItemStackCloneAndEqualityDoNotAllocate(t *testing.T) {
+	stack := NewItemStack(ItemDiamondPickaxe, 1, []ItemComponent{{Type: ItemComponentDamage, Data: []byte{7}}}, []int32{99})
+
+	cloneAllocations := testing.AllocsPerRun(1000, func() {
+		_ = stack.Clone()
+	})
+
+	if cloneAllocations != 0 {
+		t.Fatalf("Clone allocations = %v, want 0", cloneAllocations)
+	}
+
+	equalityAllocations := testing.AllocsPerRun(1000, func() {
+		_ = stack.Equal(stack)
+		_ = stack.SameItem(stack)
+	})
+
+	if equalityAllocations != 0 {
+		t.Fatalf("Equal/SameItem allocations = %v, want 0", equalityAllocations)
 	}
 }
 

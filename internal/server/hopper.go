@@ -225,7 +225,7 @@ func (hopper *runtimeHopper) suckItemEntities(runtime *Runtime, data *game.Hoppe
 	for _, entity := range runtime.itemEntitiesInBox(box) {
 		entity.State.mu.Lock()
 
-		if entity.State.Removed || entity.Stack.Empty() || !box.Intersects(itemEntityBox(entity.State.Position)) {
+		if entity.State.Removed || entity.pickupReserved || entity.Stack.Empty() || !box.Intersects(itemEntityBox(entity.State.Position)) {
 			entity.State.mu.Unlock()
 
 			continue
@@ -338,12 +338,17 @@ func (r *Runtime) hopperSuctionBlocked(position game.BlockPosition) bool {
 }
 
 func (r *Runtime) itemEntitiesInBox(box game.AABB) []*runtimeItemEntity {
+	items := make([]*runtimeItemEntity, 0)
+
+	return r.appendItemEntitiesInBox(items, box)
+}
+
+func (r *Runtime) appendItemEntitiesInBox(items []*runtimeItemEntity, box game.AABB) []*runtimeItemEntity {
 	minChunk := positionLoadedChunk(game.Position{X: box.MinX, Z: box.MinZ})
 	maxChunk := positionLoadedChunk(game.Position{X: box.MaxX, Z: box.MaxZ})
 
 	r.activeChunksMu.RLock()
-
-	activeChunks := make([]LoadedChunk, 0, (maxChunk.X-minChunk.X+1)*(maxChunk.Z-minChunk.Z+1))
+	r.entityMu.RLock()
 
 	for chunkX := minChunk.X; chunkX <= maxChunk.X; chunkX++ {
 		for chunkZ := minChunk.Z; chunkZ <= maxChunk.Z; chunkZ++ {
@@ -354,30 +359,17 @@ func (r *Runtime) itemEntitiesInBox(box game.AABB) []*runtimeItemEntity {
 				continue
 			}
 
-			activeChunks = append(activeChunks, chunkPosition)
-		}
-	}
-
-	r.activeChunksMu.RUnlock()
-
-	r.entityMu.RLock()
-
-	var items []*runtimeItemEntity
-
-	for _, chunkPosition := range activeChunks {
-		for _, entity := range r.entitiesByChunk[chunkPosition] {
-			item, itemEntity := entity.(*runtimeItemEntity)
-			if itemEntity {
-				items = append(items, item)
+			for _, entity := range r.entitiesByChunk[chunkPosition] {
+				item, itemEntity := entity.(*runtimeItemEntity)
+				if itemEntity {
+					items = append(items, item)
+				}
 			}
 		}
 	}
 
 	r.entityMu.RUnlock()
-
-	slices.SortFunc(items, func(first, second *runtimeItemEntity) int {
-		return int(first.State.ID - second.State.ID)
-	})
+	r.activeChunksMu.RUnlock()
 
 	return items
 }

@@ -108,11 +108,11 @@ func (err commandFailure) Error() string {
 }
 
 func (source playerCommandSource) Name() string {
-	return source.session.snapshotPlayer().Name
+	return source.session.playerView().Name
 }
 
 func (source playerCommandSource) Position() game.Position {
-	return source.session.snapshotPlayer().Position
+	return source.session.playerView().Position
 }
 
 func (source playerCommandSource) Feedback(message game.TextComponent) error {

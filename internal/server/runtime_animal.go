@@ -547,7 +547,7 @@ func (runtime *Runtime) milkCow(session *Session, entity *runtimeCowEntity, hand
 		return false
 	}
 
-	_, changed := session.updatePlayerState(func(player *game.Player) bool {
+	changed := session.mutatePlayer(func(player *game.Player) bool {
 		held, valid := heldItemPointer(player, hand)
 		if !valid || held.Item != game.ItemBucket || held.Count <= 0 {
 			return false
@@ -614,7 +614,7 @@ func (runtime *Runtime) shearSheep(session *Session, entity *runtimeSheepEntity,
 
 	changed := false
 
-	session.updatePlayerState(func(current *game.Player) bool {
+	session.mutatePlayer(func(current *game.Player) bool {
 		stack, stackValid := heldItemPointer(current, hand)
 		if !stackValid || !stack.SameItem(*held) {
 			return false

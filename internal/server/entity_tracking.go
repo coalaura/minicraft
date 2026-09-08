@@ -14,6 +14,16 @@ const (
 	entityFullSyncDelay           = 400
 )
 
+const (
+	runtimeEntityMovementNone = iota
+	runtimeEntityMovementPosition
+	runtimeEntityMovementPositionRotation
+	runtimeEntityMovementRotation
+	runtimeEntityMovementTeleport
+)
+
+type runtimeEntityMovementKind byte
+
 type runtimeEntityTracker struct {
 	PositionBase  game.Position
 	LastVelocity  game.Velocity
@@ -28,6 +38,18 @@ type runtimeEntityTracker struct {
 type runtimeEntityPacket struct {
 	ID      int32
 	Encoder PacketEncoder
+}
+
+type runtimeEntitySynchronization struct {
+	motion           protocol.SetEntityMotion
+	position         protocol.UpdateEntityPosition
+	positionRotation protocol.UpdateEntityPositionRotation
+	rotation         protocol.UpdateEntityRotation
+	teleport         protocol.SynchronizeEntityPosition
+	headRotation     protocol.SetHeadRotation
+	movement         runtimeEntityMovementKind
+	sendMotion       bool
+	sendHeadRotation bool
 }
 
 type runtimeEntityLockedViewer interface {
@@ -57,25 +79,64 @@ func (r *Runtime) synchronizeRuntimeEntity(entity RuntimeEntity) {
 	forcedMovementSync := state.movementSyncDirty
 	eligible := tracker.UpdateTick%configuration.UpdateInterval == 0 || forcedMovementSync || state.metadataDirty
 
-	var packets []runtimeEntityPacket
+	var synchronization runtimeEntitySynchronization
 
 	if eligible && !view.Removed {
-		packets = runtimeEntityPackets(view, tracker, configuration, forcedMovementSync)
+		synchronization = runtimeEntitySynchronizationForView(view, tracker, configuration, forcedMovementSync)
 		state.movementSyncDirty = false
 	}
 
 	tracker.UpdateTick++
 	state.mu.Unlock()
 
-	for _, packet := range packets {
-		r.broadcastRuntimeEntityPacket(view.ID, packet)
-	}
+	r.synchronizeRuntimeEntityMovement(view.ID, synchronization)
 
 	r.synchronizeDirtyRuntimeEntityMetadataIfPresent(entity)
 }
 
+func (r *Runtime) synchronizeRuntimeEntityMovement(entityID int32, synchronization runtimeEntitySynchronization) {
+	if !synchronization.sendMotion && synchronization.movement == runtimeEntityMovementNone && !synchronization.sendHeadRotation {
+		return
+	}
+
+	viewers := r.sessionView()
+
+	for _, session := range viewers {
+		if !session.tracksRuntimeEntity(entityID) {
+			continue
+		}
+
+		if synchronization.sendMotion {
+			writeRuntimeEntitySynchronizationPacket(session, protocol.ClientboundSetEntityMotionID, synchronization.motion)
+		}
+
+		switch synchronization.movement {
+		case runtimeEntityMovementPosition:
+			writeRuntimeEntitySynchronizationPacket(session, protocol.ClientboundUpdateEntityPositionID, synchronization.position)
+		case runtimeEntityMovementPositionRotation:
+			writeRuntimeEntitySynchronizationPacket(session, protocol.ClientboundUpdateEntityPositionRotationID, synchronization.positionRotation)
+		case runtimeEntityMovementRotation:
+			writeRuntimeEntitySynchronizationPacket(session, protocol.ClientboundUpdateEntityRotationID, synchronization.rotation)
+		case runtimeEntityMovementTeleport:
+			writeRuntimeEntitySynchronizationPacket(session, protocol.ClientboundSynchronizeEntityPositionID, synchronization.teleport)
+		}
+
+		if synchronization.sendHeadRotation {
+			writeRuntimeEntitySynchronizationPacket(session, protocol.ClientboundSetHeadRotationID, synchronization.headRotation)
+		}
+	}
+}
+
+func writeRuntimeEntitySynchronizationPacket[T PacketEncoder](session *Session, packetID int32, encoder T) {
+	err := writeSessionPacket(session, packetID, encoder)
+
+	if err != nil && session.Log != nil {
+		session.Log.Warnf("[play] failed to synchronize entity: %v\n", err)
+	}
+}
+
 func (r *Runtime) broadcastRuntimeEntityPacket(entityID int32, packet runtimeEntityPacket) {
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		if !session.tracksRuntimeEntity(entityID) {
 			continue
 		}
@@ -117,7 +178,9 @@ func runtimeEntitySpawnSnapshotLocked(view runtimeEntityView, tracker runtimeEnt
 	}
 }
 
-func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker, configuration RuntimeEntityTrackingConfig, forcedMovementSync bool) []runtimeEntityPacket {
+func runtimeEntitySynchronizationForView(view runtimeEntityView, tracker *runtimeEntityTracker, configuration RuntimeEntityTrackingConfig, forcedMovementSync bool) runtimeEntitySynchronization {
+	var synchronization runtimeEntitySynchronization
+
 	tracker.TeleportDelay++
 
 	deltaX, xRelative := protocolPositionDelta(tracker.PositionBase.X, view.Position.X)
@@ -141,8 +204,6 @@ func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker,
 	sentPosition := false
 	sentRotation := false
 
-	packets := make([]runtimeEntityPacket, 0, 3)
-
 	if configuration.TrackDeltas || forcedMovementSync {
 		velocityDifference := velocityDistanceSquared(view.Velocity, tracker.LastVelocity)
 		velocityStopped := velocityDifference > 0 && velocityLengthSquared(view.Velocity) == 0
@@ -150,15 +211,13 @@ func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker,
 		if velocityDifference > entityVelocityChangeTolerance || velocityStopped {
 			tracker.LastVelocity = view.Velocity
 
-			packets = append(packets, runtimeEntityPacket{
-				ID: protocol.ClientboundSetEntityMotionID,
-				Encoder: protocol.SetEntityMotion{
-					EntityID:  view.ID,
-					VelocityX: view.Velocity.X,
-					VelocityY: view.Velocity.Y,
-					VelocityZ: view.Velocity.Z,
-				},
-			})
+			synchronization.motion = protocol.SetEntityMotion{
+				EntityID:  view.ID,
+				VelocityX: view.Velocity.X,
+				VelocityY: view.Velocity.Y,
+				VelocityZ: view.Velocity.Z,
+			}
+			synchronization.sendMotion = true
 		}
 	}
 
@@ -167,63 +226,55 @@ func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker,
 		tracker.WasOnGround = view.OnGround
 		tracker.TeleportDelay = 0
 
-		packets = append(packets, runtimeEntityPacket{
-			ID: protocol.ClientboundSynchronizeEntityPositionID,
-			Encoder: protocol.SynchronizeEntityPosition{
-				EntityID:  view.ID,
-				X:         view.Position.X,
-				Y:         view.Position.Y,
-				Z:         view.Position.Z,
-				VelocityX: view.Velocity.X,
-				VelocityY: view.Velocity.Y,
-				VelocityZ: view.Velocity.Z,
-				Yaw:       view.Rotation.Yaw,
-				Pitch:     view.Rotation.Pitch,
-				OnGround:  view.OnGround,
-			},
-		})
+		synchronization.teleport = protocol.SynchronizeEntityPosition{
+			EntityID:  view.ID,
+			X:         view.Position.X,
+			Y:         view.Position.Y,
+			Z:         view.Position.Z,
+			VelocityX: view.Velocity.X,
+			VelocityY: view.Velocity.Y,
+			VelocityZ: view.Velocity.Z,
+			Yaw:       view.Rotation.Yaw,
+			Pitch:     view.Rotation.Pitch,
+			OnGround:  view.OnGround,
+		}
+		synchronization.movement = runtimeEntityMovementTeleport
 
 		sentPosition = true
 		sentRotation = true
 	case sendPosition && rotationChanged:
-		packets = append(packets, runtimeEntityPacket{
-			ID: protocol.ClientboundUpdateEntityPositionRotationID,
-			Encoder: protocol.UpdateEntityPositionRotation{
-				EntityID: view.ID,
-				DeltaX:   deltaX,
-				DeltaY:   deltaY,
-				DeltaZ:   deltaZ,
-				Yaw:      yaw,
-				Pitch:    pitch,
-				OnGround: view.OnGround,
-			},
-		})
+		synchronization.positionRotation = protocol.UpdateEntityPositionRotation{
+			EntityID: view.ID,
+			DeltaX:   deltaX,
+			DeltaY:   deltaY,
+			DeltaZ:   deltaZ,
+			Yaw:      yaw,
+			Pitch:    pitch,
+			OnGround: view.OnGround,
+		}
+		synchronization.movement = runtimeEntityMovementPositionRotation
 
 		sentPosition = true
 		sentRotation = true
 	case sendPosition:
-		packets = append(packets, runtimeEntityPacket{
-			ID: protocol.ClientboundUpdateEntityPositionID,
-			Encoder: protocol.UpdateEntityPosition{
-				EntityID: view.ID,
-				DeltaX:   deltaX,
-				DeltaY:   deltaY,
-				DeltaZ:   deltaZ,
-				OnGround: view.OnGround,
-			},
-		})
+		synchronization.position = protocol.UpdateEntityPosition{
+			EntityID: view.ID,
+			DeltaX:   deltaX,
+			DeltaY:   deltaY,
+			DeltaZ:   deltaZ,
+			OnGround: view.OnGround,
+		}
+		synchronization.movement = runtimeEntityMovementPosition
 
 		sentPosition = true
 	case rotationChanged:
-		packets = append(packets, runtimeEntityPacket{
-			ID: protocol.ClientboundUpdateEntityRotationID,
-			Encoder: protocol.UpdateEntityRotation{
-				EntityID: view.ID,
-				Yaw:      yaw,
-				Pitch:    pitch,
-				OnGround: view.OnGround,
-			},
-		})
+		synchronization.rotation = protocol.UpdateEntityRotation{
+			EntityID: view.ID,
+			Yaw:      yaw,
+			Pitch:    pitch,
+			OnGround: view.OnGround,
+		}
+		synchronization.movement = runtimeEntityMovementRotation
 
 		sentRotation = true
 	}
@@ -241,16 +292,14 @@ func runtimeEntityPackets(view runtimeEntityView, tracker *runtimeEntityTracker,
 	if headYaw != tracker.LastHeadYaw {
 		tracker.LastHeadYaw = headYaw
 
-		packets = append(packets, runtimeEntityPacket{
-			ID: protocol.ClientboundSetHeadRotationID,
-			Encoder: protocol.SetHeadRotation{
-				EntityID: view.ID,
-				HeadYaw:  headYaw,
-			},
-		})
+		synchronization.headRotation = protocol.SetHeadRotation{
+			EntityID: view.ID,
+			HeadYaw:  headYaw,
+		}
+		synchronization.sendHeadRotation = true
 	}
 
-	return packets
+	return synchronization
 }
 
 func velocityDistanceSquared(first, second game.Velocity) float64 {

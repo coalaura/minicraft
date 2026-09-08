@@ -21,7 +21,9 @@ type ActiveChunk struct {
 
 	mu             sync.RWMutex
 	entities       map[int32]RuntimeEntity
+	entityTickers  []runtimeEntitySnapshot
 	blockEntities  map[game.BlockPosition]RuntimeBlockEntity
+	blockTickers   []runtimeBlockEntitySnapshot
 	randomSections map[int32]struct{}
 }
 
@@ -52,6 +54,7 @@ func (c *ActiveChunk) SetEntity(id int32, entity RuntimeEntity) {
 
 	if entity == nil {
 		delete(c.entities, id)
+		c.removeEntityTicker(id)
 
 		return
 	}
@@ -61,6 +64,15 @@ func (c *ActiveChunk) SetEntity(id int32, entity RuntimeEntity) {
 	}
 
 	c.entities[id] = entity
+
+	ticker, ticks := entity.(RuntimeEntityTicker)
+	if ticks {
+		c.setEntityTicker(id, ticker)
+
+		return
+	}
+
+	c.removeEntityTicker(id)
 }
 
 func (c *ActiveChunk) RemoveEntity(id int32) {
@@ -81,6 +93,8 @@ func (c *ActiveChunk) SetBlockEntity(position game.BlockPosition, entity Runtime
 	if entity == nil {
 		delete(c.blockEntities, position)
 
+		c.removeBlockTicker(position)
+
 		return
 	}
 
@@ -89,6 +103,15 @@ func (c *ActiveChunk) SetBlockEntity(position game.BlockPosition, entity Runtime
 	}
 
 	c.blockEntities[position] = entity
+
+	ticker, ticks := entity.(RuntimeBlockEntityTicker)
+	if ticks {
+		c.setBlockTicker(position, ticker)
+
+		return
+	}
+
+	c.removeBlockTicker(position)
 }
 
 func (c *ActiveChunk) RemoveBlockEntity(position game.BlockPosition) {
@@ -136,46 +159,12 @@ func (c *ActiveChunk) snapshotRandomTickSections() []int32 {
 	return sections
 }
 
-func (c *ActiveChunk) snapshotTickers() ([]runtimeEntitySnapshot, []runtimeBlockEntitySnapshot) {
+func (c *ActiveChunk) snapshotTickers(entities []runtimeEntitySnapshot, blockEntities []runtimeBlockEntitySnapshot) ([]runtimeEntitySnapshot, []runtimeBlockEntitySnapshot) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	entities := make([]runtimeEntitySnapshot, 0, len(c.entities))
-
-	for id, entity := range c.entities {
-		ticker, ticks := entity.(RuntimeEntityTicker)
-		if ticks {
-			entities = append(entities, runtimeEntitySnapshot{id: id, entity: ticker})
-		}
-	}
-
-	sort.Slice(entities, func(first, second int) bool {
-		return entities[first].id < entities[second].id
-	})
-
-	blockEntities := make([]runtimeBlockEntitySnapshot, 0, len(c.blockEntities))
-
-	for position, entity := range c.blockEntities {
-		ticker, ticks := entity.(RuntimeBlockEntityTicker)
-		if ticks {
-			blockEntities = append(blockEntities, runtimeBlockEntitySnapshot{position: position, entity: ticker})
-		}
-	}
-
-	sort.Slice(blockEntities, func(first, second int) bool {
-		firstPosition := blockEntities[first].position
-		secondPosition := blockEntities[second].position
-
-		if firstPosition.X != secondPosition.X {
-			return firstPosition.X < secondPosition.X
-		}
-
-		if firstPosition.Y != secondPosition.Y {
-			return firstPosition.Y < secondPosition.Y
-		}
-
-		return firstPosition.Z < secondPosition.Z
-	})
+	entities = copyEntityTickers(entities, c.entityTickers)
+	blockEntities = copyBlockTickers(blockEntities, c.blockTickers)
 
 	return entities, blockEntities
 }
@@ -211,6 +200,7 @@ func (r *Runtime) setSessionActiveChunks(session *Session, chunks []LoadedChunk)
 	previous := r.sessionActiveChunks[session]
 
 	activated := make([]LoadedChunk, 0)
+	topologyChanged := false
 
 	for position := range next {
 		if _, retained := previous[position]; retained {
@@ -224,6 +214,7 @@ func (r *Runtime) setSessionActiveChunks(session *Session, chunks []LoadedChunk)
 			r.activeChunks[position] = reference
 
 			activated = append(activated, position)
+			topologyChanged = true
 		}
 
 		reference.references++
@@ -240,6 +231,7 @@ func (r *Runtime) setSessionActiveChunks(session *Session, chunks []LoadedChunk)
 
 		if reference.references == 0 {
 			delete(r.activeChunks, position)
+			topologyChanged = true
 		}
 	}
 
@@ -247,6 +239,10 @@ func (r *Runtime) setSessionActiveChunks(session *Session, chunks []LoadedChunk)
 		delete(r.sessionActiveChunks, session)
 	} else {
 		r.sessionActiveChunks[session] = next
+	}
+
+	if topologyChanged {
+		r.rebuildActiveChunkListLocked()
 	}
 
 	r.activeChunksMu.Unlock()
@@ -274,21 +270,48 @@ func (r *Runtime) releaseSessionActiveChunks(session *Session) {
 }
 
 func (r *Runtime) tickActiveChunks() {
+	r.activeChunkTickMu.Lock()
+	defer r.activeChunkTickMu.Unlock()
+
 	// Runtime relevance is sampled once per tick. A chunk deactivated during
 	// callbacks finishes that snapshot but cannot appear in the next tick.
-	chunks := r.snapshotActiveChunks()
+	r.activeChunksMu.RLock()
 
-	snapshots := make([]activeChunkTickSnapshot, len(chunks))
+	chunkCount := len(r.activeChunkList)
+
+	for len(r.activeChunkTickSnapshots) < chunkCount {
+		r.activeChunkTickSnapshots = append(r.activeChunkTickSnapshots, activeChunkTickSnapshot{})
+	}
+
+	for index := chunkCount; index < len(r.activeChunkTickSnapshots); index++ {
+		snapshot := &r.activeChunkTickSnapshots[index]
+
+		clear(snapshot.entities)
+		clear(snapshot.blockEntities)
+		snapshot.chunk = nil
+	}
 
 	// Snapshot every chunk before ticking so an entity crossing into a later
 	// chunk cannot be observed and ticked twice in the same game tick.
-	for index, chunk := range chunks {
-		entities, blockEntities := chunk.snapshotTickers()
-
-		snapshots[index] = activeChunkTickSnapshot{chunk: chunk, entities: entities, blockEntities: blockEntities}
+	for index := range chunkCount {
+		snapshot := &r.activeChunkTickSnapshots[index]
+		snapshot.chunk = r.activeChunkList[index]
 	}
 
-	for _, snapshot := range snapshots {
+	r.activeChunksMu.RUnlock()
+
+	for index := range chunkCount {
+		snapshot := &r.activeChunkTickSnapshots[index]
+
+		entities, blockEntities := snapshot.chunk.snapshotTickers(snapshot.entities, snapshot.blockEntities)
+
+		snapshot.entities = entities
+		snapshot.blockEntities = blockEntities
+	}
+
+	for index := range chunkCount {
+		snapshot := &r.activeChunkTickSnapshots[index]
+
 		for _, entity := range snapshot.entities {
 			entity.entity.Tick(r, snapshot.chunk)
 		}
@@ -297,6 +320,132 @@ func (r *Runtime) tickActiveChunks() {
 			blockEntity.entity.Tick(r, snapshot.chunk)
 		}
 	}
+}
+
+func (c *ActiveChunk) setEntityTicker(id int32, ticker RuntimeEntityTicker) {
+	index := sort.Search(len(c.entityTickers), func(index int) bool {
+		return c.entityTickers[index].id >= id
+	})
+
+	if index < len(c.entityTickers) && c.entityTickers[index].id == id {
+		c.entityTickers[index].entity = ticker
+
+		return
+	}
+
+	c.entityTickers = slices.Insert(c.entityTickers, index, runtimeEntitySnapshot{id: id, entity: ticker})
+}
+
+func (c *ActiveChunk) removeEntityTicker(id int32) {
+	index := sort.Search(len(c.entityTickers), func(index int) bool {
+		return c.entityTickers[index].id >= id
+	})
+
+	if index >= len(c.entityTickers) || c.entityTickers[index].id != id {
+		return
+	}
+
+	c.entityTickers = slices.Delete(c.entityTickers, index, index+1)
+}
+
+func (c *ActiveChunk) setBlockTicker(position game.BlockPosition, ticker RuntimeBlockEntityTicker) {
+	index := sort.Search(len(c.blockTickers), func(index int) bool {
+		return blockPositionCompare(c.blockTickers[index].position, position) >= 0
+	})
+
+	if index < len(c.blockTickers) && c.blockTickers[index].position == position {
+		c.blockTickers[index].entity = ticker
+
+		return
+	}
+
+	c.blockTickers = slices.Insert(c.blockTickers, index, runtimeBlockEntitySnapshot{position: position, entity: ticker})
+}
+
+func (c *ActiveChunk) removeBlockTicker(position game.BlockPosition) {
+	index := sort.Search(len(c.blockTickers), func(index int) bool {
+		return blockPositionCompare(c.blockTickers[index].position, position) >= 0
+	})
+
+	if index >= len(c.blockTickers) || c.blockTickers[index].position != position {
+		return
+	}
+
+	c.blockTickers = slices.Delete(c.blockTickers, index, index+1)
+}
+
+func (r *Runtime) rebuildActiveChunkListLocked() {
+	previousCount := len(r.activeChunkList)
+	r.activeChunkList = r.activeChunkList[:0]
+
+	for _, reference := range r.activeChunks {
+		r.activeChunkList = append(r.activeChunkList, reference.chunk)
+	}
+
+	if len(r.activeChunkList) < previousCount {
+		clear(r.activeChunkList[len(r.activeChunkList):previousCount])
+	}
+
+	sort.Slice(r.activeChunkList, func(first, second int) bool {
+		firstPosition := r.activeChunkList[first].Position
+		secondPosition := r.activeChunkList[second].Position
+
+		if firstPosition.X != secondPosition.X {
+			return firstPosition.X < secondPosition.X
+		}
+
+		return firstPosition.Z < secondPosition.Z
+	})
+}
+
+func copyEntityTickers(destination, source []runtimeEntitySnapshot) []runtimeEntitySnapshot {
+	previousCount := len(destination)
+	destination = append(destination[:0], source...)
+
+	if len(source) < previousCount {
+		clear(destination[len(source):previousCount])
+	}
+
+	return destination
+}
+
+func copyBlockTickers(destination, source []runtimeBlockEntitySnapshot) []runtimeBlockEntitySnapshot {
+	previousCount := len(destination)
+	destination = append(destination[:0], source...)
+
+	if len(source) < previousCount {
+		clear(destination[len(source):previousCount])
+	}
+
+	return destination
+}
+
+func blockPositionCompare(first, second game.BlockPosition) int {
+	if first.X != second.X {
+		if first.X < second.X {
+			return -1
+		}
+
+		return 1
+	}
+
+	if first.Y != second.Y {
+		if first.Y < second.Y {
+			return -1
+		}
+
+		return 1
+	}
+
+	if first.Z < second.Z {
+		return -1
+	}
+
+	if first.Z > second.Z {
+		return 1
+	}
+
+	return 0
 }
 
 func (r *Runtime) snapshotActiveChunks() []*ActiveChunk {

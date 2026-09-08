@@ -1,10 +1,8 @@
 package server
 
 import (
-	"cmp"
 	cryptorand "crypto/rand"
 	"fmt"
-	"maps"
 	"math"
 	"math/rand/v2"
 	"slices"
@@ -112,6 +110,7 @@ type runtimeItemEntity struct {
 	FluidType          game.FluidType
 	FluidImpulse       game.Velocity
 	RemainingFireTicks int32
+	pickupReserved     bool
 }
 
 type itemEscapeDirection struct {
@@ -165,7 +164,7 @@ func (entity *runtimeItemEntity) itemMergableLocked() bool {
 		return false
 	}
 
-	return !entity.State.Removed && entity.PickupDelay != 32767 && entity.Age != -32768 && entity.Age < itemEntityLifetime && entity.Stack.Count < definition.StackSize
+	return !entity.State.Removed && !entity.pickupReserved && entity.PickupDelay != 32767 && entity.Age != -32768 && entity.Age < itemEntityLifetime && entity.Stack.Count < definition.StackSize
 }
 
 func (entity *runtimeItemEntity) EntityMetadata() []protocol.EntityMetadataEntry {
@@ -504,7 +503,7 @@ func (r *Runtime) playItemBurnSound(position game.Position) {
 
 	blockPosition := itemEntityBlockPosition(position)
 
-	for _, viewer := range r.snapshotSessions() {
+	for _, viewer := range r.sessionView() {
 		err := viewer.sendSoundIfLoaded(sound, blockPosition)
 		if err != nil && viewer.Log != nil {
 			viewer.Log.Warnf("[play] failed to send item burn sound: %v\n", err)
@@ -570,24 +569,23 @@ func (r *Runtime) snapshotEntitiesInChunk(chunk LoadedChunk) map[int32]RuntimeEn
 
 	entities := make(map[int32]RuntimeEntity, len(source))
 
-	maps.Copy(entities, source)
+	for _, entity := range source {
+		entities[entity.RuntimeEntityState().ID] = entity
+	}
 
 	return entities
 }
 
 func (r *Runtime) snapshotRuntimeEntities() []RuntimeEntity {
+	entities := make([]RuntimeEntity, 0)
+
+	return r.appendRuntimeEntities(entities)
+}
+
+func (r *Runtime) appendRuntimeEntities(entities []RuntimeEntity) []RuntimeEntity {
 	r.entityMu.RLock()
-	defer r.entityMu.RUnlock()
-
-	entities := make([]RuntimeEntity, 0, len(r.entities))
-
-	for _, entity := range r.entities {
-		entities = append(entities, entity)
-	}
-
-	slices.SortFunc(entities, func(first, second RuntimeEntity) int {
-		return cmp.Compare(first.RuntimeEntityState().ID, second.RuntimeEntityState().ID)
-	})
+	entities = append(entities, r.runtimeEntities...)
+	r.entityMu.RUnlock()
 
 	return entities
 }
@@ -595,14 +593,11 @@ func (r *Runtime) snapshotRuntimeEntities() []RuntimeEntity {
 func (r *Runtime) addEntityToChunkIndexLocked(entity RuntimeEntity) {
 	view := entity.(RuntimeEntityTracker).RuntimeEntityView()
 
+	r.runtimeEntities = insertRuntimeEntityByID(r.runtimeEntities, entity)
+
 	indexed := r.entitiesByChunk[view.Chunk]
-	if indexed == nil {
-		indexed = make(map[int32]RuntimeEntity)
-
-		r.entitiesByChunk[view.Chunk] = indexed
-	}
-
-	indexed[view.ID] = entity
+	indexed = insertRuntimeEntityByID(indexed, entity)
+	r.entitiesByChunk[view.Chunk] = indexed
 }
 
 func (r *Runtime) runtimeEntityMoved(entity RuntimeEntity, previous game.Position) {
@@ -621,22 +616,18 @@ func (r *Runtime) runtimeEntityMoved(entity RuntimeEntity, previous game.Positio
 	r.entityMu.Lock()
 	state.mu.Lock()
 
-	delete(r.entitiesByChunk[previousChunk], state.ID)
-
-	if len(r.entitiesByChunk[previousChunk]) == 0 {
+	previousEntities := removeRuntimeEntityByID(r.entitiesByChunk[previousChunk], state.ID)
+	if len(previousEntities) == 0 {
 		delete(r.entitiesByChunk, previousChunk)
+	} else {
+		r.entitiesByChunk[previousChunk] = previousEntities
 	}
 
 	state.Chunk = nextChunk
 
 	indexed := r.entitiesByChunk[nextChunk]
-	if indexed == nil {
-		indexed = make(map[int32]RuntimeEntity)
-
-		r.entitiesByChunk[nextChunk] = indexed
-	}
-
-	indexed[state.ID] = entity
+	indexed = insertRuntimeEntityByID(indexed, entity)
+	r.entitiesByChunk[nextChunk] = indexed
 
 	entityID := state.ID
 
@@ -673,10 +664,13 @@ func (r *Runtime) removeRuntimeEntity(id int32) {
 	chunkPosition := state.Chunk
 
 	delete(r.entities, id)
-	delete(r.entitiesByChunk[chunkPosition], id)
+	r.runtimeEntities = removeRuntimeEntityByID(r.runtimeEntities, id)
+	indexed := removeRuntimeEntityByID(r.entitiesByChunk[chunkPosition], id)
 
-	if len(r.entitiesByChunk[chunkPosition]) == 0 {
+	if len(indexed) == 0 {
 		delete(r.entitiesByChunk, chunkPosition)
+	} else {
+		r.entitiesByChunk[chunkPosition] = indexed
 	}
 
 	state.mu.Unlock()
@@ -687,13 +681,13 @@ func (r *Runtime) removeRuntimeEntity(id int32) {
 		chunk.RemoveEntity(id)
 	}
 
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		session.untrackRuntimeEntity(id)
 	}
 }
 
 func (r *Runtime) reconcileRuntimeEntityTracking(entity RuntimeEntity) {
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		if session.shouldTrackRuntimeEntity(entity) {
 			session.trackRuntimeEntity(entity)
 		} else {
@@ -766,7 +760,7 @@ func (s *Session) shouldTrackRuntimeEntity(entity RuntimeEntity) bool {
 		return false
 	}
 
-	player := s.snapshotPlayer()
+	player := s.playerView()
 
 	distanceX := player.Position.X - view.Position.X
 	distanceZ := player.Position.Z - view.Position.Z
@@ -884,89 +878,62 @@ func (s *Session) clearTrackedEntities() {
 }
 
 func (r *Runtime) pickUpItemEntity(entity *runtimeItemEntity) bool {
-	entity.State.mu.RLock()
+	sessions := r.sessionView()
 
-	if entity.PickupDelay != 0 {
-		entity.State.mu.RUnlock()
+	// Item state is locked before player state. No player-held operation acquires
+	// item state, so this transaction cannot form a lock cycle. The reservation
+	// also makes hopper and merge paths leave the stack untouched between scans.
+	entity.State.mu.Lock()
+
+	if entity.State.Removed || entity.PickupDelay != 0 || entity.pickupReserved {
+		entity.State.mu.Unlock()
 
 		return false
 	}
+
+	entity.pickupReserved = true
 
 	itemBox := itemEntityBox(entity.State.Position)
 
 	targetUUID := entity.TargetUUID
 	entityID := entity.State.ID
-
-	entity.State.mu.RUnlock()
+	originalStack := entity.Stack
 
 	pickupBox := game.AABB{MinX: itemBox.MinX - 1, MinY: itemBox.MinY - 0.5, MinZ: itemBox.MinZ - 1, MaxX: itemBox.MaxX + 1, MaxY: itemBox.MaxY + 0.5, MaxZ: itemBox.MaxZ + 1}
 
-	for _, session := range r.snapshotSessions() {
-		player := session.snapshotPlayer()
-		if player.Dead || targetUUID != "" && targetUUID != player.UUID || !pickupBox.Intersects(player.CollisionBox()) {
+	for _, session := range sessions {
+		view := session.playerView()
+		if view.Dead || targetUUID != "" && targetUUID != view.UUID || !pickupBox.Intersects(view.collisionBox()) {
 			continue
 		}
 
-		entity.State.mu.RLock()
-		before := player.Inventory.Clone()
-		remaining := entity.Stack.Clone()
-		originalStack := entity.Stack.Clone()
-		entity.State.mu.RUnlock()
+		var mutation playerInventoryMutation
 
-		changed := false
-
-		player, changed = session.updatePlayerState(func(current *game.Player) bool {
-			playerMenu := newPlayerInventoryMenu(&current.Inventory)
-
-			candidate := playerMenu.candidate()
-
-			moveIntoSlots(candidate, &remaining, slotRange(36, 44))
-			moveIntoSlots(candidate, &remaining, slotRange(9, 35))
-
-			if remaining.Equal(originalStack) {
-				return false
-			}
-
-			playerMenu.commit(candidate)
-
-			return true
-		})
+		remaining, changed := session.insertPickedUpItem(&mutation, originalStack)
 
 		if !changed {
 			continue
 		}
 
-		originalCount := originalStack.Count
-
-		entity.State.mu.Lock()
-
-		if entity.State.Removed || !entity.Stack.Equal(originalStack) {
-			entity.State.mu.Unlock()
-
-			continue
-		}
-
 		entity.Stack = remaining
 		entity.State.metadataDirty = true
+		empty := entity.Stack.Empty()
+		entity.pickupReserved = false
 		entity.State.mu.Unlock()
 
-		for _, viewer := range r.snapshotSessions() {
+		for _, viewer := range sessions {
 			if viewer.tracksRuntimeEntity(entityID) {
-				err := viewer.writePacket(protocol.ClientboundTakeItemEntityID, protocol.TakeItemEntity{ItemEntityID: entityID, PlayerEntityID: player.EntityID, Amount: originalCount})
+				err := writeSessionPacket(viewer, protocol.ClientboundTakeItemEntityID, protocol.TakeItemEntity{ItemEntityID: entityID, PlayerEntityID: mutation.entityID, Amount: originalStack.Count})
 				if err != nil && viewer.Log != nil {
 					viewer.Log.Warnf("[play] failed to animate item pickup: %v\n", err)
 				}
 			}
 		}
 
-		err := session.synchronizePlayerInventoryMutation(before)
+		err := session.synchronizePlayerInventoryJournal(&mutation)
 		if err != nil && session.Log != nil {
 			session.Log.Warnf("[play] failed to synchronize item pickup: %v\n", err)
 		}
-
-		entity.State.mu.RLock()
-		empty := entity.Stack.Empty()
-		entity.State.mu.RUnlock()
 
 		if empty {
 			r.removeRuntimeEntity(entityID)
@@ -977,7 +944,55 @@ func (r *Runtime) pickUpItemEntity(entity *runtimeItemEntity) bool {
 		return true
 	}
 
+	entity.pickupReserved = false
+	entity.State.mu.Unlock()
+
 	return false
+}
+
+func moveItemEntityIntoPlayerInventory(inventory *game.PlayerInventory, stack *game.ItemStack, journal *playerInventoryJournal) {
+	moveItemEntityIntoPlayerSlots(inventory, stack, journal, 36, 44)
+	moveItemEntityIntoPlayerSlots(inventory, stack, journal, 9, 35)
+}
+
+func moveItemEntityIntoPlayerSlots(inventory *game.PlayerInventory, stack *game.ItemStack, journal *playerInventoryJournal, first, last int) {
+	for slot := first; slot <= last && !stack.Empty(); slot++ {
+		target := inventory.Slot(slot)
+		if target.Empty() || !target.SameItem(*stack) {
+			continue
+		}
+
+		moved := min(stackLimit(*target)-target.Count, stack.Count)
+		if moved <= 0 {
+			continue
+		}
+
+		after := *target
+		after.Count += moved
+
+		journal.set(inventory, slot, after)
+
+		stack.Count -= moved
+	}
+
+	for slot := first; slot <= last && !stack.Empty(); slot++ {
+		target := inventory.Slot(slot)
+		if !target.Empty() {
+			continue
+		}
+
+		moved := min(stackLimit(*stack), stack.Count)
+		if moved <= 0 {
+			return
+		}
+
+		after := *stack
+		after.Count = moved
+
+		journal.set(inventory, slot, after)
+
+		stack.Count -= moved
+	}
 }
 
 func (r *Runtime) synchronizeDirtyRuntimeEntityMetadata(entity RuntimeEntityMetadata) {
@@ -1017,7 +1032,7 @@ func (r *Runtime) synchronizeDirtyRuntimeEntityMetadata(entity RuntimeEntityMeta
 
 	packet := protocol.EntityMetadata{EntityID: id, Entries: entries}
 
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		if session.tracksRuntimeEntity(id) {
 			_ = session.writePacket(protocol.ClientboundEntityMetadataID, packet)
 		}
@@ -1103,7 +1118,9 @@ func (r *Runtime) itemEntityInsideCollision(position game.Position) bool {
 	box.MaxY -= 1e-7
 	box.MaxZ -= 1e-7
 
-	return slices.ContainsFunc(r.entityCollisionBoxes(box, game.Velocity{}), box.Intersects)
+	var blocks [64]game.AABB
+	boxes := r.appendEntityCollisionBoxes(blocks[:0], box, game.Velocity{})
+	return slices.ContainsFunc(boxes, box.Intersects)
 }
 
 func (r *Runtime) itemVelocityTowardsClosestSpace(position game.Position, velocity game.Velocity) game.Velocity {
@@ -1168,7 +1185,8 @@ func (r *Runtime) itemVelocityTowardsClosestSpace(position game.Position, veloci
 func (r *Runtime) moveItemEntity(position game.Position, velocity game.Velocity) itemEntityMovement {
 	box := itemEntityBox(position)
 
-	blocks := r.entityCollisionBoxes(box, velocity)
+	var blockBuffer [64]game.AABB
+	blocks := r.appendEntityCollisionBoxes(blockBuffer[:0], box, velocity)
 
 	resolved := collideAABBWithBlocks(box, blocks, velocity)
 	deltaX := resolved.X
@@ -1192,7 +1210,7 @@ func (r *Runtime) moveItemEntity(position game.Position, velocity game.Velocity)
 	}
 }
 
-func (r *Runtime) entityCollisionBoxes(box game.AABB, velocity game.Velocity) []game.AABB {
+func (r *Runtime) appendEntityCollisionBoxes(boxes []game.AABB, box game.AABB, velocity game.Velocity) []game.AABB {
 	minX := int32(math.Floor(min(box.MinX, box.MinX+velocity.X)))
 	minY := int32(math.Floor(min(box.MinY, box.MinY+velocity.Y)))
 	minZ := int32(math.Floor(min(box.MinZ, box.MinZ+velocity.Z)))
@@ -1201,14 +1219,15 @@ func (r *Runtime) entityCollisionBoxes(box game.AABB, velocity game.Velocity) []
 	maxY := int32(math.Floor(max(box.MaxY, box.MaxY+velocity.Y) - 1e-7))
 	maxZ := int32(math.Floor(max(box.MaxZ, box.MaxZ+velocity.Z) - 1e-7))
 
-	var boxes []game.AABB
+	var blockBoxes [7]game.AABB
 
 	for y := minY; y <= maxY; y++ {
 		for x := minX; x <= maxX; x++ {
 			for z := minZ; z <= maxZ; z++ {
 				position := game.BlockPosition{X: x, Y: y, Z: z}
 
-				boxes = append(boxes, r.World.BlockAt(position).CollisionBoxes(position)...)
+				shape := r.World.BlockAt(position).AppendCollisionBoxes(blockBoxes[:0], position)
+				boxes = append(boxes, shape...)
 			}
 		}
 	}
@@ -1318,7 +1337,9 @@ func mergeItemEntities(entity, other *runtimeItemEntity) (bool, *runtimeItemEnti
 }
 
 func blockCollisionShapeFull(block game.Block, position game.BlockPosition) bool {
-	boxes := block.CollisionBoxes(position)
+	var boxBuffer [7]game.AABB
+	boxes := block.AppendCollisionBoxes(boxBuffer[:0], position)
+
 	if len(boxes) != 1 {
 		return false
 	}
@@ -1420,4 +1441,38 @@ func randomEntityUUID() string {
 	uuid[8] = uuid[8]&0x3f | 0x80
 
 	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:16])
+}
+
+func insertRuntimeEntityByID(entities []RuntimeEntity, entity RuntimeEntity) []RuntimeEntity {
+	entityID := entity.RuntimeEntityState().ID
+	index := 0
+
+	for index < len(entities) && entities[index].RuntimeEntityState().ID < entityID {
+		index++
+	}
+
+	if index < len(entities) && entities[index].RuntimeEntityState().ID == entityID {
+		return entities
+	}
+
+	entities = append(entities, nil)
+	copy(entities[index+1:], entities[index:])
+	entities[index] = entity
+
+	return entities
+}
+
+func removeRuntimeEntityByID(entities []RuntimeEntity, entityID int32) []RuntimeEntity {
+	for index, entity := range entities {
+		if entity.RuntimeEntityState().ID != entityID {
+			continue
+		}
+
+		copy(entities[index:], entities[index+1:])
+		entities[len(entities)-1] = nil
+
+		return entities[:len(entities)-1]
+	}
+
+	return entities
 }

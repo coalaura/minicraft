@@ -494,7 +494,7 @@ func (entity *runtimeZombieEntity) tickTarget(runtime *Runtime, fullGoalTick boo
 			return current
 		}
 
-		player := current.snapshotPlayer()
+		player := current.playerView()
 
 		if runtime.playerTargetValid(current, position, zombieFollowRange) {
 			if runtime.playerTargetHasLineOfSight(position, zombieEyeHeight, player.Position) {
@@ -535,7 +535,7 @@ func (entity *runtimeZombieEntity) tickGoals(runtime *Runtime, target *Session, 
 }
 
 func (entity *runtimeZombieEntity) tickMeleeGoal(runtime *Runtime, target *Session, fullGoalTick bool) {
-	player := target.snapshotPlayer()
+	player := target.playerView()
 
 	if entity.Melee.Active && fullGoalTick && entity.Navigation.Done() {
 		entity.stopMelee()
@@ -550,7 +550,7 @@ func (entity *runtimeZombieEntity) tickMeleeGoal(runtime *Runtime, target *Sessi
 		entity.Melee.LastCanUseCheck = gameTime
 
 		path := runtime.findGroundPath(entity.State.Position, player.Position, entity.Living.Width, entity.Living.Height, zombieFollowRange)
-		withinReach := zombieMeleeBoxesIntersect(entity.Living.CollisionBox(entity.State.Position), player.CollisionBox())
+		withinReach := zombieMeleeBoxesIntersect(entity.Living.CollisionBox(entity.State.Position), player.collisionBox())
 
 		if len(path) == 0 && !withinReach {
 			return
@@ -564,7 +564,7 @@ func (entity *runtimeZombieEntity) tickMeleeGoal(runtime *Runtime, target *Sessi
 		entity.Melee.RaiseArmTicks = 0
 	}
 
-	entity.LookControl.SetWanted(player.EyePosition(), zombieLookMaximumYaw, zombieLookMaximumPitch)
+	entity.LookControl.SetWanted(player.eyePosition(), zombieLookMaximumYaw, zombieLookMaximumPitch)
 
 	entity.Melee.TicksUntilNextPathRecalculation = max(entity.Melee.TicksUntilNextPathRecalculation-1, 0)
 
@@ -608,13 +608,13 @@ func (entity *runtimeZombieEntity) tickIdleGoals(runtime *Runtime, fullGoalTick 
 	}
 
 	if entity.Idle.PlayerLook != nil {
-		player := entity.Idle.PlayerLook.snapshotPlayer()
+		player := entity.Idle.PlayerLook.playerView()
 		valid := !player.Dead && distanceSquared(entity.State.Position, player.Position) <= zombieIdleLookDistance*zombieIdleLookDistance
 
 		if fullGoalTick && (!valid || entity.Idle.PlayerLookTicks <= 0) {
 			entity.Idle.PlayerLook = nil
 		} else if valid && fullGoalTick {
-			entity.LookControl.SetWanted(player.EyePosition(), zombieIdleLookMaximumYaw, zombieIdleLookMaximumPitch)
+			entity.LookControl.SetWanted(player.eyePosition(), zombieIdleLookMaximumYaw, zombieIdleLookMaximumPitch)
 			entity.Idle.PlayerLookTicks--
 		}
 	}
@@ -735,11 +735,11 @@ func (entity *runtimeZombieEntity) tickAttack(runtime *Runtime, target *Session)
 		return
 	}
 
-	player := target.snapshotPlayer()
+	targetView := target.playerView()
 
 	entity.State.mu.Lock()
 
-	if !zombieMeleeBoxesIntersect(entity.Living.CollisionBox(entity.State.Position), player.CollisionBox()) {
+	if !zombieMeleeBoxesIntersect(entity.Living.CollisionBox(entity.State.Position), targetView.collisionBox()) {
 		entity.State.mu.Unlock()
 
 		return
@@ -749,7 +749,7 @@ func (entity *runtimeZombieEntity) tickAttack(runtime *Runtime, target *Session)
 	entityID := entity.State.ID
 	entity.State.mu.Unlock()
 
-	if !runtime.playerTargetHasLineOfSight(position, zombieEyeHeight, player.Position) {
+	if !runtime.playerTargetHasLineOfSight(position, zombieEyeHeight, targetView.Position) {
 		return
 	}
 
@@ -769,10 +769,12 @@ func (entity *runtimeZombieEntity) tickAttack(runtime *Runtime, target *Session)
 		return
 	}
 
-	if update.fullHurt {
-		originalVelocity := player.Velocity
+	var knockbackPlayer game.Player
 
-		player, _ = target.updatePlayerState(func(current *game.Player) bool {
+	if update.fullHurt {
+		originalVelocity := targetView.Velocity
+
+		knockbackPlayer, _ = target.updatePlayerState(func(current *game.Player) bool {
 			directionX := position.X - current.Position.X
 			directionZ := position.Z - current.Position.Z
 
@@ -781,9 +783,9 @@ func (entity *runtimeZombieEntity) tickAttack(runtime *Runtime, target *Session)
 			return true
 		})
 
-		update.player = player
+		update.player = knockbackPlayer
 
-		target.updatePlayerState(func(current *game.Player) bool {
+		target.mutatePlayer(func(current *game.Player) bool {
 			current.Velocity = originalVelocity
 
 			return true
@@ -793,7 +795,7 @@ func (entity *runtimeZombieEntity) tickAttack(runtime *Runtime, target *Session)
 	runtime.sendPlayerSurvivalUpdate(target, update)
 
 	if update.fullHurt {
-		runtime.sendPlayerKnockback(player)
+		runtime.sendPlayerKnockback(knockbackPlayer)
 	}
 }
 
@@ -877,10 +879,11 @@ func (r *Runtime) zombieTarget(entity *runtimeZombieEntity) *Session {
 
 func (r *Runtime) nearestZombieLookTarget(position game.Position) *Session {
 	var nearest *Session
+
 	nearestDistance := float64(zombieIdleLookDistance * zombieIdleLookDistance)
 
-	for _, session := range r.snapshotSessions() {
-		player := session.snapshotPlayer()
+	for _, session := range r.sessionView() {
+		player := session.playerView()
 		if player.Dead || player.GameMode == game.GameModeSpectator {
 			continue
 		}

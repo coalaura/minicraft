@@ -43,7 +43,9 @@ func (block Block) CombinedFaceOccludes(other Block, face BlockFace) bool {
 }
 
 func (block Block) coversFace(face BlockFace, targets []supportRectangle) bool {
-	boxes := block.CollisionBoxes(BlockPosition{})
+	var boxBuffer [maxBlockCollisionBoxes]AABB
+
+	boxes := block.AppendCollisionBoxes(boxBuffer[:0], BlockPosition{})
 	rectangles := make([]supportRectangle, 0, len(boxes))
 
 	for _, box := range boxes {
@@ -65,8 +67,13 @@ func (block Block) coversFace(face BlockFace, targets []supportRectangle) bool {
 // CombinedFaceOccludes reports whether the collision faces shared by block and
 // other completely cover their common face.
 func CombinedFaceOccludes(block, other Block, face BlockFace) bool {
-	boxes := block.CollisionBoxes(BlockPosition{})
-	otherBoxes := other.CollisionBoxes(BlockPosition{})
+	var boxBuffer [maxBlockCollisionBoxes]AABB
+
+	boxes := block.AppendCollisionBoxes(boxBuffer[:0], BlockPosition{})
+
+	var otherBoxBuffer [maxBlockCollisionBoxes]AABB
+
+	otherBoxes := other.AppendCollisionBoxes(otherBoxBuffer[:0], BlockPosition{})
 
 	rectangles := make([]supportRectangle, 0, len(boxes)+len(otherBoxes))
 

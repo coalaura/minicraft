@@ -95,7 +95,7 @@ func (registry *commandRegistry) registerEnchant() {
 				continue
 			}
 
-			name := game.LiteralText(target.snapshotPlayer().Name)
+			name := game.LiteralText(target.playerView().Name)
 
 			if reason == enchantHeldItemEmpty {
 				return commandFailure{message: game.TranslatableText("commands.enchant.failed.itemless", name)}
@@ -114,7 +114,7 @@ func (registry *commandRegistry) registerEnchant() {
 		enchantmentName := selected.FullName(selectedLevel)
 
 		if len(resolved) == 1 {
-			return source.Feedback(game.TranslatableText("commands.enchant.success.single", enchantmentName, game.LiteralText(resolved[0].snapshotPlayer().Name)))
+			return source.Feedback(game.TranslatableText("commands.enchant.success.single", enchantmentName, game.LiteralText(resolved[0].playerView().Name)))
 		}
 
 		return source.Feedback(game.TranslatableText("commands.enchant.success.multiple", enchantmentName, integerText(int64(len(resolved)))))
@@ -187,7 +187,7 @@ func (registry *commandRegistry) registerKill() {
 		}
 
 		if len(resolved) == 1 {
-			name := game.LiteralText(resolved[0].snapshotPlayer().Name)
+			name := game.LiteralText(resolved[0].playerView().Name)
 
 			return source.Feedback(game.TranslatableText("commands.kill.success.single", name))
 		}
@@ -336,7 +336,7 @@ func (registry *commandRegistry) registerGameMode() {
 			if sourceIsPlayer && sourceSession == target {
 				err = source.Feedback(game.TranslatableText("commands.gamemode.success.self", modeComponent))
 			} else {
-				name := game.LiteralText(target.snapshotPlayer().Name)
+				name := game.LiteralText(target.playerView().Name)
 
 				err = source.Feedback(game.TranslatableText("commands.gamemode.success.other", name, modeComponent))
 				if err == nil {
@@ -395,7 +395,7 @@ func (registry *commandRegistry) registerGive() {
 				"commands.give.success.single",
 				integerText(int64(itemCount)),
 				itemName,
-				game.LiteralText(resolved[0].snapshotPlayer().Name),
+				game.LiteralText(resolved[0].playerView().Name),
 			))
 		}
 
@@ -452,7 +452,7 @@ func (registry *commandRegistry) registerClear() {
 
 		if affected == 0 {
 			if len(resolved) == 1 {
-				return commandFailure{message: game.LiteralText("No items were found on player " + resolved[0].snapshotPlayer().Name)}
+				return commandFailure{message: game.LiteralText("No items were found on player " + resolved[0].playerView().Name)}
 			}
 
 			return commandFailure{message: game.LiteralText(fmt.Sprintf("No items were found on %d players", len(resolved)))}
@@ -464,7 +464,7 @@ func (registry *commandRegistry) registerClear() {
 			key = "commands.clear.test.single"
 		}
 
-		arguments := []game.TextComponent{integerText(int64(affected)), game.LiteralText(resolved[0].snapshotPlayer().Name)}
+		arguments := []game.TextComponent{integerText(int64(affected)), game.LiteralText(resolved[0].playerView().Name)}
 
 		if len(resolved) > 1 {
 			key = "commands.clear.success.multiple"
@@ -764,7 +764,7 @@ func (registry *commandRegistry) registerFill() {
 }
 
 func (registry *commandRegistry) teleportToPlayer(source CommandSource, targets []*Session, destination *Session) error {
-	player := destination.snapshotPlayer()
+	player := destination.playerView()
 
 	for _, target := range targets {
 		err := registry.runtime.TeleportPlayer(target, player.Position, &player.Rotation)
@@ -776,7 +776,7 @@ func (registry *commandRegistry) teleportToPlayer(source CommandSource, targets 
 	if len(targets) == 1 {
 		return source.Feedback(game.TranslatableText(
 			"commands.teleport.success.entity.single",
-			game.LiteralText(targets[0].snapshotPlayer().Name),
+			game.LiteralText(targets[0].playerView().Name),
 			game.LiteralText(player.Name),
 		))
 	}
@@ -797,7 +797,7 @@ func (registry *commandRegistry) teleportToLocation(source CommandSource, target
 	}
 
 	arguments := []game.TextComponent{
-		game.LiteralText(targets[0].snapshotPlayer().Name),
+		game.LiteralText(targets[0].playerView().Name),
 		game.LiteralText(formatCoordinate(position.X)),
 		game.LiteralText(formatCoordinate(position.Y)),
 		game.LiteralText(formatCoordinate(position.Z)),
@@ -928,7 +928,7 @@ func (registry *commandRegistry) resolveTargets(source CommandSource, token comm
 				for index, session := range sessions {
 					distances[index] = commandTargetDistance{
 						session:  session,
-						distance: positionDistanceSquared(sourcePosition, session.snapshotPlayer().Position),
+						distance: positionDistanceSquared(sourcePosition, session.playerView().Position),
 					}
 				}
 
@@ -961,7 +961,7 @@ func (registry *commandRegistry) resolveTargets(source CommandSource, token comm
 		}
 
 		for _, session := range sessions {
-			if strings.EqualFold(session.snapshotPlayer().Name, value) {
+			if strings.EqualFold(session.playerView().Name, value) {
 				targets = []*Session{session}
 
 				break
@@ -981,11 +981,11 @@ func (registry *commandRegistry) resolveTargets(source CommandSource, token comm
 }
 
 func (registry *commandRegistry) sortedSessions() []*Session {
-	sessions := registry.runtime.snapshotSessions()
+	sessions := registry.runtime.sessionView()
 
 	sort.Slice(sessions, func(first, second int) bool {
-		firstPlayer := sessions[first].snapshotPlayer()
-		secondPlayer := sessions[second].snapshotPlayer()
+		firstPlayer := sessions[first].playerView()
+		secondPlayer := sessions[second].playerView()
 
 		firstName := strings.ToLower(firstPlayer.Name)
 		secondName := strings.ToLower(secondPlayer.Name)
@@ -1004,7 +1004,7 @@ func (registry *commandRegistry) targetSuggestions(CommandSource) []string {
 	values := append([]string(nil), supportedSelectors...)
 
 	for _, session := range registry.sortedSessions() {
-		values = append(values, session.snapshotPlayer().Name)
+		values = append(values, session.playerView().Name)
 	}
 
 	return values

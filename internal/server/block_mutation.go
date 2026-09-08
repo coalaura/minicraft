@@ -451,7 +451,7 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 		states:           states,
 		records:          records,
 		lightingChanges:  lightingChanges,
-		recipients:       r.snapshotSessions(),
+		recipients:       r.sessionView(),
 		poseChanges:      poseChanges,
 		waitForDelivery:  r.blockMutationDeliveryTail,
 		deliveryComplete: deliveryComplete,
@@ -573,7 +573,8 @@ func (r *Runtime) deliverBlockMutation(delivery blockMutationDelivery, lightUpda
 
 	for _, player := range delivery.poseChanges {
 		for _, other := range delivery.recipients {
-			if other.snapshotPlayer().EntityID == player.EntityID || !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+			otherPlayer := other.playerView()
+			if otherPlayer.EntityID == player.EntityID || !playerViewSeesPlayer(otherPlayer, player, other.renderDistance()) {
 				continue
 			}
 
@@ -600,7 +601,7 @@ func (r *Runtime) deliverBlockMutation(delivery blockMutationDelivery, lightUpda
 		event := protocol.EntityEvent{EntityID: player.EntityID, Event: 47}
 
 		for _, other := range delivery.recipients {
-			if other != delivery.session && !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+			if other != delivery.session && !playerViewSeesPlayer(other.playerView(), player, other.renderDistance()) {
 				continue
 			}
 

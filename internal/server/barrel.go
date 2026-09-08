@@ -140,7 +140,7 @@ func (r *Runtime) setBarrelOpenStateLocked(barrel *runtimeBarrel, open bool) {
 	result, delivery, err := r.mutateBlocksLocked(nil, BlockMutationInteract, []game.BlockChange{change}, 1, true, false, true, false)
 	if err != nil || !result.Changed {
 		if err != nil {
-			for _, session := range r.snapshotSessions() {
+			for _, session := range r.sessionView() {
 				if session.Log != nil {
 					session.Log.Warnf("[play] failed to mutate barrel state: %v\n", err)
 				}

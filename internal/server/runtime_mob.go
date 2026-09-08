@@ -105,7 +105,9 @@ func (r *Runtime) checkRuntimeMobDespawn(entity RuntimeMobEntity) bool {
 }
 
 func (r *Runtime) cleanupInactiveRuntimeMobs() {
-	for _, entity := range r.snapshotRuntimeEntities() {
+	entities := r.appendRuntimeEntities(nil)
+
+	for _, entity := range entities {
 		mob, isMob := entity.(RuntimeMobEntity)
 		if !isMob {
 			continue
@@ -149,8 +151,8 @@ func (r *Runtime) nearestMobPlayerDistanceSquared(position game.Position) (float
 	nearestDistanceSquared := math.MaxFloat64
 	playerPresent := false
 
-	for _, session := range r.snapshotSessions() {
-		player := session.snapshotPlayer()
+	for _, session := range r.sessionView() {
+		player := session.playerView()
 		if player.GameMode == game.GameModeSpectator {
 			continue
 		}

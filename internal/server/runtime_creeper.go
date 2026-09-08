@@ -670,7 +670,7 @@ func (entity *runtimeCreeperEntity) RuntimeEntityInteract(runtime *Runtime, sess
 
 	changed := false
 
-	session.updatePlayerState(func(current *game.Player) bool {
+	session.mutatePlayer(func(current *game.Player) bool {
 		stack, found := heldItemPointer(current, interaction.Hand)
 
 		if !found || !stack.SameItem(*held) {

@@ -181,7 +181,7 @@ func (r *Runtime) closeMenuWithRemovalStateLocked(session *Session, notify, disc
 	removedInventoryChanged := false
 
 	if current.removed != nil {
-		_, removedInventoryChanged = session.updatePlayerState(func(player *game.Player) bool {
+		removedInventoryChanged = session.mutatePlayer(func(player *game.Player) bool {
 			candidate := current.candidate()
 
 			candidate.selected = player.SelectedHotbarSlot
@@ -214,7 +214,7 @@ func (r *Runtime) closeMenuWithRemovalStateLocked(session *Session, notify, disc
 		player := session.snapshotPlayer()
 
 		if !disconnected {
-			_, inventoryChanged = session.updatePlayerState(func(currentPlayer *game.Player) bool {
+			inventoryChanged = session.mutatePlayer(func(currentPlayer *game.Player) bool {
 				return moveStackIntoPlayerInventory(session.inventoryMenu, &carried)
 			})
 
@@ -346,7 +346,7 @@ func (r *Runtime) closeRemovedBlockEntityMenusWithLifecycle(records []blockMutat
 		defer r.lifecycleMu.Unlock()
 	}
 
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		current := session.activeMenu()
 		if current.backing == nil {
 			continue
@@ -366,7 +366,7 @@ func (r *Runtime) tickOpenMenus() {
 	r.worldMutationMu.Lock()
 	r.lifecycleMu.Lock()
 
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		current := session.activeMenu()
 		if current.backing == nil {
 			continue

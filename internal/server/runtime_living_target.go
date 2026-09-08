@@ -22,7 +22,7 @@ func (target runtimeLivingTarget) present() bool {
 
 func (target runtimeLivingTarget) position() game.Position {
 	if target.session != nil {
-		return target.session.snapshotPlayer().Position
+		return target.session.playerView().Position
 	}
 
 	if target.entity != nil {
@@ -65,7 +65,7 @@ func (target runtimeLivingTarget) eyePosition() game.Position {
 
 func (target runtimeLivingTarget) collisionBox() game.AABB {
 	if target.session != nil {
-		return target.session.snapshotPlayer().CollisionBox()
+		return target.session.playerView().collisionBox()
 	}
 
 	if target.entity != nil {
@@ -102,8 +102,8 @@ func (target runtimeLivingTarget) hasLineOfSight(runtime *Runtime, position game
 }
 
 func (r *Runtime) runtimeLivingTargetByID(id int32) runtimeLivingTarget {
-	for _, session := range r.snapshotSessions() {
-		if session.snapshotPlayer().EntityID == id {
+	for _, session := range r.sessionView() {
+		if session.playerView().EntityID == id {
 			return runtimeLivingTarget{session: session}
 		}
 	}
@@ -125,8 +125,8 @@ func (r *Runtime) nearestValidPlayer(position game.Position, eyeHeight, maximumD
 
 	nearestDistance := maximumDistance * maximumDistance
 
-	for _, session := range r.snapshotSessions() {
-		player := session.snapshotPlayer()
+	for _, session := range r.sessionView() {
+		player := session.playerView()
 		if !playerTargetValid(player, position, maximumDistance) || !r.playerTargetHasLineOfSight(position, eyeHeight, player.Position) {
 			continue
 		}
@@ -142,9 +142,9 @@ func (r *Runtime) nearestValidPlayer(position game.Position, eyeHeight, maximumD
 }
 
 func (r *Runtime) playerTargetValid(session *Session, position game.Position, maximumDistance float64) bool {
-	player := session.snapshotPlayer()
+	player := session.playerView()
 
-	return slices.Contains(r.snapshotSessions(), session) && playerTargetValid(player, position, maximumDistance)
+	return slices.Contains(r.sessionView(), session) && playerTargetValid(player, position, maximumDistance)
 }
 
 func (r *Runtime) playerTargetHasLineOfSight(from game.Position, eyeHeight float64, to game.Position) bool {
@@ -172,7 +172,9 @@ func (r *Runtime) livingTargetHasLineOfSight(from, to game.Position) bool {
 				blockPosition := game.BlockPosition{X: x, Y: y, Z: z}
 				block := r.World.BlockAt(blockPosition)
 
-				for _, box := range block.CollisionBoxes(blockPosition) {
+				var boxBuffer [7]game.AABB
+
+				for _, box := range block.AppendCollisionBoxes(boxBuffer[:0], blockPosition) {
 					distance, _, intersects := raycastAABB(from, deltaX, deltaY, deltaZ, box)
 					if intersects && distance >= 0 && distance <= 1 {
 						return false
@@ -185,7 +187,7 @@ func (r *Runtime) livingTargetHasLineOfSight(from, to game.Position) bool {
 	return true
 }
 
-func playerTargetValid(player game.Player, position game.Position, maximumDistance float64) bool {
+func playerTargetValid(player playerView, position game.Position, maximumDistance float64) bool {
 	if player.Dead || player.GameMode == game.GameModeCreative || player.GameMode == game.GameModeSpectator {
 		return false
 	}

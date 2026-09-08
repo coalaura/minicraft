@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	connectionReadTimeout = 30 * time.Second
-	shutdownWriteTimeout  = 2 * time.Second
+	connectionReadTimeout             = 30 * time.Second
+	shutdownWriteTimeout              = 2 * time.Second
+	maximumRetainedPacketWriterBuffer = 64 * 1024
 )
 
 type Session struct {
@@ -29,6 +30,7 @@ type Session struct {
 	offlineProfiles *offlineProfileResolver
 	playerMx        sync.RWMutex
 	writeMx         sync.Mutex
+	packetWriter    protocol.PacketWriter
 	chatMx          sync.Mutex
 	chatState       *sessionChatState
 	inventoryMenu   *menu
@@ -56,6 +58,65 @@ type Session struct {
 
 	nextTeleportID int32
 	chunksPerTick  float32
+}
+
+type playerView struct {
+	EntityID int32
+	UUID     string
+	Name     string
+
+	Position game.Position
+	Rotation game.Rotation
+	Velocity game.Velocity
+
+	GameMode game.GameMode
+	Pose     game.PlayerPose
+
+	Health             float32
+	MaxHealth          float32
+	Absorption         float32
+	FoodLevel          int32
+	Saturation         float32
+	AirSupply          int32
+	RemainingFireTicks int32
+	SkinParts          byte
+
+	Dead               bool
+	DeathEntityRemoved bool
+	OnGround           bool
+	Sneaking           bool
+	Sprinting          bool
+	Swimming           bool
+}
+
+type playerInventoryJournal struct {
+	before  [game.PlayerInventorySlots]game.ItemStack
+	touched uint64
+}
+
+type playerInventoryMutation struct {
+	entityID           int32
+	gameMode           game.GameMode
+	selectedHotbarSlot int
+	journal            playerInventoryJournal
+}
+
+func (view playerView) collisionBox() game.AABB {
+	player := game.Player{Position: view.Position, Pose: view.Pose}
+
+	return player.CollisionBox()
+}
+
+func (view playerView) eyePosition() game.Position {
+	player := game.Player{Position: view.Position, Pose: view.Pose}
+
+	return player.EyePosition()
+}
+
+func (view playerView) withinBlockInteractionRange(position game.BlockPosition, buffer float64) bool {
+	player := game.Player{Position: view.Position, Pose: view.Pose}
+
+	return player.IsWithinBlockInteractionRange(position, buffer)
 }
 
 func (s *Session) activeMenu() *menu {
@@ -242,6 +303,38 @@ func (s *Session) snapshotPlayer() game.Player {
 	return s.Player.Clone()
 }
 
+func (s *Session) playerView() playerView {
+	s.playerMx.RLock()
+	defer s.playerMx.RUnlock()
+
+	player := s.Player
+
+	return playerView{
+		EntityID:           player.EntityID,
+		UUID:               player.UUID,
+		Name:               player.Name,
+		Position:           player.Position,
+		Rotation:           player.Rotation,
+		Velocity:           player.Velocity,
+		GameMode:           player.GameMode,
+		Pose:               player.Pose,
+		Health:             player.Health,
+		MaxHealth:          player.MaxHealth,
+		Absorption:         player.Absorption,
+		FoodLevel:          player.FoodLevel,
+		Saturation:         player.Saturation,
+		AirSupply:          player.AirSupply,
+		RemainingFireTicks: player.RemainingFireTicks,
+		SkinParts:          player.SkinParts,
+		Dead:               player.Dead,
+		DeathEntityRemoved: player.DeathEntityRemoved,
+		OnGround:           player.OnGround,
+		Sneaking:           player.Sneaking,
+		Sprinting:          player.Sprinting,
+		Swimming:           player.Swimming,
+	}
+}
+
 func (s *Session) setSkinParts(skinParts byte) (game.Player, bool) {
 	return s.updatePlayerState(func(player *game.Player) bool {
 		if player.SkinParts == skinParts {
@@ -261,6 +354,67 @@ func (s *Session) updatePlayerState(update func(*game.Player) bool) (game.Player
 	changed := update(s.Player)
 
 	return s.Player.Clone(), changed
+}
+
+func (s *Session) mutatePlayer(update func(*game.Player) bool) bool {
+	s.playerMx.Lock()
+	defer s.playerMx.Unlock()
+
+	return update(s.Player)
+}
+
+func (s *Session) setCreativeInventorySlot(mutation *playerInventoryMutation, slot int, stack game.ItemStack) bool {
+	s.playerMx.Lock()
+	defer s.playerMx.Unlock()
+
+	mutation.initialize(s.Player)
+
+	if s.Player.GameMode != game.GameModeCreative {
+		return false
+	}
+
+	return mutation.journal.set(&s.Player.Inventory, slot, stack)
+}
+
+func (s *Session) insertPickedUpItem(mutation *playerInventoryMutation, stack game.ItemStack) (game.ItemStack, bool) {
+	s.playerMx.Lock()
+	defer s.playerMx.Unlock()
+
+	mutation.initialize(s.Player)
+
+	remaining := stack
+	moveItemEntityIntoPlayerInventory(&s.Player.Inventory, &remaining, &mutation.journal)
+
+	return remaining, !remaining.Equal(stack)
+}
+
+func (mutation *playerInventoryMutation) initialize(player *game.Player) {
+	*mutation = playerInventoryMutation{
+		entityID:           player.EntityID,
+		gameMode:           player.GameMode,
+		selectedHotbarSlot: player.SelectedHotbarSlot,
+	}
+}
+
+func (journal *playerInventoryJournal) set(inventory *game.PlayerInventory, slot int, stack game.ItemStack) bool {
+	target := inventory.Slot(slot)
+	if target == nil || target.Equal(stack) {
+		return false
+	}
+
+	bit := uint64(1) << slot
+	if journal.touched&bit == 0 {
+		journal.before[slot] = *target
+		journal.touched |= bit
+	}
+
+	*target = stack
+
+	return true
+}
+
+func (journal playerInventoryJournal) touchedSlot(slot int) bool {
+	return slot >= 0 && slot < game.PlayerInventorySlots && journal.touched&(uint64(1)<<slot) != 0
 }
 
 func NewSession(conn *protocol.Connection, cfg *config.Config, runtime *Runtime, log Logger) *Session {

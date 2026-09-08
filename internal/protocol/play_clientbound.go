@@ -1484,20 +1484,20 @@ func encodeItemStack(wr *PacketWriter, stack game.ItemStack) {
 		return
 	}
 
-	stack.NormalizeComponents()
-
 	wr.VarInt(stack.Count)
 	wr.VarInt(int32(stack.Item))
-	wr.VarInt(int32(len(stack.Components)))
-	wr.VarInt(int32(len(stack.RemovedComponents)))
+	wr.VarInt(int32(stack.ComponentCount()))
+	wr.VarInt(int32(stack.RemovedComponentCount()))
 
-	for _, component := range stack.Components {
-		wr.VarInt(component.Type)
-		wr.Raw(component.Data)
+	for index := range stack.ComponentCount() {
+		componentType, data := stack.ComponentAt(index)
+
+		wr.VarInt(componentType)
+		wr.RawString(data)
 	}
 
-	for _, componentType := range stack.RemovedComponents {
-		wr.VarInt(componentType)
+	for index := range stack.RemovedComponentCount() {
+		wr.VarInt(stack.RemovedComponentAt(index))
 	}
 }
 

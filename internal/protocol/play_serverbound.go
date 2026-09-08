@@ -884,12 +884,10 @@ func decodeUntrustedSlot(rd *PacketReader) (UntrustedSlot, error) {
 		return UntrustedSlot{}, err
 	}
 
-	stack := game.ItemStack{Components: item.Components, RemovedComponents: item.RemovedComponents}
+	stack := game.NewItemStack(0, 0, item.Components, item.RemovedComponents)
 
-	stack.NormalizeComponents()
-
-	item.Components = stack.Components
-	item.RemovedComponents = stack.RemovedComponents
+	item.Components = stack.Components()
+	item.RemovedComponents = stack.RemovedComponents()
 
 	return item, nil
 }

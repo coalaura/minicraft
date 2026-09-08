@@ -130,12 +130,12 @@ func (goal *animalTemptGoal) Tick(runtime *Runtime) {
 		return
 	}
 
-	player := goal.Target.snapshotPlayer()
+	player := goal.Target.playerView()
 
 	goal.Entity.State.mu.Lock()
 	position := goal.Entity.State.Position
 
-	goal.Entity.LookControl.SetWanted(player.EyePosition(), animalMoveMaximumTurn, animalIdleLookMaximumPitch)
+	goal.Entity.LookControl.SetWanted(player.eyePosition(), animalMoveMaximumTurn, animalIdleLookMaximumPitch)
 	goal.Entity.State.mu.Unlock()
 
 	path := runtime.findGroundPath(position, player.Position, goal.Entity.Living.Width, goal.Entity.Living.Height, animalFollowRange)
@@ -189,7 +189,7 @@ func (goal *animalLookAtPlayerGoal) CanContinue(*Runtime) bool {
 		return false
 	}
 
-	player := goal.Target.snapshotPlayer()
+	player := goal.Target.playerView()
 
 	goal.Entity.State.mu.RLock()
 	distanceSquared := animalDistanceSquared(goal.Entity.State.Position, player.Position)
@@ -211,10 +211,10 @@ func (goal *animalLookAtPlayerGoal) Tick(*Runtime) {
 		return
 	}
 
-	player := goal.Target.snapshotPlayer()
+	player := goal.Target.playerView()
 
 	goal.Entity.State.mu.Lock()
-	goal.Entity.LookControl.SetWanted(player.EyePosition(), animalMoveMaximumTurn, animalIdleLookMaximumPitch)
+	goal.Entity.LookControl.SetWanted(player.eyePosition(), animalMoveMaximumTurn, animalIdleLookMaximumPitch)
 	goal.Entity.State.mu.Unlock()
 
 	goal.LookTicks--
@@ -285,8 +285,9 @@ func animalPanicRandomPosition(runtime *Runtime, entity *runtimeAnimal, position
 func animalPanicWaterPosition(runtime *Runtime, entity *runtimeAnimal, position game.Position) (game.Position, bool) {
 	origin := game.BlockPosition{X: int32(math.Floor(position.X)), Y: int32(math.Floor(position.Y)), Z: int32(math.Floor(position.Z))}
 	block := runtime.World.BlockAt(origin)
+	var boxBuffer [7]game.AABB
 
-	if len(block.CollisionBoxes(origin)) != 0 {
+	if len(block.AppendCollisionBoxes(boxBuffer[:0], origin)) != 0 {
 		return game.Position{}, false
 	}
 
@@ -338,13 +339,13 @@ func nearestAnimalPlayer(runtime *Runtime, entity *runtimeAnimal, maximumDistanc
 
 	nearestDistanceSquared := maximumDistanceSquared
 
-	for _, session := range runtime.snapshotSessions() {
-		player := session.snapshotPlayer()
+	for _, session := range runtime.sessionView() {
+		player := session.playerView()
 		if player.Dead || player.GameMode == game.GameModeSpectator {
 			continue
 		}
 
-		if requireFood && !playerTemptsAnimal(player, entity.Spec.TemptItems) {
+		if requireFood && !session.playerTemptsAnimal(entity.Spec.TemptItems) {
 			continue
 		}
 
@@ -372,6 +373,13 @@ func playerTemptsAnimal(player game.Player, foods map[game.Item]struct{}) bool {
 	_, tempting := foods[player.Inventory.Offhand.Item]
 
 	return tempting
+}
+
+func (s *Session) playerTemptsAnimal(foods map[game.Item]struct{}) bool {
+	s.playerMx.RLock()
+	defer s.playerMx.RUnlock()
+
+	return playerTemptsAnimal(*s.Player, foods)
 }
 
 func animalTemptSpeed(entityType game.EntityType) float64 {

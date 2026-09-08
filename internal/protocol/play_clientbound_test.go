@@ -60,15 +60,10 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 }
 
 func TestContainerInventoryPacketsEncode(t *testing.T) {
-	stack := game.ItemStack{
-		Item:  game.ItemStone,
-		Count: 2,
-		Components: []game.ItemComponent{{
-			Type: 1,
-			Data: []byte{0x10},
-		}},
-		RemovedComponents: []int32{8},
-	}
+	stack := game.NewItemStack(game.ItemStone, 2, []game.ItemComponent{{
+		Type: 1,
+		Data: []byte{0x10},
+	}}, []int32{8})
 
 	assertPacketEncoding(t, ContainerSetContent{
 		WindowID:    0,
@@ -174,51 +169,34 @@ func TestContainerSetSlotEncodesItemStackReferenceFixtures(t *testing.T) {
 			},
 		},
 		"damaged diamond pickaxe": {
-			stack: game.ItemStack{
-				Item:  game.ItemDiamondPickaxe,
-				Count: 1,
-				Components: []game.ItemComponent{
-					{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}},
-				},
-			},
+			stack: game.NewItemStack(game.ItemDiamondPickaxe, 1, []game.ItemComponent{
+				{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}},
+			}, nil),
 			expected: []byte{
 				0x00, 0x01, 0x00, 0x2D,
 				0x01, 0xAA, 0x07, 0x01, 0x00, 0x03, 0xAC, 0x02,
 			},
 		},
 		"one enchantment": {
-			stack: game.ItemStack{
-				Item:  game.ItemDiamondPickaxe,
-				Count: 1,
-				Components: []game.ItemComponent{
-					{Type: game.ItemComponentEnchantments, Data: []byte{0x01, 0x14, 0x05}},
-				},
-			},
+			stack: game.NewItemStack(game.ItemDiamondPickaxe, 1, []game.ItemComponent{
+				{Type: game.ItemComponentEnchantments, Data: []byte{0x01, 0x14, 0x05}},
+			}, nil),
 			expected: []byte{
 				0x00, 0x01, 0x00, 0x2D,
 				0x01, 0xAA, 0x07, 0x01, 0x00, 0x0D, 0x01, 0x14, 0x05,
 			},
 		},
 		"multiple enchantments": {
-			stack: game.ItemStack{
-				Item:  game.ItemDiamondPickaxe,
-				Count: 1,
-				Components: []game.ItemComponent{
-					{Type: game.ItemComponentEnchantments, Data: []byte{0x02, 0x14, 0x05, 0x17, 0x03}},
-				},
-			},
+			stack: game.NewItemStack(game.ItemDiamondPickaxe, 1, []game.ItemComponent{
+				{Type: game.ItemComponentEnchantments, Data: []byte{0x02, 0x14, 0x05, 0x17, 0x03}},
+			}, nil),
 			expected: []byte{
 				0x00, 0x01, 0x00, 0x2D,
 				0x01, 0xAA, 0x07, 0x01, 0x00, 0x0D, 0x02, 0x14, 0x05, 0x17, 0x03,
 			},
 		},
 		"added and removed components": {
-			stack: game.ItemStack{
-				Item:              game.ItemDiamondPickaxe,
-				Count:             1,
-				Components:        []game.ItemComponent{{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}}},
-				RemovedComponents: []int32{1},
-			},
+			stack: game.NewItemStack(game.ItemDiamondPickaxe, 1, []game.ItemComponent{{Type: game.ItemComponentDamage, Data: []byte{0xAC, 0x02}}}, []int32{1}),
 			expected: []byte{
 				0x00, 0x01, 0x00, 0x2D,
 				0x01, 0xAA, 0x07, 0x01, 0x01, 0x03, 0xAC, 0x02, 0x01,

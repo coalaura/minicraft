@@ -2,11 +2,14 @@ package server
 
 import (
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
+
+const concurrentPickupItemCount = 64
 
 type runtimeEquipmentTestEntity struct {
 	runtimeItemEntity
@@ -364,7 +367,7 @@ func TestItemEntityPickupDelayAndFullPickup(t *testing.T) {
 	}
 
 	ids := connection.packetIDs(t)
-	if !containsPacketSequence(ids, []int32{protocol.ClientboundTakeItemEntityID, protocol.ClientboundContainerSetContentID, protocol.ClientboundRemoveEntitiesID}) {
+	if !containsPacketSequence(ids, []int32{protocol.ClientboundTakeItemEntityID, protocol.ClientboundContainerSetSlotID, protocol.ClientboundRemoveEntitiesID}) {
 		t.Fatalf("pickup packet ids = %v", ids)
 	}
 }
@@ -389,7 +392,7 @@ func TestItemEntityPartialPickupKeepsRemainder(t *testing.T) {
 	}
 
 	ids := connection.packetIDs(t)
-	if !containsPacketSequence(ids, []int32{protocol.ClientboundTakeItemEntityID, protocol.ClientboundContainerSetContentID, protocol.ClientboundEntityMetadataID}) {
+	if !containsPacketSequence(ids, []int32{protocol.ClientboundTakeItemEntityID, protocol.ClientboundContainerSetSlotID, protocol.ClientboundEntityMetadataID}) {
 		t.Fatalf("partial pickup packet ids = %v", ids)
 	}
 
@@ -438,6 +441,51 @@ func TestItemEntityTargetAndConcurrentPickupCannotDuplicate(t *testing.T) {
 
 	if len(runtime.snapshotRuntimeEntities()) != 0 {
 		t.Fatal("picked entity remained after competing player scan")
+	}
+}
+
+func TestConcurrentItemPickupConservesItems(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	first, _ := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "First")
+	second, _ := newMovementTestSession(runtime, "10111213-1415-1617-1819-1a1b1c1d1e1f", "Second")
+
+	pickupSessions := []*Session{first, second}
+
+	for _, session := range pickupSessions {
+		session.Player.Position = game.Position{Y: 64}
+		session.loadedChunks = map[LoadedChunk]struct{}{{}: {}}
+
+		joinTestSession(t, runtime, session)
+
+		runtime.setSessionActiveChunks(session, []LoadedChunk{{}})
+	}
+
+	item := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: concurrentPickupItemCount}, game.Position{Y: 64}, game.Velocity{}, 0)
+
+	var group sync.WaitGroup
+
+	for range 32 {
+		group.Go(func() {
+			runtime.pickUpItemEntity(item)
+		})
+	}
+
+	group.Wait()
+
+	remaining := int32(0)
+
+	item.State.mu.RLock()
+
+	if !item.State.Removed {
+		remaining = item.Stack.Count
+	}
+
+	item.State.mu.RUnlock()
+
+	picked := first.snapshotPlayer().Inventory.Hotbar[0].Count + second.snapshotPlayer().Inventory.Hotbar[0].Count
+	if picked+remaining != concurrentPickupItemCount {
+		t.Fatalf("item conservation = picked %d + remaining %d, want %d", picked, remaining, concurrentPickupItemCount)
 	}
 }
 
@@ -508,7 +556,7 @@ func assertOpenContainerPickup(t *testing.T, session *Session, connection *recor
 	}
 
 	for _, packet := range connection.packets(t) {
-		if packet.ID != protocol.ClientboundContainerSetContentID {
+		if packet.ID != protocol.ClientboundContainerSetSlotID {
 			continue
 		}
 
@@ -521,20 +569,12 @@ func assertOpenContainerPickup(t *testing.T, session *Session, connection *recor
 
 		reader.VarInt()
 
-		itemCount := int(reader.VarInt())
-		if itemCount <= playerMenuSlot {
-			t.Fatalf("pickup menu item count = %d", itemCount)
+		slot := reader.Short()
+		if int(slot) != playerMenuSlot {
+			continue
 		}
 
-		var picked game.ItemStack
-
-		for slot := range itemCount {
-			stack := readSimpleItemStack(t, reader)
-
-			if slot == playerMenuSlot {
-				picked = stack
-			}
-		}
+		picked := readSimpleItemStack(t, reader)
 
 		if !picked.Equal(game.ItemStack{Item: game.ItemStone, Count: 1}) {
 			t.Fatalf("pickup menu player slot = %+v", picked)

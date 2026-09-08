@@ -3,11 +3,12 @@ package game
 import "strconv"
 
 const (
-	playerWidth           = 0.6
-	standingPlayerHeight  = 1.8
-	crouchingPlayerHeight = 1.5
-	crawlingPlayerHeight  = 0.6
-	blockUnit             = 1.0 / 16.0
+	playerWidth            = 0.6
+	standingPlayerHeight   = 1.8
+	crouchingPlayerHeight  = 1.5
+	crawlingPlayerHeight   = 0.6
+	blockUnit              = 1.0 / 16.0
+	maxBlockCollisionBoxes = 7
 )
 
 type AABB struct {
@@ -59,51 +60,55 @@ func (player Player) CollisionBox() AABB {
 }
 
 func (block Block) CollisionBoxes(position BlockPosition) []AABB {
+	return block.AppendCollisionBoxes(nil, position)
+}
+
+func (block Block) AppendCollisionBoxes(boxes []AABB, position BlockPosition) []AABB {
 	definition, valid := block.Definition()
 	if !valid {
-		return nil
+		return boxes
 	}
 
-	var boxes []AABB
+	start := len(boxes)
 
 	switch definition.Collision {
 	case BlockCollisionFull:
-		boxes = []AABB{unitBox(0, 0, 0, 16, 16, 16)}
+		boxes = append(boxes, unitBox(0, 0, 0, 16, 16, 16))
 	case BlockCollisionSlab:
-		boxes = slabCollisionBoxes(block)
+		boxes = appendSlabCollisionBoxes(boxes, block)
 	case BlockCollisionStairs:
-		boxes = stairCollisionBoxes(block)
+		boxes = appendStairCollisionBoxes(boxes, block)
 	case BlockCollisionDoor:
-		boxes = doorCollisionBoxes(block)
+		boxes = appendDoorCollisionBoxes(boxes, block)
 	case BlockCollisionTrapdoor:
-		boxes = trapdoorCollisionBoxes(block)
+		boxes = appendTrapdoorCollisionBoxes(boxes, block)
 	case BlockCollisionFenceGate:
-		boxes = fenceGateCollisionBoxes(block)
+		boxes = appendFenceGateCollisionBoxes(boxes, block)
 	case BlockCollisionFence:
-		boxes = connectedCollisionBoxes(block, 6, 10, 24)
+		boxes = appendConnectedCollisionBoxes(boxes, block, 6, 10, 24)
 	case BlockCollisionPane:
-		boxes = connectedCollisionBoxes(block, 7, 9, 16)
+		boxes = appendConnectedCollisionBoxes(boxes, block, 7, 9, 16)
 	case BlockCollisionWall:
-		boxes = wallCollisionBoxes(block)
+		boxes = appendWallCollisionBoxes(boxes, block)
 	case BlockCollisionCarpet:
-		boxes = []AABB{unitBox(0, 0, 0, 16, 1, 16)}
+		boxes = append(boxes, unitBox(0, 0, 0, 16, 1, 16))
 	case BlockCollisionSnow:
-		boxes = snowCollisionBoxes(block)
+		boxes = appendSnowCollisionBoxes(boxes, block)
 	case BlockCollisionPointedDripstone:
-		boxes = pointedDripstoneCollisionBoxes(block)
+		boxes = appendPointedDripstoneCollisionBoxes(boxes, block)
 	case BlockCollisionChain:
-		boxes = chainCollisionBoxes(block)
+		boxes = appendChainCollisionBoxes(boxes, block)
 	case BlockCollisionCake:
-		boxes = cakeCollisionBoxes(block)
+		boxes = appendCakeCollisionBoxes(boxes, block)
 	case BlockCollisionChest:
-		boxes = chestCollisionBoxes(block)
+		boxes = appendChestCollisionBoxes(boxes, block)
 	case BlockCollisionHopper:
-		boxes = hopperCollisionBoxes(block)
+		boxes = appendHopperCollisionBoxes(boxes, block)
 	case BlockCollisionBed:
-		boxes = bedCollisionBoxes(block)
+		boxes = appendBedCollisionBoxes(boxes, block)
 	}
 
-	for index := range boxes {
+	for index := start; index < len(boxes); index++ {
 		boxes[index] = boxes[index].Translate(float64(position.X), float64(position.Y), float64(position.Z))
 	}
 
@@ -111,7 +116,7 @@ func (block Block) CollisionBoxes(position BlockPosition) []AABB {
 }
 
 func (block Block) OutlineBoxes(position BlockPosition) []AABB {
-	boxes := block.CollisionBoxes(position)
+	boxes := block.AppendCollisionBoxes(nil, position)
 	if len(boxes) != 0 {
 		return boxes
 	}
@@ -130,8 +135,8 @@ func (block Block) OutlineBoxes(position BlockPosition) []AABB {
 	}}
 }
 
-func bedCollisionBoxes(block Block) []AABB {
-	boxes := []AABB{unitBox(0, 3, 0, 16, 9, 16)}
+func appendBedCollisionBoxes(boxes []AABB, block Block) []AABB {
+	boxes = append(boxes, unitBox(0, 3, 0, 16, 9, 16))
 
 	switch collisionProperty(block, "facing") {
 	case "north":
@@ -147,15 +152,15 @@ func bedCollisionBoxes(block Block) []AABB {
 	return boxes
 }
 
-func hopperCollisionBoxes(block Block) []AABB {
-	boxes := []AABB{
+func appendHopperCollisionBoxes(boxes []AABB, block Block) []AABB {
+	boxes = append(boxes,
 		unitBox(0, 10, 0, 16, 11, 16),
 		unitBox(0, 11, 0, 2, 16, 16),
 		unitBox(14, 11, 0, 16, 16, 16),
 		unitBox(2, 11, 0, 14, 16, 2),
 		unitBox(2, 11, 14, 14, 16, 16),
 		unitBox(4, 4, 4, 12, 10, 12),
-	}
+	)
 
 	switch collisionProperty(block, "facing") {
 	case "down":
@@ -173,24 +178,24 @@ func hopperCollisionBoxes(block Block) []AABB {
 	return boxes
 }
 
-func chestCollisionBoxes(block Block) []AABB {
+func appendChestCollisionBoxes(boxes []AABB, block Block) []AABB {
 	if collisionProperty(block, "type") == "single" {
-		return []AABB{unitBox(1, 0, 1, 15, 14, 15)}
+		return append(boxes, unitBox(1, 0, 1, 15, 14, 15))
 	}
 
 	connected := chestCollisionConnectedDirection(block)
 
 	switch connected {
 	case "north":
-		return []AABB{unitBox(1, 0, 0, 15, 14, 15)}
+		return append(boxes, unitBox(1, 0, 0, 15, 14, 15))
 	case "south":
-		return []AABB{unitBox(1, 0, 1, 15, 14, 16)}
+		return append(boxes, unitBox(1, 0, 1, 15, 14, 16))
 	case "west":
-		return []AABB{unitBox(0, 0, 1, 15, 14, 15)}
+		return append(boxes, unitBox(0, 0, 1, 15, 14, 15))
 	case "east":
-		return []AABB{unitBox(1, 0, 1, 16, 14, 15)}
+		return append(boxes, unitBox(1, 0, 1, 16, 14, 15))
 	default:
-		return nil
+		return boxes
 	}
 }
 
@@ -205,66 +210,66 @@ func chestCollisionConnectedDirection(block Block) string {
 	return map[string]string{"north": "west", "west": "south", "south": "east", "east": "north"}[facing]
 }
 
-func cakeCollisionBoxes(block Block) []AABB {
+func appendCakeCollisionBoxes(boxes []AABB, block Block) []AABB {
 	bites := collisionPropertyInt(block, "bites")
-	return []AABB{unitBox(float64(1+bites*2), 0, 1, 15, 8, 15)}
+	return append(boxes, unitBox(float64(1+bites*2), 0, 1, 15, 8, 15))
 }
 
-func chainCollisionBoxes(block Block) []AABB {
+func appendChainCollisionBoxes(boxes []AABB, block Block) []AABB {
 	switch collisionProperty(block, "axis") {
 	case "x":
-		return []AABB{unitBox(0, 6.5, 6.5, 16, 9.5, 9.5)}
+		return append(boxes, unitBox(0, 6.5, 6.5, 16, 9.5, 9.5))
 	case "z":
-		return []AABB{unitBox(6.5, 6.5, 0, 9.5, 9.5, 16)}
+		return append(boxes, unitBox(6.5, 6.5, 0, 9.5, 9.5, 16))
 	default:
-		return []AABB{unitBox(6.5, 0, 6.5, 9.5, 16, 9.5)}
+		return append(boxes, unitBox(6.5, 0, 6.5, 9.5, 16, 9.5))
 	}
 }
 
-func snowCollisionBoxes(block Block) []AABB {
+func appendSnowCollisionBoxes(boxes []AABB, block Block) []AABB {
 	layers := collisionPropertyInt(block, "layers")
 
 	height := (layers - 1) * 2
 	if height <= 0 {
-		return nil
+		return boxes
 	}
 
-	return []AABB{unitBox(0, 0, 0, 16, float64(height), 16)}
+	return append(boxes, unitBox(0, 0, 0, 16, float64(height), 16))
 }
 
-func pointedDripstoneCollisionBoxes(block Block) []AABB {
+func appendPointedDripstoneCollisionBoxes(boxes []AABB, block Block) []AABB {
 	switch collisionProperty(block, "thickness") {
 	case "tip_merge":
-		return []AABB{unitBox(5, 0, 5, 11, 16, 11)}
+		return append(boxes, unitBox(5, 0, 5, 11, 16, 11))
 	case "tip":
 		if collisionProperty(block, "vertical_direction") == "down" {
-			return []AABB{unitBox(5, 5, 5, 11, 16, 11)}
+			return append(boxes, unitBox(5, 5, 5, 11, 16, 11))
 		}
 
-		return []AABB{unitBox(5, 0, 5, 11, 11, 11)}
+		return append(boxes, unitBox(5, 0, 5, 11, 11, 11))
 	case "frustum":
-		return []AABB{unitBox(4, 0, 4, 12, 16, 12)}
+		return append(boxes, unitBox(4, 0, 4, 12, 16, 12))
 	case "middle":
-		return []AABB{unitBox(3, 0, 3, 13, 16, 13)}
+		return append(boxes, unitBox(3, 0, 3, 13, 16, 13))
 	case "base":
-		return []AABB{unitBox(2, 0, 2, 14, 16, 14)}
+		return append(boxes, unitBox(2, 0, 2, 14, 16, 14))
 	default:
-		return nil
+		return boxes
 	}
 }
 
-func slabCollisionBoxes(block Block) []AABB {
+func appendSlabCollisionBoxes(boxes []AABB, block Block) []AABB {
 	switch collisionProperty(block, "type") {
 	case "top":
-		return []AABB{unitBox(0, 8, 0, 16, 16, 16)}
+		return append(boxes, unitBox(0, 8, 0, 16, 16, 16))
 	case "double":
-		return []AABB{unitBox(0, 0, 0, 16, 16, 16)}
+		return append(boxes, unitBox(0, 0, 0, 16, 16, 16))
 	default:
-		return []AABB{unitBox(0, 0, 0, 16, 8, 16)}
+		return append(boxes, unitBox(0, 0, 0, 16, 8, 16))
 	}
 }
 
-func stairCollisionBoxes(block Block) []AABB {
+func appendStairCollisionBoxes(boxes []AABB, block Block) []AABB {
 	baseMinY := 0.0
 	baseMaxY := 8.0
 	stepMinY := 8.0
@@ -277,7 +282,7 @@ func stairCollisionBoxes(block Block) []AABB {
 		stepMaxY = 8
 	}
 
-	boxes := []AABB{unitBox(0, baseMinY, 0, 16, baseMaxY, 16)}
+	boxes = append(boxes, unitBox(0, baseMinY, 0, 16, baseMaxY, 16))
 
 	facing := collisionProperty(block, "facing")
 	shape := collisionProperty(block, "shape")
@@ -302,7 +307,7 @@ func stairCollisionBoxes(block Block) []AABB {
 	return boxes
 }
 
-func doorCollisionBoxes(block Block) []AABB {
+func appendDoorCollisionBoxes(boxes []AABB, block Block) []AABB {
 	facing := collisionProperty(block, "facing")
 
 	if collisionProperty(block, "open") == "true" {
@@ -311,35 +316,35 @@ func doorCollisionBoxes(block Block) []AABB {
 		facing = rotateCollisionFacing(facing, hingeLeft)
 	}
 
-	return []AABB{thinVerticalCollisionBox(facing, 3)}
+	return append(boxes, thinVerticalCollisionBox(facing, 3))
 }
 
-func trapdoorCollisionBoxes(block Block) []AABB {
+func appendTrapdoorCollisionBoxes(boxes []AABB, block Block) []AABB {
 	if collisionProperty(block, "open") == "true" {
-		return []AABB{thinVerticalCollisionBox(collisionProperty(block, "facing"), 3)}
+		return append(boxes, thinVerticalCollisionBox(collisionProperty(block, "facing"), 3))
 	}
 
 	if collisionProperty(block, "half") == "top" {
-		return []AABB{unitBox(0, 13, 0, 16, 16, 16)}
+		return append(boxes, unitBox(0, 13, 0, 16, 16, 16))
 	}
 
-	return []AABB{unitBox(0, 0, 0, 16, 3, 16)}
+	return append(boxes, unitBox(0, 0, 0, 16, 3, 16))
 }
 
-func fenceGateCollisionBoxes(block Block) []AABB {
+func appendFenceGateCollisionBoxes(boxes []AABB, block Block) []AABB {
 	if collisionProperty(block, "open") == "true" {
-		return nil
+		return boxes
 	}
 
 	if collisionProperty(block, "facing") == "north" || collisionProperty(block, "facing") == "south" {
-		return []AABB{unitBox(0, 0, 6, 16, 24, 10)}
+		return append(boxes, unitBox(0, 0, 6, 16, 24, 10))
 	}
 
-	return []AABB{unitBox(6, 0, 0, 10, 24, 16)}
+	return append(boxes, unitBox(6, 0, 0, 10, 24, 16))
 }
 
-func connectedCollisionBoxes(block Block, centerMin, centerMax, height float64) []AABB {
-	boxes := []AABB{unitBox(centerMin, 0, centerMin, centerMax, height, centerMax)}
+func appendConnectedCollisionBoxes(boxes []AABB, block Block, centerMin, centerMax, height float64) []AABB {
+	boxes = append(boxes, unitBox(centerMin, 0, centerMin, centerMax, height, centerMax))
 
 	if collisionProperty(block, "north") == "true" {
 		boxes = append(boxes, unitBox(centerMin, 0, 0, centerMax, height, centerMin))
@@ -360,8 +365,7 @@ func connectedCollisionBoxes(block Block, centerMin, centerMax, height float64) 
 	return boxes
 }
 
-func wallCollisionBoxes(block Block) []AABB {
-	boxes := make([]AABB, 0, 5)
+func appendWallCollisionBoxes(boxes []AABB, block Block) []AABB {
 
 	armMin := 8.0
 	armMax := 8.0

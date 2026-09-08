@@ -23,6 +23,16 @@ type PacketWriter struct {
 	err error
 }
 
+func (w *PacketWriter) Reset() {
+	w.Buffer.Reset()
+	w.err = nil
+}
+
+func (w *PacketWriter) Release() {
+	w.Buffer = bytes.Buffer{}
+	w.err = nil
+}
+
 func (w *PacketWriter) VarInt(value int32) {
 	if w.err != nil {
 		return
@@ -211,6 +221,14 @@ func (w *PacketWriter) Raw(value []byte) {
 	}
 
 	_, w.err = w.Write(value)
+}
+
+func (w *PacketWriter) RawString(value string) {
+	if w.err != nil {
+		return
+	}
+
+	_, w.err = w.WriteString(value)
 }
 
 func (w *PacketWriter) UUID(value string) {

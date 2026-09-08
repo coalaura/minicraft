@@ -25,7 +25,7 @@ type PotionContents struct {
 }
 
 type potionComponentDecoder struct {
-	data   []byte
+	data   string
 	offset int
 }
 
@@ -61,7 +61,7 @@ func (stack ItemStack) PotionContents() (PotionContents, bool) {
 		return PotionContents{}, false
 	}
 
-	contents, err := ParsePotionContents(data)
+	contents, err := parsePotionContents(data)
 	return contents, err == nil
 }
 
@@ -71,7 +71,7 @@ func (stack ItemStack) PotionDurationScale() float32 {
 		return 1
 	}
 
-	return math.Float32frombits(binary.BigEndian.Uint32(data))
+	return math.Float32frombits(binary.BigEndian.Uint32([]byte(data)))
 }
 
 func (stack *ItemStack) SetPotionContents(contents PotionContents) {
@@ -86,6 +86,10 @@ func (stack *ItemStack) SetPotionDurationScale(scale float32) {
 }
 
 func ParsePotionContents(data []byte) (PotionContents, error) {
+	return parsePotionContents(string(data))
+}
+
+func parsePotionContents(data string) (PotionContents, error) {
 	decoder := potionComponentDecoder{data: data}
 
 	contents, err := decoder.potionContents()
@@ -255,7 +259,7 @@ func (decoder *potionComponentDecoder) int32() (int32, error) {
 		return 0, fmt.Errorf("truncated potion contents integer")
 	}
 
-	value := int32(binary.BigEndian.Uint32(decoder.data[decoder.offset:]))
+	value := int32(uint32(decoder.data[decoder.offset])<<24 | uint32(decoder.data[decoder.offset+1])<<16 | uint32(decoder.data[decoder.offset+2])<<8 | uint32(decoder.data[decoder.offset+3]))
 	decoder.offset += 4
 
 	return value, nil
@@ -285,11 +289,11 @@ func (decoder *potionComponentDecoder) stringUTF8() (string, error) {
 	raw := decoder.data[decoder.offset : decoder.offset+int(length)]
 	decoder.offset += int(length)
 
-	if !utf8.Valid(raw) || utf8.RuneCount(raw) > maxPotionCustomNameRunes {
+	if !utf8.ValidString(raw) || utf8.RuneCountInString(raw) > maxPotionCustomNameRunes {
 		return "", fmt.Errorf("invalid custom potion name")
 	}
 
-	return string(raw), nil
+	return raw, nil
 }
 
 func appendPotionContents(data []byte, contents PotionContents) []byte {

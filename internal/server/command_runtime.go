@@ -67,7 +67,7 @@ func (r *Runtime) ChangeGameMode(session *Session, mode game.GameMode) (bool, er
 		}},
 	}
 
-	for _, other := range r.snapshotSessions() {
+	for _, other := range r.sessionView() {
 		err = other.writePacket(protocol.ClientboundPlayerInfoUpdateID, update)
 		if err != nil {
 			return false, fmt.Errorf("synchronize player game mode: %w", err)
@@ -266,7 +266,7 @@ func (r *Runtime) mutateCommandInventory(session *Session, mutate func(*game.Pla
 		return nil
 	}
 
-	session.updatePlayerState(func(player *game.Player) bool {
+	session.mutatePlayer(func(player *game.Player) bool {
 		player.Inventory = afterInventory
 
 		return true

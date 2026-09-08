@@ -58,26 +58,28 @@ func TestRuntimeEntityPacketsPositionAndGroundState(t *testing.T) {
 
 	tracker.UpdateTick = 1
 
-	packets := runtimeEntityPackets(view, &tracker, configuration, false)
-	if len(packets) != 1 || packets[0].ID != protocol.ClientboundUpdateEntityPositionID {
-		t.Fatalf("relative position packets = %+v", packets)
+	synchronization := runtimeEntitySynchronizationForView(view, &tracker, configuration, false)
+	if synchronization.movement != runtimeEntityMovementPosition {
+		t.Fatalf("relative position synchronization = %+v", synchronization)
 	}
 
-	position, valid := packets[0].Encoder.(protocol.UpdateEntityPosition)
-	if !valid || position.DeltaX != 1024 || position.DeltaY != 0 || position.DeltaZ != 0 {
-		t.Fatalf("relative position packet = %+v", packets[0].Encoder)
+	position := synchronization.position
+	if position.DeltaX != 1024 || position.DeltaY != 0 || position.DeltaZ != 0 {
+		t.Fatalf("relative position packet = %+v", position)
 	}
 
 	view.Position.X = 8.25
 
-	packets = runtimeEntityPackets(view, &tracker, configuration, false)
-	assertRuntimeEntityPacketID(t, packets, protocol.ClientboundSynchronizeEntityPositionID)
+	synchronization = runtimeEntitySynchronizationForView(view, &tracker, configuration, false)
+
+	assertRuntimeEntitySynchronizationPacketID(t, synchronization, protocol.ClientboundSynchronizeEntityPositionID)
 
 	view.Position = tracker.PositionBase
 	view.OnGround = true
 
-	packets = runtimeEntityPackets(view, &tracker, configuration, false)
-	assertRuntimeEntityPacketID(t, packets, protocol.ClientboundSynchronizeEntityPositionID)
+	synchronization = runtimeEntitySynchronizationForView(view, &tracker, configuration, false)
+
+	assertRuntimeEntitySynchronizationPacketID(t, synchronization, protocol.ClientboundSynchronizeEntityPositionID)
 }
 
 func TestRuntimeEntityPacketsHeadRotation(t *testing.T) {
@@ -87,14 +89,14 @@ func TestRuntimeEntityPacketsHeadRotation(t *testing.T) {
 
 	tracker.UpdateTick = 1
 
-	packets := runtimeEntityPackets(view, &tracker, RuntimeEntityTrackingConfig{}, false)
-	if len(packets) != 1 || packets[0].ID != protocol.ClientboundSetHeadRotationID {
-		t.Fatalf("head rotation packets = %+v", packets)
+	synchronization := runtimeEntitySynchronizationForView(view, &tracker, RuntimeEntityTrackingConfig{}, false)
+	if !synchronization.sendHeadRotation || synchronization.movement != runtimeEntityMovementNone {
+		t.Fatalf("head rotation synchronization = %+v", synchronization)
 	}
 
-	head, valid := packets[0].Encoder.(protocol.SetHeadRotation)
-	if !valid || head.EntityID != view.ID || head.HeadYaw != protocolAngle(view.Rotation.HeadYaw) {
-		t.Fatalf("head rotation packet = %+v", packets[0].Encoder)
+	head := synchronization.headRotation
+	if head.EntityID != view.ID || head.HeadYaw != protocolAngle(view.Rotation.HeadYaw) {
+		t.Fatalf("head rotation packet = %+v", head)
 	}
 }
 
@@ -152,7 +154,7 @@ func TestLateViewerItemSpawnUsesTransmittedTrackerBaseline(t *testing.T) {
 
 	spawnSnapshot := runtimeEntitySpawnSnapshotLocked(view, item.State.tracker)
 
-	movementPackets := runtimeEntityPackets(view, &item.State.tracker, item.RuntimeEntityTrackingConfig(), false)
+	movementSynchronization := runtimeEntitySynchronizationForView(view, &item.State.tracker, item.RuntimeEntityTrackingConfig(), false)
 	item.State.mu.Unlock()
 
 	spawnPacket := item.AddEntityPacket(spawnSnapshot)
@@ -160,14 +162,11 @@ func TestLateViewerItemSpawnUsesTransmittedTrackerBaseline(t *testing.T) {
 		t.Fatalf("late-viewer spawn velocity = (%v, %v, %v), want transmitted velocity", spawnPacket.VelocityX, spawnPacket.VelocityY, spawnPacket.VelocityZ)
 	}
 
-	var relative protocol.UpdateEntityPosition
-
-	for _, packet := range movementPackets {
-		position, positionPacket := packet.Encoder.(protocol.UpdateEntityPosition)
-		if positionPacket {
-			relative = position
-		}
+	if movementSynchronization.movement != runtimeEntityMovementPosition {
+		t.Fatalf("movement synchronization = %+v", movementSynchronization)
 	}
+
+	relative := movementSynchronization.position
 
 	clientPosition := spawnPosition
 
@@ -225,27 +224,27 @@ func TestRuntimeEntityPacketsVelocityThresholdAndStop(t *testing.T) {
 
 	view.Velocity.X = 0.0003
 
-	packets := runtimeEntityPackets(view, &tracker, configuration, false)
-	if len(packets) != 0 {
-		t.Fatalf("sub-threshold velocity packets = %+v", packets)
+	synchronization := runtimeEntitySynchronizationForView(view, &tracker, configuration, false)
+	if synchronization.sendMotion || synchronization.movement != runtimeEntityMovementNone || synchronization.sendHeadRotation {
+		t.Fatalf("sub-threshold velocity synchronization = %+v", synchronization)
 	}
 
 	view.Velocity.X = 0.001
 
-	packets = runtimeEntityPackets(view, &tracker, configuration, false)
-	assertRuntimeEntityPacketID(t, packets, protocol.ClientboundSetEntityMotionID)
+	synchronization = runtimeEntitySynchronizationForView(view, &tracker, configuration, false)
+	assertRuntimeEntitySynchronizationPacketID(t, synchronization, protocol.ClientboundSetEntityMotionID)
 
 	view.Velocity = game.Velocity{}
 
-	packets = runtimeEntityPackets(view, &tracker, configuration, false)
-	assertRuntimeEntityPacketID(t, packets, protocol.ClientboundSetEntityMotionID)
+	synchronization = runtimeEntitySynchronizationForView(view, &tracker, configuration, false)
+	assertRuntimeEntitySynchronizationPacketID(t, synchronization, protocol.ClientboundSetEntityMotionID)
 
 	tracker = newRuntimeEntityTracker(runtimeEntityView{ID: view.ID})
 	tracker.UpdateTick = 1
 	view.Velocity.X = 0.001
 
-	packets = runtimeEntityPackets(view, &tracker, RuntimeEntityTrackingConfig{}, true)
-	assertRuntimeEntityPacketID(t, packets, protocol.ClientboundSetEntityMotionID)
+	synchronization = runtimeEntitySynchronizationForView(view, &tracker, RuntimeEntityTrackingConfig{}, true)
+	assertRuntimeEntitySynchronizationPacketID(t, synchronization, protocol.ClientboundSetEntityMotionID)
 }
 
 func TestRuntimeEntityPacketsRefreshAndAvoidRepeatedFullSync(t *testing.T) {
@@ -255,15 +254,15 @@ func TestRuntimeEntityPacketsRefreshAndAvoidRepeatedFullSync(t *testing.T) {
 
 	tracker.UpdateTick = entityPositionRefreshTicks
 
-	packets := runtimeEntityPackets(view, &tracker, RuntimeEntityTrackingConfig{}, false)
-	assertRuntimeEntityPacketID(t, packets, protocol.ClientboundUpdateEntityPositionID)
+	synchronization := runtimeEntitySynchronizationForView(view, &tracker, RuntimeEntityTrackingConfig{}, false)
+	assertRuntimeEntitySynchronizationPacketID(t, synchronization, protocol.ClientboundUpdateEntityPositionID)
 
 	tracker.UpdateTick = 1
 
 	for range 5 {
-		packets = runtimeEntityPackets(view, &tracker, RuntimeEntityTrackingConfig{}, false)
-		if len(packets) != 0 {
-			t.Fatalf("settled entity packets = %+v", packets)
+		synchronization = runtimeEntitySynchronizationForView(view, &tracker, RuntimeEntityTrackingConfig{}, false)
+		if synchronization.sendMotion || synchronization.movement != runtimeEntityMovementNone || synchronization.sendHeadRotation {
+			t.Fatalf("settled entity synchronization = %+v", synchronization)
 		}
 	}
 }
@@ -1012,12 +1011,12 @@ func TestItemEntityMergeRejectsFullOrIncompatibleStacks(t *testing.T) {
 
 	componented := &runtimeItemEntity{
 		State: RuntimeEntityState{ID: 3},
-		Stack: game.ItemStack{Item: game.ItemStone, Count: 1, Components: []game.ItemComponent{{Type: 1, Data: []byte{1}}}},
+		Stack: game.NewItemStack(game.ItemStone, 1, []game.ItemComponent{{Type: 1, Data: []byte{1}}}, nil),
 	}
 
 	incompatibleComponent := &runtimeItemEntity{
 		State: RuntimeEntityState{ID: 4},
-		Stack: game.ItemStack{Item: game.ItemStone, Count: 1, Components: []game.ItemComponent{{Type: 1, Data: []byte{2}}}},
+		Stack: game.NewItemStack(game.ItemStone, 1, []game.ItemComponent{{Type: 1, Data: []byte{2}}}, nil),
 	}
 
 	removed, receiver, consumed = mergeItemEntities(componented, incompatibleComponent)
@@ -1033,11 +1032,39 @@ func TestItemEntityMergeRejectsFullOrIncompatibleStacks(t *testing.T) {
 	}
 }
 
-func assertRuntimeEntityPacketID(t *testing.T, packets []runtimeEntityPacket, expected int32) {
+func assertRuntimeEntitySynchronizationPacketID(t *testing.T, synchronization runtimeEntitySynchronization, expected int32) {
 	t.Helper()
 
-	if len(packets) != 1 || packets[0].ID != expected {
-		t.Fatalf("packet ids = %+v, want [%d]", packets, expected)
+	packetCount := 0
+	packetID := int32(0)
+
+	if synchronization.sendMotion {
+		packetCount++
+		packetID = protocol.ClientboundSetEntityMotionID
+	}
+
+	if synchronization.movement != runtimeEntityMovementNone {
+		packetCount++
+
+		switch synchronization.movement {
+		case runtimeEntityMovementPosition:
+			packetID = protocol.ClientboundUpdateEntityPositionID
+		case runtimeEntityMovementPositionRotation:
+			packetID = protocol.ClientboundUpdateEntityPositionRotationID
+		case runtimeEntityMovementRotation:
+			packetID = protocol.ClientboundUpdateEntityRotationID
+		case runtimeEntityMovementTeleport:
+			packetID = protocol.ClientboundSynchronizeEntityPositionID
+		}
+	}
+
+	if synchronization.sendHeadRotation {
+		packetCount++
+		packetID = protocol.ClientboundSetHeadRotationID
+	}
+
+	if packetCount != 1 || packetID != expected {
+		t.Fatalf("synchronization = %+v, want one packet with ID %d", synchronization, expected)
 	}
 }
 

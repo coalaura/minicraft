@@ -193,7 +193,9 @@ func farmlandSurvivesBelow(above game.Block) bool {
 		return true
 	}
 
-	boxes := above.CollisionBoxes(game.BlockPosition{})
+	var boxBuffer [7]game.AABB
+
+	boxes := above.AppendCollisionBoxes(boxBuffer[:0], game.BlockPosition{})
 
 	if len(boxes) == 0 {
 		return true

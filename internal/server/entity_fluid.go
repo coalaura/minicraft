@@ -113,7 +113,10 @@ func (r *Runtime) fluidFlowVector(position game.BlockPosition, state game.FluidS
 
 		if neighborHeight == 0 {
 			neighborBlock := r.World.BlockAt(neighborPosition)
-			if len(neighborBlock.CollisionBoxes(neighborPosition)) != 0 {
+
+			var boxBuffer [7]game.AABB
+
+			if len(neighborBlock.AppendCollisionBoxes(boxBuffer[:0], neighborPosition)) != 0 {
 				continue
 			}
 

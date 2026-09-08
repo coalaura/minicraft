@@ -29,6 +29,21 @@ func TestSelectedHotbarSlotTracking(t *testing.T) {
 	}
 }
 
+func TestPlayerInventoryJournalDoesNotAllocate(t *testing.T) {
+	allocations := testing.AllocsPerRun(1000, func() {
+		inventory := game.PlayerInventory{}
+
+		var journal playerInventoryJournal
+
+		journal.set(&inventory, 36, game.ItemStack{Item: game.ItemStone, Count: 1})
+		journal.set(&inventory, 36, game.ItemStack{Item: game.ItemStone, Count: 2})
+	})
+
+	if allocations != 0 {
+		t.Fatalf("journal allocations = %f, want 0", allocations)
+	}
+}
+
 func TestCreativeSlotUpdatesTrackHotbarAndOffhand(t *testing.T) {
 	session, connection := newMovementTestSession(NewRuntime(&game.World{}), "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
 
@@ -108,7 +123,7 @@ func TestCreativeSlotUpdatesPreserveGameplayComponents(t *testing.T) {
 		Item: protocol.UntrustedSlot{
 			ItemID:     int32(stack.Item),
 			ItemCount:  stack.Count,
-			Components: stack.Clone().Components,
+			Components: stack.Components(),
 		},
 	})
 
@@ -124,14 +139,14 @@ func TestCreativeSlotUpdatesPreservePotionContents(t *testing.T) {
 	session.Player.GameMode = game.GameModeCreative
 
 	component := game.ItemComponent{Type: game.ItemComponentPotionContents, Data: []byte{0x01, 0x0A, 0x00, 0x00, 0x00}}
-	stack := game.ItemStack{Item: game.ItemPotion, Count: 1, Components: []game.ItemComponent{component}}
+	stack := game.NewItemStack(game.ItemPotion, 1, []game.ItemComponent{component}, nil)
 
 	session.handleSetCreativeModeSlot(protocol.SetCreativeModeSlot{
 		Slot: 38,
 		Item: protocol.UntrustedSlot{
 			ItemID:     int32(stack.Item),
 			ItemCount:  stack.Count,
-			Components: stack.Clone().Components,
+			Components: stack.Components(),
 		},
 	})
 
@@ -1252,7 +1267,7 @@ func hashedStack(stack game.ItemStack) protocol.HashedSlot {
 		Present:           true,
 		ItemID:            int32(stack.Item),
 		ItemCount:         stack.Count,
-		RemovedComponents: append([]int32(nil), stack.RemovedComponents...),
+		RemovedComponents: stack.RemovedComponents(),
 	}
 }
 

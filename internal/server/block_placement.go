@@ -374,7 +374,7 @@ func (r *Runtime) consumePlacedItemLocked(session *Session, hand int32, item gam
 		return false
 	}
 
-	_, changed := session.updatePlayerState(func(player *game.Player) bool {
+	changed := session.mutatePlayer(func(player *game.Player) bool {
 		if player.GameMode != game.GameModeSurvival {
 			return false
 		}

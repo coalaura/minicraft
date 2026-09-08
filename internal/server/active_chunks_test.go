@@ -24,6 +24,17 @@ type recordingBlockEntityInteraction struct {
 	calls    int
 }
 
+type allocationRuntimeTicker struct {
+	position game.BlockPosition
+	state    RuntimeEntityState
+}
+
+type movingRuntimeTicker struct {
+	log         *runtimeTickLog
+	destination *ActiveChunk
+	state       RuntimeEntityState
+}
+
 func (t *recordingRuntimeTicker) BlockEntityType() game.BlockEntityType {
 	return game.BlockEntityTypeBarrel
 }
@@ -55,6 +66,34 @@ func (interaction *recordingBlockEntityInteraction) InteractBlock(_ *Runtime, _ 
 	interaction.calls++
 
 	return nil
+}
+
+func (t *allocationRuntimeTicker) BlockEntityType() game.BlockEntityType {
+	return game.BlockEntityTypeBarrel
+}
+
+func (t *allocationRuntimeTicker) BlockPosition() game.BlockPosition {
+	return t.position
+}
+
+func (t *allocationRuntimeTicker) RuntimeEntityState() *RuntimeEntityState {
+	return &t.state
+}
+
+func (t *allocationRuntimeTicker) Tick(_ *Runtime, _ *ActiveChunk) {}
+
+func (t *movingRuntimeTicker) RuntimeEntityState() *RuntimeEntityState {
+	return &t.state
+}
+
+func (t *movingRuntimeTicker) Tick(_ *Runtime, chunk *ActiveChunk) {
+	t.log.mu.Lock()
+	t.log.entries = append(t.log.entries, "moving entity")
+	t.log.mu.Unlock()
+
+	chunk.RemoveEntity(1)
+
+	t.destination.SetEntity(1, t)
 }
 
 func TestRuntimeBlockEntityCapabilitiesAreOptionalAndGeneric(t *testing.T) {
@@ -190,6 +229,48 @@ func TestRuntimeTickProcessesOnlyActiveChunkStateInStableOrder(t *testing.T) {
 	runtime.Tick()
 
 	assertRuntimeTickLog(t, log, expected)
+}
+
+func TestRuntimeTickActiveChunksDoesNotAllocateAfterWarmup(t *testing.T) {
+	runtime := NewRuntime(game.NewOverworld(nil))
+
+	session := &Session{}
+
+	runtime.setSessionActiveChunks(session, []LoadedChunk{{X: 1}, {X: -1}})
+
+	first, _ := runtime.ActiveChunk(LoadedChunk{X: -1})
+	second, _ := runtime.ActiveChunk(LoadedChunk{X: 1})
+
+	first.SetEntity(2, &allocationRuntimeTicker{})
+	first.SetEntity(1, &allocationRuntimeTicker{})
+
+	second.SetBlockEntity(game.BlockPosition{X: 16, Y: 70}, &allocationRuntimeTicker{position: game.BlockPosition{X: 16, Y: 70}})
+
+	runtime.tickActiveChunks()
+
+	allocations := testing.AllocsPerRun(100, runtime.tickActiveChunks)
+	if allocations != 0 {
+		t.Fatalf("active chunk tick allocations = %f, want 0", allocations)
+	}
+}
+
+func TestRuntimeTickSnapshotsAllChunksBeforeEntityMovement(t *testing.T) {
+	runtime := NewRuntime(game.NewOverworld(nil))
+
+	session := &Session{}
+
+	log := &runtimeTickLog{}
+
+	runtime.setSessionActiveChunks(session, []LoadedChunk{{}, {X: 1}})
+
+	first, _ := runtime.ActiveChunk(LoadedChunk{})
+	second, _ := runtime.ActiveChunk(LoadedChunk{X: 1})
+
+	first.SetEntity(1, &movingRuntimeTicker{destination: second, log: log})
+
+	runtime.tickActiveChunks()
+
+	assertRuntimeTickLog(t, log, []string{"moving entity"})
 }
 
 func TestVisibleChunksActivateRuntimeStateBeforeDelivery(t *testing.T) {

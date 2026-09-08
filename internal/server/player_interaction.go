@@ -63,7 +63,7 @@ func (r *Runtime) handlePlayerInteraction(attackerSession *Session, interaction 
 	r.worldMutationMu.Lock()
 	r.lifecycleMu.Lock()
 
-	attackerSession.updatePlayerState(func(player *game.Player) bool {
+	attackerSession.mutatePlayer(func(player *game.Player) bool {
 		player.Sneaking = interaction.SecondaryAction
 
 		return true
@@ -226,8 +226,8 @@ func (r *Runtime) interactRuntimeEntityLocked(session *Session, target playerAtt
 }
 
 func (r *Runtime) playerSessionByEntityIDLocked(entityID int32) *Session {
-	for _, session := range r.snapshotSessions() {
-		if session.snapshotPlayer().EntityID == entityID {
+	for _, session := range r.sessionView() {
+		if session.playerView().EntityID == entityID {
 			return session
 		}
 	}
@@ -358,7 +358,7 @@ func (r *Runtime) attackLivingTargetLocked(attackerSession *Session, target play
 	if targetMotion && target.session != nil {
 		result.update.player = result.target
 
-		target.session.updatePlayerState(func(player *game.Player) bool {
+		target.session.mutatePlayer(func(player *game.Player) bool {
 			player.Velocity = originalVelocity
 
 			return true
@@ -391,7 +391,7 @@ func (r *Runtime) sendPlayerAttackSounds(attacker game.Player, sounds []protocol
 	position := toBlockPosition(attacker.Position)
 
 	for _, sound := range sounds {
-		for _, recipient := range r.snapshotSessions() {
+		for _, recipient := range r.sessionView() {
 			err := recipient.sendSoundIfLoaded(sound, position)
 			if err != nil && recipient.Log != nil {
 				recipient.Log.Warnf("[play] failed to synchronize player attack sound: %v\n", err)
@@ -401,8 +401,8 @@ func (r *Runtime) sendPlayerAttackSounds(attacker game.Player, sounds []protocol
 }
 
 func (r *Runtime) sendPlayerAttackMetadata(attackerSession *Session, attacker game.Player) {
-	for _, recipient := range r.snapshotSessions() {
-		if recipient == attackerSession || !playersVisible(recipient.snapshotPlayer(), attacker, recipient.renderDistance()) {
+	for _, recipient := range r.sessionView() {
+		if recipient == attackerSession || !playerViewSeesPlayer(recipient.playerView(), attacker, recipient.renderDistance()) {
 			continue
 		}
 
@@ -427,8 +427,8 @@ func (r *Runtime) sendPlayerAttackInventoryUpdate(session *Session, before game.
 
 	event := protocol.EntityEvent{EntityID: player.EntityID, Event: 47}
 
-	for _, recipient := range r.snapshotSessions() {
-		if recipient != session && !playersVisible(recipient.snapshotPlayer(), player, recipient.renderDistance()) {
+	for _, recipient := range r.sessionView() {
+		if recipient != session && !playerViewSeesPlayer(recipient.playerView(), player, recipient.renderDistance()) {
 			continue
 		}
 
@@ -447,8 +447,9 @@ func (r *Runtime) sendPlayerKnockback(target game.Player) {
 		VelocityZ: target.Velocity.Z,
 	}
 
-	for _, recipient := range r.snapshotSessions() {
-		if recipient.snapshotPlayer().EntityID != target.EntityID && !playersVisible(recipient.snapshotPlayer(), target, recipient.renderDistance()) {
+	for _, recipient := range r.sessionView() {
+		recipientPlayer := recipient.playerView()
+		if recipientPlayer.EntityID != target.EntityID && !playerViewSeesPlayer(recipientPlayer, target, recipient.renderDistance()) {
 			continue
 		}
 

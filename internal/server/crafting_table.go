@@ -26,8 +26,8 @@ func (table *craftingTableBacking) StillValid(runtime *Runtime, session *Session
 		return false
 	}
 
-	player := session.snapshotPlayer()
-	return containerWithinRange(player, table.position)
+	player := session.playerView()
+	return player.withinBlockInteractionRange(table.position, containerValidityPadding)
 }
 
 func (r *Runtime) openCraftingTableLocked(session *Session, position game.BlockPosition) error {

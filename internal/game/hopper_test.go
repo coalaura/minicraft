@@ -23,12 +23,7 @@ func (g hopperEntityGenerator) GenerateBlockEntities(_ int64, chunk ChunkPositio
 	entity := NewBlockEntity(BlockEntityTypeHopper)
 	hopper := entity.Data.(*HopperBlockEntityData)
 
-	hopper.Items[0] = ItemStack{
-		Item:              ItemStone,
-		Count:             3,
-		Components:        []ItemComponent{{Type: 8, Data: []byte{1, 2}}},
-		RemovedComponents: []int32{5},
-	}
+	hopper.Items[0] = NewItemStack(ItemStone, 3, []ItemComponent{{Type: 8, Data: []byte{1, 2}}}, []int32{5})
 
 	hopper.TransferCooldown = 6
 
@@ -64,12 +59,7 @@ func TestHopperBlockEntityCloneAndEqualityIncludeCooldownAndItemComponents(t *te
 	hopper := original.Data.(*HopperBlockEntityData)
 
 	hopper.TransferCooldown = 4
-	hopper.Items[0] = ItemStack{
-		Item:              ItemStone,
-		Count:             2,
-		Components:        []ItemComponent{{Type: 8, Data: []byte{1, 2}}},
-		RemovedComponents: []int32{5},
-	}
+	hopper.Items[0] = NewItemStack(ItemStone, 2, []ItemComponent{{Type: 8, Data: []byte{1, 2}}}, []int32{5})
 
 	clone := original.Clone()
 	if !original.Equal(clone) {
@@ -78,10 +68,9 @@ func TestHopperBlockEntityCloneAndEqualityIncludeCooldownAndItemComponents(t *te
 
 	clonedHopper := clone.Data.(*HopperBlockEntityData)
 
-	clonedHopper.Items[0].Components[0].Data[0] = 9
-	clonedHopper.Items[0].RemovedComponents[0] = 6
+	clonedHopper.Items[0] = NewItemStack(ItemStone, 2, []ItemComponent{{Type: 8, Data: []byte{9, 2}}}, []int32{6})
 
-	if original.Equal(clone) || hopper.Items[0].Components[0].Data[0] != 1 || hopper.Items[0].RemovedComponents[0] != 5 {
+	if original.Equal(clone) || hopper.Items[0].Components()[0].Data[0] != 1 || hopper.Items[0].RemovedComponents()[0] != 5 {
 		t.Fatal("hopper clone did not copy item components independently")
 	}
 
@@ -106,7 +95,7 @@ func TestGeneratedHopperMutationUsesCopyOnWriteAndCollapsesWhenRestored(t *testi
 	hopper := mutated.Data.(*HopperBlockEntityData)
 
 	hopper.TransferCooldown++
-	hopper.Items[0].Components[0].Data[0]++
+	hopper.Items[0] = NewItemStack(ItemStone, 3, []ItemComponent{{Type: 8, Data: []byte{2, 2}}}, []int32{5})
 
 	if !world.SetBlockEntity(position, mutated) {
 		t.Fatal("mutating generated hopper entity failed")

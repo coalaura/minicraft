@@ -100,7 +100,7 @@ func TestPotionDurationScaleAndEffects(t *testing.T) {
 		t.Fatalf("default duration scale = %v, want 1", scale)
 	}
 
-	stack.Components = []ItemComponent{{Type: ItemComponentPotionDurationScale, Data: []byte{0, 0, 0}}}
+	stack = NewItemStack(0, 0, []ItemComponent{{Type: ItemComponentPotionDurationScale, Data: []byte{0, 0, 0}}}, nil)
 
 	scale = stack.PotionDurationScale()
 	if scale != 1 {

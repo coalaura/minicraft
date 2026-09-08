@@ -180,7 +180,7 @@ func (r *Runtime) damageExplosionEntities(explosion RuntimeExplosion, result *Ru
 
 	playerUpdates := make([]explosionPlayerUpdate, 0)
 
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		player := session.snapshotPlayer()
 
 		if (explosion.DirectEntityID != 0 && player.EntityID == explosion.DirectEntityID) || player.GameMode == game.GameModeSpectator {
@@ -208,7 +208,9 @@ func (r *Runtime) damageExplosionEntities(explosion RuntimeExplosion, result *Ru
 
 	livingUpdates := make([]explosionLivingUpdate, 0)
 
-	for _, entity := range r.snapshotRuntimeEntities() {
+	entities := r.appendRuntimeEntities(nil)
+
+	for _, entity := range entities {
 		living, valid := entity.(RuntimeLivingEntity)
 		if !valid {
 			continue
@@ -347,8 +349,9 @@ func (r *Runtime) explosionSegmentBlocked(start, end game.Position) bool {
 		for y := minimumY; y <= maximumY; y++ {
 			for z := minimumZ; z <= maximumZ; z++ {
 				position := game.BlockPosition{X: x, Y: y, Z: z}
+				var boxBuffer [7]game.AABB
 
-				for _, box := range r.World.BlockAt(position).CollisionBoxes(position) {
+				for _, box := range r.World.BlockAt(position).AppendCollisionBoxes(boxBuffer[:0], position) {
 					if segmentIntersectsBox(start, end, box) {
 						return true
 					}
@@ -438,7 +441,7 @@ func (r *Runtime) destroyExplosionBlocksLocked(affected []game.BlockPosition, ex
 }
 
 func (r *Runtime) sendExplosionPackets(explosion RuntimeExplosion, result RuntimeExplosionResult) {
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		player := session.snapshotPlayer()
 
 		distanceX := player.Position.X - explosion.Position.X

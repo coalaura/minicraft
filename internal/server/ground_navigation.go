@@ -82,7 +82,9 @@ func (queue *groundPathQueue) Pop() any {
 func (r *Runtime) moveGroundEntity(position game.Position, velocity game.Velocity, width, height, stepHeight float64, wasOnGround bool) groundMovement {
 	box := entityBox(position, width, height)
 
-	blocks := r.entityCollisionBoxes(box, velocity)
+	var blockBuffer [64]game.AABB
+
+	blocks := r.appendEntityCollisionBoxes(blockBuffer[:0], box, velocity)
 
 	delta := collideAABBWithBlocks(box, blocks, velocity)
 
@@ -93,7 +95,7 @@ func (r *Runtime) moveGroundEntity(position game.Position, velocity game.Velocit
 	if stepHeight > 0 && wasOnGround && (horizontalCollisionX || horizontalCollisionZ) {
 		stepVelocity := game.Velocity{X: velocity.X, Y: stepHeight, Z: velocity.Z}
 
-		stepBlocks := r.entityCollisionBoxes(box, stepVelocity)
+		stepBlocks := r.appendEntityCollisionBoxes(blockBuffer[:0], box, stepVelocity)
 
 		stepDelta := collideAABBWithBlocks(box, stepBlocks, stepVelocity)
 
@@ -101,7 +103,7 @@ func (r *Runtime) moveGroundEntity(position game.Position, velocity game.Velocit
 
 		drop := game.Velocity{Y: -stepDelta.Y}
 
-		dropBlocks := r.entityCollisionBoxes(steppedBox, drop)
+		dropBlocks := r.appendEntityCollisionBoxes(blockBuffer[:0], steppedBox, drop)
 
 		dropDelta := collideAABBWithBlocks(steppedBox, dropBlocks, drop)
 
@@ -247,7 +249,9 @@ func (r *Runtime) groundTransitionWalkable(current, candidate game.BlockPosition
 
 	box := entityBox(from, width, height)
 
-	blocks := r.entityCollisionBoxes(box, velocity)
+	var blockBuffer [64]game.AABB
+
+	blocks := r.appendEntityCollisionBoxes(blockBuffer[:0], box, velocity)
 
 	delta := collideAABBWithBlocks(box, blocks, velocity)
 
@@ -259,7 +263,11 @@ func (r *Runtime) groundNodeWalkable(node game.BlockPosition, width, height floa
 
 	box := entityBox(position, width, height)
 
-	if slices.ContainsFunc(r.entityCollisionBoxes(box, game.Velocity{}), box.Intersects) {
+	var blockBuffer [64]game.AABB
+
+	blocks := r.appendEntityCollisionBoxes(blockBuffer[:0], box, game.Velocity{})
+
+	if slices.ContainsFunc(blocks, box.Intersects) {
 		return false
 	}
 
@@ -269,7 +277,9 @@ func (r *Runtime) groundNodeWalkable(node game.BlockPosition, width, height floa
 func (r *Runtime) entityHasSupport(box game.AABB) bool {
 	probe := game.Velocity{Y: -groundSupportProbe}
 
-	blocks := r.entityCollisionBoxes(box, probe)
+	var blockBuffer [64]game.AABB
+
+	blocks := r.appendEntityCollisionBoxes(blockBuffer[:0], box, probe)
 
 	delta := collideAABBWithBlocks(box, blocks, probe)
 

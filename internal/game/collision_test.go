@@ -102,6 +102,25 @@ func TestHopperCollisionLeavesInputOpenAndFollowsFacing(t *testing.T) {
 	}
 }
 
+func TestAppendCollisionBoxesDoesNotAllocate(t *testing.T) {
+	blocks := [...]Block{Stone, Hopper}
+
+	for _, block := range blocks {
+		allocations := testing.AllocsPerRun(1000, func() {
+			var boxBuffer [maxBlockCollisionBoxes]AABB
+			boxes := block.AppendCollisionBoxes(boxBuffer[:0], BlockPosition{X: 1, Y: 2, Z: 3})
+
+			if len(boxes) == 0 {
+				t.Fatal("collision boxes unexpectedly empty")
+			}
+		})
+
+		if allocations != 0 {
+			t.Fatalf("%v AppendCollisionBoxes allocations = %v, want 0", block, allocations)
+		}
+	}
+}
+
 func TestSlabCollisionUsesResolvedState(t *testing.T) {
 	bottom, valid := OakSlab.WithProperties(BlockPropertyValue{Name: "type", Value: "bottom"})
 	if !valid {

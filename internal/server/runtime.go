@@ -6,12 +6,17 @@ import (
 	"math/rand/v2"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coalaura/minicraft/internal/config"
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
+
+type runtimeSessionList struct {
+	sessions []*Session
+}
 
 type Runtime struct {
 	World               *game.World
@@ -55,10 +60,14 @@ type Runtime struct {
 	deferredFluidSources      map[LoadedChunk]map[game.BlockPosition]struct{}
 	activeChunksMu            sync.RWMutex
 	activeChunks              map[LoadedChunk]*activeChunkReference
+	activeChunkList           []*ActiveChunk
 	sessionActiveChunks       map[*Session]map[LoadedChunk]struct{}
+	activeChunkTickMu         sync.Mutex
+	activeChunkTickSnapshots  []activeChunkTickSnapshot
 	entityMu                  sync.RWMutex
 	entities                  map[int32]RuntimeEntity
-	entitiesByChunk           map[LoadedChunk]map[int32]RuntimeEntity
+	runtimeEntities           []RuntimeEntity
+	entitiesByChunk           map[LoadedChunk][]RuntimeEntity
 	entityRandomMu            sync.Mutex
 	entityRandom              func() float32
 	groundPathfindStarted     func()
@@ -66,6 +75,7 @@ type Runtime struct {
 	nextEntityID              int32
 	reserved                  int
 	sessions                  map[*Session]*game.Player
+	sessionList               atomic.Pointer[runtimeSessionList]
 	connectedSessions         map[*Session]struct{}
 	shuttingDown              bool
 }
@@ -210,7 +220,7 @@ func (r *Runtime) JoinSession(session *Session) error {
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
 
-	session.updatePlayerState(func(player *game.Player) bool {
+	session.mutatePlayer(func(player *game.Player) bool {
 		r.updatePlayerSwimmingState(player)
 
 		player.Pose = r.calculatedPlayerPose(*player)
@@ -218,7 +228,7 @@ func (r *Runtime) JoinSession(session *Session) error {
 		return true
 	})
 
-	existing := r.snapshotSessions()
+	existing := r.sessionView()
 
 	player := session.snapshotPlayer()
 
@@ -228,11 +238,11 @@ func (r *Runtime) JoinSession(session *Session) error {
 	players = append(players, session.playerInfoSnapshot())
 
 	for _, other := range existing {
-		otherPlayer := other.snapshotPlayer()
+		otherPlayer := other.playerView()
 
 		players = append(players, other.playerInfoSnapshot())
 
-		if playersVisible(player, otherPlayer, session.renderDistance()) {
+		if playerPositionsVisible(player.Position, otherPlayer.Position, otherPlayer.DeathEntityRemoved, session.renderDistance()) {
 			visible = append(visible, other)
 		}
 	}
@@ -259,9 +269,7 @@ func (r *Runtime) JoinSession(session *Session) error {
 		}
 	}
 
-	r.mu.Lock()
-	r.sessions[session] = session.Player
-	r.mu.Unlock()
+	r.addSession(session)
 
 	r.trackLoadedEntities(session)
 
@@ -271,7 +279,7 @@ func (r *Runtime) JoinSession(session *Session) error {
 			other.Log.Warnf("[play] failed to announce player info: %v\n", err)
 		}
 
-		if !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+		if !playerViewSeesPlayer(other.playerView(), player, other.renderDistance()) {
 			continue
 		}
 
@@ -308,14 +316,7 @@ func (r *Runtime) LeaveSession(session *Session) {
 
 	session.clearTrackedEntities()
 
-	r.mu.Lock()
-	_, active := r.sessions[session]
-
-	if active {
-		delete(r.sessions, session)
-	}
-
-	r.mu.Unlock()
+	active := r.removeSession(session)
 
 	if !active {
 		return
@@ -323,8 +324,8 @@ func (r *Runtime) LeaveSession(session *Session) {
 
 	player := session.snapshotPlayer()
 
-	for _, other := range r.snapshotSessions() {
-		if playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+	for _, other := range r.sessionView() {
+		if playerViewSeesPlayer(other.playerView(), player, other.renderDistance()) {
 			err := other.sendPlayerRemoval(player)
 			if err != nil {
 				other.Log.Warnf("[play] failed to remove player entity: %v\n", err)
@@ -390,7 +391,7 @@ func (r *Runtime) BroadcastVerifiedPlayerChat(session *Session, verified verifie
 	globalIndex := r.nextChatIndex
 	r.nextChatIndex++
 
-	for _, recipient := range r.snapshotSessions() {
+	for _, recipient := range r.sessionView() {
 		err := recipient.sendVerifiedPlayerChat(globalIndex, player.UUID, player.Name, verified)
 		if err != nil {
 			recipient.Log.Warnf("[play] failed to send signed player chat: %v\n", err)
@@ -422,7 +423,7 @@ func (r *Runtime) BroadcastChatSession(session *Session) {
 		Players: []protocol.PlayerInfo{entry},
 	}
 
-	for _, recipient := range r.snapshotSessions() {
+	for _, recipient := range r.sessionView() {
 		err := recipient.writePacket(protocol.ClientboundPlayerInfoUpdateID, update)
 		if err != nil {
 			recipient.Log.Warnf("[play] failed to update player chat session: %v\n", err)
@@ -442,7 +443,7 @@ func (r *Runtime) broadcastSystemMessageLocked(message string) {
 }
 
 func (r *Runtime) broadcastSystemComponentLocked(message game.TextComponent) {
-	for _, session := range r.snapshotSessions() {
+	for _, session := range r.sessionView() {
 		err := session.sendSystemComponent(message)
 		if err != nil {
 			session.Log.Warnf("[play] failed to send system message: %v\n", err)
@@ -467,8 +468,8 @@ func (r *Runtime) UpdateSkinParts(session *Session, skinParts byte) {
 		return
 	}
 
-	for _, other := range r.snapshotSessions() {
-		if other != session && !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+	for _, other := range r.sessionView() {
+		if other != session && !playerViewSeesPlayer(other.playerView(), player, other.renderDistance()) {
 			continue
 		}
 
@@ -538,12 +539,12 @@ func (r *Runtime) BroadcastPlayerAnimation(session *Session, animation byte) {
 
 	player := session.snapshotPlayer()
 
-	for _, other := range r.snapshotSessions() {
+	for _, other := range r.sessionView() {
 		if other == session {
 			continue
 		}
 
-		if !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+		if !playerViewSeesPlayer(other.playerView(), player, other.renderDistance()) {
 			continue
 		}
 
@@ -571,12 +572,12 @@ func (r *Runtime) updatePlayerMetadata(session *Session, update func(*game.Playe
 		return
 	}
 
-	for _, other := range r.snapshotSessions() {
+	for _, other := range r.sessionView() {
 		if other == session {
 			continue
 		}
 
-		if !playersVisible(other.snapshotPlayer(), player, other.renderDistance()) {
+		if !playerViewSeesPlayer(other.playerView(), player, other.renderDistance()) {
 			continue
 		}
 
@@ -711,7 +712,7 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 		return
 	}
 
-	for _, other := range r.snapshotSessions() {
+	for _, other := range r.sessionView() {
 		if other == session {
 			continue
 		}
@@ -763,7 +764,9 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 		}
 	}
 
-	for _, entity := range r.snapshotRuntimeEntities() {
+	entities := r.appendRuntimeEntities(nil)
+
+	for _, entity := range entities {
 		if session.shouldTrackRuntimeEntity(entity) {
 			session.trackRuntimeEntity(entity)
 		} else {
@@ -787,9 +790,9 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 
 func (r *Runtime) sendPlayerMetadataUpdates(players []game.Player) {
 	for _, player := range players {
-		for _, recipient := range r.snapshotSessions() {
-			recipientPlayer := recipient.snapshotPlayer()
-			if recipientPlayer.EntityID != player.EntityID && !playersVisible(recipientPlayer, player, recipient.renderDistance()) {
+		for _, recipient := range r.sessionView() {
+			recipientPlayer := recipient.playerView()
+			if recipientPlayer.EntityID != player.EntityID && !playerViewSeesPlayer(recipientPlayer, player, recipient.renderDistance()) {
 				continue
 			}
 
@@ -801,17 +804,13 @@ func (r *Runtime) sendPlayerMetadataUpdates(players []game.Player) {
 	}
 }
 
-func (r *Runtime) snapshotSessions() []*Session {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	sessions := make([]*Session, 0, len(r.sessions))
-
-	for session := range r.sessions {
-		sessions = append(sessions, session)
+func (r *Runtime) sessionView() []*Session {
+	list := r.sessionList.Load()
+	if list == nil {
+		return nil
 	}
 
-	return sessions
+	return list.sessions
 }
 
 func (r *Runtime) PlayerCount() int {
@@ -851,27 +850,75 @@ func NewRuntime(world *game.World) *Runtime {
 		activeChunks:            make(map[LoadedChunk]*activeChunkReference),
 		sessionActiveChunks:     make(map[*Session]map[LoadedChunk]struct{}),
 		entities:                make(map[int32]RuntimeEntity),
-		entitiesByChunk:         make(map[LoadedChunk]map[int32]RuntimeEntity),
+		entitiesByChunk:         make(map[LoadedChunk][]RuntimeEntity),
 		entityRandom:            rand.Float32,
 		sessions:                make(map[*Session]*game.Player),
 		connectedSessions:       make(map[*Session]struct{}),
 	}
+
+	runtime.sessionList.Store(&runtimeSessionList{})
 
 	runtime.commands = newCommandRegistry(runtime)
 
 	return runtime
 }
 
-func playersVisible(observer, target game.Player, renderDistance int32) bool {
-	if target.DeathEntityRemoved {
+func (r *Runtime) addSession(session *Session) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	current := r.sessionList.Load()
+	next := make([]*Session, len(current.sessions)+1)
+
+	copy(next, current.sessions)
+	next[len(current.sessions)] = session
+	r.sessions[session] = session.Player
+	r.sessionList.Store(&runtimeSessionList{sessions: next})
+}
+
+func (r *Runtime) removeSession(session *Session) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	_, active := r.sessions[session]
+	if !active {
 		return false
 	}
 
-	observerX := int64(chunkCoordinate(observer.Position.X))
-	observerZ := int64(chunkCoordinate(observer.Position.Z))
+	delete(r.sessions, session)
 
-	targetX := int64(chunkCoordinate(target.Position.X))
-	targetZ := int64(chunkCoordinate(target.Position.Z))
+	current := r.sessionList.Load()
+	next := make([]*Session, 0, len(current.sessions)-1)
+
+	for _, other := range current.sessions {
+		if other != session {
+			next = append(next, other)
+		}
+	}
+
+	r.sessionList.Store(&runtimeSessionList{sessions: next})
+
+	return true
+}
+
+func playersVisible(observer, target game.Player, renderDistance int32) bool {
+	return playerPositionsVisible(observer.Position, target.Position, target.DeathEntityRemoved, renderDistance)
+}
+
+func playerViewSeesPlayer(observer playerView, target game.Player, renderDistance int32) bool {
+	return playerPositionsVisible(observer.Position, target.Position, target.DeathEntityRemoved, renderDistance)
+}
+
+func playerPositionsVisible(observer, target game.Position, targetRemoved bool, renderDistance int32) bool {
+	if targetRemoved {
+		return false
+	}
+
+	observerX := int64(chunkCoordinate(observer.X))
+	observerZ := int64(chunkCoordinate(observer.Z))
+
+	targetX := int64(chunkCoordinate(target.X))
+	targetZ := int64(chunkCoordinate(target.Z))
 
 	distance := int64(renderDistance)
 

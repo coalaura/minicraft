@@ -45,7 +45,7 @@ func (r *Runtime) tickPlayerEffectsLocked(session *Session) []playerSurvivalUpda
 				}
 			}
 		case game.MobEffectHunger:
-			session.updatePlayerState(func(player *game.Player) bool {
+			session.mutatePlayer(func(player *game.Player) bool {
 				previous := player.Exhaustion
 
 				player.AddExhaustion(0.005 * float32(instance.Amplifier+1))
@@ -174,7 +174,7 @@ func (r *Runtime) applyConsumableMobEffects(player *game.Player, effects []game.
 func removePlayerMobEffect(session *Session, effect game.MobEffect) (playerMobEffectChange, bool) {
 	var removed game.MobEffectInstance
 
-	_, changed := session.updatePlayerState(func(player *game.Player) bool {
+	changed := session.mutatePlayer(func(player *game.Player) bool {
 		var valid bool
 
 		removed, valid = player.ActiveEffects.Find(effect)

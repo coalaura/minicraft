@@ -155,7 +155,9 @@ func (r *Runtime) playerLandingBlock(player game.Player) (game.Block, bool) {
 				position := game.BlockPosition{X: x, Y: y, Z: z}
 				block := r.World.BlockAt(position)
 
-				for _, collision := range block.CollisionBoxes(position) {
+				var boxBuffer [7]game.AABB
+
+				for _, collision := range block.AppendCollisionBoxes(boxBuffer[:0], position) {
 					if math.Abs(collision.MaxY-feetY) > landingPositionEpsilon {
 						continue
 					}

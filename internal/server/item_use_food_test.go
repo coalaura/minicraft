@@ -144,14 +144,14 @@ func TestFoodUseContinuesWithAuthoritativeSameItemStack(t *testing.T) {
 	})
 
 	t.Run("component patch changes", func(t *testing.T) {
-		current := game.ItemStack{Item: game.ItemApple, Count: 2, RemovedComponents: []int32{game.ItemComponentEnchantments}}
-		expected := game.ItemStack{Item: game.ItemApple, Count: 1, RemovedComponents: []int32{game.ItemComponentEnchantments}}
+		current := game.NewItemStack(game.ItemApple, 2, nil, []int32{game.ItemComponentEnchantments})
+		expected := game.NewItemStack(game.ItemApple, 1, nil, []int32{game.ItemComponentEnchantments})
 
 		assertFoodUseStackContinuation(t, game.ItemStack{Item: game.ItemApple, Count: 2}, current, expected)
 	})
 
 	t.Run("backing stack is replaced", func(t *testing.T) {
-		initial := game.ItemStack{Item: game.ItemApple, Count: 2, Components: []game.ItemComponent{{Type: game.ItemComponentEnchantments, Data: []byte{1}}}}
+		initial := game.NewItemStack(game.ItemApple, 2, []game.ItemComponent{{Type: game.ItemComponentEnchantments, Data: []byte{1}}}, nil)
 		current := game.ItemStack{Item: game.ItemApple, Count: 2}
 		expected := game.ItemStack{Item: game.ItemApple, Count: 1}
 

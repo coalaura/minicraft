@@ -1,6 +1,8 @@
 package server
 
 import (
+	"net"
+
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
@@ -320,19 +322,37 @@ func (s *Session) sendPlayerInfoRemoval(player game.Player) error {
 }
 
 func (s *Session) writePacket(packetID int32, encoder PacketEncoder) error {
-	var wr protocol.PacketWriter
+	return writeSessionPacket(s, packetID, encoder)
+}
 
-	encoder.Encode(&wr)
+func writeSessionPacket[Encoder PacketEncoder](session *Session, packetID int32, encoder Encoder) error {
+	session.writeMx.Lock()
+	defer session.writeMx.Unlock()
 
-	err := wr.Err()
+	if session.shuttingDown {
+		return net.ErrClosed
+	}
+
+	writer := &session.packetWriter
+	writer.Reset()
+
+	encoder.Encode(writer)
+
+	err := writer.Err()
 	if err != nil {
 		return err
 	}
 
-	return s.writeRawPacket(protocol.Packet{
+	err = session.Conn.WritePacket(protocol.Packet{
 		ID:   packetID,
-		Data: wr.Buffer.Bytes(),
+		Data: writer.Buffer.Bytes(),
 	})
+
+	if writer.Cap() > maximumRetainedPacketWriterBuffer {
+		writer.Release()
+	}
+
+	return err
 }
 
 func visibleEquipmentSlots(player game.Player) []byte {

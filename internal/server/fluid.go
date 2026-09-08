@@ -417,7 +417,9 @@ func (r *Runtime) fluidFlowReplacementWith(from, destination game.BlockPosition,
 		return game.Air, false, false
 	}
 
-	if !target.HasTrait(game.BlockTraitFluidExcluded) && len(target.CollisionBoxes(game.BlockPosition{})) == 0 {
+	var boxBuffer [7]game.AABB
+
+	if !target.HasTrait(game.BlockTraitFluidExcluded) && len(target.AppendCollisionBoxes(boxBuffer[:0], game.BlockPosition{})) == 0 {
 		replacement := fluidBlockForAmount(fluid, amount, downward)
 
 		if fluid.typeID == game.FluidTypeLava {
@@ -698,7 +700,7 @@ func (r *Runtime) queueFluidFizzLocked(position game.BlockPosition) {
 	deliveryComplete := make(chan struct{})
 
 	delivery := blockMutationDelivery{
-		recipients:       r.snapshotSessions(),
+		recipients:       r.sessionView(),
 		waitForDelivery:  r.blockMutationDeliveryTail,
 		deliveryComplete: deliveryComplete,
 		runtimeEvents:    []protocol.LevelEvent{{Event: protocol.LevelEventLavaFizz, Position: position}},
