@@ -189,6 +189,12 @@ func (r *Runtime) ActiveChunkCount() int {
 }
 
 func (r *Runtime) setSessionActiveChunks(session *Session, chunks []LoadedChunk) {
+	activated := r.replaceSessionActiveChunks(session, chunks)
+
+	r.resumeActivatedChunks(activated)
+}
+
+func (r *Runtime) replaceSessionActiveChunks(session *Session, chunks []LoadedChunk) []LoadedChunk {
 	next := make(map[LoadedChunk]struct{}, len(chunks))
 
 	for _, chunk := range chunks {
@@ -247,6 +253,10 @@ func (r *Runtime) setSessionActiveChunks(session *Session, chunks []LoadedChunk)
 
 	r.activeChunksMu.Unlock()
 
+	return activated
+}
+
+func (r *Runtime) resumeActivatedChunks(activated []LoadedChunk) {
 	if len(activated) == 0 {
 		return
 	}
@@ -258,15 +268,19 @@ func (r *Runtime) setSessionActiveChunks(session *Session, chunks []LoadedChunk)
 
 func (r *Runtime) releaseSessionActiveChunks(session *Session) {
 	session.chunkMx.Lock()
-	defer session.chunkMx.Unlock()
 
 	if session.runtimeChunksReleased {
+		session.chunkMx.Unlock()
+
 		return
 	}
 
 	session.runtimeChunksReleased = true
+	activated := r.replaceSessionActiveChunks(session, nil)
 
-	r.setSessionActiveChunks(session, nil)
+	session.chunkMx.Unlock()
+
+	r.resumeActivatedChunks(activated)
 }
 
 func (r *Runtime) tickActiveChunks() {

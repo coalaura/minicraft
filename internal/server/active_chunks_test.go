@@ -3,9 +3,12 @@ package server
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/coalaura/minicraft/internal/game"
 )
+
+const activeChunkLockTestTimeout = 2 * time.Second
 
 type runtimeTickLog struct {
 	mu      sync.Mutex
@@ -17,6 +20,70 @@ type recordingRuntimeTicker struct {
 	log      *runtimeTickLog
 	position game.BlockPosition
 	state    RuntimeEntityState
+}
+
+func TestVisibleChunkUpdateDoesNotHoldChunkLockWhileWaitingForWorldMutation(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	session, _ := newMovementTestSession(runtime, randomEntityUUID(), "ChunkLockPlayer")
+
+	runtime.worldMutationMu.Lock()
+	worldLocked := true
+
+	defer func() {
+		if worldLocked {
+			runtime.worldMutationMu.Unlock()
+		}
+	}()
+
+	updateComplete := make(chan error, 1)
+
+	go func() {
+		updateComplete <- session.updateVisibleChunks(LoadedChunk{})
+	}()
+
+	deadline := time.NewTimer(activeChunkLockTestTimeout)
+	poll := time.NewTicker(time.Millisecond)
+
+	defer deadline.Stop()
+	defer poll.Stop()
+
+	registryUpdated := false
+
+	for !registryUpdated {
+		select {
+		case <-poll.C:
+			registryUpdated = runtime.ActiveChunkCount() > 0
+		case <-deadline.C:
+			t.Fatal("visible chunk registry was not updated")
+		}
+	}
+
+	chunkLockAcquired := make(chan struct{})
+
+	go func() {
+		session.chunkMx.Lock()
+		close(chunkLockAcquired)
+		session.chunkMx.Unlock()
+	}()
+
+	select {
+	case <-chunkLockAcquired:
+	case <-time.After(activeChunkLockTestTimeout):
+		t.Fatal("visible chunk update held chunk lock while waiting for world mutation")
+	}
+
+	runtime.worldMutationMu.Unlock()
+	worldLocked = false
+
+	select {
+	case err := <-updateComplete:
+		if err != nil {
+			t.Fatalf("update visible chunks: %v", err)
+		}
+	case <-time.After(activeChunkLockTestTimeout):
+		t.Fatal("visible chunk update did not complete")
+	}
 }
 
 type recordingBlockEntityInteraction struct {

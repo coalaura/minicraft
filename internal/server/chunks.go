@@ -396,9 +396,11 @@ func (s *Session) updateVisibleChunks(center LoadedChunk) error {
 	notify := s.chunkStreamNotify
 	streamStarted := s.chunkStreamStarted
 
-	s.Runtime.setSessionActiveChunks(s, visibleChunks)
+	activated := s.Runtime.replaceSessionActiveChunks(s, visibleChunks)
 
 	s.chunkMx.Unlock()
+
+	s.Runtime.resumeActivatedChunks(activated)
 
 	for _, chunk := range chunksToUnload {
 		s.untrackEntitiesInChunk(chunk)

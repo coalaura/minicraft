@@ -2,10 +2,13 @@ package server
 
 import (
 	"testing"
+	"time"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
+
+const runtimeAnimalLivenessTimeout = 5 * time.Second
 
 type runtimeAnimalSpawnTestCase struct {
 	name       string
@@ -110,6 +113,64 @@ func TestSpawnEntityRegistersImplementedAnimals(t *testing.T) {
 	entity, spawned := runtime.SpawnEntity(game.EntityPig, game.Position{})
 	if spawned || entity != nil {
 		t.Fatal("unimplemented pig spawned")
+	}
+}
+
+func TestMixedAnimalHerdDoesNotBlockPlayerMovement(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	session := addRuntimeMobTestPlayer(t, runtime, game.Position{X: 8.5, Y: 1, Z: 8.5}, game.GameModeSurvival)
+
+	for index := range 300 {
+		position := game.Position{X: float64(index%16) + 0.5, Y: 1, Z: float64(index/16) + 0.5}
+
+		switch index % 3 {
+		case 0:
+			runtime.SpawnCow(position)
+		case 1:
+			runtime.SpawnSheep(position)
+		case 2:
+			runtime.SpawnChicken(position)
+		}
+	}
+
+	tickComplete := make(chan struct{})
+
+	go func() {
+		for range 100 {
+			runtime.Tick()
+		}
+
+		close(tickComplete)
+	}()
+
+	movementComplete := make(chan struct{})
+
+	go func() {
+		for range 100 {
+			runtime.updatePlayerMovement(session, func(player *game.Player) {
+				player.Position.X += 0.01
+			})
+		}
+
+		close(movementComplete)
+	}()
+
+	timer := time.NewTimer(runtimeAnimalLivenessTimeout)
+	defer timer.Stop()
+
+	select {
+	case <-tickComplete:
+	case <-timer.C:
+		t.Fatal("mixed animal herd tick did not complete")
+	}
+
+	timer.Reset(runtimeAnimalLivenessTimeout)
+
+	select {
+	case <-movementComplete:
+	case <-timer.C:
+		t.Fatal("player movement did not complete after mixed animal herd tick")
 	}
 }
 
