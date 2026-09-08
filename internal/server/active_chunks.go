@@ -285,7 +285,13 @@ func (r *Runtime) releaseSessionActiveChunks(session *Session) {
 
 func (r *Runtime) tickActiveChunks() {
 	r.activeChunkTickMu.Lock()
-	defer r.activeChunkTickMu.Unlock()
+	clear(r.itemFluidFlowCache)
+	r.itemFluidFlowCacheActive = true
+
+	defer func() {
+		r.itemFluidFlowCacheActive = false
+		r.activeChunkTickMu.Unlock()
+	}()
 
 	// Runtime relevance is sampled once per tick. A chunk deactivated during
 	// callbacks finishes that snapshot but cannot appear in the next tick.

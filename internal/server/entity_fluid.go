@@ -13,6 +13,11 @@ type entityFluidContact struct {
 	Flow  game.Velocity
 }
 
+type entityFluidContacts struct {
+	Water entityFluidContact
+	Lava  entityFluidContact
+}
+
 type fluidFlowDirection struct {
 	X    int32
 	Z    int32
@@ -27,6 +32,20 @@ var entityFluidFlowDirections = [...]fluidFlowDirection{
 }
 
 func (r *Runtime) fluidContact(box game.AABB, fluidType game.FluidType, player bool) entityFluidContact {
+	contacts := r.scanFluidContacts(box, fluidType, player, false)
+
+	if fluidType == game.FluidTypeWater {
+		return contacts.Water
+	}
+
+	return contacts.Lava
+}
+
+func (r *Runtime) fluidContacts(box game.AABB, player bool) entityFluidContacts {
+	return r.scanFluidContacts(box, game.FluidTypeEmpty, player, true)
+}
+
+func (r *Runtime) scanFluidContacts(box game.AABB, only game.FluidType, player bool, cacheFlow bool) entityFluidContacts {
 	box.MinX += 0.001
 	box.MinY += 0.001
 	box.MinZ += 0.001
@@ -42,8 +61,9 @@ func (r *Runtime) fluidContact(box game.AABB, fluidType game.FluidType, player b
 	maxZ := int32(math.Ceil(box.MaxZ))
 
 	var (
-		contact     entityFluidContact
-		flowSamples int
+		contacts     entityFluidContacts
+		waterSamples int
+		lavaSamples  int
 	)
 
 	for y := minY; y < maxY; y++ {
@@ -52,7 +72,13 @@ func (r *Runtime) fluidContact(box game.AABB, fluidType game.FluidType, player b
 				position := game.BlockPosition{X: x, Y: y, Z: z}
 
 				state := r.World.FluidAt(position)
-				if state.Type() != fluidType {
+
+				fluidType := state.Type()
+				if only != game.FluidTypeEmpty && fluidType != only {
+					continue
+				}
+
+				if fluidType != game.FluidTypeWater && fluidType != game.FluidTypeLava {
 					continue
 				}
 
@@ -61,40 +87,46 @@ func (r *Runtime) fluidContact(box game.AABB, fluidType game.FluidType, player b
 					continue
 				}
 
-				contact.Depth = max(contact.Depth, depth)
+				flow := r.itemFluidFlowVector(position, state, cacheFlow)
 
-				flow := r.fluidFlowVector(position, state)
+				switch fluidType {
+				case game.FluidTypeWater:
+					contacts.Water.Depth = max(contacts.Water.Depth, depth)
 
-				if depth < 0.4 {
-					flow.X *= depth
-					flow.Y *= depth
-					flow.Z *= depth
+					appendFluidFlow(&contacts.Water, flow, contacts.Water.Depth)
+
+					waterSamples++
+				case game.FluidTypeLava:
+					contacts.Lava.Depth = max(contacts.Lava.Depth, depth)
+
+					appendFluidFlow(&contacts.Lava, flow, contacts.Lava.Depth)
+
+					lavaSamples++
 				}
-
-				contact.Flow.X += flow.X
-				contact.Flow.Y += flow.Y
-				contact.Flow.Z += flow.Z
-				flowSamples++
 			}
 		}
 	}
 
-	if flowSamples == 0 {
-		return contact
+	finishFluidContact(&contacts.Water, waterSamples, player)
+	finishFluidContact(&contacts.Lava, lavaSamples, player)
+
+	return contacts
+}
+
+func (r *Runtime) itemFluidFlowVector(position game.BlockPosition, state game.FluidState, cache bool) game.Velocity {
+	if !cache || !r.itemFluidFlowCacheActive {
+		return r.fluidFlowVector(position, state)
 	}
 
-	contact.Flow.X /= float64(flowSamples)
-	contact.Flow.Y /= float64(flowSamples)
-	contact.Flow.Z /= float64(flowSamples)
-
-	length := velocityLength(contact.Flow)
-	if !player && length != 0 {
-		contact.Flow.X /= length
-		contact.Flow.Y /= length
-		contact.Flow.Z /= length
+	flow, ok := r.itemFluidFlowCache[position]
+	if ok {
+		return flow
 	}
 
-	return contact
+	flow = r.fluidFlowVector(position, state)
+	r.itemFluidFlowCache[position] = flow
+
+	return flow
 }
 
 func (r *Runtime) fluidFlowVector(position game.BlockPosition, state game.FluidState) game.Velocity {
@@ -204,4 +236,33 @@ func fluidCurrentImpulse(current, flow game.Velocity, scale float64) game.Veloci
 
 func velocityLength(velocity game.Velocity) float64 {
 	return math.Sqrt(velocity.X*velocity.X + velocity.Y*velocity.Y + velocity.Z*velocity.Z)
+}
+
+func appendFluidFlow(contact *entityFluidContact, flow game.Velocity, depth float64) {
+	if depth < 0.4 {
+		flow.X *= depth
+		flow.Y *= depth
+		flow.Z *= depth
+	}
+
+	contact.Flow.X += flow.X
+	contact.Flow.Y += flow.Y
+	contact.Flow.Z += flow.Z
+}
+
+func finishFluidContact(contact *entityFluidContact, samples int, player bool) {
+	if samples == 0 {
+		return
+	}
+
+	contact.Flow.X /= float64(samples)
+	contact.Flow.Y /= float64(samples)
+	contact.Flow.Z /= float64(samples)
+
+	length := velocityLength(contact.Flow)
+	if !player && length != 0 {
+		contact.Flow.X /= length
+		contact.Flow.Y /= length
+		contact.Flow.Z /= length
+	}
 }

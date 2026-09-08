@@ -7,31 +7,31 @@ import (
 	"math/rand/v2"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/coalaura/minicraft/internal/game"
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
 const (
-	itemEntityWidth              = 0.25
-	itemEntityHeight             = 0.25
-	itemEntityGravity            = 0.04
-	itemEntityVerticalDrag       = 0.98
-	itemEntityLifetime           = 6000
-	itemEntityMergeRadius        = 0.5
-	itemEntitySyncThreshold      = 0.01
-	itemEntityWaterDrag          = 0.99
-	itemEntityLavaDrag           = 0.95
-	itemEntityFluidLift          = 0.0005
-	itemEntityFluidRiseMax       = 0.06
-	itemEntityWaterPush          = 0.014
-	itemEntityLavaPush           = 0.0023333333333333335
-	itemEntityFastLavaPush       = 0.007
-	itemEntityFluidSyncThreshold = 1e-8
-	itemEntityFireDurationTicks  = 8 * 20
-	itemEntityLavaFireTicks      = 15 * 20
-	itemEntityLavaDamage         = 4
-	itemEntityBurningDamage      = 1
+	itemEntityWidth             = 0.25
+	itemEntityHeight            = 0.25
+	itemEntityGravity           = 0.04
+	itemEntityVerticalDrag      = 0.98
+	itemEntityLifetime          = 6000
+	itemEntityMergeRadius       = 0.5
+	itemEntitySyncThreshold     = 0.01
+	itemEntityWaterDrag         = 0.99
+	itemEntityLavaDrag          = 0.95
+	itemEntityFluidLift         = 0.0005
+	itemEntityFluidRiseMax      = 0.06
+	itemEntityWaterPush         = 0.014
+	itemEntityLavaPush          = 0.0023333333333333335
+	itemEntityFastLavaPush      = 0.007
+	itemEntityFireDurationTicks = 8 * 20
+	itemEntityLavaFireTicks     = 15 * 20
+	itemEntityLavaDamage        = 4
+	itemEntityBurningDamage     = 1
 )
 
 type RuntimeEntityState struct {
@@ -75,6 +75,13 @@ type runtimeEntitySpawnSnapshot struct {
 	HeadYaw  byte
 }
 
+type itemMergePosition struct {
+	sequence atomic.Uint32
+	x        atomic.Uint64
+	y        atomic.Uint64
+	z        atomic.Uint64
+}
+
 type RuntimeEntityMetadata interface {
 	EntityMetadata() []protocol.EntityMetadataEntry
 }
@@ -107,10 +114,9 @@ type runtimeItemEntity struct {
 	ThrowerUUID        string
 	OnGround           bool
 	TickCount          int32
-	FluidType          game.FluidType
-	FluidImpulse       game.Velocity
 	RemainingFireTicks int32
 	pickupReserved     bool
+	mergePosition      itemMergePosition
 }
 
 type itemEscapeDirection struct {
@@ -167,6 +173,34 @@ func (entity *runtimeItemEntity) itemMergableLocked() bool {
 	return !entity.State.Removed && !entity.pickupReserved && entity.PickupDelay != 32767 && entity.Age != -32768 && entity.Age < itemEntityLifetime && entity.Stack.Count < definition.StackSize
 }
 
+func (position *itemMergePosition) Store(value game.Position) {
+	position.sequence.Add(1)
+	position.x.Store(math.Float64bits(value.X))
+	position.y.Store(math.Float64bits(value.Y))
+	position.z.Store(math.Float64bits(value.Z))
+	position.sequence.Add(1)
+}
+
+func (position *itemMergePosition) Load() game.Position {
+	for {
+		before := position.sequence.Load()
+		if before%2 != 0 {
+			continue
+		}
+
+		value := game.Position{
+			X: math.Float64frombits(position.x.Load()),
+			Y: math.Float64frombits(position.y.Load()),
+			Z: math.Float64frombits(position.z.Load()),
+		}
+
+		after := position.sequence.Load()
+		if before == after {
+			return value
+		}
+	}
+}
+
 func (entity *runtimeItemEntity) EntityMetadata() []protocol.EntityMetadataEntry {
 	entity.State.mu.RLock()
 	defer entity.State.mu.RUnlock()
@@ -216,20 +250,11 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	}
 
 	entity.TickCount++
+	contacts := runtime.fluidContacts(itemEntityBox(entity.State.Position), false)
+	applyItemFluidCurrents(runtime, entity, contacts)
+	inLava := contacts.Lava.Depth > 0
 
-	if entity.PickupDelay > 0 && entity.PickupDelay != 32767 {
-		entity.PickupDelay--
-	}
-
-	previous := entity.State.Position
-	previousVelocity := entity.Velocity
-
-	waterContact := runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeWater, false)
-	lavaContact := runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeLava, false)
-
-	inLava := lavaContact.Depth > 0
-
-	if entity.Stack.Item.FireResistant() || waterContact.Depth > 0 {
+	if entity.Stack.Item.FireResistant() || contacts.Water.Depth > 0 {
 		entity.RemainingFireTicks = 0
 	} else if entity.RemainingFireTicks > 0 {
 		if entity.RemainingFireTicks%20 == 0 && !inLava {
@@ -238,7 +263,6 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 				entityID := entity.State.ID
 
 				entity.State.mu.Unlock()
-
 				runtime.removeRuntimeEntity(entityID)
 
 				return
@@ -248,11 +272,18 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		entity.RemainingFireTicks--
 	}
 
+	if entity.PickupDelay > 0 && entity.PickupDelay != 32767 {
+		entity.PickupDelay--
+	}
+
+	previous := entity.State.Position
+	previousVelocity := entity.Velocity
+
 	fluidType := game.FluidTypeEmpty
 
-	if waterContact.Depth > fluidContactDepth {
+	if contacts.Water.Depth > fluidContactDepth {
 		fluidType = game.FluidTypeWater
-	} else if lavaContact.Depth > fluidContactDepth {
+	} else if contacts.Lava.Depth > fluidContactDepth {
 		fluidType = game.FluidTypeLava
 	}
 
@@ -327,21 +358,36 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		}
 	}
 
-	waterContact = runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeWater, false)
-	lavaContact = runtime.fluidContact(itemEntityBox(entity.State.Position), game.FluidTypeLava, false)
+	movedBlock := itemEntityBlockPosition(previous) != itemEntityBlockPosition(entity.State.Position)
+	entity.mergePosition.Store(entity.State.Position)
 
-	fluidType = game.FluidTypeEmpty
-	fluidContact := entityFluidContact{}
+	mergeRate := int32(40)
 
-	if waterContact.Depth > 0 {
-		fluidType = game.FluidTypeWater
-		fluidContact = waterContact
-	} else if lavaContact.Depth > 0 {
-		fluidType = game.FluidTypeLava
-		fluidContact = lavaContact
+	if movedBlock {
+		mergeRate = 2
 	}
 
-	if fluidType == game.FluidTypeLava && !entity.Stack.Item.FireResistant() {
+	shouldMerge := entity.TickCount%mergeRate == 0 && entity.itemMergableLocked()
+	entity.State.mu.Unlock()
+
+	runtime.runtimeEntityMoved(entity, previous)
+
+	if shouldMerge && runtime.mergeItemEntity(entity) {
+		return
+	}
+
+	entity.State.mu.Lock()
+
+	if entity.Age != -32768 {
+		entity.Age++
+	}
+
+	contacts = runtime.fluidContacts(itemEntityBox(entity.State.Position), false)
+	fluidContact := contacts.Water.Depth > 0 || contacts.Lava.Depth > 0
+
+	applyItemFluidCurrents(runtime, entity, contacts)
+
+	if contacts.Lava.Depth > 0 && !entity.Stack.Item.FireResistant() {
 		entity.RemainingFireTicks = max(entity.RemainingFireTicks, itemEntityLavaFireTicks)
 
 		removed := entity.damageLocked(itemEntityLavaDamage)
@@ -392,60 +438,11 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		}
 	}
 
-	impulse := game.Velocity{}
-
-	switch fluidType {
-	case game.FluidTypeWater:
-		impulse = fluidCurrentImpulse(entity.Velocity, fluidContact.Flow, itemEntityWaterPush)
-	case game.FluidTypeLava:
-		push := itemEntityLavaPush
-
-		if runtime.FluidEnvironment.FastLava {
-			push = itemEntityFastLavaPush
-		}
-
-		impulse = fluidCurrentImpulse(entity.Velocity, fluidContact.Flow, push)
-	}
-
-	entity.Velocity.X += impulse.X
-	entity.Velocity.Y += impulse.Y
-	entity.Velocity.Z += impulse.Z
-
-	fluidStateChanged := entity.FluidType != fluidType
-
-	fluidImpulseChanged := velocityDistanceSquared(entity.FluidImpulse, impulse) > itemEntityFluidSyncThreshold
-
-	entity.FluidType = fluidType
-	entity.FluidImpulse = impulse
-
-	movedBlock := itemEntityBlockPosition(previous) != itemEntityBlockPosition(entity.State.Position)
-
-	mergeRate := int32(40)
-
-	if movedBlock {
-		mergeRate = 2
-	}
-
-	shouldMerge := entity.TickCount%mergeRate == 0 && entity.itemMergableLocked()
-	entity.State.mu.Unlock()
-
-	runtime.runtimeEntityMoved(entity, previous)
-
-	if shouldMerge && runtime.mergeItemEntity(entity) {
-		return
-	}
-
-	entity.State.mu.Lock()
-
-	if entity.Age != -32768 {
-		entity.Age++
-	}
-
 	if velocityDistanceSquared(entity.Velocity, previousVelocity) > itemEntitySyncThreshold {
 		entity.State.movementSyncDirty = true
 	}
 
-	if fluidStateChanged || fluidImpulseChanged {
+	if fluidContact {
 		entity.State.movementSyncDirty = true
 	}
 
@@ -483,6 +480,7 @@ func (r *Runtime) SpawnItemEntity(stack game.ItemStack, position game.Position, 
 		Health:      5,
 		PickupDelay: pickupDelay,
 	}
+	entity.mergePosition.Store(position)
 
 	r.registerRuntimeEntity(entity, position)
 
@@ -1044,13 +1042,56 @@ func (r *Runtime) mergeItemEntity(entity *runtimeItemEntity) bool {
 	view := entity.runtimeEntityViewLocked()
 	entity.State.mu.RUnlock()
 
-	candidates := r.itemMergeCandidates(view)
+	minChunk, maxChunk := itemMergeChunks(view)
 
-	consumedIDs := make([]int32, 0, len(candidates))
-	dirty := false
+	searchBox := itemEntityBox(view.Position)
 
-	for _, candidate := range candidates {
-		if candidate == entity {
+	searchBox.MinX -= itemEntityMergeRadius
+	searchBox.MaxX += itemEntityMergeRadius
+	searchBox.MinZ -= itemEntityMergeRadius
+	searchBox.MaxZ += itemEntityMergeRadius
+
+	var (
+		sources     [4][]RuntimeEntity
+		indexes     [4]int
+		sourceCount int
+		dirty       bool
+	)
+
+	r.entityMu.RLock()
+
+	for chunkX := minChunk.X; chunkX <= maxChunk.X; chunkX++ {
+		for chunkZ := minChunk.Z; chunkZ <= maxChunk.Z; chunkZ++ {
+			sources[sourceCount] = r.entitiesByChunk[LoadedChunk{X: chunkX, Z: chunkZ}]
+			sourceCount++
+		}
+	}
+
+	for {
+		source := -1
+
+		for index := 0; index < sourceCount; index++ {
+			entities := sources[index]
+			candidateIndex := indexes[index]
+
+			if candidateIndex == len(entities) {
+				continue
+			}
+
+			if source == -1 || entities[candidateIndex].RuntimeEntityState().ID < sources[source][indexes[source]].RuntimeEntityState().ID {
+				source = index
+			}
+		}
+
+		if source == -1 {
+			break
+		}
+
+		candidateEntity := sources[source][indexes[source]]
+		indexes[source]++
+
+		candidate, itemEntity := candidateEntity.(*runtimeItemEntity)
+		if !itemEntity || candidate == entity || !itemMergeCandidateNearby(searchBox, candidate) {
 			continue
 		}
 
@@ -1060,6 +1101,7 @@ func (r *Runtime) mergeItemEntity(entity *runtimeItemEntity) bool {
 		}
 
 		if removed {
+			r.entityMu.RUnlock()
 			r.synchronizeDirtyRuntimeEntityMetadata(receiver)
 			r.removeRuntimeEntity(consumed.State.ID)
 
@@ -1067,45 +1109,61 @@ func (r *Runtime) mergeItemEntity(entity *runtimeItemEntity) bool {
 		}
 
 		dirty = true
-		consumedIDs = append(consumedIDs, consumed.State.ID)
 	}
+
+	r.entityMu.RUnlock()
 
 	if dirty {
 		r.synchronizeDirtyRuntimeEntityMetadata(entity)
-
-		for _, consumedID := range consumedIDs {
-			r.removeRuntimeEntity(consumedID)
-		}
+		r.removeMergedItemEntities(minChunk, maxChunk)
 	}
 
 	return false
 }
 
-func (r *Runtime) itemMergeCandidates(view runtimeEntityView) []*runtimeItemEntity {
-	minChunk := positionLoadedChunk(game.Position{X: view.Position.X - itemEntityMergeRadius - itemEntityWidth, Z: view.Position.Z - itemEntityMergeRadius - itemEntityWidth})
-	maxChunk := positionLoadedChunk(game.Position{X: view.Position.X + itemEntityMergeRadius + itemEntityWidth, Z: view.Position.Z + itemEntityMergeRadius + itemEntityWidth})
+func (r *Runtime) removeMergedItemEntities(minChunk, maxChunk LoadedChunk) {
+	for {
+		removedID := int32(0)
 
-	r.entityMu.RLock()
-	var candidates []*runtimeItemEntity
+		r.entityMu.RLock()
 
-	for chunkX := minChunk.X; chunkX <= maxChunk.X; chunkX++ {
-		for chunkZ := minChunk.Z; chunkZ <= maxChunk.Z; chunkZ++ {
-			for _, candidate := range r.entitiesByChunk[LoadedChunk{X: chunkX, Z: chunkZ}] {
-				item, itemEntity := candidate.(*runtimeItemEntity)
-				if itemEntity {
-					candidates = append(candidates, item)
+		for chunkX := minChunk.X; chunkX <= maxChunk.X && removedID == 0; chunkX++ {
+			for chunkZ := minChunk.Z; chunkZ <= maxChunk.Z && removedID == 0; chunkZ++ {
+				for _, candidate := range r.entitiesByChunk[LoadedChunk{X: chunkX, Z: chunkZ}] {
+					item, itemEntity := candidate.(*runtimeItemEntity)
+					if !itemEntity {
+						continue
+					}
+
+					item.State.mu.RLock()
+					removed := item.State.Removed
+					id := item.State.ID
+					item.State.mu.RUnlock()
+
+					if removed {
+						removedID = id
+
+						break
+					}
 				}
 			}
 		}
+
+		r.entityMu.RUnlock()
+
+		if removedID == 0 {
+			return
+		}
+
+		r.removeRuntimeEntity(removedID)
 	}
+}
 
-	r.entityMu.RUnlock()
+func itemMergeChunks(view runtimeEntityView) (LoadedChunk, LoadedChunk) {
+	minChunk := positionLoadedChunk(game.Position{X: view.Position.X - itemEntityMergeRadius - itemEntityWidth, Z: view.Position.Z - itemEntityMergeRadius - itemEntityWidth})
+	maxChunk := positionLoadedChunk(game.Position{X: view.Position.X + itemEntityMergeRadius + itemEntityWidth, Z: view.Position.Z + itemEntityMergeRadius + itemEntityWidth})
 
-	slices.SortFunc(candidates, func(first, second *runtimeItemEntity) int {
-		return int(first.State.ID - second.State.ID)
-	})
-
-	return candidates
+	return minChunk, maxChunk
 }
 
 func (r *Runtime) itemEntityInsideCollision(position game.Position) bool {
@@ -1332,8 +1390,36 @@ func mergeItemEntities(entity, other *runtimeItemEntity) (bool, *runtimeItemEnti
 	receiver.PickupDelay = max(receiver.PickupDelay, consumed.PickupDelay)
 	receiver.Age = min(receiver.Age, consumed.Age)
 	receiver.State.metadataDirty = true
+	consumed.State.Removed = true
 
 	return consumed == entity, receiver, consumed
+}
+
+func applyItemFluidCurrents(runtime *Runtime, entity *runtimeItemEntity, contacts entityFluidContacts) {
+	waterImpulse := fluidCurrentImpulse(entity.Velocity, contacts.Water.Flow, itemEntityWaterPush)
+	entity.Velocity.X += waterImpulse.X
+	entity.Velocity.Y += waterImpulse.Y
+	entity.Velocity.Z += waterImpulse.Z
+
+	lavaPush := itemEntityLavaPush
+
+	if runtime.FluidEnvironment.FastLava {
+		lavaPush = itemEntityFastLavaPush
+	}
+
+	lavaImpulse := fluidCurrentImpulse(entity.Velocity, contacts.Lava.Flow, lavaPush)
+	entity.Velocity.X += lavaImpulse.X
+	entity.Velocity.Y += lavaImpulse.Y
+	entity.Velocity.Z += lavaImpulse.Z
+}
+
+func itemMergeCandidateNearby(searchBox game.AABB, candidate *runtimeItemEntity) bool {
+	position := candidate.mergePosition.Load()
+	halfWidth := itemEntityWidth / 2
+
+	return searchBox.MaxY > position.Y && searchBox.MinY < position.Y+itemEntityHeight &&
+		searchBox.MaxX > position.X-halfWidth && searchBox.MinX < position.X+halfWidth &&
+		searchBox.MaxZ > position.Z-halfWidth && searchBox.MinZ < position.Z+halfWidth
 }
 
 func blockCollisionShapeFull(block game.Block, position game.BlockPosition) bool {

@@ -748,10 +748,76 @@ func TestItemEntityFlowingWaterPush(t *testing.T) {
 
 	runtime.Tick()
 
-	assertVelocityClose(t, item.Velocity, game.Velocity{X: itemEntityWaterPush, Y: itemEntityFluidLift * itemEntityVerticalDrag}, 1e-15)
+	assertVelocityClose(t, item.Velocity, game.Velocity{X: 0.027582800264358522, Y: itemEntityFluidLift * itemEntityVerticalDrag}, 1e-15)
 
-	if item.State.Position.X != 0.5 || item.State.Position.Y != 0.5+itemEntityFluidLift {
+	if item.State.Position.X != 0.51386 || item.State.Position.Y != 0.5+itemEntityFluidLift {
 		t.Fatalf("flowing item position = %+v", item.State.Position)
+	}
+}
+
+func TestItemFluidTrackingPacketCadence(t *testing.T) {
+	world := &game.World{}
+
+	flowingWater, valid := game.Water.WithProperties(game.BlockPropertyValue{Name: "level", Value: "1"})
+	if !valid {
+		t.Fatal("resolve flowing water")
+	}
+
+	world.SetBlocks([]game.BlockChange{
+		{Position: game.BlockPosition{}, Replacement: game.Water},
+		{Position: game.BlockPosition{X: 1}, Replacement: flowingWater},
+	})
+
+	runtime := NewRuntime(world)
+
+	session, connection := newMovementTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Player")
+
+	session.Player.Position = game.Position{X: 8, Y: 1}
+	session.loadedChunks = map[LoadedChunk]struct{}{{}: {}}
+
+	joinTestSession(t, runtime, session)
+
+	runtime.setSessionActiveChunks(session, []LoadedChunk{{}})
+
+	item := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: 1}, game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 32767)
+	initialPosition := item.State.Position
+	initialVelocity := item.Velocity
+
+	connection.reset()
+
+	for tick := 1; tick <= 61; tick++ {
+		if tick > 1 {
+			item.State.mu.Lock()
+			item.State.Position = initialPosition
+			item.Velocity = initialVelocity
+			item.State.mu.Unlock()
+		}
+
+		item.Tick(runtime, nil)
+
+		packets := connection.packetIDs(t)
+
+		connection.reset()
+
+		switch tick {
+		case 1:
+			assertPacketIDs(t, packets, []int32{protocol.ClientboundSetEntityMotionID, protocol.ClientboundUpdateEntityPositionID})
+		case 61:
+			assertPacketIDs(t, packets, []int32{protocol.ClientboundUpdateEntityPositionID})
+		default:
+			if len(packets) != 0 {
+				t.Fatalf("constant stream tick %d packets = %v", tick, packets)
+			}
+		}
+
+		item.State.mu.RLock()
+		updateTick := item.State.tracker.UpdateTick
+		dirty := item.State.movementSyncDirty
+		item.State.mu.RUnlock()
+
+		if updateTick != int32(tick) || dirty {
+			t.Fatalf("constant stream tick %d tracker = update %d, dirty %t", tick, updateTick, dirty)
+		}
 	}
 }
 

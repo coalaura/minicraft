@@ -64,6 +64,8 @@ type Runtime struct {
 	sessionActiveChunks       map[*Session]map[LoadedChunk]struct{}
 	activeChunkTickMu         sync.Mutex
 	activeChunkTickSnapshots  []activeChunkTickSnapshot
+	itemFluidFlowCache        map[game.BlockPosition]game.Velocity
+	itemFluidFlowCacheActive  bool
 	entityMu                  sync.RWMutex
 	entities                  map[int32]RuntimeEntity
 	runtimeEntities           []RuntimeEntity
@@ -849,6 +851,7 @@ func NewRuntime(world *game.World) *Runtime {
 		chunkLightBuilder:       buildChunkLight,
 		activeChunks:            make(map[LoadedChunk]*activeChunkReference),
 		sessionActiveChunks:     make(map[*Session]map[LoadedChunk]struct{}),
+		itemFluidFlowCache:      make(map[game.BlockPosition]game.Velocity),
 		entities:                make(map[int32]RuntimeEntity),
 		entitiesByChunk:         make(map[LoadedChunk][]RuntimeEntity),
 		entityRandom:            rand.Float32,
