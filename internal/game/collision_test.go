@@ -2,6 +2,7 @@ package game
 
 import (
 	"math"
+	"slices"
 	"testing"
 )
 
@@ -117,6 +118,28 @@ func TestAppendCollisionBoxesDoesNotAllocate(t *testing.T) {
 
 		if allocations != 0 {
 			t.Fatalf("%v AppendCollisionBoxes allocations = %v, want 0", block, allocations)
+		}
+	}
+}
+
+func TestCachedCollisionShapesMatchUncachedShapes(t *testing.T) {
+	position := BlockPosition{X: 3, Y: -2, Z: 7}
+
+	for block := Block(0); block <= MaxBlockState; block++ {
+		var (
+			cachedStorage   [maxBlockCollisionBoxes]AABB
+			uncachedStorage [maxBlockCollisionBoxes]AABB
+		)
+
+		cached := block.AppendCollisionBoxes(cachedStorage[:0], position)
+		uncached := block.appendCollisionBoxesUncached(uncachedStorage[:0])
+
+		for index := range uncached {
+			uncached[index] = uncached[index].Translate(float64(position.X), float64(position.Y), float64(position.Z))
+		}
+
+		if !slices.Equal(cached, uncached) {
+			t.Fatalf("block %d cached collision boxes = %+v, want %+v", block, cached, uncached)
 		}
 	}
 }

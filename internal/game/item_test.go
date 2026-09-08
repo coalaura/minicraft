@@ -239,6 +239,24 @@ func TestItemStackTypedComponentsRejectInvalidPayloads(t *testing.T) {
 		if stack.Enchantments() != nil {
 			t.Fatalf("enchantments from invalid payload %x = %v, want nil", data, stack.Enchantments())
 		}
+
+		if stack.EnchantmentLevel(EnchantmentEfficiency) != 0 {
+			t.Fatalf("enchantment level from invalid payload %x is nonzero", data)
+		}
+	}
+}
+
+func TestItemStackEnchantmentLevelDoesNotAllocate(t *testing.T) {
+	stack := NewItemStack(ItemDiamondPickaxe, 1, []ItemComponent{
+		{Type: ItemComponentEnchantments, Data: []byte{0x02, 0x17, 0x03, 0x14, 0x05}},
+	}, nil)
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		_ = stack.EnchantmentLevel(EnchantmentEfficiency)
+	})
+
+	if allocations != 0 {
+		t.Fatalf("ItemStack.EnchantmentLevel allocations = %v, want 0", allocations)
 	}
 }
 

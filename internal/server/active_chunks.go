@@ -288,7 +288,13 @@ func (r *Runtime) tickActiveChunks() {
 	clear(r.itemFluidFlowCache)
 	r.itemFluidFlowCacheActive = true
 
+	r.entityPacketBatch.Store(true)
+
 	defer func() {
+		r.entityPacketBatch.Store(false)
+
+		r.flushRuntimeEntityPackets()
+
 		r.itemFluidFlowCacheActive = false
 		r.activeChunkTickMu.Unlock()
 	}()
@@ -338,6 +344,20 @@ func (r *Runtime) tickActiveChunks() {
 
 		for _, blockEntity := range snapshot.blockEntities {
 			blockEntity.entity.Tick(r, snapshot.chunk)
+		}
+	}
+}
+
+func (r *Runtime) flushRuntimeEntityPackets() {
+	for _, session := range r.sessionView() {
+		session.writeMx.Lock()
+
+		err := session.Conn.Flush()
+
+		session.writeMx.Unlock()
+
+		if err != nil && session.Log != nil {
+			session.Log.Warnf("[play] failed to flush entity synchronization: %v\n", err)
 		}
 	}
 }

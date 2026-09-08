@@ -326,6 +326,10 @@ func (s *Session) writePacket(packetID int32, encoder PacketEncoder) error {
 }
 
 func writeSessionPacket[Encoder PacketEncoder](session *Session, packetID int32, encoder Encoder) error {
+	return writeSessionPacketMode(session, packetID, encoder, false)
+}
+
+func writeSessionPacketMode[Encoder PacketEncoder](session *Session, packetID int32, encoder Encoder, buffered bool) error {
 	session.writeMx.Lock()
 	defer session.writeMx.Unlock()
 
@@ -343,10 +347,16 @@ func writeSessionPacket[Encoder PacketEncoder](session *Session, packetID int32,
 		return err
 	}
 
-	err = session.Conn.WritePacket(protocol.Packet{
+	packet := protocol.Packet{
 		ID:   packetID,
 		Data: writer.Buffer.Bytes(),
-	})
+	}
+
+	if buffered {
+		err = session.Conn.WritePacketBuffered(packet)
+	} else {
+		err = session.Conn.WritePacket(packet)
+	}
 
 	if writer.Cap() > maximumRetainedPacketWriterBuffer {
 		writer.Release()

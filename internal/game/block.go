@@ -353,8 +353,17 @@ func (block Block) Property(name string) (string, bool) {
 		return "", false
 	}
 
-	indices := definition.propertyIndices(block)
-	return definition.Properties[propertyIndex].Values[indices[propertyIndex]], true
+	offset := int(block - definition.MinState)
+	divisor := 1
+
+	for index := len(definition.Properties) - 1; index > propertyIndex; index-- {
+		divisor *= len(definition.Properties[index].Values)
+	}
+
+	property := definition.Properties[propertyIndex]
+	valueIndex := offset / divisor % len(property.Values)
+
+	return property.Values[valueIndex], true
 }
 
 func (block Block) WithProperties(values ...BlockPropertyValue) (Block, bool) {

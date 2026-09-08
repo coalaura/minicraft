@@ -1,7 +1,6 @@
 package server
 
 import (
-	"container/heap"
 	"math"
 	"slices"
 
@@ -37,10 +36,7 @@ type groundPathNode struct {
 	Position game.BlockPosition
 	Cost     float64
 	Estimate float64
-	Index    int
 }
-
-type groundPathQueue []*groundPathNode
 
 type groundPathRecord struct {
 	Cost float64
@@ -48,35 +44,10 @@ type groundPathRecord struct {
 	Set  bool
 }
 
-func (queue groundPathQueue) Len() int {
-	return len(queue)
-}
-
-func (queue groundPathQueue) Less(first, second int) bool {
-	return queue[first].Estimate < queue[second].Estimate
-}
-
-func (queue groundPathQueue) Swap(first, second int) {
-	queue[first], queue[second] = queue[second], queue[first]
-	queue[first].Index = first
-	queue[second].Index = second
-}
-
-func (queue *groundPathQueue) Push(value any) {
-	node := value.(*groundPathNode)
-	node.Index = len(*queue)
-	*queue = append(*queue, node)
-}
-
-func (queue *groundPathQueue) Pop() any {
-	old := *queue
-	last := len(old) - 1
-	node := old[last]
-	old[last] = nil
-	node.Index = -1
-	*queue = old[:last]
-
-	return node
+type groundPathWorkspace struct {
+	records map[game.BlockPosition]groundPathRecord
+	queue   []groundPathNode
+	nodes   []game.BlockPosition
 }
 
 func (r *Runtime) moveGroundEntity(position game.Position, velocity game.Velocity, width, height, stepHeight float64, wasOnGround bool) groundMovement {
@@ -139,6 +110,10 @@ func (r *Runtime) moveGroundEntity(position game.Position, velocity game.Velocit
 }
 
 func (r *Runtime) findGroundPath(start, goal game.Position, width, height, maximumRange float64) []game.Position {
+	return r.findGroundPathInto(nil, start, goal, width, height, maximumRange)
+}
+
+func (r *Runtime) findGroundPathInto(destination []game.Position, start, goal game.Position, width, height, maximumRange float64) []game.Position {
 	if r.groundPathfindStarted != nil {
 		r.groundPathfindStarted()
 	}
@@ -153,17 +128,27 @@ func (r *Runtime) findGroundPath(start, goal game.Position, width, height, maxim
 		return nil
 	}
 
-	records := map[game.BlockPosition]groundPathRecord{startNode: {Cost: 0, Set: true}}
+	workspace := &r.groundPathWorkspace
+	if workspace.records == nil {
+		workspace.records = make(map[game.BlockPosition]groundPathRecord, groundNavigationMaxNodes)
+	} else {
+		clear(workspace.records)
+	}
 
-	queue := groundPathQueue{&groundPathNode{Position: startNode, Estimate: groundNodeDistance(startNode, goalNode)}}
+	workspace.queue = workspace.queue[:0]
+	workspace.nodes = workspace.nodes[:0]
+	workspace.records[startNode] = groundPathRecord{Cost: 0, Set: true}
 
-	heap.Init(&queue)
+	workspace.queue = pushGroundPathNode(workspace.queue, groundPathNode{Position: startNode, Estimate: groundNodeDistance(startNode, goalNode)})
 
 	expanded := 0
 
-	for queue.Len() > 0 && expanded < groundNavigationMaxNodes {
-		current := heap.Pop(&queue).(*groundPathNode)
-		record := records[current.Position]
+	for len(workspace.queue) > 0 && expanded < groundNavigationMaxNodes {
+		var current groundPathNode
+
+		workspace.queue, current = popGroundPathNode(workspace.queue)
+
+		record := workspace.records[current.Position]
 
 		if current.Cost != record.Cost {
 			continue
@@ -172,7 +157,7 @@ func (r *Runtime) findGroundPath(start, goal game.Position, width, height, maxim
 		expanded++
 
 		if current.Position == goalNode {
-			return reconstructGroundPath(records, startNode, goalNode)
+			return reconstructGroundPath(destination, workspace, startNode, goalNode)
 		}
 
 		for _, direction := range groundNavigationDirections {
@@ -182,17 +167,17 @@ func (r *Runtime) findGroundPath(start, goal game.Position, width, height, maxim
 			}
 
 			cost := record.Cost + groundNodeDistance(current.Position, candidate)
-			known := records[candidate]
+			known := workspace.records[candidate]
 
 			if known.Set && cost >= known.Cost {
 				continue
 			}
 
-			records[candidate] = groundPathRecord{Cost: cost, From: current.Position, Set: true}
+			workspace.records[candidate] = groundPathRecord{Cost: cost, From: current.Position, Set: true}
 
 			estimate := cost + groundNodeDistance(candidate, goalNode)
 
-			heap.Push(&queue, &groundPathNode{Position: candidate, Cost: cost, Estimate: estimate})
+			workspace.queue = pushGroundPathNode(workspace.queue, groundPathNode{Position: candidate, Cost: cost, Estimate: estimate})
 		}
 	}
 
@@ -286,24 +271,86 @@ func (r *Runtime) entityHasSupport(box game.AABB) bool {
 	return delta.Y != probe.Y
 }
 
-func reconstructGroundPath(records map[game.BlockPosition]groundPathRecord, start, goal game.BlockPosition) []game.Position {
-	nodes := []game.BlockPosition{goal}
+func reconstructGroundPath(destination []game.Position, workspace *groundPathWorkspace, start, goal game.BlockPosition) []game.Position {
+	workspace.nodes = append(workspace.nodes[:0], goal)
 
 	for current := goal; current != start; {
-		record := records[current]
+		record := workspace.records[current]
 		current = record.From
-		nodes = append(nodes, current)
+		workspace.nodes = append(workspace.nodes, current)
 	}
 
-	slices.Reverse(nodes)
+	slices.Reverse(workspace.nodes)
 
-	path := make([]game.Position, 0, max(0, len(nodes)-1))
-
-	for _, node := range nodes[1:] {
-		path = append(path, game.Position{X: float64(node.X) + 0.5, Y: float64(node.Y), Z: float64(node.Z) + 0.5})
+	pathLength := len(workspace.nodes) - 1
+	if cap(destination) < pathLength {
+		destination = make([]game.Position, 0, pathLength)
+	} else {
+		destination = destination[:0]
 	}
 
-	return path
+	for _, node := range workspace.nodes[1:] {
+		destination = append(destination, game.Position{X: float64(node.X) + 0.5, Y: float64(node.Y), Z: float64(node.Z) + 0.5})
+	}
+
+	return destination
+}
+
+func pushGroundPathNode(queue []groundPathNode, node groundPathNode) []groundPathNode {
+	queue = append(queue, node)
+	index := len(queue) - 1
+
+	for index > 0 {
+		parent := (index - 1) / 2
+		if queue[parent].Estimate <= node.Estimate {
+			break
+		}
+
+		queue[index] = queue[parent]
+		index = parent
+	}
+
+	queue[index] = node
+
+	return queue
+}
+
+func popGroundPathNode(queue []groundPathNode) ([]groundPathNode, groundPathNode) {
+	result := queue[0]
+	lastIndex := len(queue) - 1
+	last := queue[lastIndex]
+	queue = queue[:lastIndex]
+
+	if lastIndex == 0 {
+		return queue, result
+	}
+
+	index := 0
+
+	for {
+		left := index*2 + 1
+		if left >= len(queue) {
+			break
+		}
+
+		child := left
+
+		right := left + 1
+		if right < len(queue) && queue[right].Estimate < queue[left].Estimate {
+			child = right
+		}
+
+		if last.Estimate <= queue[child].Estimate {
+			break
+		}
+
+		queue[index] = queue[child]
+		index = child
+	}
+
+	queue[index] = last
+
+	return queue, result
 }
 
 func groundNodeDistance(first, second game.BlockPosition) float64 {

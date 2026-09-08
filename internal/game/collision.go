@@ -20,6 +20,13 @@ type AABB struct {
 	MaxZ float64
 }
 
+type blockCollisionShape struct {
+	Boxes [maxBlockCollisionBoxes]AABB
+	Count uint8
+}
+
+var blockCollisionShapes, blockCollisionShapeIndices = buildBlockCollisionShapes()
+
 func (box AABB) Intersects(other AABB) bool {
 	return box.MaxX > other.MinX && box.MinX < other.MaxX &&
 		box.MaxY > other.MinY && box.MinY < other.MaxY &&
@@ -64,12 +71,27 @@ func (block Block) CollisionBoxes(position BlockPosition) []AABB {
 }
 
 func (block Block) AppendCollisionBoxes(boxes []AABB, position BlockPosition) []AABB {
+	if !block.Valid() {
+		return boxes
+	}
+
+	shape := &blockCollisionShapes[blockCollisionShapeIndices[block]]
+	start := len(boxes)
+
+	boxes = append(boxes, shape.Boxes[:shape.Count]...)
+
+	for index := start; index < len(boxes); index++ {
+		boxes[index] = boxes[index].Translate(float64(position.X), float64(position.Y), float64(position.Z))
+	}
+
+	return boxes
+}
+
+func (block Block) appendCollisionBoxesUncached(boxes []AABB) []AABB {
 	definition, valid := block.Definition()
 	if !valid {
 		return boxes
 	}
-
-	start := len(boxes)
 
 	switch definition.Collision {
 	case BlockCollisionFull:
@@ -106,10 +128,6 @@ func (block Block) AppendCollisionBoxes(boxes []AABB, position BlockPosition) []
 		boxes = appendHopperCollisionBoxes(boxes, block)
 	case BlockCollisionBed:
 		boxes = appendBedCollisionBoxes(boxes, block)
-	}
-
-	for index := start; index < len(boxes); index++ {
-		boxes[index] = boxes[index].Translate(float64(position.X), float64(position.Y), float64(position.Z))
 	}
 
 	return boxes
@@ -457,6 +475,31 @@ func collisionPropertyInt(block Block, name string) int {
 	}
 
 	return value
+}
+
+func buildBlockCollisionShapes() ([]blockCollisionShape, []uint16) {
+	shapes := make([]blockCollisionShape, 0, 256)
+	indices := make([]uint16, MaxBlockState+1)
+	shapeIndices := make(map[blockCollisionShape]uint16, 256)
+
+	for block := Block(0); block <= MaxBlockState; block++ {
+		var storage [maxBlockCollisionBoxes]AABB
+
+		boxes := block.appendCollisionBoxesUncached(storage[:0])
+		shape := blockCollisionShape{Count: uint8(len(boxes))}
+		copy(shape.Boxes[:], boxes)
+
+		index, exists := shapeIndices[shape]
+		if !exists {
+			index = uint16(len(shapes))
+			shapeIndices[shape] = index
+			shapes = append(shapes, shape)
+		}
+
+		indices[block] = index
+	}
+
+	return shapes, indices
 }
 
 func unitBox(minX, minY, minZ, maxX, maxY, maxZ float64) AABB {

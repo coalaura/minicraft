@@ -432,7 +432,41 @@ func (stack *ItemStack) SetDamage(damage int32) {
 }
 
 func (stack ItemStack) EnchantmentLevel(enchantment Enchantment) int32 {
-	return stack.Enchantments()[enchantment]
+	data, exists := stack.component(ItemComponentEnchantments)
+	if !exists {
+		return 0
+	}
+
+	count, offset, valid := readComponentVarInt(data, 0)
+	if !valid || count < 0 {
+		return 0
+	}
+
+	var result int32
+
+	for range count {
+		holder, next, holderValid := readComponentVarInt(data, offset)
+		if !holderValid {
+			return 0
+		}
+
+		level, end, levelValid := readComponentVarInt(data, next)
+		if !levelValid || level < 0 {
+			return 0
+		}
+
+		if Enchantment(holder) == enchantment && enchantment.Valid() {
+			result = level
+		}
+
+		offset = end
+	}
+
+	if offset != len(data) {
+		return 0
+	}
+
+	return result
 }
 
 func (stack ItemStack) PreventsEquipmentDrop() bool {

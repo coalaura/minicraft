@@ -11,6 +11,8 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+const benchmarkGroundPathsPerIteration = 100
+
 type benchmarkDiscardConnection struct{}
 
 type benchmarkCountingConnection struct {
@@ -24,8 +26,31 @@ type droppedItemFluidBenchmarkFixture struct {
 	connections []*benchmarkCountingConnection
 }
 
+type mixedWalkingMobBenchmarkFixture struct {
+	runtime   *Runtime
+	entities  []mixedWalkingMobBenchmarkEntity
+	positions []game.Position
+}
+
+type mixedWalkingMobBenchmarkEntity struct {
+	mob    RuntimeMobEntity
+	ticker RuntimeEntityTicker
+}
+
 type benchmarkRuntimeTicker struct {
 	state RuntimeEntityState
+}
+
+type benchmarkFlatGenerator struct{}
+
+var benchmarkPathSink []game.Position
+
+func (benchmarkFlatGenerator) BlockAt(_ int64, position game.BlockPosition) game.Block {
+	if position.Y == 0 {
+		return game.Stone
+	}
+
+	return game.Air
 }
 
 func (benchmarkDiscardConnection) Read([]byte) (int, error) {
@@ -122,6 +147,31 @@ func (fixture *droppedItemFluidBenchmarkFixture) reset() {
 	}
 }
 
+func (fixture *mixedWalkingMobBenchmarkFixture) reset() {
+	for index, entity := range fixture.entities {
+		state := entity.mob.RuntimeEntityState()
+		living := entity.mob.RuntimeLivingState()
+
+		state.mu.Lock()
+		state.Position = fixture.positions[index]
+		state.Removed = false
+		living.Health = living.MaxHealth
+		living.Dead = false
+		living.DeathTime = 0
+		living.RemainingFireTicks = 0
+		living.Velocity = game.Velocity{}
+		living.OnGround = true
+		state.mu.Unlock()
+
+		if creeper, valid := entity.mob.(*runtimeCreeperEntity); valid {
+			creeper.SwellCurrent = 0
+			creeper.SwellOld = 0
+			creeper.SwellDirection = -1
+			creeper.Exploded = false
+		}
+	}
+}
+
 func (ticker *benchmarkRuntimeTicker) RuntimeEntityState() *RuntimeEntityState {
 	return &ticker.state
 }
@@ -212,6 +262,80 @@ func BenchmarkActiveMobTick(b *testing.B) {
 			}
 		})
 	}
+}
+
+func BenchmarkMixedWalkingMobTick(b *testing.B) {
+	counts := []int{100, 500}
+
+	for _, count := range counts {
+		b.Run("mobs_"+itoa(count), func(b *testing.B) {
+			fixture := newMixedWalkingMobBenchmarkFixture(b, count)
+
+			for range 20 {
+				for _, entity := range fixture.entities {
+					entity.ticker.Tick(fixture.runtime, nil)
+				}
+			}
+
+			fixture.reset()
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for b.Loop() {
+				b.StopTimer()
+				fixture.reset()
+				b.StartTimer()
+
+				for _, entity := range fixture.entities {
+					entity.ticker.Tick(fixture.runtime, nil)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkGroundPathfinding(b *testing.B) {
+	starts := make([]game.Position, benchmarkGroundPathsPerIteration)
+	goals := make([]game.Position, benchmarkGroundPathsPerIteration)
+
+	for index := range benchmarkGroundPathsPerIteration {
+		starts[index] = game.Position{X: 0.5, Y: 1, Z: float64(index%8) + 0.5}
+		goals[index] = game.Position{X: float64(8+index%16) + 0.5, Y: 1, Z: float64(index%8) + 0.5}
+	}
+
+	b.Run("new_paths_100", func(b *testing.B) {
+		runtime := NewRuntime(&game.World{Generator: benchmarkFlatGenerator{}})
+
+		b.ReportAllocs()
+
+		for b.Loop() {
+			for index := range benchmarkGroundPathsPerIteration {
+				benchmarkPathSink = runtime.findGroundPath(starts[index], goals[index], 0.6, 1.8, 32)
+			}
+		}
+	})
+
+	b.Run("reused_paths_100", func(b *testing.B) {
+		runtime := NewRuntime(&game.World{Generator: benchmarkFlatGenerator{}})
+
+		paths := make([][]game.Position, benchmarkGroundPathsPerIteration)
+
+		for index := range benchmarkGroundPathsPerIteration {
+			paths[index] = runtime.findGroundPathInto(paths[index], starts[index], goals[index], 0.6, 1.8, 32)
+		}
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			for index := range benchmarkGroundPathsPerIteration {
+				paths[index] = runtime.findGroundPathInto(paths[index], starts[index], goals[index], 0.6, 1.8, 32)
+			}
+		}
+
+		benchmarkPathSink = paths[0]
+	})
 }
 
 func BenchmarkSkeletonCombatTick(b *testing.B) {
@@ -521,6 +645,54 @@ func benchmarkTrackedItem(b *testing.B, viewers int) (*Runtime, *runtimeItemEnti
 	item := runtime.SpawnItemEntity(game.ItemStack{Item: game.ItemStone, Count: 1}, game.Position{X: 0.5, Y: 1, Z: 0.5}, game.Velocity{}, 32767)
 
 	return runtime, item
+}
+
+func newMixedWalkingMobBenchmarkFixture(b *testing.B, count int) *mixedWalkingMobBenchmarkFixture {
+	b.Helper()
+
+	world := &game.World{Generator: benchmarkFlatGenerator{}}
+
+	world.SetTime(18000, false)
+
+	runtime := NewRuntime(world)
+
+	runtime.entityRandom = func() float32 {
+		return 0
+	}
+
+	target := benchmarkSession(b, runtime, "mixed-target", game.Position{X: 24.5, Y: 1, Z: 20.5})
+	entityTypes := [...]game.EntityType{game.EntityZombie, game.EntitySkeleton, game.EntityCreeper}
+	fixture := &mixedWalkingMobBenchmarkFixture{
+		runtime:   runtime,
+		entities:  make([]mixedWalkingMobBenchmarkEntity, 0, count),
+		positions: make([]game.Position, 0, count),
+	}
+
+	for index := range count {
+		position := game.Position{X: float64(index%12) + 0.5, Y: 1, Z: float64(index/12%42) + 0.5}
+
+		entity, spawned := runtime.SpawnEntity(entityTypes[index%len(entityTypes)], position)
+		if !spawned {
+			b.Fatal("spawn benchmark mob")
+		}
+
+		mob := entity.(RuntimeMobEntity)
+		mob.RuntimeMob().PersistenceRequired = true
+
+		switch concrete := entity.(type) {
+		case *runtimeZombieEntity:
+			concrete.GoalTarget = target
+		case *runtimeSkeletonEntity:
+			concrete.GoalTarget = runtimeLivingTarget{session: target}
+		case *runtimeCreeperEntity:
+			concrete.GoalTarget = runtimeLivingTarget{session: target}
+		}
+
+		fixture.entities = append(fixture.entities, mixedWalkingMobBenchmarkEntity{mob: mob, ticker: entity.(RuntimeEntityTicker)})
+		fixture.positions = append(fixture.positions, position)
+	}
+
+	return fixture
 }
 
 func newDroppedItemFluidBenchmarkFixture(b *testing.B, count, viewers int) *droppedItemFluidBenchmarkFixture {

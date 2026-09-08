@@ -24,6 +24,7 @@ const (
 
 type Connection struct {
 	conn net.Conn
+	rbuf *bufio.Reader
 	wbuf *bufio.Writer
 
 	log Logger
@@ -68,35 +69,29 @@ func (c *Connection) SetCompression(threshold int) {
 }
 
 func (c *Connection) ReadByte() (byte, error) {
-	var buf [1]byte
-
-	_, err := io.ReadFull(c.conn, buf[:])
+	value, err := c.rbuf.ReadByte()
 	if err != nil {
 		return 0, err
 	}
 
 	if c.dec != nil {
+		var buf [1]byte
+
+		buf[0] = value
 		c.dec.XORKeyStream(buf[:], buf[:])
+		value = buf[0]
 	}
 
-	return buf[0], nil
+	return value, nil
 }
 
 func (c *Connection) Read(p []byte) (int, error) {
-	for i := range p {
-		b, err := c.ReadByte()
-		if err != nil {
-			if i == 0 {
-				return 0, err
-			}
-
-			return i, err
-		}
-
-		p[i] = b
+	read, err := c.rbuf.Read(p)
+	if c.dec != nil && read != 0 {
+		c.dec.XORKeyStream(p[:read], p[:read])
 	}
 
-	return len(p), nil
+	return read, err
 }
 
 func (c *Connection) ReadPacket() (*Packet, error) {
@@ -112,14 +107,15 @@ func (c *Connection) ReadPacket() (*Packet, error) {
 		return nil, err
 	}
 
-	br := bytes.NewReader(payload)
-	rd := ByteReader{br}
+	packetData := payload
 
 	if c.compThr > 0 {
-		uncompressedLength, err := ReadVarInt(rd)
+		uncompressedLength, prefixLength, err := readVarIntBytes(packetData)
 		if err != nil {
 			return nil, err
 		}
+
+		packetData = packetData[prefixLength:]
 
 		if uncompressedLength < 0 || uncompressedLength > maxPacketDataLength {
 			return nil, fmt.Errorf("invalid uncompressed packet length %d", uncompressedLength)
@@ -129,6 +125,8 @@ func (c *Connection) ReadPacket() (*Packet, error) {
 			if int(uncompressedLength) < c.compThr {
 				return nil, fmt.Errorf("compressed packet length %d is below threshold %d", uncompressedLength, c.compThr)
 			}
+
+			br := bytes.NewReader(packetData)
 
 			zr, err := zlib.NewReader(br)
 			if err != nil {
@@ -159,23 +157,20 @@ func (c *Connection) ReadPacket() (*Packet, error) {
 				return nil, errors.New("compressed packet contains trailing data")
 			}
 
-			br = bytes.NewReader(decompressed)
-			rd = ByteReader{br}
-		} else if br.Len() >= c.compThr {
-			return nil, fmt.Errorf("uncompressed packet length %d meets compression threshold %d", br.Len(), c.compThr)
+			packetData = decompressed
+		} else if len(packetData) >= c.compThr {
+			return nil, fmt.Errorf("uncompressed packet length %d meets compression threshold %d", len(packetData), c.compThr)
 		}
 	}
 
-	id, err := ReadVarInt(rd)
+	id, prefixLength, err := readVarIntBytes(packetData)
 	if err != nil {
 		return nil, err
 	}
 
-	rest, _ := io.ReadAll(br)
-
 	pkt := &Packet{
 		ID:   id,
-		Data: rest,
+		Data: packetData[prefixLength:],
 	}
 
 	c.logPacket("RECV", pkt)
@@ -187,6 +182,29 @@ func (c *Connection) WritePacket(packet Packet) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
 
+	err := c.writePacketBuffered(packet)
+	if err != nil {
+		return err
+	}
+
+	return c.wbuf.Flush()
+}
+
+func (c *Connection) WritePacketBuffered(packet Packet) error {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+
+	return c.writePacketBuffered(packet)
+}
+
+func (c *Connection) Flush() error {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+
+	return c.wbuf.Flush()
+}
+
+func (c *Connection) writePacketBuffered(packet Packet) error {
 	c.writeInner.Reset()
 
 	err := WriteVarInt(&c.writeInner, packet.ID)
@@ -264,11 +282,7 @@ func (c *Connection) WritePacket(packet Packet) error {
 	}
 
 	_, err = c.wbuf.Write(out)
-	if err != nil {
-		return err
-	}
-
-	return c.wbuf.Flush()
+	return err
 }
 
 func (c *Connection) RemoteAddr() net.Addr {
@@ -324,6 +338,7 @@ func (c *Connection) logPacket(direction string, p *Packet) {
 func NewConnection(conn net.Conn, log Logger) *Connection {
 	return &Connection{
 		conn: conn,
+		rbuf: bufio.NewReader(conn),
 		wbuf: bufio.NewWriter(conn),
 		log:  log,
 	}
@@ -354,4 +369,23 @@ func readPacketFrameLength(rd io.ByteReader) (int, error) {
 	}
 
 	return 0, errors.New("packet frame length VarInt is too big")
+}
+
+func readVarIntBytes(data []byte) (int32, int, error) {
+	var value int32
+
+	for index := range 5 {
+		if index >= len(data) {
+			return 0, 0, io.EOF
+		}
+
+		current := data[index]
+		value |= int32(current&VarSegmentBits) << (index * 7)
+
+		if current&VarContinueBit == 0 {
+			return value, index + 1, nil
+		}
+	}
+
+	return 0, 0, errors.New("VarInt is too big")
 }

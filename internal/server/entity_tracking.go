@@ -128,7 +128,9 @@ func (r *Runtime) synchronizeRuntimeEntityMovement(entityID int32, synchronizati
 }
 
 func writeRuntimeEntitySynchronizationPacket[T PacketEncoder](session *Session, packetID int32, encoder T) {
-	err := writeSessionPacket(session, packetID, encoder)
+	buffered := session.Runtime != nil && session.Runtime.entityPacketBatch.Load()
+
+	err := writeSessionPacketMode(session, packetID, encoder, buffered)
 
 	if err != nil && session.Log != nil {
 		session.Log.Warnf("[play] failed to synchronize entity: %v\n", err)

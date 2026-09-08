@@ -81,7 +81,7 @@ func (navigation *groundNavigationState) Done() bool {
 }
 
 func (navigation *groundNavigationState) Stop() {
-	navigation.Path = nil
+	navigation.Path = navigation.Path[:0]
 	navigation.Index = 0
 	navigation.SpeedModifier = 0
 	navigation.HasTarget = false

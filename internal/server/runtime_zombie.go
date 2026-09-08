@@ -549,7 +549,8 @@ func (entity *runtimeZombieEntity) tickMeleeGoal(runtime *Runtime, target *Sessi
 
 		entity.Melee.LastCanUseCheck = gameTime
 
-		path := runtime.findGroundPath(entity.State.Position, player.Position, entity.Living.Width, entity.Living.Height, zombieFollowRange)
+		path := runtime.findGroundPathInto(entity.Navigation.Path[:0], entity.State.Position, player.Position, entity.Living.Width, entity.Living.Height, zombieFollowRange)
+
 		withinReach := zombieMeleeBoxesIntersect(entity.Living.CollisionBox(entity.State.Position), player.collisionBox())
 
 		if len(path) == 0 && !withinReach {
@@ -590,7 +591,7 @@ func (entity *runtimeZombieEntity) tickMeleeGoal(runtime *Runtime, target *Sessi
 			entity.Melee.TicksUntilNextPathRecalculation += 5
 		}
 
-		path := runtime.findGroundPath(entity.State.Position, player.Position, entity.Living.Width, entity.Living.Height, zombieFollowRange)
+		path := runtime.findGroundPathInto(entity.Navigation.Path[:0], entity.State.Position, player.Position, entity.Living.Width, entity.Living.Height, zombieFollowRange)
 		if !entity.Navigation.MoveTo(path, 1) {
 			entity.Melee.TicksUntilNextPathRecalculation += 15
 		}

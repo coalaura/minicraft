@@ -175,7 +175,7 @@ func (goal *creeperMeleeGoal) Tick(runtime *Runtime) {
 		return
 	}
 
-	path := runtime.findGroundPath(position, target.position(), entity.Living.Width, entity.Living.Height, creeperFollowRange)
+	path := runtime.findGroundPathInto(entity.Navigation.Path[:0], position, target.position(), entity.Living.Width, entity.Living.Height, creeperFollowRange)
 
 	entity.Navigation.MoveTo(path, 1)
 

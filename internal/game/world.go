@@ -25,6 +25,8 @@ type LocalBlockPosition struct {
 	Z int32
 }
 
+type blockOverrideSnapshot map[ChunkPosition]map[LocalBlockPosition]Block
+
 type World struct {
 	Name          string
 	DimensionType string
@@ -41,6 +43,7 @@ type World struct {
 
 	overrideMx    sync.RWMutex
 	overrides     map[ChunkPosition]map[LocalBlockPosition]Block
+	overrideView  atomic.Pointer[blockOverrideSnapshot]
 	blockEntities map[ChunkPosition]map[LocalBlockPosition]blockEntityOverride
 }
 
@@ -78,13 +81,14 @@ type WorldMetadataGenerator interface {
 func (w *World) BlockAt(position BlockPosition) Block {
 	chunk, local := blockIndex(position)
 
-	w.overrideMx.RLock()
-	blocks := w.overrides[chunk]
-	block, overridden := blocks[local]
-	w.overrideMx.RUnlock()
+	view := w.overrideView.Load()
+	if view != nil {
+		blocks := (*view)[chunk]
+		block, overridden := blocks[local]
 
-	if overridden {
-		return block
+		if overridden {
+			return block
+		}
 	}
 
 	if w.Generator == nil {
@@ -122,6 +126,7 @@ func (w *World) CompareAndSetBlock(position BlockPosition, expected, replacement
 
 	w.updateBlockEntityForBlockChange(position, current, replacement, generatedEntityPresent)
 	w.setBlock(position, replacement, generatedBlock)
+	w.publishBlockOverrideChunk(blockChunk(position))
 
 	return true
 }
@@ -146,6 +151,8 @@ func (w *World) SetBlocks(changes []BlockChange) {
 		w.updateBlockEntityForBlockChange(change.Position, current, change.Replacement, preparedChange.generatedEntityPresent)
 		w.setBlock(change.Position, change.Replacement, preparedChange.generatedBlock)
 	}
+
+	w.publishBlockOverrideChanges(prepared)
 }
 
 func (w *World) BlockEntityAt(position BlockPosition) (BlockEntity, bool) {
@@ -282,6 +289,7 @@ func (w *World) ClearBlockOverride(position BlockPosition) {
 
 	w.clearBlockOverride(chunk, local)
 	w.clearBlockEntityOverride(chunk, local)
+	w.publishBlockOverrideChunk(chunk)
 }
 
 func (w *World) SetLightingMode(mode LightingMode) {
@@ -319,10 +327,12 @@ func (w *World) AdvanceTime() TimeState {
 // SnapshotChunkOverrides returns a point-in-time copy of the sparse overrides
 // for chunk. Chunk generation can then release the world lock before doing work.
 func (w *World) SnapshotChunkOverrides(chunk ChunkPosition) ChunkOverrides {
-	w.overrideMx.RLock()
-	defer w.overrideMx.RUnlock()
+	view := w.overrideView.Load()
+	if view == nil {
+		return nil
+	}
 
-	blocks := w.overrides[chunk]
+	blocks := (*view)[chunk]
 	if len(blocks) == 0 {
 		return nil
 	}
@@ -515,6 +525,67 @@ func (w *World) clearBlockOverride(chunk ChunkPosition, local LocalBlockPosition
 	}
 }
 
+func (w *World) publishBlockOverrideChanges(changes []preparedBlockChange) {
+	snapshot := w.cloneBlockOverrideSnapshot()
+
+	for index, prepared := range changes {
+		chunk := blockChunk(prepared.change.Position)
+
+		alreadyPublished := false
+
+		for previous := range index {
+			if blockChunk(changes[previous].change.Position) == chunk {
+				alreadyPublished = true
+
+				break
+			}
+		}
+
+		if !alreadyPublished {
+			w.copyBlockOverrideChunk(snapshot, chunk)
+		}
+	}
+
+	w.storeBlockOverrideSnapshot(snapshot)
+}
+
+func (w *World) publishBlockOverrideChunk(chunk ChunkPosition) {
+	snapshot := w.cloneBlockOverrideSnapshot()
+
+	w.copyBlockOverrideChunk(snapshot, chunk)
+	w.storeBlockOverrideSnapshot(snapshot)
+}
+
+func (w *World) cloneBlockOverrideSnapshot() blockOverrideSnapshot {
+	current := w.overrideView.Load()
+	if current == nil {
+		return make(blockOverrideSnapshot, len(w.overrides))
+	}
+
+	return maps.Clone(*current)
+}
+
+func (w *World) copyBlockOverrideChunk(snapshot blockOverrideSnapshot, chunk ChunkPosition) {
+	blocks := w.overrides[chunk]
+	if len(blocks) == 0 {
+		delete(snapshot, chunk)
+
+		return
+	}
+
+	snapshot[chunk] = maps.Clone(blocks)
+}
+
+func (w *World) storeBlockOverrideSnapshot(snapshot blockOverrideSnapshot) {
+	if len(snapshot) == 0 {
+		w.overrideView.Store(nil)
+
+		return
+	}
+
+	w.overrideView.Store(&snapshot)
+}
+
 func resolvedBlockEntityOverride(override blockEntityOverride) (BlockEntity, bool) {
 	if override.suppressed {
 		return BlockEntity{}, false
@@ -583,6 +654,13 @@ func blockIndex(position BlockPosition) (ChunkPosition, LocalBlockPosition) {
 		Y: position.Y,
 		Z: position.Z - chunkZ*ChunkWidth,
 	}
+}
+
+func blockChunk(position BlockPosition) ChunkPosition {
+	chunkX := blockChunkCoordinate(position.X)
+	chunkZ := blockChunkCoordinate(position.Z)
+
+	return ChunkPosition{X: chunkX, Z: chunkZ}
 }
 
 func blockChunkCoordinate(coordinate int32) int32 {

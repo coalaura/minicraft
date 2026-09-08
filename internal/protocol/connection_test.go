@@ -10,10 +10,21 @@ import (
 
 type packetReadTestConnection struct {
 	*bytes.Reader
+	written   bytes.Buffer
+	readCalls int
+	writes    int
+}
+
+func (c *packetReadTestConnection) Read(data []byte) (int, error) {
+	c.readCalls++
+
+	return c.Reader.Read(data)
 }
 
 func (c *packetReadTestConnection) Write(data []byte) (int, error) {
-	return len(data), nil
+	c.writes++
+
+	return c.written.Write(data)
 }
 
 func (c *packetReadTestConnection) Close() error {
@@ -116,6 +127,111 @@ func TestReadPacketAcceptsExactCompressedLength(t *testing.T) {
 	}
 }
 
+func TestReadPacketUsesBufferedBulkReads(t *testing.T) {
+	payload := bytes.Repeat([]byte{0x2A}, 1024)
+	payload[0] = 0x01
+
+	frame := frameTestPayload(t, payload)
+
+	networkConnection := &packetReadTestConnection{Reader: bytes.NewReader(frame)}
+
+	connection := NewConnection(networkConnection, nil)
+
+	packet, err := connection.ReadPacket()
+	if err != nil {
+		t.Fatalf("read packet: %v", err)
+	}
+
+	if packet.ID != 1 || len(packet.Data) != len(payload)-1 {
+		t.Fatalf("packet = id %d data length %d", packet.ID, len(packet.Data))
+	}
+
+	if networkConnection.readCalls != 1 {
+		t.Fatalf("network reads = %d, want 1", networkConnection.readCalls)
+	}
+}
+
+func TestBufferedPacketWritesFlushTogether(t *testing.T) {
+	networkConnection := &packetReadTestConnection{Reader: bytes.NewReader(nil)}
+
+	connection := NewConnection(networkConnection, nil)
+
+	err := connection.WritePacketBuffered(Packet{ID: 1, Data: []byte{2}})
+	if err != nil {
+		t.Fatalf("write first buffered packet: %v", err)
+	}
+
+	err = connection.WritePacketBuffered(Packet{ID: 3, Data: []byte{4}})
+	if err != nil {
+		t.Fatalf("write second buffered packet: %v", err)
+	}
+
+	if networkConnection.writes != 0 {
+		t.Fatalf("writes before flush = %d, want 0", networkConnection.writes)
+	}
+
+	err = connection.Flush()
+	if err != nil {
+		t.Fatalf("flush packets: %v", err)
+	}
+
+	if networkConnection.writes != 1 {
+		t.Fatalf("writes after flush = %d, want 1", networkConnection.writes)
+	}
+
+	readerConnection := newPacketReadTestConnection(networkConnection.written.Bytes(), 0)
+
+	first, err := readerConnection.ReadPacket()
+	if err != nil {
+		t.Fatalf("read first packet: %v", err)
+	}
+
+	second, err := readerConnection.ReadPacket()
+	if err != nil {
+		t.Fatalf("read second packet: %v", err)
+	}
+
+	if first.ID != 1 || !bytes.Equal(first.Data, []byte{2}) || second.ID != 3 || !bytes.Equal(second.Data, []byte{4}) {
+		t.Fatalf("packets = %+v, %+v", first, second)
+	}
+}
+
+func TestImmediatePacketWriteFlushesBufferedPacketsInOrder(t *testing.T) {
+	networkConnection := &packetReadTestConnection{Reader: bytes.NewReader(nil)}
+
+	connection := NewConnection(networkConnection, nil)
+
+	err := connection.WritePacketBuffered(Packet{ID: 1})
+	if err != nil {
+		t.Fatalf("write buffered packet: %v", err)
+	}
+
+	err = connection.WritePacket(Packet{ID: 2})
+	if err != nil {
+		t.Fatalf("write immediate packet: %v", err)
+	}
+
+	if networkConnection.writes != 1 {
+		t.Fatalf("network writes = %d, want 1", networkConnection.writes)
+	}
+
+	readerConnection := newPacketReadTestConnection(networkConnection.written.Bytes(), 0)
+
+	first, err := readerConnection.ReadPacket()
+	if err != nil {
+		t.Fatalf("read first packet: %v", err)
+	}
+
+	second, err := readerConnection.ReadPacket()
+	if err != nil {
+		t.Fatalf("read second packet: %v", err)
+	}
+
+	if first.ID != 1 || second.ID != 2 {
+		t.Fatalf("packet IDs = %d, %d; want 1, 2", first.ID, second.ID)
+	}
+}
+
 func TestReadPacketRejectsDataAfterCompressedStream(t *testing.T) {
 	validFrame := compressedTestFrame(t, 3, []byte{0x2A, 1, 2})
 
@@ -141,7 +257,7 @@ func newPacketReadTestConnection(frame []byte, threshold int) *Connection {
 	return connection
 }
 
-func compressedTestFrame(t *testing.T, declaredLength int32, data []byte) []byte {
+func compressedTestFrame(t testing.TB, declaredLength int32, data []byte) []byte {
 	t.Helper()
 
 	var payload bytes.Buffer
@@ -166,7 +282,7 @@ func compressedTestFrame(t *testing.T, declaredLength int32, data []byte) []byte
 	return frameTestPayload(t, payload.Bytes())
 }
 
-func frameTestPayload(t *testing.T, payload []byte) []byte {
+func frameTestPayload(t testing.TB, payload []byte) []byte {
 	t.Helper()
 
 	var frame bytes.Buffer
@@ -181,7 +297,7 @@ func frameTestPayload(t *testing.T, payload []byte) []byte {
 	return frame.Bytes()
 }
 
-func encodeTestVarInt(t *testing.T, value int32) []byte {
+func encodeTestVarInt(t testing.TB, value int32) []byte {
 	t.Helper()
 
 	var encoded bytes.Buffer

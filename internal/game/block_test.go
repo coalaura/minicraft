@@ -134,6 +134,21 @@ func TestEveryGeneratedStateRoundTripsThroughProperties(t *testing.T) {
 	}
 }
 
+func TestBlockPropertyDoesNotAllocate(t *testing.T) {
+	state, valid := ChiseledBookshelf.WithProperties(BlockPropertyValue{Name: "slot_5_occupied", Value: "true"})
+	if !valid {
+		t.Fatal("resolve chiseled bookshelf state")
+	}
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		_, _ = state.Property("slot_5_occupied")
+	})
+
+	if allocations != 0 {
+		t.Fatalf("Block.Property allocations = %v, want 0", allocations)
+	}
+}
+
 func TestGeneratedBlockSoundAndReplaceabilityMetadata(t *testing.T) {
 	tests := map[string]blockSoundTestCase{
 		"stone":       {block: Stone, soundType: BlockSoundStone, place: SoundBlockStonePlace, volume: 1, pitch: 1},
