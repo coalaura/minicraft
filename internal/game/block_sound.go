@@ -156,6 +156,22 @@ const (
 	SoundItemFlintAndSteelUse  SoundEvent = "minecraft:item.flintandsteel.use"
 )
 
+const (
+	SoundEntityFishSwim            SoundEvent = "minecraft:entity.fish.swim"
+	SoundEntityCodAmbient          SoundEvent = "minecraft:entity.cod.ambient"
+	SoundEntityCodDeath            SoundEvent = "minecraft:entity.cod.death"
+	SoundEntityCodHurt             SoundEvent = "minecraft:entity.cod.hurt"
+	SoundEntityCodFlop             SoundEvent = "minecraft:entity.cod.flop"
+	SoundEntitySalmonAmbient       SoundEvent = "minecraft:entity.salmon.ambient"
+	SoundEntitySalmonDeath         SoundEvent = "minecraft:entity.salmon.death"
+	SoundEntitySalmonHurt          SoundEvent = "minecraft:entity.salmon.hurt"
+	SoundEntitySalmonFlop          SoundEvent = "minecraft:entity.salmon.flop"
+	SoundEntityTropicalFishAmbient SoundEvent = "minecraft:entity.tropical_fish.ambient"
+	SoundEntityTropicalFishDeath   SoundEvent = "minecraft:entity.tropical_fish.death"
+	SoundEntityTropicalFishHurt    SoundEvent = "minecraft:entity.tropical_fish.hurt"
+	SoundEntityTropicalFishFlop    SoundEvent = "minecraft:entity.tropical_fish.flop"
+)
+
 type SoundEvent string
 
 type BlockSound struct {

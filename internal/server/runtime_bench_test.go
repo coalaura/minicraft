@@ -229,6 +229,31 @@ func BenchmarkRuntimeMobTick(b *testing.B) {
 	})
 }
 
+func BenchmarkAquaticMobTick(b *testing.B) {
+	world := &game.World{Generator: blockMutationTestGenerator{block: game.Water}}
+
+	runtime := NewRuntime(world)
+
+	runtime.entityRandom = func() float32 {
+		return 0.9
+	}
+
+	cod := runtime.SpawnCod(game.Position{X: 0.5, Y: 10, Z: 0.5})
+
+	cod.FromBucket = true
+
+	for range 40 {
+		cod.Tick(runtime, nil)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		cod.Tick(runtime, nil)
+	}
+}
+
 func BenchmarkActiveMobTick(b *testing.B) {
 	counts := []int{100, 500}
 

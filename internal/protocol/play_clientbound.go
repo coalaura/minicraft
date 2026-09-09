@@ -19,6 +19,8 @@ const (
 	LivingFlagsMetadataIndex      = 8
 	LivingHealthMetadataIndex     = 9
 	MobFlagsMetadataIndex         = 15
+	FishFromBucketMetadataIndex   = 16
+	FishVariantMetadataIndex      = 17
 	CreeperSwellMetadataIndex     = 16
 	CreeperPoweredMetadataIndex   = 17
 	CreeperIgnitedMetadataIndex   = 18

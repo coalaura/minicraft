@@ -74,6 +74,7 @@ type Runtime struct {
 	entityRandom              func() float32
 	groundPathfindStarted     func()
 	groundPathWorkspace       groundPathWorkspace
+	swimPathWorkspace         swimPathWorkspace
 	entityPacketBatch         atomic.Bool
 	mu                        sync.RWMutex
 	nextEntityID              int32

@@ -18,17 +18,26 @@ var runtimeEntityConstructors = map[game.EntityType]runtimeEntityConstructor{
 	game.EntityCow: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnCow(position)
 	},
+	game.EntityCod: func(runtime *Runtime, position game.Position) RuntimeEntity {
+		return runtime.SpawnCod(position)
+	},
 	game.EntityCreeper: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnCreeper(position)
 	},
 	game.EntitySheep: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnSheep(position)
 	},
+	game.EntitySalmon: func(runtime *Runtime, position game.Position) RuntimeEntity {
+		return runtime.SpawnSalmon(position)
+	},
 	game.EntitySkeleton: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnSkeleton(position)
 	},
 	game.EntityTnt: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnTnt(position, game.Velocity{}, 0, false)
+	},
+	game.EntityTropicalFish: func(runtime *Runtime, position game.Position) RuntimeEntity {
+		return runtime.SpawnTropicalFish(position)
 	},
 	game.EntityZombie: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnZombie(position)
