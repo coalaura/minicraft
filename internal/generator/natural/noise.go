@@ -8,8 +8,11 @@ import (
 func fractalNoise(seed int64, x, z float64, octaves int, salt uint64) float64 {
 	amplitude := 1.0
 	frequency := 1.0
-	total := 0.0
-	weight := 0.0
+
+	var (
+		total  float64
+		weight float64
+	)
 
 	for octave := range octaves {
 		octaveSalt := salt + uint64(octave)*0x9e3779b97f4a7c15

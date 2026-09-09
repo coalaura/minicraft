@@ -9,8 +9,10 @@ import (
 const spawnSearchRadius = int32(192)
 
 func (Generator) Spawn(seed int64) game.Position {
-	bestX := int32(0)
-	bestZ := int32(0)
+	var (
+		bestX int32
+		bestZ int32
+	)
 
 	bestScore := math.MaxFloat64
 

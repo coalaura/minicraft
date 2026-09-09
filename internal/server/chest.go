@@ -181,8 +181,10 @@ func (chest *runtimeChest) sendSound(runtime *Runtime, event game.SoundEvent) {
 
 	soundPosition := chest.position
 
-	directionX := 0.0
-	directionZ := 0.0
+	var (
+		directionX float64
+		directionZ float64
+	)
 
 	if blockProperty(block, "type") == "right" {
 		connected, valid := chestBlockConnectedDirection(block)

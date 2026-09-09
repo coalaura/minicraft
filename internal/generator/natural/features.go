@@ -51,8 +51,11 @@ func treeForCell(seed int64, cellX, cellZ int32) (tree, bool) {
 	}
 
 	roll := int((hash >> 16) % 1000)
-	kind := treeNone
-	threshold := 0
+
+	var (
+		kind      treeKind
+		threshold int
+	)
 
 	switch terrain.biome {
 	case game.BiomeForest:

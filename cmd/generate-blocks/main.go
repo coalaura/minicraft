@@ -686,6 +686,7 @@ func propertyInt(block BlockDefinition, state uint16, name string) int {
 	}
 
 	var result int
+
 	_, _ = fmt.Sscanf(value, "%d", &result)
 
 	return result

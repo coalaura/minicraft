@@ -477,7 +477,9 @@ func (entity *runtimeCreeperEntity) tickFuse(runtime *Runtime) {
 
 	if current == 0 && direction > 0 {
 		entity.State.mu.Unlock()
+
 		runtime.broadcastRuntimeEntitySound(entity, game.SoundEntityCreeperPrimed, 1, 0.5)
+
 		entity.State.mu.Lock()
 	}
 

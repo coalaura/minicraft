@@ -310,8 +310,10 @@ func (r *Runtime) explosionExposure(center game.Position, box game.AABB) float64
 	offsetX := (1 - math.Floor(1/incrementX)*incrementX) / 2
 	offsetZ := (1 - math.Floor(1/incrementZ)*incrementZ) / 2
 
-	hits := 0
-	count := 0
+	var (
+		hits  int
+		count int
+	)
 
 	for sampleX := 0.0; sampleX <= 1; sampleX += incrementX {
 		for sampleY := 0.0; sampleY <= 1; sampleY += incrementY {
@@ -349,6 +351,7 @@ func (r *Runtime) explosionSegmentBlocked(start, end game.Position) bool {
 		for y := minimumY; y <= maximumY; y++ {
 			for z := minimumZ; z <= maximumZ; z++ {
 				position := game.BlockPosition{X: x, Y: y, Z: z}
+
 				var boxBuffer [7]game.AABB
 
 				for _, box := range r.World.BlockAt(position).AppendCollisionBoxes(boxBuffer[:0], position) {

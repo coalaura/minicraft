@@ -222,8 +222,10 @@ func (r *Runtime) tickFluidLocked(position game.BlockPosition) {
 func (r *Runtime) recomputeFluidLevel(position game.BlockPosition, fluid FlowingFluid, oldState game.FluidState) (int, bool, int) {
 	currentBlock := r.World.BlockAt(position)
 
-	bestAmount := 0
-	sources := 0
+	var (
+		bestAmount int
+		sources    int
+	)
 
 	for _, offset := range fluidSides {
 		neighbor := game.BlockPosition{X: position.X + offset.X, Y: position.Y, Z: position.Z + offset.Z}

@@ -99,8 +99,10 @@ func TestWalkwaysAreTwoBlocksWide(t *testing.T) {
 }
 
 func TestMazeWallsAreFourBlocksHigh(t *testing.T) {
-	generated := Generator{}
-	seed := int64(0)
+	var (
+		generated Generator
+		seed      int64
+	)
 
 	if wallHeight != 4 {
 		t.Fatalf("wall height = %d, want 4", wallHeight)
@@ -153,6 +155,7 @@ func TestGenerateSectionMatchesBlockAt(t *testing.T) {
 		for _, chunk := range chunks {
 			for _, sectionMinY := range sectionYValues {
 				var blocks [game.SectionVolume]game.Block
+
 				uniformBlock, uniform := generated.GenerateSection(seed, chunk, sectionMinY, &blocks)
 
 				for localY := range int32(game.ChunkWidth) {

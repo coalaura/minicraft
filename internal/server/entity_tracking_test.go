@@ -291,8 +291,10 @@ func TestSettledItemUsesVanillaUpdateCadence(t *testing.T) {
 		runtime.Tick()
 	}
 
-	fullSynchronizations := 0
-	periodicRefreshes := 0
+	var (
+		fullSynchronizations int
+		periodicRefreshes    int
+	)
 
 	for _, packetID := range connection.packetIDs(t) {
 		switch packetID {
@@ -1101,8 +1103,10 @@ func TestItemEntityMergeRejectsFullOrIncompatibleStacks(t *testing.T) {
 func assertRuntimeEntitySynchronizationPacketID(t *testing.T, synchronization runtimeEntitySynchronization, expected int32) {
 	t.Helper()
 
-	packetCount := 0
-	packetID := int32(0)
+	var (
+		packetCount int
+		packetID    int32
+	)
 
 	if synchronization.sendMotion {
 		packetCount++

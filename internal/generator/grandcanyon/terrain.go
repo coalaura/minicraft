@@ -120,8 +120,11 @@ func columnAt(seed int64, worldX, worldZ int32) column {
 
 	isRiverBed := riverStrength > 0.52 && surfaceHeight <= riverLevel
 	terraceBench := (surfaceHeight >= 68 && surfaceHeight <= 78) || (surfaceHeight >= 138 && surfaceHeight <= 148)
-	slope := int32(0)
-	talusStrength := 0.0
+
+	var (
+		slope         int32
+		talusStrength float64
+	)
 
 	if canyonStrength > 0.15 && canyonStrength < 0.88 {
 		if (surfaceHeight >= 66 && surfaceHeight <= 84) || (surfaceHeight >= 134 && surfaceHeight <= 146) {

@@ -38,8 +38,10 @@ func TestGeneratorSpawnIsOpenAndSupported(t *testing.T) {
 }
 
 func TestGeneratorBuildsHierarchicalWalls(t *testing.T) {
-	generated := Generator{}
-	seed := int64(0)
+	var (
+		generated Generator
+		seed      int64
+	)
 
 	tests := []hierarchicalWallTestCase{
 		{name: "interior", x: 4, y: 64, z: 4, want: game.Air},

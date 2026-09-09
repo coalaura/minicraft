@@ -811,8 +811,10 @@ func stackedPlacement(base game.Block, rule game.ItemPlacementRule, existing gam
 		return 0, false
 	}
 
-	property := ""
-	maximum := 0
+	var (
+		property string
+		maximum  int
+	)
 
 	switch rule {
 	case game.ItemPlacementSnow:

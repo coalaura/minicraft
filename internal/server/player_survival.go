@@ -182,6 +182,7 @@ func (r *Runtime) RespawnPlayer(session *Session) error {
 		observer := other.snapshotPlayer()
 		wasVisible := playersVisible(observer, previous, other.renderDistance())
 		isVisible := playersVisible(observer, player, other.renderDistance())
+
 		var syncErr error
 
 		if wasVisible {

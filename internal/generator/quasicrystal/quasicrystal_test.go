@@ -100,10 +100,13 @@ func TestSectionGenerationMatchesBlockAt(t *testing.T) {
 
 	for _, testCase := range sectionTestCases {
 		var legacyBlocks [game.SectionVolume]game.Block
+
 		legacyBlock, legacyUniform := generated.GenerateSection(testCase.seed, testCase.chunk, testCase.sectionMinY, &legacyBlocks)
 
 		prepared := generated.GenerateChunk(testCase.seed, testCase.chunk)
+
 		var preparedBlocks [game.SectionVolume]game.Block
+
 		preparedBlock, preparedUniform := prepared.GenerateSection(testCase.sectionMinY, &preparedBlocks)
 
 		if legacyBlock != preparedBlock || legacyUniform != preparedUniform || legacyBlocks != preparedBlocks {
@@ -120,9 +123,11 @@ func TestPreparedSectionsAreDeterministicWhenConcurrent(t *testing.T) {
 	prepared := generated.GenerateChunk(testCase.seed, testCase.chunk)
 
 	var expectedBlocks [game.SectionVolume]game.Block
+
 	expectedBlock, expectedUniform := prepared.GenerateSection(testCase.sectionMinY, &expectedBlocks)
 
 	var group sync.WaitGroup
+
 	errors := make(chan string, 16)
 
 	for range 16 {
@@ -151,19 +156,21 @@ func TestPreparedSectionsAreDeterministicWhenConcurrent(t *testing.T) {
 func BenchmarkPreparedChunkSections(b *testing.B) {
 	generated := Generator{}
 	prepared := generated.GenerateChunk(987654321, game.ChunkPosition{X: -3, Z: 2})
+
 	var blocks [game.SectionVolume]game.Block
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for iteration := 0; iteration < b.N; iteration++ {
+	for iteration := 0; b.Loop(); iteration++ {
 		prepared.GenerateSection(64+int32(iteration%3)*game.ChunkWidth, &blocks)
 	}
 }
 
 func BenchmarkSectionGeneratorCalls(b *testing.B) {
-	generated := Generator{}
-	var blocks [game.SectionVolume]game.Block
+	var (
+		generated Generator
+		blocks    [game.SectionVolume]game.Block
+	)
 
 	b.ReportAllocs()
 	b.ResetTimer()

@@ -310,6 +310,7 @@ func BenchmarkRuntimeLightingBatchOverlappingMutations(b *testing.B) {
 		b.StopTimer()
 
 		runtime := NewRuntime(normalLightingTestWorld())
+
 		var builds atomic.Int64
 
 		runtime.chunkLightBuilder = func(world *game.World, chunkX, chunkZ int32) (protocol.UpdateLight, error) {

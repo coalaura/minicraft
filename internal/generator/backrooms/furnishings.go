@@ -93,8 +93,10 @@ func receptionBlockAt(worldY int64, current zone, room featureRoom) (game.Block,
 	centerX := (room.x0 + room.x1) / 2
 	centerZ := (room.z0 + room.z1) / 2
 
-	counter := false
-	lectern := false
+	var (
+		counter bool
+		lectern bool
+	)
 
 	switch room.entranceSide {
 	case featureNorth:

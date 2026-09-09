@@ -107,8 +107,10 @@ func TestGrandCanyonRiverCorridor(t *testing.T) {
 	generator := Generator{}
 	seed := int64(42)
 
-	foundWater := false
-	foundGravelOrMud := false
+	var (
+		foundWater       bool
+		foundGravelOrMud bool
+	)
 
 	for z := int32(-1000); z <= 1000; z += 10 {
 		for x := int32(-1000); x <= 1000; x += 10 {
@@ -170,9 +172,11 @@ func TestGrandCanyonFeatures(t *testing.T) {
 	generator := Generator{}
 	seed := int64(42)
 
-	foundCactus := false
-	foundDeadBush := false
-	foundBoulder := false
+	var (
+		foundCactus   bool
+		foundDeadBush bool
+		foundBoulder  bool
+	)
 
 	for z := int32(-600); z <= 600; z += 5 {
 		for x := int32(-600); x <= 600; x += 5 {

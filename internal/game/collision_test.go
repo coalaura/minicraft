@@ -109,6 +109,7 @@ func TestAppendCollisionBoxesDoesNotAllocate(t *testing.T) {
 	for _, block := range blocks {
 		allocations := testing.AllocsPerRun(1000, func() {
 			var boxBuffer [maxBlockCollisionBoxes]AABB
+
 			boxes := block.AppendCollisionBoxes(boxBuffer[:0], BlockPosition{X: 1, Y: 2, Z: 3})
 
 			if len(boxes) == 0 {

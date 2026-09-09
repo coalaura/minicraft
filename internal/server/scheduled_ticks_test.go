@@ -180,8 +180,10 @@ func TestScheduledBlockAndFluidTicksHaveIndependentDomains(t *testing.T) {
 
 	definition, _ := game.StoneButton.Definition()
 
-	blockTicks := scheduledBlockTicks{}
-	fluidTicks := scheduledFluidTicks{}
+	var (
+		blockTicks scheduledBlockTicks
+		fluidTicks scheduledFluidTicks
+	)
 
 	blockTicks.schedule(position, definition.ID, 1)
 	fluidTicks.schedule(position, game.FluidStateTypeWater, 1)

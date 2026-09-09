@@ -294,6 +294,7 @@ func (goal *aquaticFollowSchoolGoal) Tick(runtime *Runtime) {
 	}
 
 	leaderState := leader.RuntimeEntityState()
+
 	leaderState.mu.RLock()
 	goalPosition := leaderState.Position
 	leaderState.mu.RUnlock()

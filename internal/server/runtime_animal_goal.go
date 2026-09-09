@@ -122,6 +122,7 @@ func (goal *animalTemptGoal) Stop(*Runtime) {
 	goal.Entity.State.mu.Lock()
 	goal.Entity.Navigation.Stop()
 	goal.Entity.State.mu.Unlock()
+
 	goal.Target = nil
 }
 
@@ -285,6 +286,7 @@ func animalPanicRandomPosition(runtime *Runtime, entity *runtimeAnimal, position
 func animalPanicWaterPosition(runtime *Runtime, entity *runtimeAnimal, position game.Position) (game.Position, bool) {
 	origin := game.BlockPosition{X: int32(math.Floor(position.X)), Y: int32(math.Floor(position.Y)), Z: int32(math.Floor(position.Z))}
 	block := runtime.World.BlockAt(origin)
+
 	var boxBuffer [7]game.AABB
 
 	if len(block.AppendCollisionBoxes(boxBuffer[:0], origin)) != 0 {

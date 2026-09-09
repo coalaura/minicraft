@@ -122,8 +122,10 @@ func TestLayersUseDifferentDeterministicPlans(t *testing.T) {
 }
 
 func TestOrdinaryLayerConnectorsContainRealStaircases(t *testing.T) {
-	generated := Generator{}
-	found := 0
+	var (
+		generated Generator
+		found     int
+	)
 
 	for layer := int64(-3); layer <= 3 && found < 4; layer++ {
 		for zoneZ := int64(-10); zoneZ <= 10 && found < 4; zoneZ++ {
@@ -183,9 +185,11 @@ func TestOrdinaryLayerConnectorsContainRealStaircases(t *testing.T) {
 }
 
 func TestGrandAtriaAreRareAndSpanMultipleLayers(t *testing.T) {
-	generated := Generator{}
-	found := 0
-	totalGroups := 0
+	var (
+		generated   Generator
+		found       int
+		totalGroups int
+	)
 
 	for group := int64(-2); group <= 4; group++ {
 		layer := group * verticalGroupSize
@@ -322,8 +326,10 @@ func TestGrandAtriumContainsIntegratedStairsBalconiesColumnsRailsAndLights(t *te
 					t.Fatalf("grand atrium landing rail stair connection = %q, want false", connectedToStairs)
 				}
 
-				lights := 0
-				stairs := 0
+				var (
+					lights int
+					stairs int
+				)
 
 				for y := layerFloorY(spec.anchorLayer); y <= layerFloorY(spec.anchorLayer+spec.span-1)+5; y++ {
 					for z := spec.z0; z <= spec.z1; z++ {
@@ -478,15 +484,16 @@ func TestRareFeaturesArePresentAndSparse(t *testing.T) {
 }
 
 func TestAmbientDoorsIncludeFalseAndUsefulDoors(t *testing.T) {
-	generated := Generator{}
-	seed := int64(0)
-
-	total := 0
-	doors := 0
-	falseDoors := 0
-	usefulDoors := 0
-	validatedFalseDoor := false
-	validatedUsefulDoor := false
+	var (
+		generated           Generator
+		seed                int64
+		total               int
+		doors               int
+		falseDoors          int
+		usefulDoors         int
+		validatedFalseDoor  bool
+		validatedUsefulDoor bool
+	)
 
 	for zoneZ := int64(-64); zoneZ <= 64; zoneZ++ {
 		for zoneX := int64(-64); zoneX <= 64; zoneX++ {
@@ -573,8 +580,10 @@ func TestAmbientDoorsIncludeFalseAndUsefulDoors(t *testing.T) {
 }
 
 func TestLibraryContainsShelvesAndActualDoors(t *testing.T) {
-	generated := Generator{}
-	seed := int64(0)
+	var (
+		generated Generator
+		seed      int64
+	)
 
 	for zoneZ := int64(-64); zoneZ <= 64; zoneZ++ {
 		for zoneX := int64(-64); zoneX <= 64; zoneX++ {
@@ -583,8 +592,10 @@ func TestLibraryContainsShelvesAndActualDoors(t *testing.T) {
 				continue
 			}
 
-			shelves := 0
-			doors := 0
+			var (
+				shelves int
+				doors   int
+			)
 
 			for localZ := range int64(zoneSize) {
 				for localX := range int64(zoneSize) {
@@ -622,8 +633,10 @@ func TestLibraryContainsShelvesAndActualDoors(t *testing.T) {
 }
 
 func TestExpandedRareFeaturesHaveSignatureGeometry(t *testing.T) {
-	generated := Generator{}
-	seed := int64(0)
+	var (
+		generated Generator
+		seed      int64
+	)
 
 	wanted := []zoneFeature{
 		featureConference,
@@ -658,8 +671,12 @@ func TestExpandedRareFeaturesHaveSignatureGeometry(t *testing.T) {
 		}
 
 		counts := make(map[game.Block]int)
-		stairs := 0
-		doors := 0
+
+		var (
+			stairs int
+			doors  int
+		)
+
 		originX := coords[0]*zoneSize - zoneSize/2
 		originZ := coords[1]*zoneSize - zoneSize/2
 
@@ -719,8 +736,10 @@ func TestExpandedRareFeaturesHaveSignatureGeometry(t *testing.T) {
 }
 
 func TestDoorGalleryContainsDoorToWall(t *testing.T) {
-	generated := Generator{}
-	seed := int64(0)
+	var (
+		generated Generator
+		seed      int64
+	)
 
 	for zoneZ := int64(-64); zoneZ <= 64; zoneZ++ {
 		for zoneX := int64(-64); zoneX <= 64; zoneX++ {
@@ -889,8 +908,10 @@ func TestDoorwayHasLintel(t *testing.T) {
 }
 
 func TestCubiclePartitionsStopBelowCeiling(t *testing.T) {
-	generated := Generator{}
-	found := false
+	var (
+		generated Generator
+		found     bool
+	)
 
 	for z := int32(-384); z <= 384 && !found; z++ {
 		for x := int32(-384); x <= 384; x++ {

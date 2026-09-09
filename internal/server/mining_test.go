@@ -840,6 +840,7 @@ func TestMiningUnbreakingUsesDeterministicRuntimeRandomness(t *testing.T) {
 			joinTestSession(t, runtime, session)
 
 			calls := 0
+
 			runtime.miningRandomMu.Lock()
 
 			runtime.miningRandom = func(bound int) int {

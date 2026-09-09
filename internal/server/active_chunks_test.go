@@ -74,6 +74,7 @@ func TestVisibleChunkUpdateDoesNotHoldChunkLockWhileWaitingForWorldMutation(t *t
 	}
 
 	runtime.worldMutationMu.Unlock()
+
 	worldLocked = false
 
 	select {

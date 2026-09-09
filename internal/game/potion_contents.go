@@ -307,7 +307,9 @@ func appendPotionContents(data []byte, contents PotionContents) []byte {
 
 	if contents.HasCustomColor {
 		var color [4]byte
+
 		binary.BigEndian.PutUint32(color[:], uint32(contents.CustomColor))
+
 		data = append(data, color[:]...)
 	}
 
@@ -321,6 +323,7 @@ func appendPotionContents(data []byte, contents PotionContents) []byte {
 
 	if contents.HasCustomName {
 		data = appendComponentVarInt(data, int32(len(contents.CustomName)))
+
 		data = append(data, contents.CustomName...)
 	}
 

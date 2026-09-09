@@ -597,8 +597,10 @@ func (s *Session) synchronizeJournalEquipment(mutation *playerInventoryMutation)
 
 	player := s.snapshotPlayer()
 
-	var slots [5]byte
-	count := 0
+	var (
+		slots [5]byte
+		count int
+	)
 
 	if journal.touchedSlot(36+selected) && !journal.before[36+selected].Equal(*player.Inventory.Held(selected)) {
 		slots[count] = protocol.EquipmentSlotMainHand

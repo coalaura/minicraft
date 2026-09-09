@@ -203,8 +203,10 @@ func runtimeEntitySynchronizationForView(view runtimeEntityView, tracker *runtim
 
 	fullSync := !xRelative || !yRelative || !zRelative || tracker.TeleportDelay > entityFullSyncDelay || tracker.WasOnGround != view.OnGround
 
-	sentPosition := false
-	sentRotation := false
+	var (
+		sentPosition bool
+		sentRotation bool
+	)
 
 	if configuration.TrackDeltas || forcedMovementSync {
 		velocityDifference := velocityDistanceSquared(view.Velocity, tracker.LastVelocity)

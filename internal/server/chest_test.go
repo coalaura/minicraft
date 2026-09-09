@@ -987,8 +987,10 @@ func assertChestSound(t *testing.T, packet protocol.Packet, event game.SoundEven
 	actualY := reader.Int()
 	actualZ := reader.Int()
 
-	directionX := 0.0
-	directionZ := 0.0
+	var (
+		directionX float64
+		directionZ float64
+	)
 
 	if offsetDirection != "" {
 		direction, _ := directionFromName(offsetDirection)

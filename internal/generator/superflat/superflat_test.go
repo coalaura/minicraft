@@ -125,8 +125,10 @@ func TestDecorationsAreSparseAndSpawnStaysClear(t *testing.T) {
 }
 
 func TestDecorationsDependOnSeed(t *testing.T) {
-	generated := Generator{}
-	different := false
+	var (
+		generated Generator
+		different bool
+	)
 
 	for z := int32(-32); z <= 32 && !different; z++ {
 		for x := int32(-32); x <= 32; x++ {

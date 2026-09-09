@@ -229,8 +229,10 @@ func (s *Session) sendPlayerMovement(previous, current game.Player) error {
 }
 
 func (s *Session) sendPlayerMetadata(player game.Player) error {
-	flags := byte(0)
-	livingFlags := byte(0)
+	var (
+		flags       byte
+		livingFlags byte
+	)
 
 	if player.RemainingFireTicks > 0 {
 		flags |= protocol.EntityFlagOnFire

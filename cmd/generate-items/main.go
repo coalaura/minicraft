@@ -742,8 +742,10 @@ func itemMining(name string) string {
 		return "ItemMining{}"
 	}
 
-	incorrectTrait := ""
-	var speed float32
+	var (
+		incorrectTrait string
+		speed          float32
+	)
 
 	switch parts[0] {
 	case "wooden":

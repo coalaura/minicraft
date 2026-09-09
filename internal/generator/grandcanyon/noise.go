@@ -17,8 +17,11 @@ type voronoiResult struct {
 func fractalNoise(seed int64, x, z float64, octaves int, salt uint64) float64 {
 	amplitude := 1.0
 	frequency := 1.0
-	total := 0.0
-	weight := 0.0
+
+	var (
+		total  float64
+		weight float64
+	)
 
 	for octave := range octaves {
 		octaveSalt := salt +
@@ -43,8 +46,11 @@ func fractalNoise(seed int64, x, z float64, octaves int, salt uint64) float64 {
 func ridgeNoise(seed int64, x, z float64, octaves int, salt uint64) float64 {
 	amplitude := 1.0
 	frequency := 1.0
-	total := 0.0
-	weight := 0.0
+
+	var (
+		total  float64
+		weight float64
+	)
 
 	for octave := range octaves {
 		octaveSalt := salt +

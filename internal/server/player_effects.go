@@ -124,8 +124,10 @@ func addPlayerMobEffect(player *game.Player, instance game.MobEffectInstance) (p
 }
 
 func (r *Runtime) applyConsumableMobEffects(player *game.Player, effects []game.ItemConsumeEffect) ([]playerMobEffectChange, bool) {
-	var changes []playerMobEffectChange
-	absorptionChanged := false
+	var (
+		changes           []playerMobEffectChange
+		absorptionChanged bool
+	)
 
 	for _, effect := range effects {
 		switch effect.Type {

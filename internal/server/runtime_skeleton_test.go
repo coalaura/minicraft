@@ -314,8 +314,10 @@ func TestSkeletonStrafeMatchesVanillaSteadyStateTrace(t *testing.T) {
 func TestSkeletonStrafeWalkabilityFallbackAndOneShotOperation(t *testing.T) {
 	skeleton := NewRuntime(&game.World{}).SpawnSkeleton(game.Position{X: .5, Z: .5})
 
-	probeX := 0.0
-	probeZ := 0.0
+	var (
+		probeX float64
+		probeZ float64
+	)
 
 	skeleton.Rotation.Yaw = 90
 

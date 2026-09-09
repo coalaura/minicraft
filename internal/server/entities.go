@@ -260,6 +260,7 @@ func (entity *runtimeItemEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 				entityID := entity.State.ID
 
 				entity.State.mu.Unlock()
+
 				runtime.removeRuntimeEntity(entityID)
 
 				return
@@ -653,6 +654,7 @@ func (r *Runtime) removeRuntimeEntity(id int32) {
 	}
 
 	state := entity.RuntimeEntityState()
+
 	state.mu.Lock()
 
 	state.Removed = true
@@ -1010,7 +1012,9 @@ func (r *Runtime) synchronizeDirtyRuntimeEntityMetadata(entity RuntimeEntityMeta
 		entries = item.entityMetadataLocked()
 	} else {
 		state.mu.Unlock()
+
 		entries = entity.EntityMetadata()
+
 		state.mu.Lock()
 
 		if !state.metadataDirty || state.Removed {
@@ -1099,6 +1103,7 @@ func (r *Runtime) mergeItemEntity(entity *runtimeItemEntity) bool {
 
 		if removed {
 			r.entityMu.RUnlock()
+
 			r.synchronizeDirtyRuntimeEntityMetadata(receiver)
 			r.removeRuntimeEntity(consumed.State.ID)
 
@@ -1174,7 +1179,9 @@ func (r *Runtime) itemEntityInsideCollision(position game.Position) bool {
 	box.MaxZ -= 1e-7
 
 	var blocks [64]game.AABB
+
 	boxes := r.appendEntityCollisionBoxes(blocks[:0], box, game.Velocity{})
+
 	return slices.ContainsFunc(boxes, box.Intersects)
 }
 
@@ -1241,6 +1248,7 @@ func (r *Runtime) moveItemEntity(position game.Position, velocity game.Velocity)
 	box := itemEntityBox(position)
 
 	var blockBuffer [64]game.AABB
+
 	blocks := r.appendEntityCollisionBoxes(blockBuffer[:0], box, velocity)
 
 	resolved := collideAABBWithBlocks(box, blocks, velocity)
@@ -1422,6 +1430,7 @@ func itemMergeCandidateNearby(searchBox game.AABB, candidate *runtimeItemEntity)
 
 func blockCollisionShapeFull(block game.Block, position game.BlockPosition) bool {
 	var boxBuffer [7]game.AABB
+
 	boxes := block.AppendCollisionBoxes(boxBuffer[:0], position)
 
 	if len(boxes) != 1 {

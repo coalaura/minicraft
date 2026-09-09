@@ -79,8 +79,11 @@ func (furnace *runtimeFurnace) Tick(runtime *Runtime, _ *ActiveChunk) {
 	}
 
 	wasLit := data.LitTimeRemaining > 0
-	stateChanged := false
-	inventoryChanged := false
+
+	var (
+		stateChanged     bool
+		inventoryChanged bool
+	)
 
 	if wasLit {
 		data.LitTimeRemaining--
