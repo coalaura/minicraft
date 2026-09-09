@@ -25,9 +25,6 @@ const (
 	itemEntityLavaDrag          = 0.95
 	itemEntityFluidLift         = 0.0005
 	itemEntityFluidRiseMax      = 0.06
-	itemEntityWaterPush         = 0.014
-	itemEntityLavaPush          = 0.0023333333333333335
-	itemEntityFastLavaPush      = 0.007
 	itemEntityFireDurationTicks = 8 * 20
 	itemEntityLavaFireTicks     = 15 * 20
 	itemEntityLavaDamage        = 4
@@ -1396,15 +1393,16 @@ func mergeItemEntities(entity, other *runtimeItemEntity) (bool, *runtimeItemEnti
 }
 
 func applyItemFluidCurrents(runtime *Runtime, entity *runtimeItemEntity, contacts entityFluidContacts) {
-	waterImpulse := fluidCurrentImpulse(entity.Velocity, contacts.Water.Flow, itemEntityWaterPush)
+	waterImpulse := fluidCurrentImpulse(entity.Velocity, contacts.Water.Flow, entityWaterPush)
+
 	entity.Velocity.X += waterImpulse.X
 	entity.Velocity.Y += waterImpulse.Y
 	entity.Velocity.Z += waterImpulse.Z
 
-	lavaPush := itemEntityLavaPush
+	lavaPush := entityLavaPush
 
 	if runtime.FluidEnvironment.FastLava {
-		lavaPush = itemEntityFastLavaPush
+		lavaPush = entityFastLavaPush
 	}
 
 	lavaImpulse := fluidCurrentImpulse(entity.Velocity, contacts.Lava.Flow, lavaPush)

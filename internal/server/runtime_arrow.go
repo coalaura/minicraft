@@ -116,6 +116,7 @@ func (entity *runtimeArrowEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	}
 
 	entity.TickCount++
+	pushedByFluid := !entity.InGround
 
 	if entity.ShakeTime > 0 {
 		entity.ShakeTime--
@@ -147,6 +148,10 @@ func (entity *runtimeArrowEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		entity.State.metadataDirty = true
 	} else {
 		entity.Life = 0
+	}
+
+	if pushedByFluid {
+		runtime.applyPhysicalEntityFluidCurrents(arrowBox(entity.State.Position), &entity.Velocity)
 	}
 
 	from := entity.State.Position

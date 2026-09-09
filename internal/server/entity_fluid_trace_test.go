@@ -21,6 +21,14 @@ type itemFluidTraceCase struct {
 	Expected []itemFluidTraceSample
 }
 
+type physicalFluidScaleTestCase struct {
+	Name     string
+	Fluid    game.Block
+	Neighbor game.Block
+	FastLava bool
+	WantX    float64
+}
+
 func TestItemFluidSourceTraces(t *testing.T) {
 	flowingWater := mustFluidBlock(t, game.Water, "1")
 	shallowWater := mustFluidBlock(t, game.Water, "7")
@@ -133,13 +141,13 @@ func TestItemFluidContactsPreserveOverlappingWaterAndLava(t *testing.T) {
 
 	want := item.Velocity
 
-	waterImpulse := fluidCurrentImpulse(want, contacts.Water.Flow, itemEntityWaterPush)
+	waterImpulse := fluidCurrentImpulse(want, contacts.Water.Flow, entityWaterPush)
 
 	want.X += waterImpulse.X
 	want.Y += waterImpulse.Y
 	want.Z += waterImpulse.Z
 
-	lavaImpulse := fluidCurrentImpulse(want, contacts.Lava.Flow, itemEntityLavaPush)
+	lavaImpulse := fluidCurrentImpulse(want, contacts.Lava.Flow, entityLavaPush)
 
 	want.X += lavaImpulse.X
 	want.Y += lavaImpulse.Y
@@ -186,6 +194,259 @@ func TestItemFluidFlowCacheExpiresBetweenActiveChunkTicks(t *testing.T) {
 	after := runtime.itemFluidFlowVector(position, state, true)
 	if after == before {
 		t.Fatalf("fluid flow cache retained stale vector %+v", after)
+	}
+}
+
+func TestPhysicalEntityFluidCurrentScalesMatchSource(t *testing.T) {
+	flowingWater := mustFluidBlock(t, game.Water, "1")
+	flowingLava := mustFluidBlock(t, game.Lava, "1")
+
+	tests := []physicalFluidScaleTestCase{
+		{Name: "water", Fluid: game.Water, Neighbor: flowingWater, WantX: 0.014},
+		{Name: "lava minimum", Fluid: game.Lava, Neighbor: flowingLava, WantX: 0.0045},
+		{Name: "fast lava", Fluid: game.Lava, Neighbor: flowingLava, FastLava: true, WantX: 0.007},
+	}
+
+	for _, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			world := fluidTraceWorld([]game.BlockChange{
+				{Position: game.BlockPosition{}, Replacement: test.Fluid},
+				{Position: game.BlockPosition{X: 1}, Replacement: test.Neighbor},
+			})
+
+			runtime := NewRuntime(world)
+
+			runtime.FluidEnvironment.FastLava = test.FastLava
+
+			velocity := game.Velocity{}
+
+			runtime.applyPhysicalEntityFluidCurrents(itemEntityBox(game.Position{X: 0.5, Y: 0.5, Z: 0.5}), &velocity)
+
+			assertVelocityClose(t, velocity, game.Velocity{X: test.WantX}, 1e-15)
+		})
+	}
+}
+
+func TestPhysicalEntityWaterCurrentMovementTraces(t *testing.T) {
+	flowingWater := mustFluidBlock(t, game.Water, "1")
+
+	world := fluidTraceWorld([]game.BlockChange{
+		{Position: game.BlockPosition{}, Replacement: game.Water},
+		{Position: game.BlockPosition{X: 1}, Replacement: flowingWater},
+	})
+
+	t.Run("ground living", func(t *testing.T) {
+		runtime := NewRuntime(world)
+
+		cow := runtime.SpawnCow(game.Position{X: 0.5, Y: 0.5, Z: 0.5})
+
+		configuration := animalGroundControlConfig(cow.Spec)
+
+		runtime.tickGroundMobMovement(cow, &cow.Living, &cow.Rotation, &cow.Navigation, &cow.MoveControl, &cow.LookControl, &cow.BodyControl, configuration, false)
+
+		assertPositionClose(t, cow.State.Position, game.Position{X: 0.514, Y: 0.5, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, cow.Living.Velocity, game.Velocity{X: 0.012740000367164613, Y: -0.0784}, 1e-12)
+
+		runtime.tickGroundMobMovement(cow, &cow.Living, &cow.Rotation, &cow.Navigation, &cow.MoveControl, &cow.LookControl, &cow.BodyControl, configuration, false)
+
+		assertPositionClose(t, cow.State.Position, game.Position{X: 0.5407400003671646, Y: 0.4216, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, cow.Living.Velocity, game.Velocity{X: 0.024333401035404215, Y: -0.155232}, 1e-12)
+	})
+
+	t.Run("primed tnt", func(t *testing.T) {
+		runtime := NewRuntime(world)
+
+		tnt := runtime.SpawnTnt(game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 0, false)
+
+		tnt.Tick(runtime, nil)
+
+		assertPositionClose(t, tnt.State.Position, game.Position{X: 0.514, Y: 0.46, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, tnt.Velocity, game.Velocity{X: 0.01372, Y: -0.0392}, 1e-12)
+
+		tnt.Tick(runtime, nil)
+
+		assertPositionClose(t, tnt.State.Position, game.Position{X: 0.54172, Y: 0.3808, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, tnt.Velocity, game.Velocity{X: 0.0271656, Y: -0.077616}, 1e-12)
+	})
+
+	t.Run("flying arrow", func(t *testing.T) {
+		runtime := NewRuntime(world)
+
+		arrow := runtime.SpawnArrow(game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 0)
+
+		arrow.Tick(runtime, nil)
+
+		assertPositionClose(t, arrow.State.Position, game.Position{X: 0.514, Y: 0.5, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, arrow.Velocity, game.Velocity{X: 0.0084, Y: -0.05}, 1e-12)
+
+		arrow.Tick(runtime, nil)
+
+		assertPositionClose(t, arrow.State.Position, game.Position{X: 0.5364, Y: 0.45, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, arrow.Velocity, game.Velocity{X: 0.01344, Y: -0.08}, 1e-12)
+	})
+}
+
+func TestPhysicalEntityFallingWaterMovementTraces(t *testing.T) {
+	fallingWater := mustFluidBlock(t, game.Water, "8")
+
+	world := fluidTraceWorld([]game.BlockChange{
+		{Position: game.BlockPosition{Y: 1}, Replacement: fallingWater},
+		{Position: game.BlockPosition{X: 1, Y: 1}, Replacement: game.Stone},
+	})
+
+	t.Run("ground living", func(t *testing.T) {
+		runtime := NewRuntime(world)
+
+		cow := runtime.SpawnCow(game.Position{X: 0.5, Y: 1.5, Z: 0.5})
+
+		configuration := animalGroundControlConfig(cow.Spec)
+
+		runtime.tickGroundMobMovement(cow, &cow.Living, &cow.Rotation, &cow.Navigation, &cow.MoveControl, &cow.LookControl, &cow.BodyControl, configuration, false)
+
+		assertPositionClose(t, cow.State.Position, game.Position{X: 0.5, Y: 1.486, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, cow.Living.Velocity, game.Velocity{Y: -0.09212}, 1e-12)
+
+		runtime.tickGroundMobMovement(cow, &cow.Living, &cow.Rotation, &cow.Navigation, &cow.MoveControl, &cow.LookControl, &cow.BodyControl, configuration, false)
+
+		assertPositionClose(t, cow.State.Position, game.Position{X: 0.5, Y: 1.37988, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, cow.Living.Velocity, game.Velocity{Y: -0.1823976}, 1e-12)
+	})
+
+	t.Run("primed tnt", func(t *testing.T) {
+		runtime := NewRuntime(world)
+
+		tnt := runtime.SpawnTnt(game.Position{X: 0.5, Y: 1.5, Z: 0.5}, game.Velocity{}, 0, false)
+
+		tnt.Tick(runtime, nil)
+
+		assertPositionClose(t, tnt.State.Position, game.Position{X: 0.5, Y: 1.446, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, tnt.Velocity, game.Velocity{Y: -0.05292}, 1e-12)
+
+		tnt.Tick(runtime, nil)
+
+		assertPositionClose(t, tnt.State.Position, game.Position{X: 0.5, Y: 1.33908, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, tnt.Velocity, game.Velocity{Y: -0.1047816}, 1e-12)
+	})
+}
+
+func TestPhysicalEntityLavaCurrentMovementTraces(t *testing.T) {
+	flowingLava := mustFluidBlock(t, game.Lava, "1")
+
+	world := fluidTraceWorld([]game.BlockChange{
+		{Position: game.BlockPosition{}, Replacement: game.Lava},
+		{Position: game.BlockPosition{X: 1}, Replacement: flowingLava},
+	})
+
+	t.Run("ground living", func(t *testing.T) {
+		runtime := NewRuntime(world)
+
+		cow := runtime.SpawnCow(game.Position{X: 0.5, Y: 0.5, Z: 0.5})
+
+		configuration := animalGroundControlConfig(cow.Spec)
+
+		runtime.tickGroundMobMovement(cow, &cow.Living, &cow.Rotation, &cow.Navigation, &cow.MoveControl, &cow.LookControl, &cow.BodyControl, configuration, false)
+
+		assertPositionClose(t, cow.State.Position, game.Position{X: 0.5045, Y: 0.5, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, cow.Living.Velocity, game.Velocity{X: 0.004095000118017196, Y: -0.0784}, 1e-12)
+	})
+
+	t.Run("primed tnt", func(t *testing.T) {
+		runtime := NewRuntime(world)
+
+		tnt := runtime.SpawnTnt(game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 0, false)
+
+		tnt.Tick(runtime, nil)
+
+		assertPositionClose(t, tnt.State.Position, game.Position{X: 0.5045, Y: 0.46, Z: 0.5}, 1e-12)
+		assertVelocityClose(t, tnt.Velocity, game.Velocity{X: 0.00441, Y: -0.0392}, 1e-12)
+	})
+}
+
+func TestPhysicalEntityFluidCurrentsPauseWithInactiveChunk(t *testing.T) {
+	flowingWater := mustFluidBlock(t, game.Water, "1")
+
+	world := fluidTraceWorld([]game.BlockChange{
+		{Position: game.BlockPosition{}, Replacement: game.Water},
+		{Position: game.BlockPosition{X: 1}, Replacement: flowingWater},
+	})
+
+	runtime := NewRuntime(world)
+
+	tnt := runtime.SpawnTnt(game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 0, false)
+
+	runtime.Tick()
+
+	if tnt.State.Position != (game.Position{X: 0.5, Y: 0.5, Z: 0.5}) || tnt.Velocity != (game.Velocity{}) {
+		t.Fatalf("inactive TNT changed in current: position %+v velocity %+v", tnt.State.Position, tnt.Velocity)
+	}
+
+	viewer := &Session{}
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+	runtime.Tick()
+
+	assertPositionClose(t, tnt.State.Position, game.Position{X: 0.514, Y: 0.46, Z: 0.5}, 1e-12)
+	assertVelocityClose(t, tnt.Velocity, game.Velocity{X: 0.01372, Y: -0.0392}, 1e-12)
+
+	runtime.releaseSessionActiveChunks(viewer)
+
+	position := tnt.State.Position
+	velocity := tnt.Velocity
+
+	runtime.Tick()
+
+	if tnt.State.Position != position || tnt.Velocity != velocity {
+		t.Fatalf("deactivated TNT changed in current: position %+v velocity %+v", tnt.State.Position, tnt.Velocity)
+	}
+}
+
+func TestPhysicalEntityFluidCurrentDoesNotAllocateAfterWarmup(t *testing.T) {
+	flowingWater := mustFluidBlock(t, game.Water, "1")
+
+	world := fluidTraceWorld([]game.BlockChange{
+		{Position: game.BlockPosition{}, Replacement: game.Water},
+		{Position: game.BlockPosition{X: 1}, Replacement: flowingWater},
+	})
+
+	runtime := NewRuntime(world)
+
+	box := itemEntityBox(game.Position{X: 0.5, Y: 0.5, Z: 0.5})
+
+	velocity := game.Velocity{}
+
+	runtime.applyPhysicalEntityFluidCurrents(box, &velocity)
+
+	allocations := testing.AllocsPerRun(100, func() {
+		velocity = game.Velocity{}
+		runtime.applyPhysicalEntityFluidCurrents(box, &velocity)
+	})
+
+	if allocations != 0 {
+		t.Fatalf("physical fluid current allocations = %f, want 0", allocations)
+	}
+}
+
+func TestEmbeddedArrowIsNotPushedByFluid(t *testing.T) {
+	flowingWater := mustFluidBlock(t, game.Water, "1")
+
+	world := fluidTraceWorld([]game.BlockChange{
+		{Position: game.BlockPosition{}, Replacement: game.Water},
+		{Position: game.BlockPosition{X: 1}, Replacement: flowingWater},
+	})
+
+	runtime := NewRuntime(world)
+
+	arrow := runtime.SpawnArrow(game.Position{X: 0.5, Y: 0.5, Z: 0.5}, game.Velocity{}, 0)
+
+	arrow.InGround = true
+	arrow.EmbeddedAt = game.BlockPosition{}
+	arrow.EmbeddedBlock = game.Water
+
+	arrow.Tick(runtime, nil)
+
+	if arrow.State.Position != (game.Position{X: 0.5, Y: 0.5, Z: 0.5}) || arrow.Velocity != (game.Velocity{}) {
+		t.Fatalf("embedded arrow moved with current: position %+v velocity %+v", arrow.State.Position, arrow.Velocity)
 	}
 }
 

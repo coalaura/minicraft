@@ -6,7 +6,12 @@ import (
 	"github.com/coalaura/minicraft/internal/game"
 )
 
-const fluidContactDepth = 0.1
+const (
+	fluidContactDepth  = 0.1
+	entityWaterPush    = 0.014
+	entityLavaPush     = 0.0023333333333333335
+	entityFastLavaPush = 0.007
+)
 
 type entityFluidContact struct {
 	Depth float64
@@ -232,6 +237,28 @@ func fluidCurrentImpulse(current, flow game.Velocity, scale float64) game.Veloci
 	impulse.Z = impulse.Z / length * 0.0045
 
 	return impulse
+}
+
+func (r *Runtime) applyPhysicalEntityFluidCurrents(box game.AABB, velocity *game.Velocity) {
+	contacts := r.fluidContacts(box, false)
+
+	waterImpulse := fluidCurrentImpulse(*velocity, contacts.Water.Flow, entityWaterPush)
+
+	velocity.X += waterImpulse.X
+	velocity.Y += waterImpulse.Y
+	velocity.Z += waterImpulse.Z
+
+	lavaPush := entityLavaPush
+
+	if r.FluidEnvironment.FastLava {
+		lavaPush = entityFastLavaPush
+	}
+
+	lavaImpulse := fluidCurrentImpulse(*velocity, contacts.Lava.Flow, lavaPush)
+
+	velocity.X += lavaImpulse.X
+	velocity.Y += lavaImpulse.Y
+	velocity.Z += lavaImpulse.Z
 }
 
 func velocityLength(velocity game.Velocity) float64 {

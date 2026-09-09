@@ -77,6 +77,8 @@ func (entity *runtimeTntEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		return
 	}
 
+	runtime.applyPhysicalEntityFluidCurrents(entityTntBox(entity.State.Position, definition), &entity.Velocity)
+
 	velocity := entity.Velocity
 	velocity.Y -= tntGravity
 
@@ -151,4 +153,10 @@ func (runtime *Runtime) primeTnt(position game.BlockPosition, ownerID int32, own
 
 func (entity *runtimeTntEntity) runtimeEntityViewLocked() runtimeEntityView {
 	return runtimeEntityView{ID: entity.State.ID, UUID: entity.State.UUID, Position: entity.State.Position, Chunk: entity.State.Chunk, Removed: entity.State.Removed, Velocity: entity.Velocity, OnGround: entity.OnGround}
+}
+
+func entityTntBox(position game.Position, definition game.EntityDefinition) game.AABB {
+	halfWidth := definition.Width / 2
+
+	return game.AABB{MinX: position.X - halfWidth, MinY: position.Y, MinZ: position.Z - halfWidth, MaxX: position.X + halfWidth, MaxY: position.Y + definition.Height, MaxZ: position.Z + halfWidth}
 }

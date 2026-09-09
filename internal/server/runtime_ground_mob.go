@@ -367,6 +367,7 @@ func (runtime *Runtime) tickGroundMobMovement(entity RuntimeEntity, living *Runt
 		}
 	}
 
+	runtime.applyPhysicalEntityFluidCurrents(living.CollisionBox(state.Position), &living.Velocity)
 	runtime.applyGroundLivingPhysics(state, living, rotation, moveControl, configuration)
 
 	bodyControl.Tick(previous, state.Position, rotation, configuration.MaximumHeadYaw)

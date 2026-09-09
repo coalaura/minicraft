@@ -254,6 +254,35 @@ func BenchmarkAquaticMobTick(b *testing.B) {
 	}
 }
 
+func BenchmarkPhysicalEntityFluidCurrent(b *testing.B) {
+	flowingWater, valid := game.Water.WithProperties(game.BlockPropertyValue{Name: "level", Value: "1"})
+	if !valid {
+		b.Fatal("resolve flowing water")
+	}
+
+	world := fluidTraceWorld([]game.BlockChange{
+		{Position: game.BlockPosition{}, Replacement: game.Water},
+		{Position: game.BlockPosition{X: 1}, Replacement: flowingWater},
+	})
+
+	runtime := NewRuntime(world)
+
+	box := itemEntityBox(game.Position{X: 0.5, Y: 0.5, Z: 0.5})
+
+	velocity := game.Velocity{}
+
+	runtime.applyPhysicalEntityFluidCurrents(box, &velocity)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		velocity = game.Velocity{}
+
+		runtime.applyPhysicalEntityFluidCurrents(box, &velocity)
+	}
+}
+
 func BenchmarkActiveMobTick(b *testing.B) {
 	counts := []int{100, 500}
 
