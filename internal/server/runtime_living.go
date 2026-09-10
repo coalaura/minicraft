@@ -49,6 +49,10 @@ type runtimeLivingSoundProvider interface {
 	RuntimeLivingDamageSound(bool) (game.SoundEvent, float32, float32)
 }
 
+type runtimeLivingDamageAttemptHandler interface {
+	runtimeLivingDamageAttemptLocked()
+}
+
 type runtimeEntitySoundSourceProvider interface {
 	RuntimeEntitySoundSource() int32
 }
@@ -146,6 +150,11 @@ func (r *Runtime) damageRuntimeLivingEntityLocked(entity RuntimeLivingEntity, da
 
 	defense := func() game.LivingDefense {
 		return game.LivingDefense{Armor: living.Armor, Toughness: living.ArmorToughness}
+	}
+
+	handler, handlesDamageAttempt := entity.(runtimeLivingDamageAttemptHandler)
+	if handlesDamageAttempt {
+		handler.runtimeLivingDamageAttemptLocked()
 	}
 
 	result := game.ResolveLivingDamage(&living.LivingState, damage, defense, nil)

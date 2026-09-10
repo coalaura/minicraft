@@ -12,6 +12,9 @@ var runtimeEntityConstructors = map[game.EntityType]runtimeEntityConstructor{
 	game.EntityArrow: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnArrow(position, game.Velocity{}, 0)
 	},
+	game.EntityBat: func(runtime *Runtime, position game.Position) RuntimeEntity {
+		return runtime.SpawnBat(position)
+	},
 	game.EntityChicken: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnChicken(position)
 	},

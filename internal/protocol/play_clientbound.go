@@ -19,6 +19,7 @@ const (
 	LivingFlagsMetadataIndex      = 8
 	LivingHealthMetadataIndex     = 9
 	MobFlagsMetadataIndex         = 15
+	BatFlagsMetadataIndex         = 16
 	FishFromBucketMetadataIndex   = 16
 	FishVariantMetadataIndex      = 17
 	PufferfishStateMetadataIndex  = 17
@@ -79,6 +80,7 @@ const (
 	EquipmentSlotChest    byte = 4
 	EquipmentSlotHead     byte = 5
 
+	LevelEventBatTakeoff = 1025
 	LevelEventLavaFizz   = 1501
 	LevelEventBlockBreak = 2001
 	SoundSourceBlock     = 4

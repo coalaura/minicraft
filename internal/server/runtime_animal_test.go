@@ -51,7 +51,7 @@ func (goal *runtimeGoalTestGoal) RequiresUpdateEveryTick() bool {
 }
 
 func TestRuntimeEntityRegistryContainsImplementedEntities(t *testing.T) {
-	wantNames := []string{"minecraft:arrow", "minecraft:chicken", "minecraft:cod", "minecraft:cow", "minecraft:creeper", "minecraft:pufferfish", "minecraft:salmon", "minecraft:sheep", "minecraft:skeleton", "minecraft:tnt", "minecraft:tropical_fish", "minecraft:zombie"}
+	wantNames := []string{"minecraft:arrow", "minecraft:bat", "minecraft:chicken", "minecraft:cod", "minecraft:cow", "minecraft:creeper", "minecraft:pufferfish", "minecraft:salmon", "minecraft:sheep", "minecraft:skeleton", "minecraft:tnt", "minecraft:tropical_fish", "minecraft:zombie"}
 	names := runtimeEntityImplementationNames()
 
 	if len(names) != len(wantNames) {
