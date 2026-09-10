@@ -131,7 +131,7 @@ func (entity *runtimeTntEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 func (runtime *Runtime) SpawnTnt(position game.Position, velocity game.Velocity, ownerID int32, ownerIsPlayer bool) *runtimeTntEntity {
 	entity := &runtimeTntEntity{Velocity: velocity, OwnerID: ownerID, Fuse: tntDefaultFuse, OwnerIsPlayer: ownerIsPlayer}
 
-	runtime.registerRuntimeEntity(entity, position)
+	runtime.registerRuntimeEntity(entity, game.EntityTnt, position)
 
 	return entity
 }

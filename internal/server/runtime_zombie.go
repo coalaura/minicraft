@@ -853,7 +853,7 @@ func (r *Runtime) SpawnZombie(position game.Position) *runtimeZombieEntity {
 	entity.Goals.Add(2, runtimeGoalMove|runtimeGoalLook, &zombieMeleeGoal{Entity: entity})
 	entity.Goals.Add(7, runtimeGoalMove|runtimeGoalLook, &zombieIdleGoal{Entity: entity})
 
-	r.registerRuntimeEntity(entity, position)
+	r.registerRuntimeEntity(entity, game.EntityZombie, position)
 
 	return entity
 }

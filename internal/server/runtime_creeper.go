@@ -723,7 +723,7 @@ func (runtime *Runtime) SpawnCreeper(position game.Position) *runtimeCreeperEnti
 	entity.Goals.Add(6, runtimeGoalLook, &creeperLookPlayerGoal{Entity: entity})
 	entity.Goals.Add(6, runtimeGoalLook, &creeperRandomLookGoal{Entity: entity})
 
-	runtime.registerRuntimeEntity(entity, position)
+	runtime.registerRuntimeEntity(entity, game.EntityCreeper, position)
 
 	return entity
 }

@@ -282,6 +282,7 @@ func (entity *runtimeAquatic) runtimeEntityViewLocked() runtimeEntityView {
 
 func (entity *runtimeAquatic) entityMetadataLocked() []protocol.EntityMetadataEntry {
 	metadata := runtimeMobMetadata(entity.Living.EntityFlags(), entity.Living.Health, 0)
+
 	metadata = append(metadata,
 		protocol.EntityMetadataEntry{Index: protocol.EntityAirMetadataIndex, Type: protocol.MetadataTypeInt, Value: protocol.MetadataVarInt(entity.AirSupply)},
 		protocol.EntityMetadataEntry{Index: protocol.FishFromBucketMetadataIndex, Type: protocol.MetadataTypeBoolean, Value: protocol.MetadataBoolean(entity.FromBucket)},
@@ -297,8 +298,9 @@ func (runtime *Runtime) SpawnCod(position game.Position) *runtimeCodEntity {
 	}
 
 	initializeSchoolingFish(&entity.runtimeSchoolingFish, aquaticDefaultSchoolSize)
+
 	runtime.configureSchoolingAquaticGoals(entity, &entity.runtimeAquatic)
-	runtime.registerRuntimeEntity(entity, position)
+	runtime.registerRuntimeEntity(entity, game.EntityCod, position)
 
 	return entity
 }
@@ -310,8 +312,9 @@ func (runtime *Runtime) SpawnSalmon(position game.Position) *runtimeSalmonEntity
 	}
 
 	initializeSchoolingFish(&entity.runtimeSchoolingFish, salmonMaximumSchoolSize)
+
 	runtime.configureSchoolingAquaticGoals(entity, &entity.runtimeAquatic)
-	runtime.registerRuntimeEntity(entity, position)
+	runtime.registerRuntimeEntity(entity, game.EntitySalmon, position)
 
 	return entity
 }
@@ -323,8 +326,9 @@ func (runtime *Runtime) SpawnTropicalFish(position game.Position) *runtimeTropic
 	}
 
 	initializeSchoolingFish(&entity.runtimeSchoolingFish, aquaticDefaultSchoolSize)
+
 	runtime.configureSchoolingAquaticGoals(entity, &entity.runtimeAquatic)
-	runtime.registerRuntimeEntity(entity, position)
+	runtime.registerRuntimeEntity(entity, game.EntityTropicalFish, position)
 
 	return entity
 }
@@ -338,6 +342,7 @@ func (runtime *Runtime) initializeAquatic(entity *runtimeAquatic, specification 
 	entity.Spec = specification
 	entity.AirSupply = aquaticMaximumAirSupply
 	entity.EyeHeight = specification.EyeHeight
+
 	entity.Living = RuntimeLivingState{Width: definition.Width, Height: definition.Height, NextStepDistance: 1}
 	entity.Living.Reset(3)
 
@@ -430,7 +435,7 @@ func (runtime *Runtime) tickAquaticAir(concrete RuntimeLivingEntity, entity *run
 	entity.State.mu.Unlock()
 
 	if drown {
-		runtime.applyRuntimeLivingEnvironmentDamage(concrete, game.Damage{Type: game.DamageDrown, Amount: aquaticDrowningDamage})
+		runtime.applyRuntimeLivingEnvironmentDamage(concrete, game.Damage{Type: game.DamageDryOut, Amount: aquaticDrowningDamage})
 	}
 }
 

@@ -46,6 +46,29 @@ func TestRuntimeEntityIDsSharePlayerNamespace(t *testing.T) {
 	}
 }
 
+func TestRuntimeLivingEntitiesInBoxFindsWideAdjacentChunkEntity(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	intersecting := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 23.8}, 20)
+
+	intersecting.Living.Width = 16
+
+	spawnTestRuntimeLivingEntity(runtime, game.Position{X: 25}, 20)
+
+	iterator := runtime.runtimeLivingEntitiesInBox(game.AABB{MinX: 15, MinY: 0.5, MinZ: -0.1, MaxX: 15.9, MaxY: 1, MaxZ: 0.1})
+
+	entity, found := iterator.Next()
+
+	if !found || entity != intersecting {
+		t.Fatalf("wide adjacent-chunk entity = %v, found %t", entity, found)
+	}
+
+	entity, found = iterator.Next()
+	if found {
+		t.Fatalf("non-intersecting entity retained: %v", entity)
+	}
+}
+
 func TestRuntimeEntityTrackingFollowsLoadedChunks(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 

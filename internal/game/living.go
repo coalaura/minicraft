@@ -14,6 +14,7 @@ const (
 	DamageGeneric DamageType = iota
 	DamageFall
 	DamageDrown
+	DamageDryOut
 	DamageInFire
 	DamageLava
 	DamageOnFire
@@ -114,6 +115,8 @@ func (damageType DamageType) Traits() DamageTraits {
 		return DamageTraits{RegistryID: 18, BypassesArmor: true}
 	case DamageDrown:
 		return DamageTraits{RegistryID: 6, BypassesArmor: true}
+	case DamageDryOut:
+		return DamageTraits{RegistryID: 7, DamagesArmor: true}
 	case DamageFall:
 		return DamageTraits{RegistryID: 10, BypassesArmor: true}
 	case DamageGenericKill:

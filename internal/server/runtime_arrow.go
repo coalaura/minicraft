@@ -21,6 +21,7 @@ const (
 	arrowRotationSmoothing            = 0.2
 	arrowFailedHitSpeed               = 0.001
 	arrowEmbeddedPointInflation       = 0.06
+	arrowSweepQueryEpsilon            = 1e-7
 )
 
 type runtimeProjectileState struct {
@@ -162,9 +163,7 @@ func (entity *runtimeArrowEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 
 	entity.State.mu.Unlock()
 
-	targets := runtime.arrowTargets()
-
-	if !leftOwner && !arrowOwnerInSweep(from, velocity, ownerID, targets) {
+	if !leftOwner && !runtime.arrowOwnerInSweep(from, velocity, ownerID) {
 		leftOwner = true
 	}
 
@@ -172,7 +171,7 @@ func (entity *runtimeArrowEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 
 	blockHit, hitBlock := runtime.sweepWorldBlockSegment(from, to)
 
-	target, entityFraction, hitEntity := arrowNearestTarget(from, to, targets, ownerID, leftOwner, tickCount)
+	target, entityFraction, hitEntity := runtime.arrowNearestTarget(from, to, ownerID, leftOwner, tickCount)
 
 	if hitEntity && (!hitBlock || entityFraction < blockHit.Fraction) {
 		if runtime.damageArrowTarget(target, entity.State.ID, ownerID, velocity) {
@@ -235,47 +234,9 @@ func (runtime *Runtime) SpawnArrow(position game.Position, velocity game.Velocit
 
 	entity := &runtimeArrowEntity{runtimeProjectileState: projectile, Rotation: arrowRotation(velocity)}
 
-	runtime.registerRuntimeEntity(entity, position)
+	runtime.registerRuntimeEntity(entity, game.EntityArrow, position)
 
 	return entity
-}
-
-func (runtime *Runtime) arrowTargets() []arrowTarget {
-	targets := make([]arrowTarget, 0)
-
-	for _, session := range runtime.sessionView() {
-		player := session.playerView()
-		if !player.Dead {
-			targets = append(targets, arrowTarget{session: session, box: player.collisionBox(), id: player.EntityID})
-		}
-	}
-
-	entities := runtime.appendRuntimeEntities(nil)
-
-	for _, entity := range entities {
-		living, valid := entity.(RuntimeLivingEntity)
-		if !valid {
-			continue
-		}
-
-		state := living.RuntimeEntityState()
-
-		state.mu.RLock()
-		position := state.Position
-		removed := state.Removed
-		id := state.ID
-
-		dead := living.RuntimeLivingState().Dead
-
-		box := living.RuntimeLivingState().CollisionBox(position)
-		state.mu.RUnlock()
-
-		if !removed && !dead {
-			targets = append(targets, arrowTarget{entity: living, box: box, id: id})
-		}
-	}
-
-	return targets
 }
 
 func (runtime *Runtime) damageArrowTarget(target arrowTarget, arrowID, ownerID int32, velocity game.Velocity) bool {
@@ -326,24 +287,40 @@ func (runtime *Runtime) damageArrowTarget(target arrowTarget, arrowID, ownerID i
 	return applied
 }
 
-func arrowNearestTarget(from, to game.Position, targets []arrowTarget, ownerID int32, leftOwner bool, tickCount int32) (arrowTarget, float64, bool) {
+func (runtime *Runtime) arrowNearestTarget(from, to game.Position, ownerID int32, leftOwner bool, tickCount int32) (arrowTarget, float64, bool) {
 	deltaX := to.X - from.X
 	deltaY := to.Y - from.Y
 	deltaZ := to.Z - from.Z
+	margin := arrowCollisionMarginForTick(tickCount)
 
 	nearestFraction := math.Inf(1)
 	nearest := arrowTarget{}
 
-	for _, target := range targets {
-		if target.id == ownerID && !leftOwner {
+	for _, session := range runtime.sessionView() {
+		player := session.playerView()
+		if player.Dead {
 			continue
 		}
 
-		fraction, _, intersects := raycastAABB(from, deltaX, deltaY, deltaZ, arrowInflate(target.box, arrowCollisionMarginForTick(tickCount)))
-		if intersects && fraction >= 0 && fraction <= 1 && fraction < nearestFraction {
-			nearestFraction = fraction
-			nearest = target
+		target := arrowTarget{session: session, box: player.collisionBox(), id: player.EntityID}
+		nearest, nearestFraction = arrowNearerTarget(from, deltaX, deltaY, deltaZ, target, ownerID, leftOwner, margin, nearest, nearestFraction)
+	}
+
+	iterator := runtime.runtimeLivingEntitiesInBox(arrowSweepBox(from, to, margin))
+
+	for {
+		living, found := iterator.Next()
+		if !found {
+			break
 		}
+
+		state := living.RuntimeEntityState()
+
+		state.mu.RLock()
+		target := arrowTarget{entity: living, box: living.RuntimeLivingState().CollisionBox(state.Position), id: state.ID}
+		state.mu.RUnlock()
+
+		nearest, nearestFraction = arrowNearerTarget(from, deltaX, deltaY, deltaZ, target, ownerID, leftOwner, margin, nearest, nearestFraction)
 	}
 
 	return nearest, nearestFraction, nearestFraction != math.Inf(1)
@@ -372,21 +349,70 @@ func arrowPlayerDamageForDifficulty(difficulty game.Difficulty, damage float32) 
 	}
 }
 
-func arrowOwnerInSweep(from game.Position, velocity game.Velocity, ownerID int32, targets []arrowTarget) bool {
+func (runtime *Runtime) arrowOwnerInSweep(from game.Position, velocity game.Velocity, ownerID int32) bool {
 	if ownerID == 0 {
 		return false
 	}
 
-	for _, target := range targets {
-		if target.id != ownerID {
+	for _, session := range runtime.sessionView() {
+		player := session.playerView()
+		if player.Dead || player.EntityID != ownerID {
 			continue
 		}
 
-		fraction, _, intersects := raycastAABB(from, velocity.X, velocity.Y, velocity.Z, arrowInflate(target.box, arrowOwnerMargin))
+		fraction, _, intersects := raycastAABB(from, velocity.X, velocity.Y, velocity.Z, arrowInflate(player.collisionBox(), arrowOwnerMargin))
 		return intersects && fraction <= 1
 	}
 
-	return false
+	runtime.entityMu.RLock()
+	owner := runtime.entities[ownerID]
+	runtime.entityMu.RUnlock()
+
+	living, valid := owner.(RuntimeLivingEntity)
+	if !valid {
+		return false
+	}
+
+	state := living.RuntimeEntityState()
+
+	state.mu.RLock()
+	box := living.RuntimeLivingState().CollisionBox(state.Position)
+	active := !state.Removed && !living.RuntimeLivingState().Dead
+	state.mu.RUnlock()
+
+	if !active {
+		return false
+	}
+
+	fraction, _, intersects := raycastAABB(from, velocity.X, velocity.Y, velocity.Z, arrowInflate(box, arrowOwnerMargin))
+
+	return intersects && fraction <= 1
+}
+
+func arrowNearerTarget(from game.Position, deltaX, deltaY, deltaZ float64, target arrowTarget, ownerID int32, leftOwner bool, margin float64, nearest arrowTarget, nearestFraction float64) (arrowTarget, float64) {
+	if target.id == ownerID && !leftOwner {
+		return nearest, nearestFraction
+	}
+
+	fraction, _, intersects := raycastAABB(from, deltaX, deltaY, deltaZ, arrowInflate(target.box, margin))
+	if !intersects || fraction < 0 || fraction > 1 || fraction >= nearestFraction {
+		return nearest, nearestFraction
+	}
+
+	return target, fraction
+}
+
+func arrowSweepBox(from, to game.Position, margin float64) game.AABB {
+	margin = max(margin, arrowSweepQueryEpsilon)
+
+	return game.AABB{
+		MinX: min(from.X, to.X) - margin,
+		MinY: min(from.Y, to.Y) - margin,
+		MinZ: min(from.Z, to.Z) - margin,
+		MaxX: max(from.X, to.X) + margin,
+		MaxY: max(from.Y, to.Y) + margin,
+		MaxZ: max(from.Z, to.Z) + margin,
+	}
 }
 
 func arrowApplyPhysics(runtime *Runtime, entity *runtimeArrowEntity) {

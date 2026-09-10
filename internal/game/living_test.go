@@ -38,6 +38,13 @@ func TestDamageTypeZeroMobAttackAndArrowTraits(t *testing.T) {
 	}
 }
 
+func TestDamageDryOutTraits(t *testing.T) {
+	traits := DamageDryOut.Traits()
+	if traits.RegistryID != 7 || !traits.DamagesArmor || traits.BypassesArmor || traits.BypassesResistance || traits.PanicCauses || traits.Fire {
+		t.Fatalf("dry out damage traits = %+v", traits)
+	}
+}
+
 func TestResolveLivingDamageMitigationOrdering(t *testing.T) {
 	resistance := MobEffectInstance{Effect: MobEffectResistance, Amplifier: 0, Duration: 20}
 

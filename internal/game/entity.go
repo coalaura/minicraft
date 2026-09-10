@@ -48,6 +48,27 @@ func (entityType EntityType) Definition() (EntityDefinition, bool) {
 	return entityDefinitions[entityType], true
 }
 
+func (entityType EntityType) NotScaryForPufferfish() bool {
+	switch entityType {
+	case EntityTurtle,
+		EntityGuardian,
+		EntityElderGuardian,
+		EntityCod,
+		EntityPufferfish,
+		EntitySalmon,
+		EntityTropicalFish,
+		EntityDolphin,
+		EntitySquid,
+		EntityGlowSquid,
+		EntityTadpole,
+		EntityNautilus,
+		EntityZombieNautilus:
+		return true
+	default:
+		return false
+	}
+}
+
 func EntityByName(name string) (EntityType, bool) {
 	name, ok := generatedName(name)
 	if !ok {

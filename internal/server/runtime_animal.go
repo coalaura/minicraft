@@ -341,7 +341,7 @@ func (runtime *Runtime) SpawnCow(position game.Position) *runtimeCowEntity {
 	}
 
 	runtime.configureAnimalGoals(&entity.runtimeAnimal)
-	runtime.registerRuntimeEntity(entity, position)
+	runtime.registerRuntimeEntity(entity, game.EntityCow, position)
 
 	return entity
 }
@@ -353,7 +353,7 @@ func (runtime *Runtime) SpawnSheep(position game.Position) *runtimeSheepEntity {
 	}
 
 	runtime.configureAnimalGoals(&entity.runtimeAnimal)
-	runtime.registerRuntimeEntity(entity, position)
+	runtime.registerRuntimeEntity(entity, game.EntitySheep, position)
 
 	return entity
 }
@@ -370,7 +370,7 @@ func (runtime *Runtime) SpawnChicken(position game.Position) *runtimeChickenEnti
 	}
 
 	runtime.configureAnimalGoals(&entity.runtimeAnimal)
-	runtime.registerRuntimeEntity(entity, position)
+	runtime.registerRuntimeEntity(entity, game.EntityChicken, position)
 
 	return entity
 }

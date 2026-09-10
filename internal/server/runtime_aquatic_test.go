@@ -160,8 +160,8 @@ func TestAquaticAirDepletesDamagesAndResetsInWater(t *testing.T) {
 		runtime.tickAquaticAir(cod, &cod.runtimeAquatic)
 	}
 
-	if cod.AirSupply != 0 || cod.Living.Health != 1 {
-		t.Fatalf("dehydrated fish = air %d health %v, want 0 and 1", cod.AirSupply, cod.Living.Health)
+	if cod.AirSupply != 0 || cod.Living.Health != 1 || cod.Living.LastDamageType != game.DamageDryOut {
+		t.Fatalf("dehydrated fish = air %d health %v damage %v, want 0, 1, and dry out", cod.AirSupply, cod.Living.Health, cod.Living.LastDamageType)
 	}
 
 	fillAquaticNavigationWater(runtime.World, 0, 0, 10, 10, 0, 0)

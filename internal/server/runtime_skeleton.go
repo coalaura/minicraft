@@ -1031,7 +1031,7 @@ func (runtime *Runtime) SpawnSkeleton(position game.Position) *runtimeSkeletonEn
 	entity.Goals.Add(4, runtimeGoalMove|runtimeGoalLook, &skeletonMeleeGoal{Entity: entity})
 	entity.Goals.Add(5, runtimeGoalMove, &skeletonIdleGoal{Entity: entity})
 
-	runtime.registerRuntimeEntity(entity, position)
+	runtime.registerRuntimeEntity(entity, game.EntitySkeleton, position)
 
 	return entity
 }

@@ -14,21 +14,22 @@ import (
 )
 
 const (
-	itemEntityWidth             = 0.25
-	itemEntityHeight            = 0.25
-	itemEntityGravity           = 0.04
-	itemEntityVerticalDrag      = 0.98
-	itemEntityLifetime          = 6000
-	itemEntityMergeRadius       = 0.5
-	itemEntitySyncThreshold     = 0.01
-	itemEntityWaterDrag         = 0.99
-	itemEntityLavaDrag          = 0.95
-	itemEntityFluidLift         = 0.0005
-	itemEntityFluidRiseMax      = 0.06
-	itemEntityFireDurationTicks = 8 * 20
-	itemEntityLavaFireTicks     = 15 * 20
-	itemEntityLavaDamage        = 4
-	itemEntityBurningDamage     = 1
+	itemEntityWidth               = 0.25
+	itemEntityHeight              = 0.25
+	itemEntityGravity             = 0.04
+	itemEntityVerticalDrag        = 0.98
+	itemEntityLifetime            = 6000
+	itemEntityMergeRadius         = 0.5
+	itemEntitySyncThreshold       = 0.01
+	itemEntityWaterDrag           = 0.99
+	itemEntityLavaDrag            = 0.95
+	itemEntityFluidLift           = 0.0005
+	itemEntityFluidRiseMax        = 0.06
+	itemEntityFireDurationTicks   = 8 * 20
+	itemEntityLavaFireTicks       = 15 * 20
+	itemEntityLavaDamage          = 4
+	itemEntityBurningDamage       = 1
+	runtimeLivingMaximumHalfWidth = 8
 )
 
 type RuntimeEntityState struct {
@@ -36,6 +37,7 @@ type RuntimeEntityState struct {
 
 	ID       int32
 	UUID     string
+	Type     game.EntityType
 	Position game.Position
 	Chunk    LoadedChunk
 	Removed  bool
@@ -49,6 +51,16 @@ type RuntimeEntityTrackingConfig struct {
 	ClientRangeChunks int32
 	UpdateInterval    int32
 	TrackDeltas       bool
+}
+
+type runtimeLivingEntityBoxIterator struct {
+	runtime      *Runtime
+	box          game.AABB
+	minimumChunk LoadedChunk
+	maximumChunk LoadedChunk
+	chunkX       int32
+	chunkZ       int32
+	afterID      int32
 }
 
 type runtimeEntityView struct {
@@ -480,7 +492,7 @@ func (r *Runtime) SpawnItemEntity(stack game.ItemStack, position game.Position, 
 	}
 	entity.mergePosition.Store(position)
 
-	r.registerRuntimeEntity(entity, position)
+	r.registerRuntimeEntity(entity, game.EntityItem, position)
 
 	return entity
 }
@@ -584,6 +596,73 @@ func (r *Runtime) appendRuntimeEntities(entities []RuntimeEntity) []RuntimeEntit
 	r.entityMu.RUnlock()
 
 	return entities
+}
+
+func (iterator *runtimeLivingEntityBoxIterator) Next() (RuntimeLivingEntity, bool) {
+	for iterator.chunkX <= iterator.maximumChunk.X {
+		chunk := LoadedChunk{X: iterator.chunkX, Z: iterator.chunkZ}
+
+		iterator.runtime.entityMu.RLock()
+		entities := iterator.runtime.entitiesByChunk[chunk]
+		index := runtimeEntityIndexAfterID(entities, iterator.afterID)
+
+		if index == len(entities) {
+			iterator.runtime.entityMu.RUnlock()
+
+			iterator.advanceChunk()
+
+			continue
+		}
+
+		candidate := entities[index]
+		state := candidate.RuntimeEntityState()
+		iterator.afterID = state.ID
+
+		living, livingEntity := candidate.(RuntimeLivingEntity)
+		if !livingEntity {
+			iterator.runtime.entityMu.RUnlock()
+
+			continue
+		}
+
+		state.mu.RLock()
+		intersects := !state.Removed && !living.RuntimeLivingState().Dead && iterator.box.Intersects(living.RuntimeLivingState().CollisionBox(state.Position))
+
+		state.mu.RUnlock()
+		iterator.runtime.entityMu.RUnlock()
+
+		if intersects {
+			return living, true
+		}
+	}
+
+	return nil, false
+}
+
+func (iterator *runtimeLivingEntityBoxIterator) advanceChunk() {
+	iterator.afterID = 0
+	iterator.chunkZ++
+
+	if iterator.chunkZ <= iterator.maximumChunk.Z {
+		return
+	}
+
+	iterator.chunkX++
+	iterator.chunkZ = iterator.minimumChunk.Z
+}
+
+func (r *Runtime) runtimeLivingEntitiesInBox(box game.AABB) runtimeLivingEntityBoxIterator {
+	minimumChunk := positionLoadedChunk(game.Position{X: box.MinX - runtimeLivingMaximumHalfWidth, Z: box.MinZ - runtimeLivingMaximumHalfWidth})
+	maximumChunk := positionLoadedChunk(game.Position{X: box.MaxX + runtimeLivingMaximumHalfWidth, Z: box.MaxZ + runtimeLivingMaximumHalfWidth})
+
+	return runtimeLivingEntityBoxIterator{
+		runtime:      r,
+		box:          box,
+		minimumChunk: minimumChunk,
+		maximumChunk: maximumChunk,
+		chunkX:       minimumChunk.X,
+		chunkZ:       minimumChunk.Z,
+	}
 }
 
 func (r *Runtime) addEntityToChunkIndexLocked(entity RuntimeEntity) {
@@ -1553,6 +1632,22 @@ func insertRuntimeEntityByID(entities []RuntimeEntity, entity RuntimeEntity) []R
 	entities[index] = entity
 
 	return entities
+}
+
+func runtimeEntityIndexAfterID(entities []RuntimeEntity, entityID int32) int {
+	minimum := 0
+	maximum := len(entities)
+
+	for minimum < maximum {
+		middle := int(uint(minimum+maximum) >> 1)
+		if entities[middle].RuntimeEntityState().ID <= entityID {
+			minimum = middle + 1
+		} else {
+			maximum = middle
+		}
+	}
+
+	return minimum
 }
 
 func removeRuntimeEntityByID(entities []RuntimeEntity, entityID int32) []RuntimeEntity {

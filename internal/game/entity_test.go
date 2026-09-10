@@ -38,3 +38,31 @@ func TestEntityRegistry(t *testing.T) {
 		t.Fatalf("minecraft:player = %d, found %t", entityType, found)
 	}
 }
+
+func TestEntityTypesNotScaryForPufferfish(t *testing.T) {
+	notScary := []EntityType{
+		EntityTurtle,
+		EntityGuardian,
+		EntityElderGuardian,
+		EntityCod,
+		EntityPufferfish,
+		EntitySalmon,
+		EntityTropicalFish,
+		EntityDolphin,
+		EntitySquid,
+		EntityGlowSquid,
+		EntityTadpole,
+		EntityNautilus,
+		EntityZombieNautilus,
+	}
+
+	for _, entityType := range notScary {
+		if !entityType.NotScaryForPufferfish() {
+			t.Fatalf("entity type %d is scary for pufferfish", entityType)
+		}
+	}
+
+	if EntityCow.NotScaryForPufferfish() {
+		t.Fatal("cow is not scary for pufferfish")
+	}
+}

@@ -8,6 +8,11 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+const (
+	pufferfishSpatialStressCount = 64
+	unrelatedSpatialStressCount  = 1024
+)
+
 type pufferfishDifficultyDamageTest struct {
 	Name       string
 	Difficulty game.Difficulty
@@ -325,10 +330,70 @@ func TestWarmedAquaticSwimmingTicksHaveNearZeroAllocations(t *testing.T) {
 	}
 }
 
+func TestWarmedPufferfishSpatialQueriesAllocateZero(t *testing.T) {
+	runtime, pufferfish := newPufferfishSpatialStressRuntime()
+
+	runPufferfishSpatialStressQueries(runtime, pufferfish)
+
+	allocations := testing.AllocsPerRun(100, func() {
+		runPufferfishSpatialStressQueries(runtime, pufferfish)
+	})
+
+	if allocations != 0 {
+		t.Fatalf("warmed threat and sting query allocations = %.2f, want 0", allocations)
+	}
+}
+
+func BenchmarkPufferfishSpatialQueries(b *testing.B) {
+	runtime, pufferfish := newPufferfishSpatialStressRuntime()
+
+	runPufferfishSpatialStressQueries(runtime, pufferfish)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		runPufferfishSpatialStressQueries(runtime, pufferfish)
+	}
+}
+
 func assertPufferfishState(t *testing.T, pufferfish *runtimePufferfishEntity, state, inflateCounter, deflateTimer int32) {
 	t.Helper()
 
 	if pufferfish.PuffState != state || pufferfish.InflateCounter != inflateCounter || pufferfish.DeflateTimer != deflateTimer {
 		t.Fatalf("pufferfish state = %d inflate %d deflate %d, want %d/%d/%d", pufferfish.PuffState, pufferfish.InflateCounter, pufferfish.DeflateTimer, state, inflateCounter, deflateTimer)
+	}
+}
+
+func newPufferfishSpatialStressRuntime() (*Runtime, []*runtimePufferfishEntity) {
+	runtime := NewRuntime(&game.World{})
+
+	pufferfish := make([]*runtimePufferfishEntity, 0, pufferfishSpatialStressCount)
+
+	for index := range pufferfishSpatialStressCount {
+		position := game.Position{X: float64(index%8) * 4, Y: 10, Z: float64(index/8) * 4}
+
+		entity := runtime.SpawnPufferfish(position)
+
+		entity.State.mu.Lock()
+		entity.setPuffStateLocked(pufferfishFullState)
+		entity.State.mu.Unlock()
+
+		pufferfish = append(pufferfish, entity)
+	}
+
+	for index := range unrelatedSpatialStressCount {
+		position := game.Position{X: 10_000 + float64(index%32)*4, Y: 10, Z: float64(index/32) * 4}
+
+		runtime.SpawnCow(position)
+	}
+
+	return runtime, pufferfish
+}
+
+func runPufferfishSpatialStressQueries(runtime *Runtime, pufferfish []*runtimePufferfishEntity) {
+	for _, entity := range pufferfish {
+		entity.hasNearbyThreat(runtime)
+		entity.stingNearbyMobs(runtime)
 	}
 }

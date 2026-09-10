@@ -169,29 +169,19 @@ func (entity *runtimePufferfishEntity) hasNearbyThreat(runtime *Runtime) bool {
 		}
 	}
 
-	runtime.entityMu.RLock()
-	defer runtime.entityMu.RUnlock()
+	iterator := runtime.runtimeLivingEntitiesInBox(box)
 
-	for _, candidate := range runtime.entities {
+	for {
+		candidate, found := iterator.Next()
+		if !found {
+			break
+		}
+
 		if candidate == entity || !pufferfishScaryRuntimeEntity(candidate) {
 			continue
 		}
 
-		living, valid := candidate.(RuntimeLivingEntity)
-		if !valid {
-			continue
-		}
-
-		state := candidate.RuntimeEntityState()
-		livingState := living.RuntimeLivingState()
-
-		state.mu.RLock()
-		threat := !state.Removed && !livingState.Dead && box.Intersects(livingState.CollisionBox(state.Position))
-		state.mu.RUnlock()
-
-		if threat {
-			return true
-		}
+		return true
 	}
 
 	return false
@@ -210,26 +200,21 @@ func (entity *runtimePufferfishEntity) stingNearbyMobs(runtime *Runtime) {
 		return
 	}
 
-	for _, candidate := range runtime.appendRuntimeEntities(nil) {
+	iterator := runtime.runtimeLivingEntitiesInBox(box)
+
+	for {
+		living, found := iterator.Next()
+		if !found {
+			break
+		}
+
+		candidate := RuntimeEntity(living)
 		if candidate == entity || !pufferfishScaryRuntimeEntity(candidate) {
 			continue
 		}
 
-		living, livingEntity := candidate.(RuntimeLivingEntity)
 		_, mobEntity := candidate.(RuntimeMobEntity)
-
-		if !livingEntity || !mobEntity {
-			continue
-		}
-
-		candidateState := candidate.RuntimeEntityState()
-		livingState := living.RuntimeLivingState()
-
-		candidateState.mu.RLock()
-		touching := !candidateState.Removed && !livingState.Dead && box.Intersects(livingState.CollisionBox(candidateState.Position))
-		candidateState.mu.RUnlock()
-
-		if !touching {
+		if !mobEntity {
 			continue
 		}
 
@@ -313,18 +298,19 @@ func (runtime *Runtime) SpawnPufferfish(position game.Position) *runtimePufferfi
 
 	entity.Goals.Add(1, 0, &pufferfishInflateGoal{Fish: entity})
 
-	runtime.registerRuntimeEntity(entity, position)
+	runtime.registerRuntimeEntity(entity, game.EntityPufferfish, position)
 
 	return entity
 }
 
 func pufferfishScaryRuntimeEntity(entity RuntimeEntity) bool {
-	switch entity.(type) {
-	case *runtimeCodEntity, *runtimePufferfishEntity, *runtimeSalmonEntity, *runtimeTropicalFishEntity:
-		return false
-	default:
-		return true
-	}
+	state := entity.RuntimeEntityState()
+
+	state.mu.RLock()
+	entityType := state.Type
+	state.mu.RUnlock()
+
+	return !entityType.NotScaryForPufferfish()
 }
 
 func pufferfishPlayerDamageForDifficulty(difficulty game.Difficulty, damage float32) float32 {

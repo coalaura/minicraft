@@ -58,11 +58,12 @@ func (r *Runtime) SpawnEntity(entityType game.EntityType, position game.Position
 	return entity, entity != nil
 }
 
-func (r *Runtime) registerRuntimeEntity(entity RuntimeEntity, position game.Position) {
+func (r *Runtime) registerRuntimeEntity(entity RuntimeEntity, entityType game.EntityType, position game.Position) {
 	state := entity.RuntimeEntityState()
 
 	state.ID = r.allocateEntityID()
 	state.UUID = randomEntityUUID()
+	state.Type = entityType
 	state.Position = position
 	state.Chunk = positionLoadedChunk(position)
 
