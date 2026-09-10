@@ -24,6 +24,9 @@ var runtimeEntityConstructors = map[game.EntityType]runtimeEntityConstructor{
 	game.EntityCreeper: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnCreeper(position)
 	},
+	game.EntityPufferfish: func(runtime *Runtime, position game.Position) RuntimeEntity {
+		return runtime.SpawnPufferfish(position)
+	},
 	game.EntitySheep: func(runtime *Runtime, position game.Position) RuntimeEntity {
 		return runtime.SpawnSheep(position)
 	},

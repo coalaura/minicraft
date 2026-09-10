@@ -16,11 +16,33 @@ const (
 	aquaticSchoolContinueSquared  = 121
 	aquaticSchoolValidationChance = 200
 	aquaticSchoolRepathTicks      = 5
+	aquaticDefaultSchoolSize      = 8
+	salmonMaximumSchoolSize       = 5
 )
 
 type aquaticFish interface {
 	RuntimeEntity
 	aquaticBase() *runtimeAquatic
+}
+
+type aquaticTickHooks interface {
+	aquaticPreTick(*Runtime)
+	aquaticPostMovementTick(*Runtime)
+}
+
+type aquaticSchoolState struct {
+	Leader     RuntimeEntity
+	SchoolSize int
+}
+
+type runtimeSchoolingFish struct {
+	School            aquaticSchoolState
+	MaximumSchoolSize int
+}
+
+type schoolingFish interface {
+	aquaticFish
+	schoolingBase() *runtimeSchoolingFish
 }
 
 type aquaticPanicGoal struct {
@@ -40,7 +62,7 @@ type aquaticRandomSwimGoal struct {
 }
 
 type aquaticFollowSchoolGoal struct {
-	Fish          aquaticFish
+	Fish          schoolingFish
 	NextStartTick int
 	RepathTick    int
 }
@@ -55,6 +77,22 @@ func (entity *runtimeSalmonEntity) aquaticBase() *runtimeAquatic {
 
 func (entity *runtimeTropicalFishEntity) aquaticBase() *runtimeAquatic {
 	return &entity.runtimeAquatic
+}
+
+func (entity *runtimePufferfishEntity) aquaticBase() *runtimeAquatic {
+	return &entity.runtimeAquatic
+}
+
+func (entity *runtimeCodEntity) schoolingBase() *runtimeSchoolingFish {
+	return &entity.runtimeSchoolingFish
+}
+
+func (entity *runtimeSalmonEntity) schoolingBase() *runtimeSchoolingFish {
+	return &entity.runtimeSchoolingFish
+}
+
+func (entity *runtimeTropicalFishEntity) schoolingBase() *runtimeSchoolingFish {
+	return &entity.runtimeSchoolingFish
 }
 
 func (goal *aquaticPanicGoal) CanUse(runtime *Runtime) bool {
@@ -173,10 +211,11 @@ func (goal *aquaticAvoidPlayerGoal) selectPath(runtime *Runtime) bool {
 
 func (goal *aquaticRandomSwimGoal) CanUse(runtime *Runtime) bool {
 	entity := goal.Fish.aquaticBase()
+	schooling, schools := goal.Fish.(schoolingFish)
 
 	entity.State.mu.RLock()
 	noActionTime := entity.NoActionTime
-	follower := aquaticFollowerLocked(entity)
+	follower := schools && aquaticFollowerLocked(schooling)
 	position := entity.State.Position
 	entity.State.mu.RUnlock()
 
@@ -191,11 +230,12 @@ func (goal *aquaticRandomSwimGoal) CanUse(runtime *Runtime) bool {
 
 func (goal *aquaticRandomSwimGoal) CanContinue(*Runtime) bool {
 	entity := goal.Fish.aquaticBase()
+	schooling, schools := goal.Fish.(schoolingFish)
 
 	entity.State.mu.RLock()
 	defer entity.State.mu.RUnlock()
 
-	return !aquaticFollowerLocked(entity) && !entity.Navigation.Done()
+	return (!schools || !aquaticFollowerLocked(schooling)) && !entity.Navigation.Done()
 }
 
 func (goal *aquaticRandomSwimGoal) Start(*Runtime) {
@@ -214,10 +254,11 @@ func (*aquaticRandomSwimGoal) Tick(*Runtime) {}
 
 func (goal *aquaticFollowSchoolGoal) CanUse(runtime *Runtime) bool {
 	entity := goal.Fish.aquaticBase()
+	schooling := goal.Fish.schoolingBase()
 
 	entity.State.mu.RLock()
-	follower := aquaticFollowerLocked(entity)
-	hasFollowers := entity.School.SchoolSize > 1
+	follower := aquaticFollowerLocked(goal.Fish)
+	hasFollowers := schooling.School.SchoolSize > 1
 	entity.State.mu.RUnlock()
 
 	if hasFollowers {
@@ -245,9 +286,10 @@ func (goal *aquaticFollowSchoolGoal) CanUse(runtime *Runtime) bool {
 
 func (goal *aquaticFollowSchoolGoal) CanContinue(*Runtime) bool {
 	entity := goal.Fish.aquaticBase()
+	schooling := goal.Fish.schoolingBase()
 
 	entity.State.mu.RLock()
-	leader := entity.School.Leader
+	leader := schooling.School.Leader
 	position := entity.State.Position
 	entity.State.mu.RUnlock()
 
@@ -283,9 +325,10 @@ func (goal *aquaticFollowSchoolGoal) Tick(runtime *Runtime) {
 
 	goal.RepathTick = aquaticSchoolRepathTicks
 	entity := goal.Fish.aquaticBase()
+	schooling := goal.Fish.schoolingBase()
 
 	entity.State.mu.RLock()
-	leader := entity.School.Leader
+	leader := schooling.School.Leader
 	position := entity.State.Position
 	entity.State.mu.RUnlock()
 
@@ -313,15 +356,20 @@ func (entity *runtimeAquatic) stopNavigation() {
 }
 
 func (runtime *Runtime) configureAquaticGoals(concrete aquaticFish, entity *runtimeAquatic) {
-	followDelay := reducedTickDelay(200 + runtimeMobRandomInt(runtime, 20))
-
 	entity.Goals.Add(0, runtimeGoalMove, &aquaticPanicGoal{Fish: concrete})
 	entity.Goals.Add(2, runtimeGoalMove, &aquaticAvoidPlayerGoal{Fish: concrete})
 	entity.Goals.Add(4, runtimeGoalMove, &aquaticRandomSwimGoal{Fish: concrete})
+}
+
+func (runtime *Runtime) configureSchoolingAquaticGoals(concrete schoolingFish, entity *runtimeAquatic) {
+	runtime.configureAquaticGoals(concrete, entity)
+
+	followDelay := reducedTickDelay(200 + runtimeMobRandomInt(runtime, 20))
+
 	entity.Goals.Add(5, runtimeGoalMove, &aquaticFollowSchoolGoal{Fish: concrete, NextStartTick: followDelay})
 }
 
-func (runtime *Runtime) formAquaticSchool(fish aquaticFish) bool {
+func (runtime *Runtime) formAquaticSchool(fish schoolingFish) bool {
 	entity := fish.aquaticBase()
 
 	entity.State.mu.RLock()
@@ -338,17 +386,18 @@ func (runtime *Runtime) formAquaticSchool(fish aquaticFish) bool {
 	for chunkX := minimumChunk.X; chunkX <= maximumChunk.X; chunkX++ {
 		for chunkZ := minimumChunk.Z; chunkZ <= maximumChunk.Z; chunkZ++ {
 			for _, candidateEntity := range runtime.entitiesByChunk[LoadedChunk{X: chunkX, Z: chunkZ}] {
-				candidate, valid := candidateEntity.(aquaticFish)
+				candidate, valid := candidateEntity.(schoolingFish)
 				if !valid || candidate == fish {
 					continue
 				}
 
 				candidateBase := candidate.aquaticBase()
+				candidateSchooling := candidate.schoolingBase()
 
 				candidateBase.State.mu.RLock()
 				sameType := candidateBase.Spec.EntityType == entityType
 				nearby := animalDistanceSquared(position, candidateBase.State.Position) <= aquaticAvoidRangeSquared
-				canLead := candidateBase.School.Leader == nil && candidateBase.School.SchoolSize > 1 && candidateBase.School.SchoolSize < candidateBase.Spec.SchoolSize
+				canLead := candidateSchooling.School.Leader == nil && candidateSchooling.School.SchoolSize > 1 && candidateSchooling.School.SchoolSize < candidateSchooling.MaximumSchoolSize
 				candidateBase.State.mu.RUnlock()
 
 				if sameType && nearby && canLead {
@@ -365,17 +414,18 @@ func (runtime *Runtime) formAquaticSchool(fish aquaticFish) bool {
 	for chunkX := minimumChunk.X; chunkX <= maximumChunk.X; chunkX++ {
 		for chunkZ := minimumChunk.Z; chunkZ <= maximumChunk.Z; chunkZ++ {
 			for _, candidateEntity := range runtime.entitiesByChunk[LoadedChunk{X: chunkX, Z: chunkZ}] {
-				candidate, valid := candidateEntity.(aquaticFish)
+				candidate, valid := candidateEntity.(schoolingFish)
 				if !valid || candidate == leader {
 					continue
 				}
 
 				candidateBase := candidate.aquaticBase()
+				candidateSchooling := candidate.schoolingBase()
 
 				candidateBase.State.mu.RLock()
 				sameType := candidateBase.Spec.EntityType == entityType
 				nearby := animalDistanceSquared(position, candidateBase.State.Position) <= aquaticAvoidRangeSquared
-				available := candidateBase.School.Leader == nil && candidateBase.School.SchoolSize == 1
+				available := candidateSchooling.School.Leader == nil && candidateSchooling.School.SchoolSize == 1
 				candidateBase.State.mu.RUnlock()
 
 				if !sameType || !nearby || !available || !connectAquaticFollower(candidate, leader) {
@@ -394,8 +444,9 @@ func (runtime *Runtime) formAquaticSchool(fish aquaticFish) bool {
 	return joined
 }
 
-func (runtime *Runtime) validateAquaticSchool(fish aquaticFish) {
+func (runtime *Runtime) validateAquaticSchool(fish schoolingFish) {
 	entity := fish.aquaticBase()
+	schooling := fish.schoolingBase()
 
 	entity.State.mu.RLock()
 	position := entity.State.Position
@@ -411,17 +462,18 @@ func (runtime *Runtime) validateAquaticSchool(fish aquaticFish) {
 	for chunkX := minimumChunk.X; chunkX <= maximumChunk.X && !found; chunkX++ {
 		for chunkZ := minimumChunk.Z; chunkZ <= maximumChunk.Z && !found; chunkZ++ {
 			for _, candidateEntity := range runtime.entitiesByChunk[LoadedChunk{X: chunkX, Z: chunkZ}] {
-				candidate, valid := candidateEntity.(aquaticFish)
+				candidate, valid := candidateEntity.(schoolingFish)
 				if !valid || candidate == fish {
 					continue
 				}
 
 				candidateBase := candidate.aquaticBase()
+				candidateSchooling := candidate.schoolingBase()
 
 				candidateBase.State.mu.RLock()
 				sameType := candidateBase.Spec.EntityType == entityType
 				nearby := animalDistanceSquared(position, candidateBase.State.Position) <= aquaticAvoidRangeSquared
-				follows := candidateBase.School.Leader == fish
+				follows := candidateSchooling.School.Leader == fish
 				candidateBase.State.mu.RUnlock()
 
 				if sameType && nearby && follows {
@@ -437,14 +489,16 @@ func (runtime *Runtime) validateAquaticSchool(fish aquaticFish) {
 
 	if !found {
 		entity.State.mu.Lock()
-		entity.School.SchoolSize = 1
+		schooling.School.SchoolSize = 1
 		entity.State.mu.Unlock()
 	}
 }
 
-func connectAquaticFollower(follower, leader aquaticFish) bool {
+func connectAquaticFollower(follower, leader schoolingFish) bool {
 	followerBase := follower.aquaticBase()
 	leaderBase := leader.aquaticBase()
+	followerSchooling := follower.schoolingBase()
+	leaderSchooling := leader.schoolingBase()
 
 	if followerBase == leaderBase || followerBase.Spec.EntityType != leaderBase.Spec.EntityType {
 		return false
@@ -452,54 +506,56 @@ func connectAquaticFollower(follower, leader aquaticFish) bool {
 
 	leaderBase.State.mu.Lock()
 
-	if leaderBase.State.Removed || leaderBase.Living.Dead || leaderBase.School.SchoolSize >= leaderBase.Spec.SchoolSize {
+	if leaderBase.State.Removed || leaderBase.Living.Dead || leaderSchooling.School.SchoolSize >= leaderSchooling.MaximumSchoolSize {
 		leaderBase.State.mu.Unlock()
 
 		return false
 	}
 
-	leaderBase.School.SchoolSize++
+	leaderSchooling.School.SchoolSize++
 	leaderBase.State.mu.Unlock()
 
 	followerBase.State.mu.Lock()
 
-	if followerBase.State.Removed || followerBase.Living.Dead || followerBase.School.Leader != nil {
+	if followerBase.State.Removed || followerBase.Living.Dead || followerSchooling.School.Leader != nil {
 		followerBase.State.mu.Unlock()
 
 		leaderBase.State.mu.Lock()
-		leaderBase.School.SchoolSize--
+		leaderSchooling.School.SchoolSize--
 		leaderBase.State.mu.Unlock()
 
 		return false
 	}
 
-	followerBase.School.Leader = leader
+	followerSchooling.School.Leader = leader
 	followerBase.State.mu.Unlock()
 
 	return true
 }
 
-func disconnectAquaticFollower(follower aquaticFish) {
+func disconnectAquaticFollower(follower schoolingFish) {
 	followerBase := follower.aquaticBase()
+	followerSchooling := follower.schoolingBase()
 
 	followerBase.State.mu.Lock()
-	leader := followerBase.School.Leader
-	followerBase.School.Leader = nil
+	leader := followerSchooling.School.Leader
+	followerSchooling.School.Leader = nil
 	followerBase.State.mu.Unlock()
 
 	if leader == nil {
 		return
 	}
 
-	leaderFish, valid := leader.(aquaticFish)
+	leaderFish, valid := leader.(schoolingFish)
 	if !valid {
 		return
 	}
 
 	leaderBase := leaderFish.aquaticBase()
+	leaderSchooling := leaderFish.schoolingBase()
 
 	leaderBase.State.mu.Lock()
-	leaderBase.School.SchoolSize = max(1, leaderBase.School.SchoolSize-1)
+	leaderSchooling.School.SchoolSize = max(1, leaderSchooling.School.SchoolSize-1)
 	leaderBase.State.mu.Unlock()
 }
 
@@ -547,12 +603,19 @@ func nearestAquaticPlayer(runtime *Runtime, entity *runtimeAquatic) *Session {
 	return nearest
 }
 
-func aquaticFollowerLocked(entity *runtimeAquatic) bool {
-	if entity.School.Leader == nil {
+func initializeSchoolingFish(schooling *runtimeSchoolingFish, maximumSchoolSize int) {
+	schooling.School.SchoolSize = 1
+	schooling.MaximumSchoolSize = maximumSchoolSize
+}
+
+func aquaticFollowerLocked(fish schoolingFish) bool {
+	schooling := fish.schoolingBase()
+
+	if schooling.School.Leader == nil {
 		return false
 	}
 
-	leader := entity.School.Leader.(aquaticFish).aquaticBase()
+	leader := schooling.School.Leader.(schoolingFish).aquaticBase()
 
 	leader.State.mu.RLock()
 	alive := !leader.State.Removed && !leader.Living.Dead

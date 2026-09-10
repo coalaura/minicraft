@@ -31,8 +31,6 @@ const (
 	aquaticAmbientInterval    = 120
 	aquaticFollowRange        = 16
 	aquaticBoneMealChance     = 0.05
-	aquaticDefaultSchoolSize  = 8
-	salmonMaximumSchoolSize   = 5
 )
 
 type runtimeAquaticSpec struct {
@@ -44,7 +42,6 @@ type runtimeAquaticSpec struct {
 	FlopSound    game.SoundEvent
 	RawDrop      game.Item
 	CookedDrop   game.Item
-	SchoolSize   int
 }
 
 type aquaticMoveControl struct {
@@ -52,11 +49,6 @@ type aquaticMoveControl struct {
 	SpeedModifier float64
 	Speed         float32
 	Moving        bool
-}
-
-type aquaticSchoolState struct {
-	Leader     RuntimeEntity
-	SchoolSize int
 }
 
 type runtimeAquatic struct {
@@ -67,13 +59,13 @@ type runtimeAquatic struct {
 
 	Navigation  swimNavigation
 	MoveControl aquaticMoveControl
-	School      aquaticSchoolState
 	Goals       runtimeGoalSelector
 	Spec        *runtimeAquaticSpec
 
 	AirSupply         int32
 	TickCount         int32
 	AmbientSoundTime  int32
+	EyeHeight         float64
 	FromBucket        bool
 	VerticalCollision bool
 	LootDropped       bool
@@ -81,15 +73,18 @@ type runtimeAquatic struct {
 
 type runtimeCodEntity struct {
 	runtimeAquatic
+	runtimeSchoolingFish
 }
 
 type runtimeSalmonEntity struct {
 	runtimeAquatic
+	runtimeSchoolingFish
 	Variant int32
 }
 
 type runtimeTropicalFishEntity struct {
 	runtimeAquatic
+	runtimeSchoolingFish
 	Variant int32
 }
 
@@ -102,7 +97,6 @@ var codAquaticSpec = runtimeAquaticSpec{
 	FlopSound:    game.SoundEntityCodFlop,
 	RawDrop:      game.ItemCod,
 	CookedDrop:   game.ItemCookedCod,
-	SchoolSize:   aquaticDefaultSchoolSize,
 }
 
 var salmonAquaticSpec = runtimeAquaticSpec{
@@ -114,7 +108,6 @@ var salmonAquaticSpec = runtimeAquaticSpec{
 	FlopSound:    game.SoundEntitySalmonFlop,
 	RawDrop:      game.ItemSalmon,
 	CookedDrop:   game.ItemCookedSalmon,
-	SchoolSize:   salmonMaximumSchoolSize,
 }
 
 var tropicalFishAquaticSpec = runtimeAquaticSpec{
@@ -125,7 +118,6 @@ var tropicalFishAquaticSpec = runtimeAquaticSpec{
 	DeathSound:   game.SoundEntityTropicalFishDeath,
 	FlopSound:    game.SoundEntityTropicalFishFlop,
 	RawDrop:      game.ItemTropicalFish,
-	SchoolSize:   aquaticDefaultSchoolSize,
 }
 
 func (entity *runtimeAquatic) RuntimeEntityState() *RuntimeEntityState {
@@ -137,7 +129,7 @@ func (entity *runtimeAquatic) RuntimeLivingState() *RuntimeLivingState {
 }
 
 func (entity *runtimeAquatic) RuntimeLivingEyeHeight() float64 {
-	return entity.Spec.EyeHeight
+	return entity.EyeHeight
 }
 
 func (entity *runtimeAquatic) RuntimeMob() *RuntimeMobState {
@@ -304,7 +296,8 @@ func (runtime *Runtime) SpawnCod(position game.Position) *runtimeCodEntity {
 		return nil
 	}
 
-	runtime.configureAquaticGoals(entity, &entity.runtimeAquatic)
+	initializeSchoolingFish(&entity.runtimeSchoolingFish, aquaticDefaultSchoolSize)
+	runtime.configureSchoolingAquaticGoals(entity, &entity.runtimeAquatic)
 	runtime.registerRuntimeEntity(entity, position)
 
 	return entity
@@ -316,7 +309,8 @@ func (runtime *Runtime) SpawnSalmon(position game.Position) *runtimeSalmonEntity
 		return nil
 	}
 
-	runtime.configureAquaticGoals(entity, &entity.runtimeAquatic)
+	initializeSchoolingFish(&entity.runtimeSchoolingFish, salmonMaximumSchoolSize)
+	runtime.configureSchoolingAquaticGoals(entity, &entity.runtimeAquatic)
 	runtime.registerRuntimeEntity(entity, position)
 
 	return entity
@@ -328,7 +322,8 @@ func (runtime *Runtime) SpawnTropicalFish(position game.Position) *runtimeTropic
 		return nil
 	}
 
-	runtime.configureAquaticGoals(entity, &entity.runtimeAquatic)
+	initializeSchoolingFish(&entity.runtimeSchoolingFish, aquaticDefaultSchoolSize)
+	runtime.configureSchoolingAquaticGoals(entity, &entity.runtimeAquatic)
 	runtime.registerRuntimeEntity(entity, position)
 
 	return entity
@@ -342,7 +337,7 @@ func (runtime *Runtime) initializeAquatic(entity *runtimeAquatic, specification 
 
 	entity.Spec = specification
 	entity.AirSupply = aquaticMaximumAirSupply
-	entity.School.SchoolSize = 1
+	entity.EyeHeight = specification.EyeHeight
 	entity.Living = RuntimeLivingState{Width: definition.Width, Height: definition.Height, NextStepDistance: 1}
 	entity.Living.Reset(3)
 
@@ -379,6 +374,11 @@ func (runtime *Runtime) tickAquatic(concrete RuntimeEntity, entity *runtimeAquat
 	entityID := entity.State.ID
 	entity.State.mu.Unlock()
 
+	hooks, hooksAvailable := concrete.(aquaticTickHooks)
+	if hooksAvailable {
+		hooks.aquaticPreTick(runtime)
+	}
+
 	runtime.tickRuntimeLivingBaseEnvironment(livingEntity)
 	runtime.tickAquaticAir(livingEntity, entity)
 
@@ -394,6 +394,12 @@ func (runtime *Runtime) tickAquatic(concrete RuntimeEntity, entity *runtimeAquat
 
 	runtime.tickAquaticMovement(concrete, entity)
 	runtime.tickRuntimeLivingBlockEnvironment(livingEntity)
+
+	hooks, hooksAvailable = concrete.(aquaticTickHooks)
+	if hooksAvailable {
+		hooks.aquaticPostMovementTick(runtime)
+	}
+
 	runtime.tickAquaticAmbientSound(concrete, entity)
 	runtime.tickRuntimeLivingEntity(livingEntity)
 	runtime.synchronizeRuntimeEntity(concrete)
@@ -479,7 +485,7 @@ func (runtime *Runtime) tickAquaticMovement(concrete RuntimeEntity, entity *runt
 
 func (runtime *Runtime) applyAquaticMoveControl(entity *runtimeAquatic) {
 	eye := entity.State.Position
-	eye.Y += entity.Spec.EyeHeight
+	eye.Y += entity.EyeHeight
 
 	if runtime.positionInWater(eye) {
 		entity.Living.Velocity.Y += aquaticEyeBuoyancy
@@ -576,6 +582,10 @@ func (runtime *Runtime) applyAquaticLandPhysics(entity *runtimeAquatic) {
 }
 
 func (runtime *Runtime) tickAquaticAmbientSound(concrete RuntimeEntity, entity *runtimeAquatic) {
+	if entity.Spec.AmbientSound == "" {
+		return
+	}
+
 	selection := runtimeMobRandomInt(runtime, 1000)
 
 	entity.State.mu.Lock()

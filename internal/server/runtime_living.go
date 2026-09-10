@@ -198,6 +198,39 @@ func (r *Runtime) applyRuntimeLivingKnockback(entity RuntimeLivingEntity, direct
 	return applied
 }
 
+func (r *Runtime) addRuntimeLivingMobEffect(entity RuntimeLivingEntity, instance game.MobEffectInstance) bool {
+	state := entity.RuntimeEntityState()
+	living := entity.RuntimeLivingState()
+
+	state.mu.Lock()
+
+	if state.Removed || living.Dead || !living.ActiveEffects.Add(instance) {
+		state.mu.Unlock()
+
+		return false
+	}
+
+	entityID := state.ID
+	active, valid := living.ActiveEffects.Find(instance.Effect)
+	state.mu.Unlock()
+
+	if !valid {
+		return false
+	}
+
+	packet := protocol.UpdateMobEffect{
+		EntityID:  entityID,
+		EffectID:  int32(active.Effect),
+		Amplifier: active.Amplifier,
+		Duration:  active.Duration,
+		Flags:     playerMobEffectFlags(active),
+	}
+
+	r.broadcastRuntimeEntityPacket(entityID, runtimeEntityPacket{ID: protocol.ClientboundUpdateMobEffectID, Encoder: packet})
+
+	return true
+}
+
 func (r *Runtime) tickRuntimeLivingEntity(entity RuntimeLivingEntity) {
 	state := entity.RuntimeEntityState()
 	living := entity.RuntimeLivingState()

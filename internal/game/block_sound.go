@@ -170,6 +170,12 @@ const (
 	SoundEntityTropicalFishDeath   SoundEvent = "minecraft:entity.tropical_fish.death"
 	SoundEntityTropicalFishHurt    SoundEvent = "minecraft:entity.tropical_fish.hurt"
 	SoundEntityTropicalFishFlop    SoundEvent = "minecraft:entity.tropical_fish.flop"
+	SoundEntityPufferfishBlowUp    SoundEvent = "minecraft:entity.puffer_fish.blow_up"
+	SoundEntityPufferfishBlowOut   SoundEvent = "minecraft:entity.puffer_fish.blow_out"
+	SoundEntityPufferfishDeath     SoundEvent = "minecraft:entity.puffer_fish.death"
+	SoundEntityPufferfishHurt      SoundEvent = "minecraft:entity.puffer_fish.hurt"
+	SoundEntityPufferfishFlop      SoundEvent = "minecraft:entity.puffer_fish.flop"
+	SoundEntityPufferfishSting     SoundEvent = "minecraft:entity.puffer_fish.sting"
 )
 
 type SoundEvent string

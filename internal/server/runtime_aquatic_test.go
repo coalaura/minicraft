@@ -24,6 +24,7 @@ type aquaticMovementTraceSample struct {
 func TestSpawnEntityRegistersAquaticFamilyWithExactDefaults(t *testing.T) {
 	tests := []aquaticSpawnTestCase{
 		{Name: "cod", EntityType: game.EntityCod, Width: 0.5, Height: 0.3, EyeHeight: 0.195},
+		{Name: "pufferfish", EntityType: game.EntityPufferfish, Width: 0.35, Height: 0.35, EyeHeight: 0.2275, Metadata: []protocol.EntityMetadataEntry{{Index: protocol.PufferfishStateMetadataIndex, Type: protocol.MetadataTypeInt, Value: protocol.MetadataVarInt(0)}}},
 		{Name: "salmon", EntityType: game.EntitySalmon, Width: 0.7, Height: 0.4, EyeHeight: 0.26, Metadata: []protocol.EntityMetadataEntry{{Index: protocol.FishVariantMetadataIndex, Type: protocol.MetadataTypeInt, Value: protocol.MetadataVarInt(1)}}},
 		{Name: "tropical fish", EntityType: game.EntityTropicalFish, Width: 0.5, Height: 0.4, EyeHeight: 0.26, Metadata: []protocol.EntityMetadataEntry{{Index: protocol.FishVariantMetadataIndex, Type: protocol.MetadataTypeInt, Value: protocol.MetadataVarInt(0)}}},
 	}
@@ -238,6 +239,13 @@ func TestAquaticSchoolMembershipTracksLeaderLimitsAndDisconnect(t *testing.T) {
 	if connectAquaticFollower(runtime.SpawnSalmon(game.Position{X: 5, Z: 2}), salmonLeader) {
 		t.Fatal("salmon school exceeded size five")
 	}
+
+	tropicalLeader := runtime.SpawnTropicalFish(game.Position{Z: 4})
+	tropicalFollower := runtime.SpawnTropicalFish(game.Position{X: 1, Z: 4})
+
+	if !connectAquaticFollower(tropicalFollower, tropicalLeader) || tropicalLeader.School.SchoolSize != 2 {
+		t.Fatal("tropical fish did not preserve schooling behavior")
+	}
 }
 
 func TestAquaticSchoolFormationUsesNearbySameSpecies(t *testing.T) {
@@ -248,6 +256,7 @@ func TestAquaticSchoolFormationUsesNearbySameSpecies(t *testing.T) {
 	secondFollower := runtime.SpawnCod(game.Position{X: 2})
 
 	runtime.SpawnSalmon(game.Position{X: 3})
+	runtime.SpawnPufferfish(game.Position{X: 4})
 
 	if runtime.formAquaticSchool(leader) {
 		t.Fatal("new leader reported itself as a follower")
