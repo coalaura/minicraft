@@ -33,6 +33,7 @@ func (x *CFB8) XORKeyStream(dst, src []byte) {
 		x.iv[len(x.iv)-1] = feedback
 	}
 }
+
 func NewCFB8(block cipher.Block, iv []byte, decrypt bool) cipher.Stream {
 	return &CFB8{
 		block:    block,

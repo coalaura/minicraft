@@ -52,6 +52,7 @@ func (s *Session) handleHandshake(ctx context.Context) error {
 		return fmt.Errorf("invalid next state %d", handshake.NextState)
 	}
 }
+
 func decodeHandshake(data []byte) (Handshake, error) {
 	rd := protocol.NewPacketReader(data)
 

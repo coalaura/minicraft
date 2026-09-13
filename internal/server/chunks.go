@@ -564,7 +564,6 @@ func (s *Session) chunkStreamLoop(ctx context.Context) error {
 		}
 
 		err = ctx.Err()
-
 		if err != nil {
 			return nil
 		}
@@ -732,7 +731,6 @@ func buildChunkPackets(ctx context.Context, world *game.World, chunks []LoadedCh
 	}
 
 	err := ctx.Err()
-
 	if err != nil {
 		return nil, err
 	}

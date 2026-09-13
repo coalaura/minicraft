@@ -55,6 +55,7 @@ func (r *Runtime) openCraftingTableLocked(session *Session, position game.BlockP
 
 	return session.sendMenuSnapshot(menu.snapshot())
 }
+
 func newCraftingTableMenu(windowID int32, table *craftingTableBacking, inventory *game.PlayerInventory) *menu {
 	slots := make([]menuSlot, 0, 46)
 

@@ -381,6 +381,7 @@ func TestPlayerSlimeLandingPacketsDoNotOverrideClientBounce(t *testing.T) {
 			Z:     0.5,
 			Flags: protocol.MovementFlagOnGround,
 		})
+
 		if err != nil {
 			t.Fatalf("land on slime: %v", err)
 		}

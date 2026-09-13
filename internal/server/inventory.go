@@ -129,7 +129,6 @@ func (s *Session) handleSetCreativeModeSlot(update protocol.SetCreativeModeSlot)
 	}
 
 	err := s.synchronizePlayerInventoryJournal(&mutation)
-
 	if err != nil {
 		s.Log.Warnf("[play] failed to synchronize creative inventory slot: %v\n", err)
 	}
@@ -576,6 +575,7 @@ func (s *Session) synchronizePlayerInventoryJournal(mutation *playerInventoryMut
 			Slot:     int16(menuSlot),
 			Item:     currentMenu.slots[menuSlot].stack.Clone(),
 		})
+
 		if err != nil {
 			return err
 		}

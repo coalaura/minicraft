@@ -87,6 +87,7 @@ func (buffer *lightingBuffer) dequeue() int {
 
 	return index
 }
+
 func buildNormalLevelChunk(world *game.World, chunkX, chunkZ int32) (protocol.LevelChunkWithLight, error) {
 	if normalRegionIsOpen(world, chunkX, chunkZ) {
 		chunk, err := buildFullbrightLevelChunk(world, chunkX, chunkZ)

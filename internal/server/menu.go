@@ -293,6 +293,7 @@ func (candidate *menuCandidate) playerStack(playerSlot int) *game.ItemStack {
 
 	return nil
 }
+
 func newPlayerInventoryMenu(inventory *game.PlayerInventory) *menu {
 	slots := make([]menuSlot, game.PlayerInventorySlots)
 

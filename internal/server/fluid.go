@@ -712,6 +712,7 @@ func (r *Runtime) queueFluidFizzLocked(position game.BlockPosition) {
 
 	r.runtimeBlockMutations = append(r.runtimeBlockMutations, queuedBlockMutation{result: BlockMutationResult{Changed: true}, delivery: delivery})
 }
+
 func fluidForBlock(block game.Block) (FlowingFluid, bool) {
 	state := block.FluidState()
 

@@ -101,7 +101,6 @@ func (resolver *tagResolver) expandPath(name string, visiting map[string]bool) (
 
 		if strings.HasPrefix(value, "#") {
 			expanded, err := resolver.expandPath(value, visiting)
-
 			if err != nil {
 				return nil, err
 			}
@@ -255,7 +254,6 @@ func generate(paths inputPaths) ([]byte, []byte, error) {
 
 		if definition.ExclusiveSet != "" {
 			exclusiveNames, err := enchantmentTags.expand(tagName(definition.ExclusiveSet))
-
 			if err != nil {
 				return nil, nil, fmt.Errorf("expand exclusive set for %s: %w", name, err)
 			}

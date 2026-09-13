@@ -278,6 +278,7 @@ func (r *Runtime) setFurnaceLitStateLocked(furnace *runtimeFurnace, lit bool) {
 
 	r.runtimeBlockMutations = append(r.runtimeBlockMutations, queuedBlockMutation{result: result, delivery: delivery})
 }
+
 func newRuntimeFurnace(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
 	furnace := &runtimeFurnace{position: position, entity: entity}
 

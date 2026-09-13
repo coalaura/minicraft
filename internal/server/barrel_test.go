@@ -216,6 +216,7 @@ func TestBarrelShiftClickMatchesVanillaReversePlayerRouting(t *testing.T) {
 			{Location: 62, Item: hashedStack(game.ItemStack{Item: game.ItemStone, Count: 5})},
 		},
 	})
+
 	if err != nil {
 		t.Fatalf("shift-click barrel slot: %v", err)
 	}

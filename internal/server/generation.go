@@ -32,6 +32,7 @@ func (prepared preparedChunkGeneration) BiomeAt(x, y, z int32) (game.Biome, bool
 
 	return 0, false
 }
+
 func prepareChunkGeneration(world *game.World, position game.ChunkPosition) preparedChunkGeneration {
 	prepared := preparedChunkGeneration{
 		generator: world.Generator,

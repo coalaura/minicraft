@@ -651,6 +651,7 @@ func (s *Session) handleSwingArm(swing protocol.SwingArm) {
 func (s *Session) handlePlayerLoaded() {
 	s.Log.Printf("[play] player loaded\n")
 }
+
 func validPlayerPosition(x, y, z float64) bool {
 	coordinates := [...]float64{x, y, z}
 

@@ -49,6 +49,7 @@ func (r *Runtime) buttonHasProjectileLocked(game.BlockPosition, game.Block) bool
 	// No currently implemented runtime entity is a button-activating projectile.
 	return false
 }
+
 func buttonPressTicks(block game.Block) int64 {
 	if block.SoundType().Break == game.SoundBlockStoneBreak {
 		return stoneButtonPressTicks

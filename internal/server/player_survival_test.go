@@ -892,7 +892,6 @@ func TestRespawnPlayerResetsAndSynchronizesObservers(t *testing.T) {
 	player.loadedChunks = map[LoadedChunk]struct{}{player.centerChunk: {}}
 
 	err := runtime.RespawnPlayer(player)
-
 	if err != nil {
 		t.Fatalf("respawn player: %v", err)
 	}

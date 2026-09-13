@@ -335,6 +335,7 @@ func (c *Connection) logPacket(direction string, p *Packet) {
 		hex.EncodeToString(data),
 	)
 }
+
 func NewConnection(conn net.Conn, log Logger) *Connection {
 	return &Connection{
 		conn: conn,

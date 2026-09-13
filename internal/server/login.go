@@ -202,7 +202,6 @@ func (s *Session) handleOnlineLogin(ctx context.Context, start protocol.LoginSta
 
 	if s.Config.Network.CompressionThreshold > 0 {
 		err = s.sendSetCompression(s.Config.Network.CompressionThreshold)
-
 		if err != nil {
 			return fmt.Errorf("send set compression: %w", err)
 		}
@@ -308,6 +307,7 @@ func (s *Session) sendLoginDisconnect(reason string) error {
 		ID:   protocol.ClientboundLoginDisconnectID,
 		Data: wr.Buffer.Bytes(),
 	})
+
 	if err != nil {
 		return fmt.Errorf("send login disconnect: %w", err)
 	}

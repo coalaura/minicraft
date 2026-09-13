@@ -450,6 +450,7 @@ func (r *Runtime) popBlockResource(blockPosition game.BlockPosition, stack game.
 
 	r.SpawnItemEntity(stack, position, velocity, 10)
 }
+
 func destroyProgress(player game.Player, block game.Block) float64 {
 	mining := block.MiningProperties()
 	if !mining.Destroyable || mining.Hardness < 0 {

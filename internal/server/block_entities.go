@@ -391,6 +391,7 @@ func (r *Runtime) tickOpenMenus() {
 
 	r.completeRuntimeBlockMutations(deliveries)
 }
+
 func realizeRuntimeBlockEntity(position game.BlockPosition, entity game.BlockEntity) RuntimeBlockEntity {
 	factory := runtimeBlockEntityFactories[entity.Type]
 	if factory == nil {

@@ -247,6 +247,7 @@ func (data *HopperBlockEntityData) EqualBlockEntityData(other BlockEntityData) b
 
 	return true
 }
+
 func NewBlockEntity(entityType BlockEntityType) BlockEntity {
 	definition, valid := entityType.Definition()
 	if !valid {
