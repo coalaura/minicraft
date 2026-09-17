@@ -723,13 +723,19 @@ func (r *Runtime) runtimeEntityMoved(entity RuntimeEntity, previous game.Positio
 }
 
 func (r *Runtime) removeRuntimeEntity(id int32) {
+	viewers := r.unregisterRuntimeEntity(id)
+
+	r.untrackRemovedRuntimeEntity(id, viewers)
+}
+
+func (r *Runtime) unregisterRuntimeEntity(id int32) []*Session {
 	r.entityMu.Lock()
 
 	entity := r.entities[id]
 	if entity == nil {
 		r.entityMu.Unlock()
 
-		return
+		return nil
 	}
 
 	state := entity.RuntimeEntityState()
@@ -757,7 +763,11 @@ func (r *Runtime) removeRuntimeEntity(id int32) {
 		chunk.RemoveEntity(id)
 	}
 
-	for _, session := range r.sessionView() {
+	return r.sessionView()
+}
+
+func (r *Runtime) untrackRemovedRuntimeEntity(id int32, viewers []*Session) {
+	for _, session := range viewers {
 		session.untrackRuntimeEntity(id)
 	}
 }

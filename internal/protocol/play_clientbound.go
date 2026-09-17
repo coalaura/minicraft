@@ -13,36 +13,38 @@ const (
 	PlayerInfoActionUpdateGameMode = 1 << 2
 	PlayerInfoActionUpdateListed   = 1 << 3
 
-	EntityFlagsMetadataIndex      = 0
-	EntityAirMetadataIndex        = 1
-	EntityPoseMetadataIndex       = 6
-	LivingFlagsMetadataIndex      = 8
-	LivingHealthMetadataIndex     = 9
-	MobFlagsMetadataIndex         = 15
-	BatFlagsMetadataIndex         = 16
-	FishFromBucketMetadataIndex   = 16
-	FishVariantMetadataIndex      = 17
-	PufferfishStateMetadataIndex  = 17
-	CreeperSwellMetadataIndex     = 16
-	CreeperPoweredMetadataIndex   = 17
-	CreeperIgnitedMetadataIndex   = 18
-	SheepWoolMetadataIndex        = 17
-	ItemEntityItemMetadataIndex   = 8
-	ArrowFlagsMetadataIndex       = 8
-	ArrowPierceLevelMetadataIndex = 9
-	ArrowInGroundMetadataIndex    = 10
-	TntFuseMetadataIndex          = 8
-	TntBlockStateMetadataIndex    = 9
-	PlayerAbsorptionMetadataIndex = 17
-	PlayerSkinPartsMetadataIndex  = 16
+	EntityFlagsMetadataIndex       = 0
+	EntityAirMetadataIndex         = 1
+	EntityPoseMetadataIndex        = 6
+	LivingFlagsMetadataIndex       = 8
+	LivingHealthMetadataIndex      = 9
+	MobFlagsMetadataIndex          = 15
+	BatFlagsMetadataIndex          = 16
+	FishFromBucketMetadataIndex    = 16
+	FishVariantMetadataIndex       = 17
+	PufferfishStateMetadataIndex   = 17
+	CreeperSwellMetadataIndex      = 16
+	CreeperPoweredMetadataIndex    = 17
+	CreeperIgnitedMetadataIndex    = 18
+	SheepWoolMetadataIndex         = 17
+	ItemEntityItemMetadataIndex    = 8
+	ArrowFlagsMetadataIndex        = 8
+	ArrowPierceLevelMetadataIndex  = 9
+	ArrowInGroundMetadataIndex     = 10
+	TntFuseMetadataIndex           = 8
+	TntBlockStateMetadataIndex     = 9
+	FallingBlockStartMetadataIndex = 8
+	PlayerAbsorptionMetadataIndex  = 17
+	PlayerSkinPartsMetadataIndex   = 16
 
-	MetadataTypeByte       = 0
-	MetadataTypeInt        = 1
-	MetadataTypeFloat      = 3
-	MetadataTypeItemStack  = 7
-	MetadataTypeBoolean    = 8
-	MetadataTypeBlockState = 14
-	MetadataTypePose       = 20
+	MetadataTypeByte          = 0
+	MetadataTypeInt           = 1
+	MetadataTypeFloat         = 3
+	MetadataTypeItemStack     = 7
+	MetadataTypeBoolean       = 8
+	MetadataTypeBlockPosition = 10
+	MetadataTypeBlockState    = 14
+	MetadataTypePose          = 20
 
 	MetadataTerminator = 0xFF
 
@@ -80,13 +82,15 @@ const (
 	EquipmentSlotChest    byte = 4
 	EquipmentSlotHead     byte = 5
 
-	LevelEventBatTakeoff = 1025
-	LevelEventLavaFizz   = 1501
-	LevelEventBlockBreak = 2001
-	SoundSourceBlock     = 4
-	SoundSourceHostile   = 5
-	SoundSourceNeutral   = 6
-	SoundSourcePlayer    = 7
+	LevelEventBatTakeoff  = 1025
+	LevelEventAnvilBroken = 1029
+	LevelEventAnvilLand   = 1031
+	LevelEventLavaFizz    = 1501
+	LevelEventBlockBreak  = 2001
+	SoundSourceBlock      = 4
+	SoundSourceHostile    = 5
+	SoundSourceNeutral    = 6
+	SoundSourcePlayer     = 7
 
 	maxCommandTreeNodes       = 32767
 	maxCommandNodeChildren    = 32767
@@ -148,6 +152,8 @@ type MetadataVarInt int32
 type MetadataFloat float32
 
 type MetadataBoolean bool
+
+type MetadataBlockPosition game.BlockPosition
 
 type MetadataItemStack struct {
 	Stack game.ItemStack
@@ -690,6 +696,10 @@ func (p MetadataFloat) EncodeMetadata(wr *PacketWriter) {
 
 func (p MetadataBoolean) EncodeMetadata(wr *PacketWriter) {
 	wr.Bool(bool(p))
+}
+
+func (p MetadataBlockPosition) EncodeMetadata(wr *PacketWriter) {
+	wr.BlockPosition(game.BlockPosition(p))
 }
 
 func (p MetadataItemStack) EncodeMetadata(wr *PacketWriter) {

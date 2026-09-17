@@ -282,6 +282,11 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, lootPrograms Bloc
 			hasBlockProperty(block.Properties, "waterlogged"),
 		)
 
+		falling := fallingBlockDefinition(block.Name)
+		if falling != "" {
+			fmt.Fprintf(&output, ", Falling: %s", falling)
+		}
+
 		if len(block.Properties) != 0 {
 			fmt.Fprint(&output, ", Properties: []BlockProperty{")
 
@@ -436,6 +441,27 @@ func blockTraits(tags MiningTags, name string) string {
 	}
 
 	return strings.Join(values, " | ")
+}
+
+func fallingBlockDefinition(name string) string {
+	if strings.HasSuffix(name, "_concrete_powder") {
+		hardened := strings.TrimSuffix(name, "_powder")
+
+		return fmt.Sprintf("FallingBlockDefinition{Kind: FallingBlockKindConcretePowder, HardenedState: %s}", goName(hardened))
+	}
+
+	switch name {
+	case "sand", "red_sand", "gravel":
+		return "FallingBlockDefinition{Kind: FallingBlockKindOrdinary}"
+	case "anvil":
+		return "FallingBlockDefinition{Kind: FallingBlockKindAnvil, DamagedState: ChippedAnvil, HurtAmount: 2, HurtMaximum: 40}"
+	case "chipped_anvil":
+		return "FallingBlockDefinition{Kind: FallingBlockKindAnvil, DamagedState: DamagedAnvil, HurtAmount: 2, HurtMaximum: 40}"
+	case "damaged_anvil":
+		return "FallingBlockDefinition{Kind: FallingBlockKindAnvil, HurtAmount: 2, HurtMaximum: 40}"
+	default:
+		return ""
+	}
 }
 
 func fluidExcludedBlock(name string) bool {

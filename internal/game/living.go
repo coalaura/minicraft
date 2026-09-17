@@ -27,6 +27,7 @@ const (
 	DamageArrow
 	DamageExplosion
 	DamagePlayerExplosion
+	DamageFallingAnvil
 )
 
 type DamageType uint8
@@ -143,6 +144,8 @@ func (damageType DamageType) Traits() DamageTraits {
 		return DamageTraits{RegistryID: 9, DamagesArmor: true, PanicCauses: true}
 	case DamagePlayerExplosion:
 		return DamageTraits{RegistryID: 35, DamagesArmor: true, PanicCauses: true}
+	case DamageFallingAnvil:
+		return DamageTraits{RegistryID: 11, DamagesArmor: true, PanicCauses: true}
 	default:
 		return DamageTraits{RegistryID: 18, BypassesArmor: true}
 	}

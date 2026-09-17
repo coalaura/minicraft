@@ -74,19 +74,20 @@ type blockMutationRecord struct {
 type blockLootContext uint8
 
 type blockMutationDelivery struct {
-	session          *Session
-	changes          []game.BlockChange
-	states           []int32
-	records          []blockMutationRecord
-	lightingChanges  []game.BlockChange
-	recipients       []*Session
-	poseChanges      []game.Player
-	waitForDelivery  <-chan struct{}
-	deliveryComplete chan struct{}
-	runtimeSounds    []positionalBlockSound
-	runtimeEvents    []protocol.LevelEvent
-	miningInventory  *game.PlayerInventory
-	miningToolBroke  bool
+	session              *Session
+	changes              []game.BlockChange
+	states               []int32
+	records              []blockMutationRecord
+	lightingChanges      []game.BlockChange
+	recipients           []*Session
+	poseChanges          []game.Player
+	waitForDelivery      <-chan struct{}
+	deliveryComplete     chan struct{}
+	runtimeSounds        []positionalBlockSound
+	runtimeEvents        []protocol.LevelEvent
+	runtimeAfterDelivery func()
+	miningInventory      *game.PlayerInventory
+	miningToolBroke      bool
 }
 
 type queuedBlockMutation struct {
@@ -314,6 +315,11 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 
 		current := r.World.BlockAt(change.Position)
 
+		falling := change.Replacement.FallingDefinition()
+		if falling.Kind == game.FallingBlockKindConcretePowder && r.concretePowderSolidifies(change.Position, r.World.BlockAt) {
+			change.Replacement = falling.HardenedState
+		}
+
 		cause := blockMutationStructural
 
 		if action == blockMutationExplosion && index < requiredChanges {
@@ -420,6 +426,7 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 	r.scheduleFarmlandSurvivalChecksLocked(committed)
 	r.scheduleLeafNeighborsLocked(committed)
 	r.scheduleFluidNeighborsLocked(committed)
+	r.scheduleFallingBlockNeighborsLocked(committed)
 
 	r.reconcileRuntimeBlockEntities(records)
 
@@ -660,6 +667,11 @@ func (r *Runtime) completeRuntimeBlockMutations(mutations []queuedBlockMutation)
 
 	for _, mutation := range mutations {
 		err := r.deliverBlockMutation(mutation.delivery, nil)
+
+		if mutation.delivery.runtimeAfterDelivery != nil {
+			mutation.delivery.runtimeAfterDelivery()
+		}
+
 		if err != nil {
 			for _, session := range mutation.delivery.recipients {
 				if session.Log != nil {

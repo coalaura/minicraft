@@ -8,6 +8,12 @@ const (
 )
 
 func (r *Runtime) tickBlockLocked(position game.BlockPosition, block game.Block) {
+	if block.FallingDefinition().Kind != game.FallingBlockKindNone {
+		r.tickFallingBlockLocked(position, block)
+
+		return
+	}
+
 	if block.HasTrait(game.BlockTraitLeaves) {
 		r.tickLeafLocked(position, block)
 

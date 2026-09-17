@@ -83,6 +83,13 @@ const (
 	BlockCollisionBed
 )
 
+const (
+	FallingBlockKindNone FallingBlockKind = iota
+	FallingBlockKindOrdinary
+	FallingBlockKindConcretePowder
+	FallingBlockKindAnvil
+)
+
 type Block uint16
 
 type BlockID uint16
@@ -96,6 +103,16 @@ type BlockSoundType uint8
 type BlockTrait uint32
 
 type BlockFace uint8
+
+type FallingBlockKind uint8
+
+type FallingBlockDefinition struct {
+	Kind          FallingBlockKind
+	HardenedState Block
+	DamagedState  Block
+	HurtAmount    float32
+	HurtMaximum   int32
+}
 
 type BlockMining struct {
 	Hardness     float32
@@ -131,6 +148,7 @@ type BlockDefinition struct {
 	Mining              BlockMining
 	Properties          []BlockProperty
 	Waterloggable       bool
+	Falling             FallingBlockDefinition
 }
 
 type BlockPosition struct {
@@ -277,6 +295,14 @@ func (block Block) HasTrait(trait BlockTrait) bool {
 	}
 
 	return blockDefinitions[stateBlockIDs[block]].Traits&trait != 0
+}
+
+func (block Block) FallingDefinition() FallingBlockDefinition {
+	if !block.Valid() {
+		return FallingBlockDefinition{}
+	}
+
+	return blockDefinitions[stateBlockIDs[block]].Falling
 }
 
 func (block Block) SameLightProperties(other Block) bool {

@@ -322,6 +322,11 @@ func appendStructuralPosition(positions []game.BlockPosition, seen map[game.Bloc
 }
 
 func recalculateStructuralBlock(blockAt func(game.BlockPosition) game.Block, position game.BlockPosition, block game.Block) game.Block {
+	falling := block.FallingDefinition()
+	if falling.Kind == game.FallingBlockKindConcretePowder && concretePowderSolidifies(blockAt, position) {
+		return falling.HardenedState
+	}
+
 	_, hasSnowy := block.Property("snowy")
 
 	if hasSnowy {
