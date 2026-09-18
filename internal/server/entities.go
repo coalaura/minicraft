@@ -935,81 +935,81 @@ func (s *Session) trackRuntimeEntity(entity RuntimeEntity) {
 		return
 	}
 
-	synchronized := false
-
-	func() {
-		s.entityTrackMu.Lock()
-		defer s.entityTrackMu.Unlock()
-
-		state := entity.RuntimeEntityState()
-
-		state.mu.RLock()
-		view := lockedViewer.runtimeEntityViewLocked()
-
-		snapshot := runtimeEntitySpawnSnapshotLocked(view, state.tracker)
-		state.mu.RUnlock()
-
-		if view.Removed {
-			return
-		}
-
-		if s.trackedEntities == nil {
-			s.trackedEntities = make(map[int32]struct{})
-		}
-
-		if _, present := s.trackedEntities[view.ID]; present {
-			return
-		}
-
-		s.trackedEntities[view.ID] = struct{}{}
-
-		spawner, spawnable := entity.(RuntimeEntitySpawner)
-		if !spawnable {
-			delete(s.trackedEntities, view.ID)
-
-			return
-		}
-
-		addSent := false
-
-		err := s.writePacket(protocol.ClientboundAddEntityID, spawner.AddEntityPacket(snapshot))
-		if err == nil {
-			addSent = true
-
-			metadata, present := entity.(RuntimeEntityMetadata)
-			if present {
-				err = s.writePacket(protocol.ClientboundEntityMetadataID, protocol.EntityMetadata{EntityID: view.ID, Entries: metadata.EntityMetadata()})
-			}
-
-			if err == nil {
-				equipment, present := entity.(RuntimeEntityEquipment)
-				if present {
-					entries := equipment.EntityEquipment()
-					if len(entries) != 0 {
-						err = s.writePacket(protocol.ClientboundEntityEquipmentID, protocol.EntityEquipment{EntityID: view.ID, Equipment: entries})
-					}
-				}
-			}
-		}
-
-		if err != nil && s.Log != nil {
-			s.Log.Warnf("[play] failed to track entity: %v\n", err)
-		}
-
-		if err != nil {
-			delete(s.trackedEntities, view.ID)
-
-			if addSent {
-				_ = s.writePacket(protocol.ClientboundRemoveEntitiesID, protocol.RemoveEntities{EntityIDs: []int32{view.ID}})
-			}
-		}
-
-		synchronized = err == nil
-	}()
+	synchronized := s.trackRuntimeEntityPackets(entity, lockedViewer)
 
 	if synchronized {
 		s.Runtime.synchronizePassengerRelationsFor(s, entity.RuntimeEntityState().ID)
 	}
+}
+
+func (s *Session) trackRuntimeEntityPackets(entity RuntimeEntity, lockedViewer runtimeEntityLockedViewer) bool {
+	s.entityTrackMu.Lock()
+	defer s.entityTrackMu.Unlock()
+
+	state := entity.RuntimeEntityState()
+
+	state.mu.RLock()
+	view := lockedViewer.runtimeEntityViewLocked()
+
+	snapshot := runtimeEntitySpawnSnapshotLocked(view, state.tracker)
+	state.mu.RUnlock()
+
+	if view.Removed {
+		return false
+	}
+
+	if s.trackedEntities == nil {
+		s.trackedEntities = make(map[int32]struct{})
+	}
+
+	if _, present := s.trackedEntities[view.ID]; present {
+		return false
+	}
+
+	s.trackedEntities[view.ID] = struct{}{}
+
+	spawner, spawnable := entity.(RuntimeEntitySpawner)
+	if !spawnable {
+		delete(s.trackedEntities, view.ID)
+
+		return false
+	}
+
+	addSent := false
+
+	err := s.writePacket(protocol.ClientboundAddEntityID, spawner.AddEntityPacket(snapshot))
+	if err == nil {
+		addSent = true
+
+		metadata, present := entity.(RuntimeEntityMetadata)
+		if present {
+			err = s.writePacket(protocol.ClientboundEntityMetadataID, protocol.EntityMetadata{EntityID: view.ID, Entries: metadata.EntityMetadata()})
+		}
+
+		if err == nil {
+			equipment, present := entity.(RuntimeEntityEquipment)
+			if present {
+				entries := equipment.EntityEquipment()
+				if len(entries) != 0 {
+					err = s.writePacket(protocol.ClientboundEntityEquipmentID, protocol.EntityEquipment{EntityID: view.ID, Equipment: entries})
+				}
+			}
+		}
+	}
+
+	if err != nil && s.Log != nil {
+		s.Log.Warnf("[play] failed to track entity: %v\n", err)
+	}
+
+	if err != nil {
+		delete(s.trackedEntities, view.ID)
+
+		if addSent {
+			_ = s.writePacket(protocol.ClientboundRemoveEntitiesID, protocol.RemoveEntities{EntityIDs: []int32{view.ID}})
+		}
+	}
+
+	return err == nil
 }
 
 func (s *Session) untrackRuntimeEntity(id int32) {
