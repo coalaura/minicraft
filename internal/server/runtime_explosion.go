@@ -212,12 +212,13 @@ func (r *Runtime) damageExplosionEntities(explosion RuntimeExplosion, result *Ru
 
 	for _, entity := range entities {
 		living, valid := entity.(RuntimeLivingEntity)
-		if !valid {
+		damageable, damageableEntity := entity.(RuntimeEntityDamageable)
+
+		if !valid && !damageableEntity {
 			continue
 		}
 
 		state := entity.RuntimeEntityState()
-		livingState := living.RuntimeLivingState()
 
 		state.mu.RLock()
 		entityID := state.ID
@@ -229,20 +230,53 @@ func (r *Runtime) damageExplosionEntities(explosion RuntimeExplosion, result *Ru
 			continue
 		}
 
-		origin := position
+		var (
+			origin     = position
+			box        game.AABB
+			resistance float32
+		)
 
-		if eye, available := entity.(runtimeLivingEyeHeight); available {
-			origin.Y += eye.RuntimeLivingEyeHeight()
+		if valid {
+			livingState := living.RuntimeLivingState()
+
+			if eye, available := entity.(runtimeLivingEyeHeight); available {
+				origin.Y += eye.RuntimeLivingEyeHeight()
+			} else {
+				origin.Y += livingState.Height * 0.85
+			}
+
+			box = livingState.CollisionBox(position)
+			resistance = livingState.KnockbackResistance
 		} else {
-			origin.Y += livingState.Height * 0.85
+			definition, defined := state.Type.Definition()
+			if !defined || definition.Width <= 0 || definition.Height <= 0 {
+				continue
+			}
+
+			origin.Y += definition.Height * 0.85
+			box = entityBox(position, definition.Width, definition.Height)
 		}
 
-		knockback, damage, hit := r.explosionImpact(explosion.Position, diameter, position, origin, livingState.CollisionBox(position), livingState.KnockbackResistance)
+		knockback, damage, hit := r.explosionImpact(explosion.Position, diameter, position, origin, box, resistance)
 		if !hit {
 			continue
 		}
 
-		update, applied := r.damageRuntimeLivingEntityLocked(living, game.Damage{Type: damageType, Amount: damage, CauseEntityID: explosion.CauseEntityID, DirectEntityID: explosion.DirectEntityID, SourcePosition: &explosion.Position})
+		entityDamage := game.Damage{Type: damageType, Amount: damage, CauseEntityID: explosion.CauseEntityID, DirectEntityID: explosion.DirectEntityID, SourcePosition: &explosion.Position}
+
+		if damageableEntity {
+			damageable.RuntimeEntityDamage(r, entityDamage)
+
+			pushable, pushableEntity := entity.(RuntimeEntityPushable)
+			if pushableEntity {
+				pushable.RuntimeEntityPush(knockback)
+			}
+
+			continue
+		}
+
+		update, applied := r.damageRuntimeLivingEntityLocked(living, entityDamage)
+		livingState := living.RuntimeLivingState()
 
 		state.mu.Lock()
 

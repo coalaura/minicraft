@@ -47,7 +47,7 @@ type runtimeArrowEntity struct {
 }
 
 type arrowTarget struct {
-	entity  RuntimeLivingEntity
+	entity  RuntimeEntity
 	session *Session
 	box     game.AABB
 	id      int32
@@ -279,7 +279,17 @@ func (runtime *Runtime) damageArrowTarget(target arrowTarget, arrowID, ownerID i
 		return applied
 	}
 
-	update, applied := runtime.damageRuntimeLivingEntityLocked(target.entity, damage)
+	damageable, damageableEntity := target.entity.(RuntimeEntityDamageable)
+	if damageableEntity {
+		return damageable.RuntimeEntityDamage(runtime, damage)
+	}
+
+	living, livingEntity := target.entity.(RuntimeLivingEntity)
+	if !livingEntity {
+		return false
+	}
+
+	update, applied := runtime.damageRuntimeLivingEntityLocked(living, damage)
 	if applied {
 		runtime.sendRuntimeLivingDamageUpdate(update)
 	}
@@ -306,18 +316,54 @@ func (runtime *Runtime) arrowNearestTarget(from, to game.Position, ownerID int32
 		nearest, nearestFraction = arrowNearerTarget(from, deltaX, deltaY, deltaZ, target, ownerID, leftOwner, margin, nearest, nearestFraction)
 	}
 
-	iterator := runtime.runtimeLivingEntitiesInBox(arrowSweepBox(from, to, margin))
+	iterator := runtime.runtimeEntitiesInBox(arrowSweepBox(from, to, margin))
 
 	for {
-		living, found := iterator.Next()
+		entity, found := iterator.Next()
 		if !found {
 			break
 		}
 
-		state := living.RuntimeEntityState()
+		living, livingEntity := entity.(RuntimeLivingEntity)
+		_, damageableEntity := entity.(RuntimeEntityDamageable)
+
+		if !livingEntity && !damageableEntity {
+			continue
+		}
+
+		state := entity.RuntimeEntityState()
 
 		state.mu.RLock()
-		target := arrowTarget{entity: living, box: living.RuntimeLivingState().CollisionBox(state.Position), id: state.ID}
+
+		if state.Removed {
+			state.mu.RUnlock()
+
+			continue
+		}
+
+		box := game.AABB{}
+
+		if livingEntity {
+			if living.RuntimeLivingState().Dead {
+				state.mu.RUnlock()
+
+				continue
+			}
+
+			box = living.RuntimeLivingState().CollisionBox(state.Position)
+		} else {
+			definition, defined := state.Type.Definition()
+			if !defined || definition.Width <= 0 || definition.Height <= 0 {
+				state.mu.RUnlock()
+
+				continue
+			}
+
+			box = entityBox(state.Position, definition.Width, definition.Height)
+		}
+
+		target := arrowTarget{entity: entity, box: box, id: state.ID}
+
 		state.mu.RUnlock()
 
 		nearest, nearestFraction = arrowNearerTarget(from, deltaX, deltaY, deltaZ, target, ownerID, leftOwner, margin, nearest, nearestFraction)

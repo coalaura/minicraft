@@ -31,13 +31,6 @@ type runtimeFallingBlockEntity struct {
 	OnGround     bool
 	DropItem     bool
 	Destroyed    bool
-
-	BlockEntityData []byte
-}
-
-type sourceWaterSegmentHit struct {
-	fraction float64
-	position game.BlockPosition
 }
 
 type concretePowderWaterDirection struct {
@@ -118,6 +111,14 @@ func (entity *runtimeFallingBlockEntity) Tick(runtime *Runtime, _ *ActiveChunk) 
 	entity.State.Position = movement.Position
 	entity.OnGround = movement.OnGround
 
+	if movement.HorizontalCollisionX {
+		velocity.X = 0
+	}
+
+	if movement.HorizontalCollisionZ {
+		velocity.Z = 0
+	}
+
 	verticalMovement := movement.Position.Y - previous.Y
 	if verticalMovement < 0 {
 		entity.FallDistance += float32(-verticalMovement)
@@ -133,9 +134,9 @@ func (entity *runtimeFallingBlockEntity) Tick(runtime *Runtime, _ *ActiveChunk) 
 
 		speedSquared := velocity.X*velocity.X + velocity.Y*velocity.Y + velocity.Z*velocity.Z
 		if !touchesWater && speedSquared > fallingBlockWaterRaySpeed*fallingBlockWaterRaySpeed {
-			hit, found := runtime.sweepSourceWaterSegment(previous, movement.Position)
+			hit, found := runtime.clipSourceWaterSegment(previous, movement.Position)
 			if found {
-				landingPosition = hit.position
+				landingPosition = hit
 				touchesWater = true
 			}
 		}
@@ -279,7 +280,7 @@ func (runtime *Runtime) landFallingBlock(entity *runtimeFallingBlockEntity, enti
 
 	below.Y--
 
-	canPlace := target.Replaceable() && (!fallingBlockFree(runtime.World.BlockAt(below)) || falling.Kind == game.FallingBlockKindConcretePowder && touchesWater)
+	canPlace := fallingBlockMayReplace(target, block, landingPosition) && (!fallingBlockFree(runtime.World.BlockAt(below)) || falling.Kind == game.FallingBlockKindConcretePowder && touchesWater)
 	if canPlace {
 		replacement := block
 
@@ -296,14 +297,14 @@ func (runtime *Runtime) landFallingBlock(entity *runtimeFallingBlockEntity, enti
 
 		result, delivery, err := runtime.mutateBlocksLocked(nil, BlockMutationPlace, changes, 1, true, false, true, false, true)
 		if err == nil && result.Changed && runtime.World.BlockAt(landingPosition) == replacement {
-			if falling.Kind == game.FallingBlockKindAnvil {
-				delivery.runtimeEvents = append(delivery.runtimeEvents, protocol.LevelEvent{Event: protocol.LevelEventAnvilLand, Position: landingPosition})
-			}
-
 			viewers := runtime.unregisterRuntimeEntity(entityID)
 
 			delivery.runtimeAfterDelivery = func() {
 				runtime.untrackRemovedRuntimeEntity(entityID, viewers)
+
+				if falling.Kind == game.FallingBlockKindAnvil {
+					runtime.sendFallingBlockEvent(protocol.LevelEventAnvilLand, landingPosition)
+				}
 			}
 
 			runtime.runtimeBlockMutations = append(runtime.runtimeBlockMutations, queuedBlockMutation{result: result, delivery: delivery})
@@ -315,11 +316,11 @@ func (runtime *Runtime) landFallingBlock(entity *runtimeFallingBlockEntity, enti
 	runtime.removeRuntimeEntity(entityID)
 
 	if dropItem {
-		runtime.dropFallingBlockItem(block, position)
-
 		if falling.Kind == game.FallingBlockKindAnvil {
 			runtime.sendFallingBlockEvent(protocol.LevelEventAnvilBroken, landingPosition)
 		}
+
+		runtime.dropFallingBlockItem(block, position)
 	}
 }
 
@@ -395,7 +396,7 @@ func (runtime *Runtime) concretePowderSolidifies(position game.BlockPosition, bl
 	return concretePowderSolidifies(blockAt, position)
 }
 
-func (runtime *Runtime) sweepSourceWaterSegment(from, to game.Position) (sourceWaterSegmentHit, bool) {
+func (runtime *Runtime) clipSourceWaterSegment(from, to game.Position) (game.BlockPosition, bool) {
 	deltaX := to.X - from.X
 	deltaY := to.Y - from.Y
 	deltaZ := to.Z - from.Z
@@ -407,29 +408,50 @@ func (runtime *Runtime) sweepSourceWaterSegment(from, to game.Position) (sourceW
 	maximumY := int32(math.Floor(max(from.Y, to.Y)))
 	maximumZ := int32(math.Floor(max(from.Z, to.Z)))
 
-	nearest := sourceWaterSegmentHit{fraction: math.Inf(1)}
+	nearestFraction := math.Inf(1)
+
+	var (
+		nearestPosition game.BlockPosition
+		nearestWater    bool
+	)
 
 	for y := minimumY; y <= maximumY; y++ {
 		for x := minimumX; x <= maximumX; x++ {
 			for z := minimumZ; z <= maximumZ; z++ {
 				position := game.BlockPosition{X: x, Y: y, Z: z}
+				block := runtime.World.BlockAt(position)
+
+				var boxBuffer [7]game.AABB
+
+				boxes := block.AppendCollisionBoxes(boxBuffer[:0], position)
+
+				for _, box := range boxes {
+					fraction, _, intersects := raycastAABB(from, deltaX, deltaY, deltaZ, box)
+					if intersects && fraction >= 0 && fraction <= 1 && fraction < nearestFraction {
+						nearestFraction = fraction
+						nearestPosition = position
+						nearestWater = false
+					}
+				}
 
 				fluid := runtime.World.FluidAt(position)
 				if fluid.Type() != game.FluidTypeWater || !fluid.IsSource() {
 					continue
 				}
 
-				box := game.AABB{MinX: float64(x), MinY: float64(y), MinZ: float64(z), MaxX: float64(x) + 1, MaxY: float64(y) + 1, MaxZ: float64(z) + 1}
+				box := fluidRaycastBox(runtime.World, block, position)
 
 				fraction, _, intersects := raycastAABB(from, deltaX, deltaY, deltaZ, box)
-				if intersects && fraction >= 0 && fraction <= 1 && fraction < nearest.fraction {
-					nearest = sourceWaterSegmentHit{fraction: fraction, position: position}
+				if intersects && fraction >= 0 && fraction <= 1 && fraction < nearestFraction {
+					nearestFraction = fraction
+					nearestPosition = position
+					nearestWater = true
 				}
 			}
 		}
 	}
 
-	return nearest, !math.IsInf(nearest.fraction, 1)
+	return nearestPosition, nearestWater
 }
 
 func (entity *runtimeFallingBlockEntity) runtimeEntityViewLocked() runtimeEntityView {
@@ -466,6 +488,12 @@ func concretePowderSolidifies(blockAt func(game.BlockPosition) game.Block, posit
 
 func fallingBlockFree(block game.Block) bool {
 	return block == game.Air || !block.FluidState().Empty() || block.Replaceable()
+}
+
+func fallingBlockMayReplace(target, block game.Block, position game.BlockPosition) bool {
+	context := protocol.UseItemOn{Position: position, Face: protocol.BlockFaceUp}
+
+	return blockCanBeReplaced(target, block, game.ItemPlacementDefault, context, true, false)
 }
 
 func preserveFallingBlockFacing(block, replacement game.Block) game.Block {

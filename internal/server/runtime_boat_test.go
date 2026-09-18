@@ -21,6 +21,19 @@ type boatGameModeTestCase struct {
 	wantCount int32
 }
 
+type boatBubbleColumnTestCase struct {
+	name      string
+	drag      string
+	velocityY float64
+	wantEject bool
+}
+
+type boatFrictionTestCase struct {
+	name  string
+	block game.Block
+	want  float64
+}
+
 var boatBenchmarkPassengerCounts = [...]int{0, 1, 2}
 
 func TestSpawnBoatVariants(t *testing.T) {
@@ -62,14 +75,13 @@ func TestBoatStatusAndFloatTrace(t *testing.T) {
 
 	wantSurface := 8.0 / 9.0
 
-	wantLevel := 0.4 + boatHeight
+	wantLevel := 8.0 / 9.0
 	if boat.Status != boatStatusWater || boat.WaterLevel != wantLevel {
 		t.Fatalf("water status = %v at level %v, want water at %v", boat.Status, boat.WaterLevel, wantLevel)
 	}
 
-	wantSnap := wantSurface - boatHeight + 0.101
-	if math.Abs(boat.State.Position.Y-wantSnap) > 1e-9 {
-		t.Fatalf("water entry Y = %v, want vanilla surface snap", boat.State.Position.Y)
+	if boat.Previous != boatStatusUnknown || boat.State.Position.Y >= wantSurface-boatHeight+0.101 {
+		t.Fatalf("initial water tick = status %v, Y %v; vanilla has no prior air status to surface-snap", boat.Previous, boat.State.Position.Y)
 	}
 
 	for x := int32(-1); x <= 1; x++ {
@@ -113,9 +125,9 @@ func TestBoatLongQuantitativeTraces(t *testing.T) {
 			boat.Tick(runtime, nil)
 		}
 
-		assertBoatFloatClose(t, boat.State.Position.X, 7.905810108684875)
+		assertBoatFloatClose(t, boat.State.Position.X, 7.905808594083059)
 		assertBoatFloatClose(t, boat.State.Position.Y, 11.6)
-		assertBoatFloatClose(t, boat.Velocity.X, 0.1215766545905694)
+		assertBoatFloatClose(t, boat.Velocity.X, 0.12157659017715653)
 		assertBoatFloatClose(t, boat.Velocity.Y, -0.8)
 	})
 
@@ -163,13 +175,65 @@ func TestBoatLongQuantitativeTraces(t *testing.T) {
 			boat.Tick(runtime, nil)
 		}
 
-		assertBoatFloatClose(t, boat.State.Position.Y, 0.5224210002651635)
-		assertBoatFloatClose(t, boat.Velocity.Y, -0.0019509213188204158)
+		assertBoatFloatClose(t, boat.State.Position.Y, 0.5203879503808389)
+		assertBoatFloatClose(t, boat.Velocity.Y, -0.001792267859390004)
 
 		if boat.Status != boatStatusWater {
 			t.Fatalf("water trace status = %v", boat.Status)
 		}
 	})
+}
+
+func TestBoatBlockFrictionMatchesVanillaOverrides(t *testing.T) {
+	tests := [...]boatFrictionTestCase{
+		{name: "stone", block: game.Stone, want: 0.6},
+		{name: "ice", block: game.Ice, want: 0.98},
+		{name: "packed ice", block: game.PackedIce, want: 0.98},
+		{name: "blue ice", block: game.BlueIce, want: 0.989},
+		{name: "slime", block: game.SlimeBlock, want: 0.8},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := boatBlockFriction(test.block)
+			if got != test.want {
+				t.Fatalf("friction = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestBoatNaturalFallTracksDistanceWithoutVanillaDestruction(t *testing.T) {
+	world := &game.World{}
+
+	for x := int32(-1); x <= 1; x++ {
+		for z := int32(-1); z <= 1; z++ {
+			world.SetBlock(game.BlockPosition{X: x, Z: z}, game.Stone)
+		}
+	}
+
+	runtime := NewRuntime(world)
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{Y: 16})
+
+	maximumFallDistance := float32(0)
+
+	for range 200 {
+		boat.Tick(runtime, nil)
+		maximumFallDistance = max(maximumFallDistance, boat.FallDistance)
+
+		if boat.OnGround {
+			break
+		}
+	}
+
+	if !boat.OnGround || maximumFallDistance <= 10 {
+		t.Fatalf("natural fall = on ground %t max distance %v", boat.OnGround, maximumFallDistance)
+	}
+
+	if boat.State.Removed || boat.FallDistance != 0 {
+		t.Fatalf("landed boat = removed %t fall distance %v", boat.State.Removed, boat.FallDistance)
+	}
 }
 
 func TestBoatUnderwaterStatuses(t *testing.T) {
@@ -198,6 +262,80 @@ func TestBoatUnderwaterStatuses(t *testing.T) {
 
 			if boat.Status != test.status {
 				t.Fatalf("status = %v, want %v", boat.Status, test.status)
+			}
+		})
+	}
+}
+
+func TestBoatInitialStatusAndUnderwaterLevelMatchAbstractBoat(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+	if boat.Status != boatStatusUnknown || boat.Previous != boatStatusUnknown {
+		t.Fatalf("spawn statuses = %v/%v, want null initial status", boat.Status, boat.Previous)
+	}
+
+	world := &game.World{}
+
+	for x := int32(-1); x <= 1; x++ {
+		for z := int32(-1); z <= 1; z++ {
+			world.SetBlock(game.BlockPosition{X: x, Z: z}, game.Water)
+		}
+	}
+
+	runtime = NewRuntime(world)
+
+	status, waterLevel, _ := runtime.boatStatus(game.Position{})
+	if status != boatStatusUnderWater || waterLevel != boatHeight {
+		t.Fatalf("underwater status/level = %v/%v, want underwater/%v", status, waterLevel, boatHeight)
+	}
+
+	flowing := mustFluidBlock(t, game.Water, "1")
+
+	world.SetBlock(game.BlockPosition{}, flowing)
+
+	status, waterLevel, _ = runtime.boatStatus(game.Position{})
+	if status != boatStatusUnderFlowingWater || waterLevel != boatHeight {
+		t.Fatalf("underflowing status/level = %v/%v, want underflowing/%v", status, waterLevel, boatHeight)
+	}
+}
+
+func TestBoatBubbleColumnCountdownAndImpulse(t *testing.T) {
+	tests := [...]boatBubbleColumnTestCase{
+		{name: "up", drag: "false", velocityY: 0.6},
+		{name: "down", drag: "true", velocityY: -0.7, wantEject: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			column, valid := game.BubbleColumn.WithProperties(game.BlockPropertyValue{Name: "drag", Value: test.drag})
+			if !valid {
+				t.Fatalf("bubble column drag=%s state missing", test.drag)
+			}
+
+			world := &game.World{}
+
+			world.SetBlock(game.BlockPosition{}, column)
+
+			runtime := NewRuntime(world)
+
+			boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+
+			for tick := range 60 {
+				boat.detectBubbleColumnLocked(runtime)
+
+				ejected := boat.tickBubbleColumnLocked(runtime)
+				if tick < 59 && ejected {
+					t.Fatal("bubble column ejected before its 60-tick countdown elapsed")
+				}
+
+				if tick == 59 && ejected != test.wantEject {
+					t.Fatalf("bubble ejection = %t, want %t", ejected, test.wantEject)
+				}
+			}
+
+			if boat.BubbleTime != 0 || boat.Velocity.Y != test.velocityY {
+				t.Fatalf("bubble time/velocity = %d/%v, want 0/%v", boat.BubbleTime, boat.Velocity.Y, test.velocityY)
 			}
 		})
 	}
@@ -251,12 +389,12 @@ func TestBoatMoveVehicleAcceptsClearMovementAndCorrectsRejection(t *testing.T) {
 
 	assertBoatPositionClose(t, correction, boat.State.Position)
 
-	if yaw != 30 || pitch != 5 {
-		t.Fatalf("correction rotation = %v/%v, want 30/5", yaw, pitch)
+	if yaw != 45 || pitch != 10 {
+		t.Fatalf("correction rotation = %v/%v, want rejected packet rotation 45/10", yaw, pitch)
 	}
 }
 
-func TestBoatMoveVehicleRejectsVerticalCollision(t *testing.T) {
+func TestBoatMoveVehicleAcceptsVerticalCollision(t *testing.T) {
 	world := &game.World{}
 
 	world.SetBlock(game.BlockPosition{}, game.Stone)
@@ -280,29 +418,69 @@ func TestBoatMoveVehicleRejectsVerticalCollision(t *testing.T) {
 
 	controller.handleMoveVehicle(protocol.MoveVehicle{Y: -1, Yaw: 80, Pitch: 10})
 
-	assertBoatPositionClose(t, boat.State.Position, game.Position{Y: 1})
+	assertBoatPositionClose(t, boat.State.Position, game.Position{Y: -1})
+
+	packets := packetsByID(t, connection, protocol.ClientboundMoveVehicleID)
+	if len(packets) != 0 {
+		t.Fatalf("vehicle corrections = %d, want no correction when only vertical residual remains", len(packets))
+	}
+}
+
+func TestBoatMoveVehicleRejectsNewHorizontalCollision(t *testing.T) {
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{}, game.Stone)
+
+	runtime := NewRuntime(world)
+	controller, connection := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000017", "controller")
+
+	runtime.AssignEntityID(controller)
+	runtime.addSession(controller)
+
+	start := game.Position{X: -boatWidth / 2}
+	boat := runtime.SpawnBoat(game.EntityOakBoat, start)
+
+	if !runtime.MountPassenger(boat, controller) {
+		t.Fatal("controller mount failed")
+	}
+
+	connection.reset()
+	controller.handleMoveVehicle(protocol.MoveVehicle{X: start.X + 0.1})
+
+	assertBoatPositionClose(t, boat.State.Position, start)
 
 	packets := packetsByID(t, connection, protocol.ClientboundMoveVehicleID)
 	if len(packets) != 1 {
-		t.Fatalf("vehicle corrections = %d, want 1", len(packets))
+		t.Fatalf("vehicle corrections = %d, want 1 for newly introduced collision", len(packets))
+	}
+}
+
+func TestBoatMoveVehicleUpdatesFallBookkeeping(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	controller, _ := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000018", "controller")
+
+	runtime.AssignEntityID(controller)
+	runtime.addSession(controller)
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{Y: 5})
+
+	boat.Velocity.Y = -0.25
+
+	if !runtime.MountPassenger(boat, controller) {
+		t.Fatal("controller mount failed")
 	}
 
-	reader := protocol.NewPacketReader(packets[0].Data)
+	controller.handleMoveVehicle(protocol.MoveVehicle{Y: 4, OnGround: false})
 
-	correction := game.Position{X: reader.Double(), Y: reader.Double(), Z: reader.Double()}
-
-	yaw := reader.Float()
-	pitch := reader.Float()
-
-	err := reader.Err()
-	if err != nil {
-		t.Fatalf("decode vehicle correction: %v", err)
+	if boat.LastYd != -0.25 || boat.FallDistance != 1 || boat.OnGround {
+		t.Fatalf("falling state = last yd %v distance %v on ground %t", boat.LastYd, boat.FallDistance, boat.OnGround)
 	}
 
-	assertBoatPositionClose(t, correction, game.Position{Y: 1})
+	controller.handleMoveVehicle(protocol.MoveVehicle{Y: 4, OnGround: true})
 
-	if yaw != 20 || pitch != 3 {
-		t.Fatalf("correction rotation = %v/%v, want 20/3", yaw, pitch)
+	if boat.FallDistance != 0 || !boat.OnGround {
+		t.Fatalf("landed state = distance %v on ground %t", boat.FallDistance, boat.OnGround)
 	}
 }
 
@@ -364,7 +542,7 @@ func TestBoatMountSeatsAndInput(t *testing.T) {
 	}
 }
 
-func TestBoatControllerHandoffClearsPaddlesAndBothPlayersCanDismount(t *testing.T) {
+func TestBoatControllerHandoffPreservesPaddlesAndBothPlayersCanDismount(t *testing.T) {
 	runtime := NewRuntime(&game.World{})
 
 	driver, _ := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000031", "driver")
@@ -399,8 +577,8 @@ func TestBoatControllerHandoffClearsPaddlesAndBothPlayersCanDismount(t *testing.
 	boatPosition := boat.State.Position
 	boat.State.mu.RUnlock()
 
-	if leftPaddle || rightPaddle {
-		t.Fatalf("paddles remained active after controller handoff: %t/%t", leftPaddle, rightPaddle)
+	if !leftPaddle || !rightPaddle {
+		t.Fatalf("paddles changed during controller handoff: %t/%t", leftPaddle, rightPaddle)
 	}
 
 	wantPassengerPosition := boatPassengerPosition(boatPosition, 0, 0, 1, false)
@@ -527,6 +705,45 @@ func TestBoatDismountUsesSafeSidePosition(t *testing.T) {
 	observerPackets := observerConnection.packets(t)
 	if len(observerPackets) < 3 || observerPackets[0].ID != protocol.ClientboundSetPassengersID || observerPackets[1].ID != protocol.ClientboundSynchronizeEntityPositionID || observerPackets[2].ID != protocol.ClientboundSetHeadRotationID {
 		t.Fatalf("observer dismount packet order = %#v, want passengers, absolute position, then head rotation", observerPackets)
+	}
+}
+
+func TestBoatDismountSelectsPoseUnderLowCeiling(t *testing.T) {
+	world := &game.World{}
+
+	for x := int32(-3); x <= 3; x++ {
+		for z := int32(-3); z <= 3; z++ {
+			world.SetBlock(game.BlockPosition{X: x, Z: z}, game.Stone)
+		}
+	}
+
+	topSlab := mustBlockState(t, game.StoneSlab, game.BlockPropertyValue{Name: "type", Value: "top"})
+
+	world.SetBlock(game.BlockPosition{Y: 2, Z: 1}, topSlab)
+
+	runtime := NewRuntime(world)
+
+	passenger, _ := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000045", "passenger")
+
+	runtime.AssignEntityID(passenger)
+	runtime.addSession(passenger)
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{Y: 1})
+	if !runtime.MountPassenger(boat, passenger) {
+		t.Fatal("mount failed")
+	}
+
+	if !runtime.DismountPassenger(passenger) {
+		t.Fatal("dismount failed")
+	}
+
+	player := passenger.snapshotPlayer()
+	if player.Pose != game.PlayerPoseCrouching {
+		t.Fatalf("dismount pose = %d, want crouching", player.Pose)
+	}
+
+	if player.Position.Z < 1 || player.Position.Y != 1 {
+		t.Fatalf("dismount position = %+v, want side position under slab", player.Position)
 	}
 }
 
@@ -767,6 +984,18 @@ func TestBoatAutomaticallyBoardsNearbyLivingEntity(t *testing.T) {
 
 	if passenger.Living.Velocity != (game.Velocity{}) {
 		t.Fatalf("new passenger was pushed: %#v", passenger.Living.Velocity)
+	}
+}
+
+func TestBoatCollisionPushesUnoccupiedBoatsOnBothSides(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+	first := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+	second := runtime.SpawnBoat(game.EntityBambooRaft, game.Position{X: 0.5})
+
+	runtime.pushBoatEntities(first.State.ID, first.State.Position)
+
+	if first.Velocity.X >= 0 || second.Velocity.X <= 0 {
+		t.Fatalf("boat collision velocities = %v/%v", first.Velocity.X, second.Velocity.X)
 	}
 }
 

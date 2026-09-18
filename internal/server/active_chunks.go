@@ -16,6 +16,14 @@ type RuntimeEntityTicker interface {
 	Tick(*Runtime, *ActiveChunk)
 }
 
+type RuntimeEntityDamageable interface {
+	RuntimeEntityDamage(*Runtime, game.Damage) bool
+}
+
+type RuntimeEntityPushable interface {
+	RuntimeEntityPush(game.Velocity)
+}
+
 type ActiveChunk struct {
 	Position LoadedChunk
 

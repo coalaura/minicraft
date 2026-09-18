@@ -7,6 +7,19 @@ import (
 	"github.com/coalaura/minicraft/internal/protocol"
 )
 
+type sourceWaterClipTestCase struct {
+	name      string
+	blocks    []game.BlockChange
+	want      game.BlockPosition
+	wantWater bool
+}
+
+type naturalAnvilFallTestCase struct {
+	name      string
+	startY    int32
+	wantTicks int32
+}
+
 func TestFallingBlockSchedulesAfterTwoActiveTicksAndCarriesProtocolState(t *testing.T) {
 	position := game.BlockPosition{Y: 70}
 
@@ -106,9 +119,7 @@ func TestFallingBlockPacketsFollowAuthoritativeBlockChanges(t *testing.T) {
 	}
 
 	packetIDs := connection.packetIDs(t)
-	if len(packetIDs) < 2 || packetIDs[len(packetIDs)-2] != protocol.ClientboundBlockUpdateID || packetIDs[len(packetIDs)-1] != protocol.ClientboundRemoveEntitiesID {
-		t.Fatalf("landing packet suffix = %v, want block update then entity removal", packetIDs)
-	}
+	assertPacketSuffix(t, packetIDs, []int32{protocol.ClientboundBlockUpdateID, protocol.ClientboundRemoveEntitiesID})
 }
 
 func TestFallingBlockScheduledTickPausesWithInactiveChunk(t *testing.T) {
@@ -397,6 +408,165 @@ func TestConcretePowderHardensOnPlacementAndHighSpeedSourceWaterIntersection(t *
 	}
 }
 
+func TestConcretePowderSourceWaterClipUsesColliderShapes(t *testing.T) {
+	tests := []sourceWaterClipTestCase{
+		{
+			name:   "source water",
+			blocks: []game.BlockChange{{Position: game.BlockPosition{Y: 2}, Replacement: game.Water}},
+			want:   game.BlockPosition{Y: 2}, wantWater: true,
+		},
+		{
+			name:   "flowing water",
+			blocks: []game.BlockChange{{Position: game.BlockPosition{Y: 2}, Replacement: mustBlockState(t, game.Water, game.BlockPropertyValue{Name: "level", Value: "1"})}},
+			want:   game.BlockPosition{}, wantWater: false,
+		},
+		{
+			name: "source water behind partial collider",
+			blocks: []game.BlockChange{
+				{Position: game.BlockPosition{Y: 3}, Replacement: game.StoneSlab},
+				{Position: game.BlockPosition{Y: 2}, Replacement: game.Water},
+			},
+			want: game.BlockPosition{}, wantWater: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			world := &game.World{}
+
+			world.SetBlocks(test.blocks)
+
+			runtime := NewRuntime(world)
+
+			position, found := runtime.clipSourceWaterSegment(game.Position{X: .5, Y: 5, Z: .5}, game.Position{X: .5, Y: 1, Z: .5})
+			if found != test.wantWater || found && position != test.want {
+				t.Fatalf("source water clip = %+v, %t, want %+v, %t", position, found, test.want, test.wantWater)
+			}
+		})
+	}
+}
+
+func TestFallingBlockHorizontalCollisionClearsVelocityBeforeDrag(t *testing.T) {
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{X: 1, Y: 5}, game.Stone)
+
+	runtime := NewRuntime(world)
+
+	viewer := &Session{}
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+	entity := runtime.SpawnFallingBlock(game.Position{X: .5, Y: 5, Z: .5}, game.Sand, game.BlockPosition{Y: 5})
+
+	entity.Velocity.X = 1
+
+	runtime.Tick()
+
+	if entity.Velocity.X != 0 {
+		t.Fatalf("horizontal collision velocity = %v, want 0", entity.Velocity.X)
+	}
+}
+
+func TestFallingBlockPlacementUsesDirectionalReplacementContext(t *testing.T) {
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{}, game.Stone)
+
+	oneLayerSnow := mustBlockState(t, game.Snow, game.BlockPropertyValue{Name: "layers", Value: "1"})
+
+	world.SetBlock(game.BlockPosition{Y: 1}, oneLayerSnow)
+
+	runtime := NewRuntime(world)
+
+	viewer := &Session{}
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+	entity := runtime.SpawnFallingBlock(game.Position{X: .5, Y: 2, Z: .5}, game.Sand, game.BlockPosition{Y: 2})
+	tickUntilFallingBlockRemoved(t, runtime, entity, 20)
+
+	if runtime.World.BlockAt(game.BlockPosition{Y: 1}) != game.Sand {
+		t.Fatalf("falling sand did not replace one-layer snow: %d", runtime.World.BlockAt(game.BlockPosition{Y: 1}))
+	}
+}
+
+func TestNaturalAnvilFallsDeliverLandEventAfterRemoval(t *testing.T) {
+	tests := []naturalAnvilFallTestCase{
+		{name: "one block", startY: 2, wantTicks: 7},
+		{name: "four blocks", startY: 5, wantTicks: 15},
+		{name: "fifteen blocks", startY: 16, wantTicks: 30},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			world := &game.World{}
+
+			world.SetBlock(game.BlockPosition{}, game.Stone)
+
+			runtime := NewRuntime(world)
+
+			runtime.entityRandom = fallingBlockNoDamageRandom
+
+			viewer, connection := newBlockMutationTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Viewer", game.GameModeSpectator)
+
+			viewer.loadedChunks = map[LoadedChunk]struct{}{{}: {}}
+
+			joinTestSession(t, runtime, viewer)
+
+			runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+			entity := runtime.SpawnFallingBlock(game.Position{X: .5, Y: float64(test.startY), Z: .5}, game.Anvil, game.BlockPosition{Y: test.startY})
+
+			connection.reset()
+
+			tickUntilFallingBlockRemoved(t, runtime, entity, 200)
+
+			if runtime.World.BlockAt(game.BlockPosition{Y: 1}) != game.Anvil {
+				t.Fatalf("anvil from y=%d landed as %d", test.startY, runtime.World.BlockAt(game.BlockPosition{Y: 1}))
+			}
+
+			if entity.Time != test.wantTicks {
+				t.Fatalf("anvil from y=%d landed on tick %d, want %d", test.startY, entity.Time, test.wantTicks)
+			}
+
+			assertPacketSuffix(t, connection.packetIDs(t), []int32{
+				protocol.ClientboundBlockUpdateID,
+				protocol.ClientboundRemoveEntitiesID,
+				protocol.ClientboundLevelEventID,
+			})
+		})
+	}
+}
+
+func TestBrokenAnvilDeliversEventBeforeItemSpawn(t *testing.T) {
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{}, game.StoneSlab)
+
+	runtime := NewRuntime(world)
+
+	viewer, connection := newBlockMutationTestSession(runtime, "00010203-0405-0607-0809-0a0b0c0d0e0f", "Viewer", game.GameModeSpectator)
+	viewer.loadedChunks = map[LoadedChunk]struct{}{{}: {}}
+
+	joinTestSession(t, runtime, viewer)
+
+	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+	entity := runtime.SpawnFallingBlock(game.Position{X: .5, Y: 1, Z: .5}, game.Anvil, game.BlockPosition{Y: 1})
+
+	connection.reset()
+
+	tickUntilFallingBlockRemoved(t, runtime, entity, 20)
+
+	assertPacketSuffix(t, connection.packetIDs(t), []int32{
+		protocol.ClientboundRemoveEntitiesID,
+		protocol.ClientboundLevelEventID,
+		protocol.ClientboundAddEntityID,
+		protocol.ClientboundEntityMetadataID,
+	})
+}
+
 func TestAnvilLandingDamagesLivingAndDegradesWithPreservedFacing(t *testing.T) {
 	world := &game.World{}
 
@@ -468,6 +638,26 @@ func tickUntilFallingBlockRemoved(t *testing.T, runtime *Runtime, entity *runtim
 	}
 
 	t.Fatalf("falling block remained after %d ticks at %+v", maximumTicks, entity.State.Position)
+}
+
+func assertPacketSuffix(t *testing.T, actual, suffix []int32) {
+	t.Helper()
+
+	if len(actual) < len(suffix) {
+		t.Fatalf("packet ids = %v, want suffix %v", actual, suffix)
+	}
+
+	start := len(actual) - len(suffix)
+
+	for index, packetID := range suffix {
+		if actual[start+index] != packetID {
+			t.Fatalf("packet ids = %v, want suffix %v", actual, suffix)
+		}
+	}
+}
+
+func fallingBlockNoDamageRandom() float32 {
+	return 1
 }
 
 func findRuntimeFallingBlock(runtime *Runtime) *runtimeFallingBlockEntity {

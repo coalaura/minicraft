@@ -69,9 +69,8 @@ func (r *Runtime) mountPassengerLocked(vehicleID, passengerID int32) bool {
 	insertAt := passengers.count
 
 	if r.playerPassengerID(passengerID) && passengers.count > 0 && !r.playerPassengerID(passengers.ids[0]) {
-		copy(passengers.ids[1:], passengers.ids[:passengers.count])
-
 		insertAt = 0
+		copy(passengers.ids[1:passengers.count+1], passengers.ids[:passengers.count])
 	}
 
 	passengers.ids[insertAt] = passengerID
