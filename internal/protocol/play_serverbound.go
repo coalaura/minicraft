@@ -14,8 +14,13 @@ const (
 
 	ClientCommandPerformRespawn = 0
 
-	PlayerInputSneak  = 0x20
-	PlayerInputSprint = 0x40
+	PlayerInputForward  = 0x01
+	PlayerInputBackward = 0x02
+	PlayerInputLeft     = 0x04
+	PlayerInputRight    = 0x08
+	PlayerInputJump     = 0x10
+	PlayerInputSneak    = 0x20
+	PlayerInputSprint   = 0x40
 
 	MainHand = 0
 	OffHand  = 1
@@ -164,6 +169,20 @@ type MovePlayerRotation struct {
 
 type MovePlayerStatus struct {
 	Flags MovementFlags
+}
+
+type MoveVehicle struct {
+	X        float64
+	Y        float64
+	Z        float64
+	Yaw      float32
+	Pitch    float32
+	OnGround bool
+}
+
+type PaddleBoat struct {
+	LeftPaddle  bool
+	RightPaddle bool
 }
 
 type PickItemFromBlock struct {
@@ -618,6 +637,42 @@ func DecodeMovePlayerStatus(data []byte) (MovePlayerStatus, error) {
 	}
 
 	return move, nil
+}
+
+func DecodeMoveVehicle(data []byte) (MoveVehicle, error) {
+	rd := NewPacketReader(data)
+
+	move := MoveVehicle{
+		X:        rd.Double(),
+		Y:        rd.Double(),
+		Z:        rd.Double(),
+		Yaw:      rd.Float(),
+		Pitch:    rd.Float(),
+		OnGround: rd.Bool(),
+	}
+
+	err := rd.Done("move vehicle")
+	if err != nil {
+		return MoveVehicle{}, err
+	}
+
+	return move, nil
+}
+
+func DecodePaddleBoat(data []byte) (PaddleBoat, error) {
+	rd := NewPacketReader(data)
+
+	paddle := PaddleBoat{
+		LeftPaddle:  rd.Bool(),
+		RightPaddle: rd.Bool(),
+	}
+
+	err := rd.Done("paddle boat")
+	if err != nil {
+		return PaddleBoat{}, err
+	}
+
+	return paddle, nil
 }
 
 func DecodePickItemFromBlock(data []byte) (PickItemFromBlock, error) {

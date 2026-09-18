@@ -59,6 +59,10 @@ type RuntimeEntityInteractor interface {
 	RuntimeEntityInteract(*Runtime, *Session, RuntimeEntityInteraction) bool
 }
 
+type RuntimeEntityAttacker interface {
+	RuntimeEntityAttack(*Runtime, *Session)
+}
+
 func (r *Runtime) handlePlayerInteraction(attackerSession *Session, interaction protocol.Interact) {
 	r.worldMutationMu.Lock()
 	r.lifecycleMu.Lock()
@@ -89,6 +93,15 @@ func (r *Runtime) handlePlayerInteraction(attackerSession *Session, interaction 
 				attackerSession.Log.Warnf("[play] failed to synchronize entity interaction inventory: %v\n", err)
 			}
 		}
+
+		return
+	}
+
+	if attacker, supported := target.runtimeEntity.(RuntimeEntityAttacker); supported {
+		attacker.RuntimeEntityAttack(r, attackerSession)
+
+		r.lifecycleMu.Unlock()
+		r.worldMutationMu.Unlock()
 
 		return
 	}
@@ -169,31 +182,38 @@ func (r *Runtime) playerInteractionTargetLocked(attackerSession *Session, intera
 	runtimeEntity := r.entities[interaction.EntityID]
 	r.entityMu.RUnlock()
 
-	runtimeLiving, living := runtimeEntity.(RuntimeLivingEntity)
-	if !living {
+	if runtimeEntity == nil {
 		return playerAttackTarget{}, false
 	}
 
-	state := runtimeLiving.RuntimeEntityState()
-	livingState := runtimeLiving.RuntimeLivingState()
+	state := runtimeEntity.RuntimeEntityState()
 
 	state.mu.RLock()
 	removed := state.Removed
-	dead := livingState.Dead
 	position := state.Position
-
-	box := livingState.CollisionBox(position)
-
-	validDimensions := livingState.Width > 0 && livingState.Height > 0
 	state.mu.RUnlock()
 
-	if removed || dead || !validDimensions {
+	definition, defined := state.Type.Definition()
+	if !defined || definition.Width <= 0 || definition.Height <= 0 {
+		return playerAttackTarget{}, false
+	}
+
+	box := entityBox(position, definition.Width, definition.Height)
+
+	if removed {
 		return playerAttackTarget{}, false
 	}
 
 	inclusive := interaction.Action == protocol.InteractActionAttack
 	if !attacker.IsWithinEntityInteractionRange(box, playerInteractionVerificationBuffer, inclusive) {
 		return playerAttackTarget{}, false
+	}
+
+	runtimeLiving, _ := runtimeEntity.(RuntimeLivingEntity)
+	if interaction.Action == protocol.InteractActionAttack && runtimeLiving == nil {
+		if _, attackable := runtimeEntity.(RuntimeEntityAttacker); !attackable {
+			return playerAttackTarget{}, false
+		}
 	}
 
 	return playerAttackTarget{runtimeEntity: runtimeEntity, runtimeLiving: runtimeLiving, entityID: interaction.EntityID, position: position}, true

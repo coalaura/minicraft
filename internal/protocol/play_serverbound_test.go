@@ -372,6 +372,41 @@ func TestDecodeMovementFlags(t *testing.T) {
 	assertMovementFlags(t, status.Flags, false, true)
 }
 
+func TestDecodeMoveVehicle(t *testing.T) {
+	var writer PacketWriter
+
+	writer.Double(1.5)
+	writer.Double(-2.25)
+	writer.Double(3)
+	writer.Float(45.5)
+	writer.Float(-30.25)
+	writer.Bool(true)
+
+	move, err := DecodeMoveVehicle(writer.Buffer.Bytes())
+	if err != nil {
+		t.Fatalf("decode move vehicle: %v", err)
+	}
+
+	if move.X != 1.5 || move.Y != -2.25 || move.Z != 3 || move.Yaw != 45.5 || move.Pitch != -30.25 || !move.OnGround {
+		t.Fatalf("move vehicle = %+v", move)
+	}
+
+	assertTrailingRejected(t, "move vehicle", writer.Buffer.Bytes(), DecodeMoveVehicle)
+}
+
+func TestDecodePaddleBoat(t *testing.T) {
+	paddle, err := DecodePaddleBoat([]byte{0x01, 0x00})
+	if err != nil {
+		t.Fatalf("decode paddle boat: %v", err)
+	}
+
+	if !paddle.LeftPaddle || paddle.RightPaddle {
+		t.Fatalf("paddle boat = %+v", paddle)
+	}
+
+	assertTrailingRejected(t, "paddle boat", []byte{0x01, 0x00}, DecodePaddleBoat)
+}
+
 func TestDecodePickItemFromBlock(t *testing.T) {
 	var writer PacketWriter
 
@@ -493,6 +528,8 @@ func TestPlayerActionPacketIDsProtocol774(t *testing.T) {
 		"player command":  {actual: ServerboundPlayerCommandID, expected: 0x29},
 		"player input":    {actual: ServerboundPlayerInputID, expected: 0x2A},
 		"player loaded":   {actual: ServerboundPlayerLoadedID, expected: 0x2B},
+		"move vehicle":    {actual: ServerboundMoveVehicleID, expected: 0x21},
+		"paddle boat":     {actual: ServerboundPaddleBoatID, expected: 0x22},
 		"held item":       {actual: ServerboundSetHeldItemID, expected: 0x34},
 		"creative slot":   {actual: ServerboundSetCreativeModeSlotID, expected: 0x37},
 		"swing arm":       {actual: ServerboundSwingArmID, expected: 0x3C},

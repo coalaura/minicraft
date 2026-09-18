@@ -79,6 +79,8 @@ func (s *Session) sendPlayerEntity(player game.Player) error {
 		return err
 	}
 
+	s.markPlayerVisible(player.EntityID)
+
 	err = s.sendPlayerMetadata(player)
 	if err != nil {
 		return err
@@ -90,6 +92,10 @@ func (s *Session) sendPlayerEntity(player game.Player) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	if s.Runtime != nil {
+		s.Runtime.synchronizePassengerRelationsFor(s, player.EntityID)
 	}
 
 	return s.sendPlayerMobEffects(player)
@@ -314,7 +320,12 @@ func (s *Session) sendEntityAnimation(entityID int32, animation byte) error {
 func (s *Session) sendPlayerRemoval(player game.Player) error {
 	entities := protocol.RemoveEntities{EntityIDs: []int32{player.EntityID}}
 
-	return s.writePacket(protocol.ClientboundRemoveEntitiesID, entities)
+	err := s.writePacket(protocol.ClientboundRemoveEntitiesID, entities)
+	if err == nil {
+		s.markPlayerHidden(player.EntityID)
+	}
+
+	return err
 }
 
 func (s *Session) sendPlayerInfoRemoval(player game.Player) error {

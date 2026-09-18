@@ -38,9 +38,11 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 		"update entity position":       {actual: ClientboundUpdateEntityPositionID, expected: 0x33},
 		"update position and rotation": {actual: ClientboundUpdateEntityPositionRotationID, expected: 0x34},
 		"update entity rotation":       {actual: ClientboundUpdateEntityRotationID, expected: 0x36},
+		"move vehicle":                 {actual: ClientboundMoveVehicleID, expected: 0x37},
 		"set head rotation":            {actual: ClientboundSetHeadRotationID, expected: 0x51},
 		"set entity motion":            {actual: ClientboundSetEntityMotionID, expected: 0x63},
 		"entity equipment":             {actual: ClientboundEntityEquipmentID, expected: 0x64},
+		"set passengers":               {actual: ClientboundSetPassengersID, expected: 0x69},
 		"take item entity":             {actual: ClientboundTakeItemEntityID, expected: 0x7A},
 		"remove mob effect":            {actual: ClientboundRemoveMobEffectID, expected: 0x4C},
 		"update mob effect":            {actual: ClientboundUpdateMobEffectID, expected: 0x82},
@@ -57,6 +59,16 @@ func TestMovementPacketIDsProtocol774(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMoveVehicleCorrectionEncode(t *testing.T) {
+	assertPacketEncoding(t, MoveVehicleCorrection{X: 1.5, Y: -2.25, Z: 3, Yaw: 90, Pitch: -15}, []byte{
+		0x3F, 0xF8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0xC0, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x40, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x42, 0xB4, 0x00, 0x00,
+		0xC1, 0x70, 0x00, 0x00,
+	})
 }
 
 func TestContainerInventoryPacketsEncode(t *testing.T) {
@@ -906,6 +918,11 @@ func TestSetHeadRotationEncode(t *testing.T) {
 	head := SetHeadRotation{EntityID: 300, HeadYaw: 0x80}
 
 	assertPacketEncoding(t, head, []byte{0xAC, 0x02, 0x80})
+}
+
+func TestSetPassengersEncode(t *testing.T) {
+	assertPacketEncoding(t, SetPassengers{VehicleID: 300, Passengers: []int32{301, 2, 300}}, []byte{0xAC, 0x02, 0x03, 0xAD, 0x02, 0x02, 0xAC, 0x02})
+	assertPacketEncoding(t, SetPassengers{VehicleID: 1}, []byte{0x01, 0x00})
 }
 
 func TestRemoveEntitiesEncode(t *testing.T) {

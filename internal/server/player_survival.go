@@ -618,6 +618,7 @@ func (r *Runtime) damagePlayerLocked(session *Session, damage PlayerDamage) (pla
 		return update, true
 	}
 
+	r.removePassenger(player.EntityID)
 	r.cancelMiningLocked(session)
 
 	transientDrops := r.discardMenuOnDeathLocked(session)

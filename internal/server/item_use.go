@@ -15,9 +15,19 @@ const (
 type itemUseHandler func(*Session, game.ItemStack, int32) (bool, error)
 
 var itemUseHandlers = map[game.Item]itemUseHandler{
-	game.ItemBucket:      useBucketItem,
-	game.ItemWaterBucket: useBucketItem,
-	game.ItemLavaBucket:  useBucketItem,
+	game.ItemAcaciaBoat:   useBoatItem,
+	game.ItemBambooRaft:   useBoatItem,
+	game.ItemBirchBoat:    useBoatItem,
+	game.ItemCherryBoat:   useBoatItem,
+	game.ItemDarkOakBoat:  useBoatItem,
+	game.ItemJungleBoat:   useBoatItem,
+	game.ItemMangroveBoat: useBoatItem,
+	game.ItemOakBoat:      useBoatItem,
+	game.ItemPaleOakBoat:  useBoatItem,
+	game.ItemSpruceBoat:   useBoatItem,
+	game.ItemBucket:       useBucketItem,
+	game.ItemWaterBucket:  useBucketItem,
+	game.ItemLavaBucket:   useBucketItem,
 }
 
 func (s *Session) handleUseItem(interaction protocol.UseItem) (err error) {
@@ -733,6 +743,73 @@ func useBucketItem(session *Session, stack game.ItemStack, hand int32) (bool, er
 	return session.Runtime.emptyBucket(session, hand, stack, target, fluid)
 }
 
+func useBoatItem(session *Session, stack game.ItemStack, hand int32) (bool, error) {
+	entityType, valid := boatItemEntityType(stack.Item)
+	if !valid {
+		return false, nil
+	}
+
+	player := session.snapshotPlayer()
+	if player.GameMode == game.GameModeSpectator {
+		return false, nil
+	}
+
+	hit, found := session.Runtime.raycastItemGrid(player, itemUseRange, boatPlacementTarget)
+
+	if !found {
+		return false, nil
+	}
+
+	runtime := session.Runtime
+
+	runtime.worldMutationMu.Lock()
+	runtime.lifecycleMu.Lock()
+
+	if !runtime.boatPlacementClear(hit.location) {
+		runtime.lifecycleMu.Unlock()
+		runtime.worldMutationMu.Unlock()
+
+		return false, nil
+	}
+
+	inventoryBefore := player.Inventory.Clone()
+	consumed := false
+
+	player, valid = session.updatePlayerState(func(player *game.Player) bool {
+		held, heldValid := heldItemPointer(player, hand)
+		if !heldValid || !held.Equal(stack) {
+			return false
+		}
+
+		if player.GameMode != game.GameModeCreative {
+			held.Count--
+			consumed = true
+		}
+
+		return true
+	})
+
+	if valid {
+		runtime.spawnBoat(entityType, hit.location, player.Rotation.Yaw)
+	}
+
+	runtime.lifecycleMu.Unlock()
+	runtime.worldMutationMu.Unlock()
+
+	if !valid {
+		return false, nil
+	}
+
+	if consumed {
+		err := session.synchronizePlayerInventoryMutation(inventoryBefore)
+		if err != nil {
+			return true, err
+		}
+	}
+
+	return true, nil
+}
+
 func bucketInventoryResult(player game.Player, hand int32, expected game.ItemStack, result game.Item) (game.PlayerInventory, game.ItemStack, bool) {
 	candidate := player
 	candidate.Inventory = player.Inventory.Clone()
@@ -842,6 +919,37 @@ func bucketPlacementTarget(block game.Block) bool {
 
 func bucketFillTarget(block game.Block) bool {
 	return sourceFluid(block) || len(block.OutlineBoxes(game.BlockPosition{})) != 0
+}
+
+func boatPlacementTarget(block game.Block) bool {
+	return !block.FluidState().Empty() || len(block.OutlineBoxes(game.BlockPosition{})) != 0
+}
+
+func boatItemEntityType(item game.Item) (game.EntityType, bool) {
+	switch item {
+	case game.ItemAcaciaBoat:
+		return game.EntityAcaciaBoat, true
+	case game.ItemBambooRaft:
+		return game.EntityBambooRaft, true
+	case game.ItemBirchBoat:
+		return game.EntityBirchBoat, true
+	case game.ItemCherryBoat:
+		return game.EntityCherryBoat, true
+	case game.ItemDarkOakBoat:
+		return game.EntityDarkOakBoat, true
+	case game.ItemJungleBoat:
+		return game.EntityJungleBoat, true
+	case game.ItemMangroveBoat:
+		return game.EntityMangroveBoat, true
+	case game.ItemOakBoat:
+		return game.EntityOakBoat, true
+	case game.ItemPaleOakBoat:
+		return game.EntityPaleOakBoat, true
+	case game.ItemSpruceBoat:
+		return game.EntitySpruceBoat, true
+	default:
+		return 0, false
+	}
 }
 
 func bucketFluid(item game.Item) (game.Block, bool) {

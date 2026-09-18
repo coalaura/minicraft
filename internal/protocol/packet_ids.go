@@ -77,6 +77,8 @@ const (
 	ServerboundMovePlayerPositionRotationID = 0x1E
 	ServerboundMovePlayerRotationID         = 0x1F
 	ServerboundMovePlayerStatusID           = 0x20
+	ServerboundMoveVehicleID                = 0x21
+	ServerboundPaddleBoatID                 = 0x22
 	ServerboundPickItemFromBlockID          = 0x23
 	ServerboundPlayerActionID               = 0x28
 	ServerboundPlayerCommandID              = 0x29
@@ -118,6 +120,7 @@ const (
 	ClientboundUpdateEntityPositionID         = 0x33
 	ClientboundUpdateEntityPositionRotationID = 0x34
 	ClientboundUpdateEntityRotationID         = 0x36
+	ClientboundMoveVehicleID                  = 0x37
 	ClientboundOpenScreenID                   = 0x39
 	ClientboundPlayerChatID                   = 0x3F
 	ClientboundCombatKillID                   = 0x42
@@ -135,6 +138,7 @@ const (
 	ClientboundEntityEquipmentID              = 0x64
 	ClientboundSetHealthID                    = 0x66
 	ClientboundSetHeldSlotID                  = 0x67
+	ClientboundSetPassengersID                = 0x69
 	ClientboundUpdateTimeID                   = 0x6F
 	ClientboundSoundID                        = 0x73
 	ClientboundSystemChatID                   = 0x77

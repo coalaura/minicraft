@@ -39,6 +39,7 @@ type Session struct {
 	protocolState   int32
 	shuttingDown    bool
 	mining          miningState
+	playerInput     byte
 
 	chunkMx               sync.Mutex
 	centerChunk           LoadedChunk
@@ -55,6 +56,7 @@ type Session struct {
 	runtimeChunksReleased bool
 	entityTrackMu         sync.Mutex
 	trackedEntities       map[int32]struct{}
+	visiblePlayerEntities map[int32]struct{}
 
 	nextTeleportID int32
 	chunksPerTick  float32

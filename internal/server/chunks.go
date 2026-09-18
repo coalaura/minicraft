@@ -306,13 +306,17 @@ func (s *Session) hasLoadedBlock(position game.BlockPosition) bool {
 }
 
 func (s *Session) updatePlayerChunks() error {
+	return s.updatePlayerChunksWithWorldLock(false)
+}
+
+func (s *Session) updatePlayerChunksWithWorldLock(worldLocked bool) error {
 	player := s.playerView()
 	center := LoadedChunk{
 		X: chunkCoordinate(player.Position.X),
 		Z: chunkCoordinate(player.Position.Z),
 	}
 
-	return s.updateVisibleChunks(center)
+	return s.updateVisibleChunksWithWorldLock(center, worldLocked)
 }
 
 func (s *Session) resetChunksForRespawn() {
@@ -332,6 +336,10 @@ func (s *Session) resetChunksForRespawn() {
 }
 
 func (s *Session) updateVisibleChunks(center LoadedChunk) error {
+	return s.updateVisibleChunksWithWorldLock(center, false)
+}
+
+func (s *Session) updateVisibleChunksWithWorldLock(center LoadedChunk, worldLocked bool) error {
 	s.chunkMx.Lock()
 
 	if s.runtimeChunksReleased {
@@ -400,7 +408,11 @@ func (s *Session) updateVisibleChunks(center LoadedChunk) error {
 
 	s.chunkMx.Unlock()
 
-	s.Runtime.resumeActivatedChunks(activated)
+	if worldLocked {
+		s.Runtime.resumeDeferredFluidSourcesLocked(activated)
+	} else {
+		s.Runtime.resumeActivatedChunks(activated)
+	}
 
 	for _, chunk := range chunksToUnload {
 		s.untrackEntitiesInChunk(chunk)

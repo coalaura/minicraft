@@ -75,6 +75,18 @@ func (c *ActiveChunk) SetEntity(id int32, entity RuntimeEntity) {
 	c.removeEntityTicker(id)
 }
 
+func (c *ActiveChunk) setMountedEntity(id int32, entity RuntimeEntity) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.entities == nil {
+		c.entities = make(map[int32]RuntimeEntity)
+	}
+
+	c.entities[id] = entity
+	c.removeEntityTicker(id)
+}
+
 func (c *ActiveChunk) RemoveEntity(id int32) {
 	c.SetEntity(id, nil)
 }

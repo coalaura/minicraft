@@ -212,6 +212,20 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 		}
 
 		return s.handleMovePlayerPosition(move)
+	case protocol.ServerboundMoveVehicleID:
+		move, err := protocol.DecodeMoveVehicle(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		s.handleMoveVehicle(move)
+	case protocol.ServerboundPaddleBoatID:
+		paddle, err := protocol.DecodePaddleBoat(packet.Data)
+		if err != nil {
+			return err
+		}
+
+		s.handlePaddleBoat(paddle)
 	case protocol.ServerboundMovePlayerPositionRotationID:
 		move, err := protocol.DecodeMovePlayerPositionRotation(packet.Data)
 		if err != nil {
@@ -472,7 +486,9 @@ func (s *Session) sendPlayerPosition() error {
 		return err
 	}
 
-	s.Log.Printf("[play] sent position and look\n")
+	if s.Log != nil {
+		s.Log.Printf("[play] sent position and look\n")
+	}
 
 	return nil
 }
@@ -501,6 +517,10 @@ func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) err
 		return fmt.Errorf("invalid player position")
 	}
 
+	if s.VehicleID() != 0 {
+		return nil
+	}
+
 	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
 		player.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
 		player.OnGround = move.Flags.OnGround()
@@ -517,6 +537,14 @@ func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) err
 func (s *Session) handleMovePlayerPositionRotation(move protocol.MovePlayerPositionRotation) error {
 	if !validPlayerPosition(move.X, move.Y, move.Z) || !validPlayerRotation(move.Yaw, move.Pitch) {
 		return fmt.Errorf("invalid player position or rotation")
+	}
+
+	if s.VehicleID() != 0 {
+		s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
+			player.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
+		})
+
+		return nil
 	}
 
 	s.Runtime.updatePlayerMovement(s, func(player *game.Player) {
@@ -627,7 +655,16 @@ func (s *Session) handlePlayerInput(input protocol.PlayerInput) {
 		return
 	}
 
-	s.Runtime.UpdateSneaking(s, input.Flags&protocol.PlayerInputSneak != 0)
+	s.playerMx.Lock()
+	s.playerInput = input.Flags
+	s.playerMx.Unlock()
+
+	sneaking := input.Flags&protocol.PlayerInputSneak != 0
+	if sneaking {
+		s.Runtime.DismountPassenger(s)
+	}
+
+	s.Runtime.UpdateSneaking(s, sneaking)
 }
 
 func (s *Session) handleSwingArm(swing protocol.SwingArm) {

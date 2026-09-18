@@ -76,6 +76,9 @@ type Runtime struct {
 	groundPathWorkspace       groundPathWorkspace
 	swimPathWorkspace         swimPathWorkspace
 	entityPacketBatch         atomic.Bool
+	passengerMu               sync.RWMutex
+	passengerVehicles         map[int32]int32
+	vehiclePassengers         map[int32]passengerList
 	mu                        sync.RWMutex
 	nextEntityID              int32
 	reserved                  int
@@ -308,6 +311,8 @@ func (r *Runtime) LeaveSession(session *Session) {
 	defer r.lifecycleMu.Unlock()
 
 	r.cancelMiningLocked(session)
+
+	r.removePassenger(session.passengerID())
 
 	r.closeMenuWithRemovalStateLocked(session, false, true)
 
@@ -857,6 +862,8 @@ func NewRuntime(world *game.World) *Runtime {
 		itemFluidFlowCache:      make(map[game.BlockPosition]game.Velocity),
 		entities:                make(map[int32]RuntimeEntity),
 		entitiesByChunk:         make(map[LoadedChunk][]RuntimeEntity),
+		passengerVehicles:       make(map[int32]int32),
+		vehiclePassengers:       make(map[int32]passengerList),
 		entityRandom:            rand.Float32,
 		sessions:                make(map[*Session]*game.Player),
 		connectedSessions:       make(map[*Session]struct{}),

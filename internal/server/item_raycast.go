@@ -15,6 +15,7 @@ const (
 type itemRaycastHit struct {
 	position game.BlockPosition
 	face     int32
+	location game.Position
 }
 
 func (r *Runtime) raycastItemGrid(player game.Player, maximumDistance float64, hit func(game.Block) bool) (itemRaycastHit, bool) {
@@ -39,7 +40,7 @@ func (r *Runtime) raycastItemGrid(player game.Player, maximumDistance float64, h
 			if hit(block) {
 				boxes := block.OutlineBoxes(position)
 
-				if block.FluidState().IsSource() {
+				if !block.FluidState().Empty() {
 					boxes = append(boxes, fluidRaycastBox(r.World, block, position))
 				}
 
@@ -55,7 +56,13 @@ func (r *Runtime) raycastItemGrid(player game.Player, maximumDistance float64, h
 				}
 
 				if nearestFace >= 0 {
-					return itemRaycastHit{position: position, face: nearestFace}, true
+					location := game.Position{
+						X: origin.X + directionX*nearestDistance,
+						Y: origin.Y + directionY*nearestDistance,
+						Z: origin.Z + directionZ*nearestDistance,
+					}
+
+					return itemRaycastHit{position: position, face: nearestFace, location: location}, true
 				}
 			}
 		}

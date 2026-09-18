@@ -302,9 +302,23 @@ type UpdateEntityRotation struct {
 	OnGround bool
 }
 
+type MoveVehicleCorrection struct {
+	X float64
+	Y float64
+	Z float64
+
+	Yaw   float32
+	Pitch float32
+}
+
 type SetHeadRotation struct {
 	EntityID int32
 	HeadYaw  byte
+}
+
+type SetPassengers struct {
+	VehicleID  int32
+	Passengers []int32
 }
 
 type RemoveEntities struct {
@@ -862,9 +876,26 @@ func (p UpdateEntityRotation) Encode(wr *PacketWriter) {
 	wr.Bool(p.OnGround)
 }
 
+func (p MoveVehicleCorrection) Encode(wr *PacketWriter) {
+	wr.Double(p.X)
+	wr.Double(p.Y)
+	wr.Double(p.Z)
+	wr.Float(p.Yaw)
+	wr.Float(p.Pitch)
+}
+
 func (p SetHeadRotation) Encode(wr *PacketWriter) {
 	wr.VarInt(p.EntityID)
 	wr.Byte(p.HeadYaw)
+}
+
+func (p SetPassengers) Encode(wr *PacketWriter) {
+	wr.VarInt(p.VehicleID)
+	wr.VarInt(int32(len(p.Passengers)))
+
+	for _, passengerID := range p.Passengers {
+		wr.VarInt(passengerID)
+	}
 }
 
 func (p RemoveEntities) Encode(wr *PacketWriter) {

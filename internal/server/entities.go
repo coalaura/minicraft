@@ -63,6 +63,16 @@ type runtimeLivingEntityBoxIterator struct {
 	afterID      int32
 }
 
+type runtimeEntityBoxIterator struct {
+	runtime      *Runtime
+	box          game.AABB
+	minimumChunk LoadedChunk
+	maximumChunk LoadedChunk
+	chunkX       int32
+	chunkZ       int32
+	afterID      int32
+}
+
 type runtimeEntityView struct {
 	ID       int32
 	UUID     string
@@ -665,6 +675,59 @@ func (r *Runtime) runtimeLivingEntitiesInBox(box game.AABB) runtimeLivingEntityB
 	}
 }
 
+func (iterator *runtimeEntityBoxIterator) Next() (RuntimeEntity, bool) {
+	for iterator.chunkX <= iterator.maximumChunk.X {
+		chunk := LoadedChunk{X: iterator.chunkX, Z: iterator.chunkZ}
+
+		iterator.runtime.entityMu.RLock()
+		entities := iterator.runtime.entitiesByChunk[chunk]
+		index := runtimeEntityIndexAfterID(entities, iterator.afterID)
+
+		if index == len(entities) {
+			iterator.runtime.entityMu.RUnlock()
+
+			iterator.advanceChunk()
+
+			continue
+		}
+
+		candidate := entities[index]
+
+		iterator.afterID = candidate.RuntimeEntityState().ID
+		iterator.runtime.entityMu.RUnlock()
+
+		return candidate, true
+	}
+
+	return nil, false
+}
+
+func (iterator *runtimeEntityBoxIterator) advanceChunk() {
+	iterator.afterID = 0
+	iterator.chunkZ++
+
+	if iterator.chunkZ <= iterator.maximumChunk.Z {
+		return
+	}
+
+	iterator.chunkX++
+	iterator.chunkZ = iterator.minimumChunk.Z
+}
+
+func (r *Runtime) runtimeEntitiesInBox(box game.AABB) runtimeEntityBoxIterator {
+	minimumChunk := positionLoadedChunk(game.Position{X: box.MinX - runtimeLivingMaximumHalfWidth, Z: box.MinZ - runtimeLivingMaximumHalfWidth})
+	maximumChunk := positionLoadedChunk(game.Position{X: box.MaxX + runtimeLivingMaximumHalfWidth, Z: box.MaxZ + runtimeLivingMaximumHalfWidth})
+
+	return runtimeEntityBoxIterator{
+		runtime:      r,
+		box:          box,
+		minimumChunk: minimumChunk,
+		maximumChunk: maximumChunk,
+		chunkX:       minimumChunk.X,
+		chunkZ:       minimumChunk.Z,
+	}
+}
+
 func (r *Runtime) addEntityToChunkIndexLocked(entity RuntimeEntity) {
 	view := entity.(RuntimeEntityTracker).RuntimeEntityView()
 
@@ -716,7 +779,11 @@ func (r *Runtime) runtimeEntityMoved(entity RuntimeEntity, previous game.Positio
 
 	nextActive, active := r.ActiveChunk(nextChunk)
 	if active {
-		nextActive.SetEntity(entityID, entity)
+		if r.passengerVehicleID(entityID) == 0 {
+			nextActive.SetEntity(entityID, entity)
+		} else {
+			nextActive.setMountedEntity(entityID, entity)
+		}
 	}
 
 	r.reconcileRuntimeEntityTracking(entity)
@@ -729,6 +796,8 @@ func (r *Runtime) removeRuntimeEntity(id int32) {
 }
 
 func (r *Runtime) unregisterRuntimeEntity(id int32) []*Session {
+	r.removePassenger(id)
+
 	r.entityMu.Lock()
 
 	entity := r.entities[id]
@@ -866,70 +935,80 @@ func (s *Session) trackRuntimeEntity(entity RuntimeEntity) {
 		return
 	}
 
-	s.entityTrackMu.Lock()
-	defer s.entityTrackMu.Unlock()
+	synchronized := false
 
-	state := entity.RuntimeEntityState()
+	func() {
+		s.entityTrackMu.Lock()
+		defer s.entityTrackMu.Unlock()
 
-	state.mu.RLock()
-	view := lockedViewer.runtimeEntityViewLocked()
+		state := entity.RuntimeEntityState()
 
-	snapshot := runtimeEntitySpawnSnapshotLocked(view, state.tracker)
-	state.mu.RUnlock()
+		state.mu.RLock()
+		view := lockedViewer.runtimeEntityViewLocked()
 
-	if view.Removed {
-		return
-	}
+		snapshot := runtimeEntitySpawnSnapshotLocked(view, state.tracker)
+		state.mu.RUnlock()
 
-	if s.trackedEntities == nil {
-		s.trackedEntities = make(map[int32]struct{})
-	}
-
-	if _, present := s.trackedEntities[view.ID]; present {
-		return
-	}
-
-	s.trackedEntities[view.ID] = struct{}{}
-
-	spawner, spawnable := entity.(RuntimeEntitySpawner)
-	if !spawnable {
-		delete(s.trackedEntities, view.ID)
-
-		return
-	}
-
-	addSent := false
-
-	err := s.writePacket(protocol.ClientboundAddEntityID, spawner.AddEntityPacket(snapshot))
-	if err == nil {
-		addSent = true
-
-		metadata, present := entity.(RuntimeEntityMetadata)
-		if present {
-			err = s.writePacket(protocol.ClientboundEntityMetadataID, protocol.EntityMetadata{EntityID: view.ID, Entries: metadata.EntityMetadata()})
+		if view.Removed {
+			return
 		}
 
+		if s.trackedEntities == nil {
+			s.trackedEntities = make(map[int32]struct{})
+		}
+
+		if _, present := s.trackedEntities[view.ID]; present {
+			return
+		}
+
+		s.trackedEntities[view.ID] = struct{}{}
+
+		spawner, spawnable := entity.(RuntimeEntitySpawner)
+		if !spawnable {
+			delete(s.trackedEntities, view.ID)
+
+			return
+		}
+
+		addSent := false
+
+		err := s.writePacket(protocol.ClientboundAddEntityID, spawner.AddEntityPacket(snapshot))
 		if err == nil {
-			equipment, present := entity.(RuntimeEntityEquipment)
+			addSent = true
+
+			metadata, present := entity.(RuntimeEntityMetadata)
 			if present {
-				entries := equipment.EntityEquipment()
-				if len(entries) != 0 {
-					err = s.writePacket(protocol.ClientboundEntityEquipmentID, protocol.EntityEquipment{EntityID: view.ID, Equipment: entries})
+				err = s.writePacket(protocol.ClientboundEntityMetadataID, protocol.EntityMetadata{EntityID: view.ID, Entries: metadata.EntityMetadata()})
+			}
+
+			if err == nil {
+				equipment, present := entity.(RuntimeEntityEquipment)
+				if present {
+					entries := equipment.EntityEquipment()
+					if len(entries) != 0 {
+						err = s.writePacket(protocol.ClientboundEntityEquipmentID, protocol.EntityEquipment{EntityID: view.ID, Equipment: entries})
+					}
 				}
 			}
 		}
-	}
 
-	if err != nil && s.Log != nil {
-		s.Log.Warnf("[play] failed to track entity: %v\n", err)
-	}
-
-	if err != nil {
-		delete(s.trackedEntities, view.ID)
-
-		if addSent {
-			_ = s.writePacket(protocol.ClientboundRemoveEntitiesID, protocol.RemoveEntities{EntityIDs: []int32{view.ID}})
+		if err != nil && s.Log != nil {
+			s.Log.Warnf("[play] failed to track entity: %v\n", err)
 		}
+
+		if err != nil {
+			delete(s.trackedEntities, view.ID)
+
+			if addSent {
+				_ = s.writePacket(protocol.ClientboundRemoveEntitiesID, protocol.RemoveEntities{EntityIDs: []int32{view.ID}})
+			}
+		}
+
+		synchronized = err == nil
+	}()
+
+	if synchronized {
+		s.Runtime.synchronizePassengerRelationsFor(s, entity.RuntimeEntityState().ID)
 	}
 }
 
@@ -960,6 +1039,7 @@ func (s *Session) tracksRuntimeEntity(id int32) bool {
 func (s *Session) clearTrackedEntities() {
 	s.entityTrackMu.Lock()
 	s.trackedEntities = nil
+	s.visiblePlayerEntities = nil
 	s.entityTrackMu.Unlock()
 }
 
