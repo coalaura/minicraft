@@ -69,6 +69,26 @@ func (entityType EntityType) NotScaryForPufferfish() bool {
 	}
 }
 
+func (entityType EntityType) CannotBePushedOntoBoats() bool {
+	switch entityType {
+	case EntityElderGuardian,
+		EntityCod,
+		EntityPufferfish,
+		EntitySalmon,
+		EntityTropicalFish,
+		EntityDolphin,
+		EntitySquid,
+		EntityGlowSquid,
+		EntityTadpole,
+		EntityCreaking,
+		EntityNautilus,
+		EntityZombieNautilus:
+		return true
+	default:
+		return false
+	}
+}
+
 func EntityByName(name string) (EntityType, bool) {
 	name, ok := generatedName(name)
 	if !ok {

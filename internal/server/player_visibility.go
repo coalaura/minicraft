@@ -234,6 +234,34 @@ func (s *Session) sendPlayerMovement(previous, current game.Player) error {
 	return s.writePacket(protocol.ClientboundSetHeadRotationID, head)
 }
 
+func (s *Session) sendPlayerPositionSynchronization(player game.Player) error {
+	position := protocol.SynchronizeEntityPosition{
+		EntityID: player.EntityID,
+
+		X: player.Position.X,
+		Y: player.Position.Y,
+		Z: player.Position.Z,
+
+		VelocityX: player.Velocity.X,
+		VelocityY: player.Velocity.Y,
+		VelocityZ: player.Velocity.Z,
+
+		Yaw:   player.Rotation.Yaw,
+		Pitch: player.Rotation.Pitch,
+
+		OnGround: player.OnGround,
+	}
+
+	err := s.writePacket(protocol.ClientboundSynchronizeEntityPositionID, position)
+	if err != nil {
+		return err
+	}
+
+	head := protocol.SetHeadRotation{EntityID: player.EntityID, HeadYaw: protocolAngle(player.Rotation.Yaw)}
+
+	return s.writePacket(protocol.ClientboundSetHeadRotationID, head)
+}
+
 func (s *Session) sendPlayerMetadata(player game.Player) error {
 	var (
 		flags       byte

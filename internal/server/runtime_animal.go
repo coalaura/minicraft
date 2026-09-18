@@ -69,6 +69,8 @@ type runtimeAnimal struct {
 	LootDropped      bool
 }
 
+func (*runtimeAnimal) runtimeBoatAnimal() {}
+
 type runtimeCowEntity struct {
 	runtimeAnimal
 }

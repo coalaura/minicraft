@@ -83,14 +83,7 @@ func TestPassengerRuntimeRemovalAndDisconnectSynchronizeBeforeRemoval(t *testing
 
 		runtime.removeRuntimeEntity(vehicle.State.ID)
 
-		assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundSetPassengersID, protocol.ClientboundRemoveEntitiesID})
-
-		passengerPackets := packetsByID(t, connection, protocol.ClientboundSetPassengersID)
-
-		_, passengers := decodeSetPassengers(t, passengerPackets[0])
-		if len(passengers) != 0 {
-			t.Fatalf("removed vehicle passengers = %v", passengers)
-		}
+		assertPacketIDs(t, connection.packetIDs(t), []int32{protocol.ClientboundRemoveEntitiesID})
 	})
 
 	t.Run("disconnect", func(t *testing.T) {

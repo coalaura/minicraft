@@ -103,18 +103,12 @@ func (r *Runtime) DismountPassenger(passenger any) bool {
 	boat, boatVehicle := r.entities[vehicleID].(*runtimeBoatEntity)
 	r.entityMu.RUnlock()
 
-	var (
-		playerSession  *Session
-		previousPlayer game.Player
-	)
+	var playerSession *Session
 
 	if boatVehicle {
 		passenger := r.passengerForID(passengerID)
 		if passenger != nil {
 			playerSession, _ = passenger.(*Session)
-			if playerSession != nil {
-				previousPlayer = playerSession.snapshotPlayer()
-			}
 
 			r.updatePassengerPositionLocked(passenger, boat.safeDismountPosition(r, passenger))
 		}
@@ -138,7 +132,7 @@ func (r *Runtime) DismountPassenger(passenger any) bool {
 				continue
 			}
 
-			err = viewer.sendPlayerMovement(previousPlayer, currentPlayer)
+			err = viewer.sendPlayerPositionSynchronization(currentPlayer)
 			if err != nil && viewer.Log != nil {
 				viewer.Log.Warnf("[play] failed to synchronize dismounted player: %v\n", err)
 			}
@@ -211,6 +205,14 @@ func (s *Session) VehicleID() int32 {
 }
 
 func (r *Runtime) removePassenger(entityID int32) bool {
+	return r.removePassengerRelations(entityID, true)
+}
+
+func (r *Runtime) removePassengerForEntityRemoval(entityID int32) bool {
+	return r.removePassengerRelations(entityID, false)
+}
+
+func (r *Runtime) removePassengerRelations(entityID int32, synchronizeRemovedVehicle bool) bool {
 	r.passengerMu.Lock()
 
 	vehicleID := r.passengerVehicles[entityID]
@@ -238,11 +240,14 @@ func (r *Runtime) removePassenger(entityID int32) bool {
 
 	if vehicleID != 0 {
 		r.synchronizePassengerVehicle(vehicleID)
+		r.boatPassengersChangedLocked(vehicleID, false)
+	}
+
+	if passengers.count != 0 && synchronizeRemovedVehicle {
+		r.synchronizePassengerVehicle(entityID)
 	}
 
 	if passengers.count != 0 {
-		r.synchronizePassengerVehicle(entityID)
-
 		for index := 0; index < passengers.count; index++ {
 			r.resumeDismountedPassengerTicker(passengers.ids[index])
 		}
@@ -267,6 +272,7 @@ func (r *Runtime) dismountPassengerLocked(passengerID int32) bool {
 
 	r.resumeDismountedPassengerTicker(passengerID)
 	r.synchronizePassengerVehicle(vehicleID)
+	r.boatPassengersChangedLocked(vehicleID, false)
 
 	return true
 }
@@ -357,6 +363,35 @@ func (r *Runtime) passengerVehicleID(entityID int32) int32 {
 	defer r.passengerMu.RUnlock()
 
 	return r.passengerVehicles[entityID]
+}
+
+func (r *Runtime) vehiclePassengerList(vehicleID int32) passengerList {
+	r.passengerMu.RLock()
+	defer r.passengerMu.RUnlock()
+
+	return r.vehiclePassengers[vehicleID]
+}
+
+func (r *Runtime) synchronizeRemovedVehiclePlayerPassengers(passengers passengerList) {
+	for index := 0; index < passengers.count; index++ {
+		passenger, playerPassenger := r.passengerForID(passengers.ids[index]).(*Session)
+		if !playerPassenger {
+			continue
+		}
+
+		player := passenger.snapshotPlayer()
+
+		for _, viewer := range r.sessionView() {
+			if viewer == passenger || !viewer.seesPlayerEntity(player.EntityID) {
+				continue
+			}
+
+			err := viewer.sendPlayerPositionSynchronization(player)
+			if err != nil && viewer.Log != nil {
+				viewer.Log.Warnf("[play] failed to synchronize passenger after vehicle removal: %v\n", err)
+			}
+		}
+	}
 }
 
 func (r *Runtime) passengerForID(entityID int32) any {

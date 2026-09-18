@@ -109,16 +109,39 @@ func (entity *runtimeBoatEntity) RuntimeEntityInteract(runtime *Runtime, session
 		raft := entity.Raft
 		entity.State.mu.RUnlock()
 
-		runtime.updateBoatPassengerPositionsLocked(vehicleID, position, yaw, raft)
+		runtime.updateBoatPassengerPositionsLocked(vehicleID, position, yaw, raft, true)
 	}
 
 	return mounted
 }
 
 func (entity *runtimeBoatEntity) RuntimeEntityAttack(runtime *Runtime, attacker *Session) {
-	player := attacker.playerView()
-	damage := attacker.snapshotPlayer().MainHandAttackDamage()
+	player := attacker.snapshotPlayer()
+
+	strength := player.AttackStrength()
+	damage := player.MainHandAttackDamage() * (0.2 + 0.8*strength*strength)
+
+	if strength > playerFullAttackStrength && runtime.playerCanCriticalAttack(player) {
+		damage *= playerCriticalDamageMultiplier
+	}
+
 	creative := player.GameMode == game.GameModeCreative
+
+	player, _ = attacker.updatePlayerState(func(player *game.Player) bool {
+		player.ResetAttackStrength()
+
+		player.AddExhaustion(playerAttackExhaustion)
+
+		return true
+	})
+
+	held := player.Inventory.Held(player.SelectedHotbarSlot)
+
+	var heldItem game.ItemStack
+
+	if held != nil {
+		heldItem = held.Clone()
+	}
 
 	entity.State.mu.Lock()
 
@@ -143,11 +166,19 @@ func (entity *runtimeBoatEntity) RuntimeEntityAttack(runtime *Runtime, attacker 
 		}
 
 		runtime.removeRuntimeEntity(entityID)
-
-		return
+	} else {
+		runtime.synchronizeDirtyRuntimeEntityMetadata(entity)
 	}
 
-	runtime.synchronizeDirtyRuntimeEntityMetadata(entity)
+	if player.GameMode != game.GameModeCreative {
+		damagePerAttack := player.MainHandDamagePerAttack()
+		if damagePerAttack > 0 {
+			before, broke := runtime.damageHeldItem(attacker, protocol.MainHand, heldItem, damagePerAttack)
+			if before != nil {
+				runtime.sendPlayerAttackInventoryUpdate(attacker, *before, broke)
+			}
+		}
+	}
 }
 
 func (entity *runtimeBoatEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
@@ -170,9 +201,7 @@ func (entity *runtimeBoatEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		entity.OutOfControlTicks = 0
 	}
 
-	if entity.OutOfControlTicks >= 60 {
-		runtime.removePassenger(entity.State.ID)
-	}
+	ejectPassengers := entity.OutOfControlTicks >= 60
 
 	controlledByPlayer := runtime.boatController(entity.State.ID) != nil
 	if controlledByPlayer {
@@ -218,9 +247,13 @@ func (entity *runtimeBoatEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	rotation := entity.Rotation
 	entity.State.mu.Unlock()
 
+	if ejectPassengers {
+		runtime.removePassenger(entityID)
+	}
+
 	runtime.runtimeEntityMoved(entity, previousPosition)
 
-	runtime.updateBoatPassengerPositionsLocked(entityID, position, rotation.Yaw, entity.Raft)
+	runtime.updateBoatPassengerPositionsLocked(entityID, position, rotation.Yaw, entity.Raft, true)
 	runtime.pushBoatEntities(entityID, position)
 
 	runtime.synchronizeRuntimeEntity(entity)
@@ -428,7 +461,7 @@ func (entity *runtimeBoatEntity) safeDismountPosition(runtime *Runtime, passenge
 	position := entity.State.Position
 	entity.State.mu.RUnlock()
 
-	passengerWidth, yaw := boatDismountParameters(passenger)
+	passengerWidth, passengerHeight, yaw := boatDismountParameters(passenger)
 	distance := (boatWidth*math.Sqrt2 + passengerWidth + 0.00001) / 2
 	angle := float64(yaw) * math.Pi / 180
 	directionX := -math.Sin(angle)
@@ -458,7 +491,7 @@ func (entity *runtimeBoatEntity) safeDismountPosition(runtime *Runtime, passenge
 			}
 
 			candidate := game.Position{X: targetX, Y: float64(block.Y) + floorHeight, Z: targetZ}
-			if runtime.boatDismountPositionClear(candidate) {
+			if runtime.boatDismountPositionClear(candidate, passengerWidth, passengerHeight) {
 				return candidate
 			}
 		}
@@ -529,8 +562,8 @@ func (runtime *Runtime) boatLandFriction(box game.AABB) float64 {
 	return friction / float64(contacts)
 }
 
-func (runtime *Runtime) boatDismountPositionClear(position game.Position) bool {
-	box := entityBox(position, 0.6, 1.8)
+func (runtime *Runtime) boatDismountPositionClear(position game.Position, width, height float64) bool {
+	box := entityBox(position, width, height)
 
 	var collisionBuffer [128]game.AABB
 
@@ -673,6 +706,10 @@ func boatBlockFriction(block game.Block) float64 {
 }
 
 func boatPassengerPosition(position game.Position, yaw float32, index, count int, raft bool) game.Position {
+	return boatPassengerPositionFor(position, yaw, index, count, raft, false)
+}
+
+func boatPassengerPositionFor(position game.Position, yaw float32, index, count int, raft, animal bool) game.Position {
 	offset := 0.0
 
 	if count > 1 {
@@ -680,6 +717,10 @@ func boatPassengerPosition(position game.Position, yaw float32, index, count int
 			offset = 0.2
 		} else {
 			offset = -0.6
+		}
+
+		if animal {
+			offset += 0.2
 		}
 	}
 
@@ -698,33 +739,60 @@ func boatPassengerPosition(position game.Position, yaw float32, index, count int
 	}
 }
 
-func boatDismountParameters(passenger any) (float64, float32) {
+func boatDismountParameters(passenger any) (float64, float64, float32) {
 	switch entity := passenger.(type) {
 	case *Session:
 		player := entity.playerView()
 
-		return 0.6, player.Rotation.Yaw
+		return 0.6, 1.8, player.Rotation.Yaw
 	case RuntimeLivingEntity:
 		state := entity.RuntimeEntityState()
 
 		state.mu.RLock()
 		width := entity.RuntimeLivingState().Width
+		height := entity.RuntimeLivingState().Height
 		state.mu.RUnlock()
 
 		tracker, tracked := entity.(RuntimeEntityTracker)
 		if !tracked {
-			return width, 0
+			return width, height, 0
 		}
 
 		view := tracker.RuntimeEntityView()
 
-		return width, view.Rotation.Yaw
+		return width, height, view.Rotation.Yaw
 	default:
-		return 0.6, 0
+		return 0.6, 1.8, 0
 	}
 }
 
-func (runtime *Runtime) updateBoatPassengerPositionsLocked(vehicleID int32, position game.Position, yaw float32, raft bool) {
+func (runtime *Runtime) boatPassengersChangedLocked(vehicleID int32, worldLocked bool) {
+	runtime.entityMu.RLock()
+	boat, valid := runtime.entities[vehicleID].(*runtimeBoatEntity)
+	runtime.entityMu.RUnlock()
+
+	if !valid {
+		return
+	}
+
+	boat.State.mu.Lock()
+	position := boat.State.Position
+	yaw := boat.Rotation.Yaw
+	raft := boat.Raft
+
+	if boat.LeftPaddle || boat.RightPaddle {
+		boat.LeftPaddle = false
+		boat.RightPaddle = false
+		boat.State.metadataDirty = true
+	}
+
+	boat.State.mu.Unlock()
+
+	runtime.updateBoatPassengerPositionsLocked(vehicleID, position, yaw, raft, worldLocked)
+	runtime.synchronizeDirtyRuntimeEntityMetadata(boat)
+}
+
+func (runtime *Runtime) updateBoatPassengerPositionsLocked(vehicleID int32, position game.Position, yaw float32, raft, worldLocked bool) {
 	runtime.passengerMu.RLock()
 	passengers := runtime.vehiclePassengers[vehicleID]
 	runtime.passengerMu.RUnlock()
@@ -735,7 +803,13 @@ func (runtime *Runtime) updateBoatPassengerPositionsLocked(vehicleID int32, posi
 			continue
 		}
 
-		runtime.updatePassengerPositionLocked(passenger, boatPassengerPosition(position, yaw, index, passengers.count, raft))
+		_, animal := passenger.(interface {
+			runtimeBoatAnimal()
+		})
+
+		passengerPosition := boatPassengerPositionFor(position, yaw, index, passengers.count, raft, animal)
+
+		runtime.updatePassengerPositionLocked(passenger, passengerPosition)
 
 		session, playerPassenger := passenger.(*Session)
 		if playerPassenger {
@@ -743,7 +817,7 @@ func (runtime *Runtime) updateBoatPassengerPositionsLocked(vehicleID int32, posi
 			session.Player.Rotation.Yaw = clampAngleAround(session.Player.Rotation.Yaw, yaw, 105)
 			session.playerMx.Unlock()
 
-			runtime.updateMountedPlayerChunks(session, true)
+			runtime.updateMountedPlayerChunks(session, worldLocked)
 		}
 	}
 }
@@ -778,6 +852,14 @@ func (runtime *Runtime) pushBoatEntities(vehicleID int32, position game.Position
 
 	addPassengers := runtime.boatController(vehicleID) == nil
 
+	runtime.entityMu.RLock()
+	boat, _ := runtime.entities[vehicleID].(*runtimeBoatEntity)
+	runtime.entityMu.RUnlock()
+
+	if boat == nil || runtime.boatEyeInWater(boat) {
+		addPassengers = false
+	}
+
 	for iterator := runtime.runtimeEntitiesInBox(queryBox); ; {
 		candidate, present := iterator.Next()
 		if !present {
@@ -804,16 +886,20 @@ func (runtime *Runtime) pushBoatEntities(vehicleID int32, position game.Position
 		candidatePosition := state.Position
 		candidateBox := livingState.CollisionBox(candidatePosition)
 
-		if state.Removed || livingState.Dead || candidateBox.MinY > boatBox.MinY || !queryBox.Intersects(candidateBox) {
+		if state.Removed || livingState.Dead || !queryBox.Intersects(candidateBox) {
 			state.mu.Unlock()
 
 			continue
 		}
 
-		canBoard := addPassengers && livingState.Width < boatWidth
+		canBoard := addPassengers && livingState.Width < boatWidth && !state.Type.CannotBePushedOntoBoats()
 		state.mu.Unlock()
 
 		if canBoard && runtime.mountPassengerLocked(vehicleID, candidateID) {
+			continue
+		}
+
+		if candidateBox.MinY > boatBox.MinY {
 			continue
 		}
 
@@ -849,10 +935,6 @@ func (runtime *Runtime) pushBoatEntities(vehicleID int32, position game.Position
 
 		playerBox := player.collisionBox()
 		if playerBox.MinY > boatBox.MinY || !queryBox.Intersects(playerBox) {
-			continue
-		}
-
-		if addPassengers && runtime.mountPassengerLocked(vehicleID, player.EntityID) {
 			continue
 		}
 
@@ -985,7 +1067,7 @@ func (session *Session) handleMoveVehicle(move protocol.MoveVehicle) {
 
 	if !rejected {
 		runtime.runtimeEntityMoved(boat, previousPosition)
-		runtime.updateBoatPassengerPositionsLocked(entityID, position, rotation.Yaw, boat.Raft)
+		runtime.updateBoatPassengerPositionsLocked(entityID, position, rotation.Yaw, boat.Raft, true)
 		runtime.pushBoatEntities(entityID, position)
 		runtime.synchronizeRuntimeEntity(boat)
 	}

@@ -790,13 +790,24 @@ func (r *Runtime) runtimeEntityMoved(entity RuntimeEntity, previous game.Positio
 }
 
 func (r *Runtime) removeRuntimeEntity(id int32) {
+	r.entityMu.RLock()
+	_, boat := r.entities[id].(*runtimeBoatEntity)
+	r.entityMu.RUnlock()
+
+	var passengers passengerList
+
+	if boat {
+		passengers = r.vehiclePassengerList(id)
+	}
+
 	viewers := r.unregisterRuntimeEntity(id)
 
 	r.untrackRemovedRuntimeEntity(id, viewers)
+	r.synchronizeRemovedVehiclePlayerPassengers(passengers)
 }
 
 func (r *Runtime) unregisterRuntimeEntity(id int32) []*Session {
-	r.removePassenger(id)
+	r.removePassengerForEntityRemoval(id)
 
 	r.entityMu.Lock()
 

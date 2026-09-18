@@ -364,6 +364,81 @@ func TestBoatMountSeatsAndInput(t *testing.T) {
 	}
 }
 
+func TestBoatControllerHandoffClearsPaddlesAndBothPlayersCanDismount(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	driver, _ := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000031", "driver")
+	passenger, _ := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000032", "passenger")
+
+	runtime.AssignEntityID(driver)
+	runtime.AssignEntityID(passenger)
+
+	runtime.addSession(driver)
+	runtime.addSession(passenger)
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{Y: 5})
+
+	if !runtime.MountPassenger(boat, driver) || !runtime.MountPassenger(boat, passenger) {
+		t.Fatal("mount two passengers")
+	}
+
+	driver.handlePaddleBoat(protocol.PaddleBoat{LeftPaddle: true, RightPaddle: true})
+	driver.handlePlayerInput(protocol.PlayerInput{Flags: protocol.PlayerInputSneak})
+
+	if driver.VehicleID() != 0 {
+		t.Fatal("driver retained vehicle after dismount")
+	}
+
+	if passenger.VehicleID() != boat.State.ID || runtime.boatController(boat.State.ID) != passenger {
+		t.Fatal("remaining passenger did not become controller")
+	}
+
+	boat.State.mu.RLock()
+	leftPaddle := boat.LeftPaddle
+	rightPaddle := boat.RightPaddle
+	boatPosition := boat.State.Position
+	boat.State.mu.RUnlock()
+
+	if leftPaddle || rightPaddle {
+		t.Fatalf("paddles remained active after controller handoff: %t/%t", leftPaddle, rightPaddle)
+	}
+
+	wantPassengerPosition := boatPassengerPosition(boatPosition, 0, 0, 1, false)
+	assertBoatPositionClose(t, passenger.playerView().Position, wantPassengerPosition)
+
+	passenger.handlePlayerInput(protocol.PlayerInput{Flags: protocol.PlayerInputSneak})
+
+	if passenger.VehicleID() != 0 {
+		t.Fatal("remaining passenger retained vehicle after dismount")
+	}
+
+	passenger.handlePlayerInput(protocol.PlayerInput{})
+
+	runtime.handlePlayerInteraction(passenger, protocol.Interact{EntityID: boat.State.ID, Action: protocol.InteractActionInteract, Hand: protocol.MainHand})
+
+	if passenger.VehicleID() != boat.State.ID {
+		t.Fatal("passenger could not remount boat after dismount")
+	}
+
+	passenger.handlePlayerInput(protocol.PlayerInput{Flags: protocol.PlayerInputSneak})
+
+	passenger.mutatePlayer(func(player *game.Player) bool {
+		player.GameMode = game.GameModeCreative
+
+		return true
+	})
+
+	runtime.handlePlayerInteraction(passenger, protocol.Interact{EntityID: boat.State.ID, Action: protocol.InteractActionAttack})
+
+	boat.State.mu.RLock()
+	removed := boat.State.Removed
+	boat.State.mu.RUnlock()
+
+	if !removed {
+		t.Fatal("player could not break boat after riding it")
+	}
+}
+
 func TestBoatPassengerGeometry(t *testing.T) {
 	position := game.Position{X: 4, Y: 8, Z: 12}
 
@@ -375,6 +450,23 @@ func TestBoatPassengerGeometry(t *testing.T) {
 
 	raft := boatPassengerPosition(position, 0, 0, 1, true)
 	assertBoatPositionClose(t, raft, game.Position{X: 4, Y: 7.9, Z: 12})
+}
+
+func TestBoatAnimalPassengerOffsets(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{Y: 8})
+	first := runtime.SpawnCow(game.Position{})
+	second := runtime.SpawnCow(game.Position{})
+
+	if !runtime.MountPassenger(boat, first) || !runtime.MountPassenger(boat, second) {
+		t.Fatal("mount animal passengers")
+	}
+
+	runtime.updateBoatPassengerPositionsLocked(boat.State.ID, boat.State.Position, 0, false, false)
+
+	assertBoatPositionClose(t, first.State.Position, boatPassengerPositionFor(boat.State.Position, 0, 0, 2, false, true))
+	assertBoatPositionClose(t, second.State.Position, boatPassengerPositionFor(boat.State.Position, 0, 1, 2, false, true))
 }
 
 func TestBoatDismountUsesSafeSidePosition(t *testing.T) {
@@ -389,20 +481,30 @@ func TestBoatDismountUsesSafeSidePosition(t *testing.T) {
 	runtime := NewRuntime(world)
 
 	passenger, connection := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000005", "passenger")
+	observer, observerConnection := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000033", "observer")
 
 	runtime.AssignEntityID(passenger)
+	runtime.AssignEntityID(observer)
+
 	runtime.addSession(passenger)
+	runtime.addSession(observer)
+
+	observer.markPlayerVisible(passenger.passengerID())
+
 	runtime.setSessionActiveChunks(passenger, []LoadedChunk{{}})
+	runtime.setSessionActiveChunks(observer, []LoadedChunk{{}})
 
 	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{Y: 1})
 
 	passenger.trackRuntimeEntity(boat)
+	observer.trackRuntimeEntity(boat)
 
 	if !runtime.MountPassenger(boat, passenger) {
 		t.Fatal("mount failed")
 	}
 
 	connection.reset()
+	observerConnection.reset()
 
 	if !runtime.DismountPassenger(passenger) {
 		t.Fatal("dismount failed")
@@ -420,6 +522,11 @@ func TestBoatDismountUsesSafeSidePosition(t *testing.T) {
 	packets := connection.packets(t)
 	if len(packets) < 2 || packets[0].ID != protocol.ClientboundSetPassengersID || packets[1].ID != protocol.ClientboundPlayerPositionID {
 		t.Fatalf("dismount packet order = %#v, want passengers then player position", packets)
+	}
+
+	observerPackets := observerConnection.packets(t)
+	if len(observerPackets) < 3 || observerPackets[0].ID != protocol.ClientboundSetPassengersID || observerPackets[1].ID != protocol.ClientboundSynchronizeEntityPositionID || observerPackets[2].ID != protocol.ClientboundSetHeadRotationID {
+		t.Fatalf("observer dismount packet order = %#v, want passengers, absolute position, then head rotation", observerPackets)
 	}
 }
 
@@ -663,6 +770,100 @@ func TestBoatAutomaticallyBoardsNearbyLivingEntity(t *testing.T) {
 	}
 }
 
+func TestBoatProximityDoesNotBoardPlayersOrExcludedEntities(t *testing.T) {
+	t.Run("player", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+
+		player, _ := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000034", "player")
+
+		player.Player.Position.X = 0.5
+
+		runtime.AssignEntityID(player)
+
+		runtime.addSession(player)
+		runtime.pushBoatEntities(boat.State.ID, boat.State.Position)
+
+		if player.VehicleID() != 0 {
+			t.Fatal("nearby player was forced into boat")
+		}
+
+		if player.playerView().Velocity.X == 0 {
+			t.Fatal("nearby player was not pushed by boat")
+		}
+	})
+
+	t.Run("excluded entity type", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+
+		fish := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 0.5}, 20)
+
+		fish.State.Type = game.EntityCod
+		fish.Living.Width = 0.5
+
+		runtime.pushBoatEntities(boat.State.ID, boat.State.Position)
+
+		if runtime.passengerVehicleID(fish.State.ID) != 0 {
+			t.Fatal("excluded entity type was forced into boat")
+		}
+
+		if fish.Living.Velocity.X == 0 {
+			t.Fatal("excluded entity type was not pushed by boat")
+		}
+	})
+
+	t.Run("raised eligible entity", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+
+		passenger := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 0.5, Y: 0.1}, 20)
+
+		passenger.State.Type = game.EntityPig
+
+		runtime.pushBoatEntities(boat.State.ID, boat.State.Position)
+
+		if runtime.passengerVehicleID(passenger.State.ID) != boat.State.ID {
+			t.Fatal("eligible entity inside boat query volume did not board")
+		}
+	})
+}
+
+func TestBoatUnderwaterEjectionDoesNotDeadlock(t *testing.T) {
+	runtime := NewRuntime(&game.World{Generator: blockMutationTestGenerator{block: game.Water}})
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+
+	passenger := spawnTestRuntimeLivingEntity(runtime, game.Position{}, 20)
+
+	if !runtime.MountPassenger(boat, passenger) {
+		t.Fatal("mount passenger")
+	}
+
+	boat.Status = boatStatusUnderWater
+	boat.OutOfControlTicks = 59
+
+	done := make(chan struct{})
+
+	go func() {
+		boat.Tick(runtime, nil)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("underwater passenger ejection deadlocked")
+	}
+
+	if runtime.passengerVehicleID(passenger.State.ID) != 0 {
+		t.Fatal("underwater passenger was not ejected")
+	}
+}
+
 func TestBoatTickDoesNotAllocateAfterWarmup(t *testing.T) {
 	for _, passengerCount := range boatBenchmarkPassengerCounts {
 		t.Run(string(rune('0'+passengerCount)), func(t *testing.T) {
@@ -708,6 +909,12 @@ func TestBoatAttackDropsVariantAndCleansPassengers(t *testing.T) {
 	}
 
 	for range 5 {
+		session.mutatePlayer(func(player *game.Player) bool {
+			player.AttackStrengthTicker = 20
+
+			return true
+		})
+
 		boat.RuntimeEntityAttack(runtime, session)
 	}
 
@@ -725,6 +932,123 @@ func TestBoatAttackDropsVariantAndCleansPassengers(t *testing.T) {
 	}
 
 	t.Fatal("destroyed cherry boat did not drop its variant item")
+}
+
+func TestBoatAttackUsesPlayerAttackStrength(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	attacker, _ := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000038", "attacker")
+
+	runtime.AssignEntityID(attacker)
+
+	runtime.addSession(attacker)
+
+	attacker.mutatePlayer(func(player *game.Player) bool {
+		player.AttackStrengthTicker = 20
+		player.OnGround = true
+
+		return true
+	})
+
+	chargedBoat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+
+	chargedBoat.RuntimeEntityAttack(runtime, attacker)
+
+	chargedBoat.State.mu.RLock()
+	chargedDamage := chargedBoat.Damage
+	chargedBoat.State.mu.RUnlock()
+
+	weakBoat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{X: 2})
+
+	weakStrength := attacker.snapshotPlayer().AttackStrength()
+
+	weakBoat.RuntimeEntityAttack(runtime, attacker)
+
+	weakBoat.State.mu.RLock()
+	weakDamage := weakBoat.Damage
+	weakBoat.State.mu.RUnlock()
+
+	wantWeakDamage := chargedDamage * (0.2 + 0.8*weakStrength*weakStrength)
+	if math.Abs(float64(weakDamage-wantWeakDamage)) > 1e-6 {
+		t.Fatalf("uncharged boat damage = %v, want %v", weakDamage, wantWeakDamage)
+	}
+
+	if attacker.snapshotPlayer().AttackStrengthTicker != 0 {
+		t.Fatal("boat attack did not reset attack strength")
+	}
+}
+
+func TestBoatDestructionPreservesClientPassengerRemovalState(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	rider, riderConnection := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000035", "rider")
+
+	observer, observerConnection := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000036", "observer")
+	attacker, _ := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000037", "attacker")
+
+	sessions := []*Session{rider, observer, attacker}
+
+	for _, session := range sessions {
+		runtime.AssignEntityID(session)
+		runtime.addSession(session)
+	}
+
+	observer.markPlayerVisible(rider.passengerID())
+
+	attacker.mutatePlayer(func(player *game.Player) bool {
+		player.GameMode = game.GameModeCreative
+
+		return true
+	})
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+
+	rider.trackRuntimeEntity(boat)
+	observer.trackRuntimeEntity(boat)
+
+	if !runtime.MountPassenger(boat, rider) {
+		t.Fatal("mount rider")
+	}
+
+	runtime.updateBoatPassengerPositionsLocked(boat.State.ID, boat.State.Position, 0, false, false)
+
+	riderPosition := rider.playerView().Position
+
+	riderConnection.reset()
+	observerConnection.reset()
+
+	boat.RuntimeEntityAttack(runtime, attacker)
+
+	if rider.VehicleID() != 0 {
+		t.Fatal("destroyed boat retained rider")
+	}
+
+	if rider.playerView().Position != riderPosition {
+		t.Fatalf("rider position changed during boat removal: %#v, want %#v", rider.playerView().Position, riderPosition)
+	}
+
+	assertPacketIDs(t, riderConnection.packetIDs(t), []int32{protocol.ClientboundRemoveEntitiesID})
+	assertPacketIDs(t, observerConnection.packetIDs(t), []int32{
+		protocol.ClientboundRemoveEntitiesID,
+		protocol.ClientboundSynchronizeEntityPositionID,
+		protocol.ClientboundSetHeadRotationID,
+	})
+
+	observerPackets := observerConnection.packets(t)
+	positionReader := protocol.NewPacketReader(observerPackets[1].Data)
+
+	synchronizedEntityID, err := protocol.ReadVarInt(positionReader)
+	if err != nil {
+		t.Fatalf("decode synchronized rider entity id: %v", err)
+	}
+
+	if synchronizedEntityID != rider.passengerID() {
+		t.Fatalf("synchronized entity id = %d, want rider %d", synchronizedEntityID, rider.passengerID())
+	}
+
+	if !observer.seesPlayerEntity(rider.passengerID()) {
+		t.Fatal("observer lost rider when boat was destroyed")
+	}
 }
 
 func BenchmarkBoatTick(b *testing.B) {
