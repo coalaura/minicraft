@@ -128,19 +128,13 @@ func (r *Runtime) playerFits(player game.Player) bool {
 }
 
 func (r *Runtime) placementObstructed(changes []game.BlockChange) bool {
-	players := r.sessionView()
+	var boxBuffer [7]game.AABB
 
-	for _, session := range players {
-		playerBox := session.playerView().collisionBox()
+	for _, change := range changes {
+		blockBoxes := change.Replacement.AppendCollisionBoxes(boxBuffer[:0], change.Position)
 
-		for _, change := range changes {
-			var boxBuffer [7]game.AABB
-
-			blockBoxes := change.Replacement.AppendCollisionBoxes(boxBuffer[:0], change.Position)
-
-			if slices.ContainsFunc(blockBoxes, playerBox.Intersects) {
-				return true
-			}
+		if slices.ContainsFunc(blockBoxes, r.entityIntersectionObstructed) {
+			return true
 		}
 	}
 

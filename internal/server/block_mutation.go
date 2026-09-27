@@ -263,7 +263,7 @@ func (r *Runtime) PlaceBlock(session *Session, clicked, position game.BlockPosit
 	return r.completeBlockMutation(result, delivery, err)
 }
 
-func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationAction, changes []game.BlockChange, requiredChanges int, allowOccupied, checkPlayerObstruction, authoritative, recalculatePlayerPoses bool, lifecycleLocked ...bool) (BlockMutationResult, blockMutationDelivery, error) {
+func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationAction, changes []game.BlockChange, requiredChanges int, allowOccupied, checkEntityObstruction, authoritative, recalculatePlayerPoses bool, lifecycleLocked ...bool) (BlockMutationResult, blockMutationDelivery, error) {
 	r.mu.RLock()
 	_, active := r.sessions[session]
 	r.mu.RUnlock()
@@ -413,7 +413,7 @@ func (r *Runtime) mutateBlocksLocked(session *Session, action BlockMutationActio
 		return result, blockMutationDelivery{}, nil
 	}
 
-	if checkPlayerObstruction && r.placementObstructed(committed) {
+	if checkEntityObstruction && r.placementObstructed(committed) {
 		result.Allowed = false
 
 		return result, blockMutationDelivery{}, nil

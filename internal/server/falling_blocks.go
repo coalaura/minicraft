@@ -530,8 +530,19 @@ func fallingBlockMayReplace(target game.Block) bool {
 	switch definition.ID {
 	case game.ScaffoldingID:
 		return false
-	case game.GlowLichenID, game.SculkVeinID:
+	case game.SculkVeinID:
 		return true
+	case game.GlowLichenID:
+		faces := [...]string{"down", "up", "north", "south", "east", "west"}
+
+		for _, face := range faces {
+			value, _ := target.Property(face)
+			if value != "true" {
+				return true
+			}
+		}
+
+		return false
 	case game.VineID:
 		faces := [...]string{"up", "north", "south", "east", "west"}
 

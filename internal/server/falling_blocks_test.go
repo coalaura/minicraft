@@ -82,6 +82,85 @@ func TestFallingBlockSchedulesAfterTwoActiveTicksAndCarriesProtocolState(t *test
 	assertVelocityClose(t, entity.Velocity, game.Velocity{Y: -.0392}, 1e-12)
 }
 
+func TestFallingSandSourcePlacementWaitsForEntityToClear(t *testing.T) {
+	source := game.BlockPosition{Y: 70}
+	clicked := game.BlockPosition{X: 1, Y: 70}
+
+	world := &game.World{Generator: placementTestGenerator{clicked: clicked}}
+
+	runtime := NewRuntime(world)
+
+	actor, _ := newPlacementTestSession(runtime, clicked)
+
+	actor.Player.GameMode = game.GameModeSurvival
+	actor.Player.Inventory.Hotbar[0] = game.ItemStack{Item: game.ItemSand, Count: 2}
+
+	markPlacementChunksLoaded(actor, clicked, source)
+
+	joinTestSession(t, runtime, actor)
+
+	runtime.setSessionActiveChunks(actor, []LoadedChunk{blockLoadedChunk(source)})
+
+	result, err := runtime.MutateWorldBlocks([]game.BlockChange{{Position: source, Replacement: game.Sand}})
+	if err != nil || !result.Changed {
+		t.Fatalf("place unsupported sand = %+v, %v", result, err)
+	}
+
+	runtime.Tick()
+	runtime.Tick()
+
+	entity := findRuntimeFallingBlock(runtime)
+	if entity == nil || world.BlockAt(source) != game.Air {
+		t.Fatalf("fall start: entity = %v, source = %d", entity, world.BlockAt(source))
+	}
+
+	var boxBuffer [7]game.AABB
+
+	sourceBox := game.Sand.AppendCollisionBoxes(boxBuffer[:0], source)[0]
+	definition, defined := game.EntityFallingBlock.Definition()
+
+	if !defined || !sourceBox.Intersects(entityBox(entity.State.Position, definition.Width, definition.Height)) {
+		t.Fatalf("falling block does not overlap its source: %+v", entity.State.Position)
+	}
+
+	interaction := testUseItemOn(clicked, protocol.BlockFaceWest, protocol.MainHand, 1)
+	interaction.CursorY = .9
+
+	err = actor.handleUseItemOn(interaction)
+	if err != nil {
+		t.Fatalf("place sand through falling entity: %v", err)
+	}
+
+	fallingCount, _ := countFallingAndItemEntities(runtime)
+	if world.BlockAt(source) != game.Air || actor.snapshotPlayer().Inventory.Hotbar[0].Count != 2 ||
+		fallingCount != 1 || runtime.scheduledBlockTicks.len() != 0 {
+		t.Fatalf("rejected placement: source = %d, stack = %d, falling = %d, scheduled = %d",
+			world.BlockAt(source), actor.snapshotPlayer().Inventory.Hotbar[0].Count, fallingCount, runtime.scheduledBlockTicks.len())
+	}
+
+	for ticks := 0; ticks < 30 && sourceBox.Intersects(entityBox(entity.State.Position, definition.Width, definition.Height)); ticks++ {
+		runtime.Tick()
+	}
+
+	if sourceBox.Intersects(entityBox(entity.State.Position, definition.Width, definition.Height)) || entity.State.Removed {
+		t.Fatalf("falling block did not clear source while airborne: %+v", entity.State.Position)
+	}
+
+	interaction.Sequence++
+
+	err = actor.handleUseItemOn(interaction)
+	if err != nil {
+		t.Fatalf("place sand after falling entity clears: %v", err)
+	}
+
+	key := scheduledBlockTickKey{position: source, typeID: game.SandID}
+	if world.BlockAt(source) != game.Sand || actor.snapshotPlayer().Inventory.Hotbar[0].Count != 1 ||
+		!runtime.scheduledBlockTicks.contains(key) || runtime.scheduledBlockTicks.len() != 1 {
+		t.Fatalf("placement after clearance: source = %d, stack = %d, scheduled = %d",
+			world.BlockAt(source), actor.snapshotPlayer().Inventory.Hotbar[0].Count, runtime.scheduledBlockTicks.len())
+	}
+}
+
 func TestFallingBlockPacketsFollowAuthoritativeBlockChanges(t *testing.T) {
 	world := &game.World{}
 
@@ -526,6 +605,21 @@ func TestFallingBlockEmptyItemPlacementReplacesMultifaceBlocks(t *testing.T) {
 		if placed != game.Sand {
 			t.Fatalf("sand on multiface %d placed %d, want sand", target, placed)
 		}
+	}
+}
+
+func TestFallingBlockEmptyItemPlacementDoesNotReplaceFullGlowLichen(t *testing.T) {
+	full := mustBlockState(t, game.GlowLichen,
+		game.BlockPropertyValue{Name: "down", Value: "true"},
+		game.BlockPropertyValue{Name: "up", Value: "true"},
+		game.BlockPropertyValue{Name: "north", Value: "true"},
+		game.BlockPropertyValue{Name: "south", Value: "true"},
+		game.BlockPropertyValue{Name: "east", Value: "true"},
+		game.BlockPropertyValue{Name: "west", Value: "true"},
+	)
+
+	if fallingBlockMayReplace(full) {
+		t.Fatal("fully faced glow lichen accepted empty-stack falling placement")
 	}
 }
 
