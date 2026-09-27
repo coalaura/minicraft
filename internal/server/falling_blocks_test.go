@@ -20,6 +20,14 @@ type naturalAnvilFallTestCase struct {
 	wantTicks int32
 }
 
+type anvilDamageTraceCase struct {
+	name       string
+	startY     int32
+	block      game.Block
+	wantBlock  game.BlockID
+	wantHealth float32
+}
+
 func TestFallingBlockSchedulesAfterTwoActiveTicksAndCarriesProtocolState(t *testing.T) {
 	position := game.BlockPosition{Y: 70}
 
@@ -428,6 +436,14 @@ func TestConcretePowderSourceWaterClipUsesColliderShapes(t *testing.T) {
 			},
 			want: game.BlockPosition{}, wantWater: false,
 		},
+		{
+			name: "source water behind full collider",
+			blocks: []game.BlockChange{
+				{Position: game.BlockPosition{Y: 3}, Replacement: game.Stone},
+				{Position: game.BlockPosition{Y: 2}, Replacement: game.Water},
+			},
+			want: game.BlockPosition{}, wantWater: false,
+		},
 	}
 
 	for _, test := range tests {
@@ -488,6 +504,28 @@ func TestFallingBlockPlacementUsesDirectionalReplacementContext(t *testing.T) {
 
 	if runtime.World.BlockAt(game.BlockPosition{Y: 1}) != game.Sand {
 		t.Fatalf("falling sand did not replace one-layer snow: %d", runtime.World.BlockAt(game.BlockPosition{Y: 1}))
+	}
+}
+
+func TestFallingBlockEmptyItemPlacementReplacesMultifaceBlocks(t *testing.T) {
+	targets := [...]game.Block{game.GlowLichen, game.SculkVein}
+
+	for _, target := range targets {
+		world := &game.World{}
+		world.SetBlock(game.BlockPosition{}, game.Stone)
+		world.SetBlock(game.BlockPosition{Y: 1}, target)
+
+		runtime := NewRuntime(world)
+		viewer := &Session{}
+		runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+
+		entity := runtime.SpawnFallingBlock(game.Position{X: .5, Y: 2, Z: .5}, game.Sand, game.BlockPosition{Y: 2})
+		tickUntilFallingBlockRemoved(t, runtime, entity, 20)
+
+		placed := world.BlockAt(game.BlockPosition{Y: 1})
+		if placed != game.Sand {
+			t.Fatalf("sand on multiface %d placed %d, want sand", target, placed)
+		}
 	}
 }
 
@@ -568,42 +606,54 @@ func TestBrokenAnvilDeliversEventBeforeItemSpawn(t *testing.T) {
 }
 
 func TestAnvilLandingDamagesLivingAndDegradesWithPreservedFacing(t *testing.T) {
-	world := &game.World{}
-
-	world.SetBlock(game.BlockPosition{}, game.Stone)
-
-	runtime := NewRuntime(world)
-
-	runtime.entityRandom = func() float32 {
-		return 0
+	tests := [...]anvilDamageTraceCase{
+		{name: "four blocks", startY: 5, block: game.Anvil, wantBlock: game.ChippedAnvilID, wantHealth: 94},
+		{name: "fifteen blocks", startY: 16, block: game.ChippedAnvil, wantBlock: game.DamagedAnvilID, wantHealth: 72},
+		{name: "damage capped at forty", startY: 25, block: game.DamagedAnvil, wantBlock: game.AirID, wantHealth: 60},
 	}
 
-	viewer := &Session{}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			world := &game.World{}
 
-	runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
+			world.SetBlock(game.BlockPosition{}, game.Stone)
 
-	victim := spawnTestRuntimeLivingEntity(runtime, game.Position{X: .5, Y: 1, Z: .5}, 20)
+			runtime := NewRuntime(world)
 
-	facingAnvil := mustBlockState(t, game.Anvil, game.BlockPropertyValue{Name: "facing", Value: "west"})
+			runtime.entityRandom = func() float32 {
+				return 0
+			}
 
-	entity := runtime.SpawnFallingBlock(game.Position{X: .5, Y: 1, Z: .5}, facingAnvil, game.BlockPosition{Y: 4})
+			viewer := &Session{}
 
-	runtime.landFallingBlock(entity, entity.State.ID, facingAnvil, game.BlockPosition{Y: 1}, entity.State.Position, 3, facingAnvil.FallingDefinition(), false, true, false)
+			runtime.setSessionActiveChunks(viewer, []LoadedChunk{{}})
 
-	if victim.Living.Health != 16 {
-		t.Fatalf("anvil victim health = %v, want 16", victim.Living.Health)
-	}
+			victim := spawnTestRuntimeLivingEntity(runtime, game.Position{X: .5, Y: 1, Z: .5}, 100)
 
-	placed := runtime.World.BlockAt(game.BlockPosition{Y: 1})
+			facingAnvil := mustBlockState(t, test.block, game.BlockPropertyValue{Name: "facing", Value: "west"})
 
-	definition, valid := placed.Definition()
-	if !valid || definition.ID != game.ChippedAnvilID {
-		t.Fatalf("degraded anvil definition = %d, want %d", definition.ID, game.ChippedAnvilID)
-	}
+			entity := runtime.SpawnFallingBlock(game.Position{X: .5, Y: float64(test.startY), Z: .5}, facingAnvil, game.BlockPosition{Y: test.startY})
 
-	facing, valid := placed.Property("facing")
-	if !valid || facing != "west" {
-		t.Fatalf("degraded anvil facing = %q", facing)
+			tickUntilFallingBlockRemoved(t, runtime, entity, 100)
+
+			if victim.Living.Health != test.wantHealth {
+				t.Fatalf("anvil victim health = %v, want %v", victim.Living.Health, test.wantHealth)
+			}
+
+			placed := world.BlockAt(game.BlockPosition{Y: 1})
+
+			definition, valid := placed.Definition()
+			if !valid || definition.ID != test.wantBlock {
+				t.Fatalf("landed anvil definition = %d, want %d", definition.ID, test.wantBlock)
+			}
+
+			if test.wantBlock != game.AirID {
+				facing, present := placed.Property("facing")
+				if !present || facing != "west" {
+					t.Fatalf("landed anvil facing = %q, want west", facing)
+				}
+			}
+		})
 	}
 }
 

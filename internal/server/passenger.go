@@ -119,6 +119,8 @@ func (r *Runtime) DismountPassenger(passenger any) bool {
 	}
 
 	if playerSession != nil {
+		playerSession.vehicleLastID = 0
+
 		currentPlayer := playerSession.snapshotPlayer()
 
 		err := playerSession.sendPlayerPosition()

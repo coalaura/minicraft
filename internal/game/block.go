@@ -281,6 +281,24 @@ func (block Block) SoundType() BlockSound {
 	return blockSounds[blockDefinitions[stateBlockIDs[block]].Sound]
 }
 
+// Friction is the BlockBehaviour friction used when boats sample ground contact.
+func (block Block) Friction() float32 {
+	if !block.Valid() {
+		return 0.6
+	}
+
+	switch stateBlockIDs[block] {
+	case BlueIceID:
+		return 0.989
+	case IceID, PackedIceID, FrostedIceID:
+		return 0.98
+	case SlimeBlockID:
+		return 0.8
+	default:
+		return 0.6
+	}
+}
+
 func (block Block) Replaceable() bool {
 	if !block.Valid() {
 		return false

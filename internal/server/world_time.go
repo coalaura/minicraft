@@ -58,6 +58,8 @@ func (r *Runtime) Tick() game.TimeState {
 	swimmingChanges := r.updateActivePlayerSwimmingLocked()
 
 	for _, session := range r.sessionView() {
+		session.resetVehicleMovementWindowLocked()
+
 		session.mutatePlayer(func(player *game.Player) bool {
 			player.TickAttackStrength()
 

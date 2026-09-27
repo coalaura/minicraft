@@ -105,14 +105,18 @@ func (goal *creeperSwellGoal) CanUse(*Runtime) bool {
 	return entity.SwellDirection > 0 || entity.GoalTarget.present() && distanceSquared(entity.State.Position, entity.GoalTarget.position()) < 9
 }
 
-func (goal *creeperSwellGoal) CanContinue(runtime *Runtime) bool { return goal.CanUse(runtime) }
+func (goal *creeperSwellGoal) CanContinue(runtime *Runtime) bool {
+	return goal.CanUse(runtime)
+}
 
 func (goal *creeperSwellGoal) Start(*Runtime) {
 	goal.Entity.Swell.Target = goal.Entity.GoalTarget
 	goal.Entity.Navigation.Stop()
 }
 
-func (goal *creeperSwellGoal) Stop(*Runtime) { goal.Entity.Swell.Target = runtimeLivingTarget{} }
+func (goal *creeperSwellGoal) Stop(*Runtime) {
+	goal.Entity.Swell.Target = runtimeLivingTarget{}
+}
 
 func (goal *creeperSwellGoal) Tick(runtime *Runtime) {
 	entity := goal.Entity

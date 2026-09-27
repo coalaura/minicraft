@@ -288,9 +288,11 @@ func (entity *runtimeBoatEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		entity.floatBoatLocked(runtime, false)
 
 		movement := runtime.moveGroundEntity(entity.State.Position, entity.Velocity, boatWidth, boatHeight, 0, entity.OnGround)
+
 		entity.State.Position = movement.Position
 		entity.OnGround = movement.OnGround
-		entity.checkFallDamageLocked(runtime, entity.Velocity.Y, movement.OnGround)
+
+		entity.checkFallDamageLocked(runtime, movement.Position.Y-previousPosition.Y, movement.OnGround)
 
 		if movement.HorizontalCollisionX {
 			entity.Velocity.X = 0
@@ -361,18 +363,18 @@ func (runtime *Runtime) spawnBoat(entityType game.EntityType, position game.Posi
 func (runtime *Runtime) boatStatus(position game.Position) (boatStatus, float64, float64) {
 	box := entityBox(position, boatWidth, boatHeight)
 
-	minimumX := int32(math.Floor(box.MinX + 0.001))
-	maximumX := int32(math.Floor(box.MaxX - 0.001))
-	minimumZ := int32(math.Floor(box.MinZ + 0.001))
-	maximumZ := int32(math.Floor(box.MaxZ - 0.001))
+	minimumX := int32(math.Floor(box.MinX))
+	maximumX := int32(math.Ceil(box.MaxX))
+	minimumZ := int32(math.Floor(box.MinZ))
+	maximumZ := int32(math.Ceil(box.MaxZ))
 
-	topY := int32(math.Floor(box.MaxY + 0.001))
+	topY := int32(math.Ceil(box.MaxY + 0.001))
 
 	underwater := false
 
-	for y := int32(math.Floor(box.MaxY)); y <= topY; y++ {
-		for x := minimumX; x <= maximumX; x++ {
-			for z := minimumZ; z <= maximumZ; z++ {
+	for y := int32(math.Floor(box.MaxY)); y < topY; y++ {
+		for x := minimumX; x < maximumX; x++ {
+			for z := minimumZ; z < maximumZ; z++ {
 				block := game.BlockPosition{X: x, Y: y, Z: z}
 
 				fluid := runtime.World.FluidAt(block)
@@ -380,8 +382,8 @@ func (runtime *Runtime) boatStatus(position game.Position) (boatStatus, float64,
 					continue
 				}
 
-				level := float64(y) + fluid.Height(runtime.World, block)
-				if level < box.MaxY+0.001 {
+				level := float64(y) + float64(float32(fluid.Height(runtime.World, block)))
+				if box.MaxY+0.001 >= level {
 					continue
 				}
 
@@ -401,16 +403,16 @@ func (runtime *Runtime) boatStatus(position game.Position) (boatStatus, float64,
 	waterLevel := -math.MaxFloat64
 
 	minimumY := int32(math.Floor(box.MinY))
-	maximumY := int32(math.Floor(box.MinY + 0.001))
+	maximumY := int32(math.Ceil(box.MinY + 0.001))
 
-	for y := minimumY; y <= maximumY; y++ {
-		for x := minimumX; x <= maximumX; x++ {
-			for z := minimumZ; z <= maximumZ; z++ {
+	for y := minimumY; y < maximumY; y++ {
+		for x := minimumX; x < maximumX; x++ {
+			for z := minimumZ; z < maximumZ; z++ {
 				block := game.BlockPosition{X: x, Y: y, Z: z}
 
 				fluid := runtime.World.FluidAt(block)
 				if fluid.Type() == game.FluidTypeWater {
-					waterLevel = max(waterLevel, float64(y)+fluid.Height(runtime.World, block))
+					waterLevel = max(waterLevel, float64(float32(y)+float32(fluid.Height(runtime.World, block))))
 				}
 			}
 		}
@@ -422,10 +424,10 @@ func (runtime *Runtime) boatStatus(position game.Position) (boatStatus, float64,
 
 	friction := runtime.boatLandFriction(box)
 	if friction > 0 {
-		return boatStatusLand, 0, friction
+		return boatStatusLand, waterLevel, friction
 	}
 
-	return boatStatusAir, 0, 0
+	return boatStatusAir, waterLevel, 0
 }
 
 func (runtime *Runtime) boatEyeInWater(entity *runtimeBoatEntity) bool {
@@ -474,6 +476,7 @@ func (entity *runtimeBoatEntity) floatBoatLocked(runtime *Runtime, controlledByP
 		if runtime.boatPositionClear(target) {
 			entity.State.Position.Y = targetY
 			entity.Velocity.Y = 0
+			entity.LastYd = 0
 		}
 
 		entity.Status = boatStatusWater
@@ -509,11 +512,13 @@ func (entity *runtimeBoatEntity) checkFallDamageLocked(runtime *Runtime, vertica
 }
 
 func (entity *runtimeBoatEntity) tickPaddlesLocked(runtime *Runtime) {
+	hasController := runtime.vehiclePassengerList(entity.State.ID).count != 0
+
 	for side := range entity.PaddlePositions {
-		active := entity.LeftPaddle
+		active := entity.LeftPaddle && hasController
 
 		if side == 1 {
-			active = entity.RightPaddle
+			active = entity.RightPaddle && hasController
 		}
 
 		if active {
@@ -654,13 +659,13 @@ func (entity *runtimeBoatEntity) waterLevelAboveLocked(runtime *Runtime) float64
 				fluid := runtime.World.FluidAt(position)
 
 				if fluid.Type() == game.FluidTypeWater {
-					blockHeight = max(blockHeight, fluid.Height(runtime.World, position))
+					blockHeight = max(blockHeight, float64(float32(fluid.Height(runtime.World, position))))
 				}
 			}
 		}
 
 		if blockHeight < 1 {
-			return float64(y) + blockHeight
+			return float64(float32(y) + float32(blockHeight))
 		}
 	}
 
@@ -773,7 +778,7 @@ func (runtime *Runtime) boatLandFriction(box game.AABB) float64 {
 
 	var (
 		collisionBuffer [7]game.AABB
-		friction        float64
+		friction        float32
 		contacts        int
 	)
 
@@ -809,7 +814,7 @@ func (runtime *Runtime) boatLandFriction(box game.AABB) float64 {
 
 				collides := slices.ContainsFunc(boxes, contact.Intersects)
 				if collides {
-					friction += boatBlockFriction(block)
+					friction += block.Friction()
 					contacts++
 				}
 			}
@@ -820,7 +825,7 @@ func (runtime *Runtime) boatLandFriction(box game.AABB) float64 {
 		return 0
 	}
 
-	return friction / float64(contacts)
+	return float64(friction / float32(contacts))
 }
 
 func (runtime *Runtime) boatDismountPositionClear(position game.Position, width, height float64) bool {
@@ -948,7 +953,7 @@ func (runtime *Runtime) boatDismountFloorHeight(position game.BlockPosition) (fl
 		height = max(height, box.MaxY-float64(position.Y))
 	}
 
-	return height, height < 1
+	return height, height >= 0 && height < 1
 }
 
 func boatVariant(entityType game.EntityType) (game.Item, bool, bool) {
@@ -975,24 +980,6 @@ func boatVariant(entityType game.EntityType) (game.Item, bool, bool) {
 		return game.ItemBambooRaft, true, true
 	default:
 		return game.ItemAir, false, false
-	}
-}
-
-func boatBlockFriction(block game.Block) float64 {
-	definition, valid := block.Definition()
-	if !valid {
-		return 0.6
-	}
-
-	switch definition.Name {
-	case "blue_ice":
-		return 0.989
-	case "ice", "packed_ice", "frosted_ice":
-		return 0.98
-	case "slime_block":
-		return 0.8
-	default:
-		return 0.6
 	}
 }
 
@@ -1369,9 +1356,16 @@ func (session *Session) handleMoveVehicle(move protocol.MoveVehicle) {
 	boat.State.mu.Lock()
 	previousPosition := boat.State.Position
 
-	delta := game.Velocity{X: move.X - previousPosition.X, Y: move.Y - previousPosition.Y, Z: move.Z - previousPosition.Z}
+	if session.vehicleLastID != boat.State.ID {
+		session.vehicleFirstGood = previousPosition
+		session.vehicleLastGood = previousPosition
+		session.vehicleLastID = boat.State.ID
+	}
 
-	movedDistanceSquared := delta.X*delta.X + delta.Y*delta.Y + delta.Z*delta.Z
+	firstDelta := game.Velocity{X: move.X - session.vehicleFirstGood.X, Y: move.Y - session.vehicleFirstGood.Y, Z: move.Z - session.vehicleFirstGood.Z}
+	delta := game.Velocity{X: move.X - session.vehicleLastGood.X, Y: move.Y - session.vehicleLastGood.Y, Z: move.Z - session.vehicleLastGood.Z}
+
+	movedDistanceSquared := firstDelta.X*firstDelta.X + firstDelta.Y*firstDelta.Y + firstDelta.Z*firstDelta.Z
 	expectedDistanceSquared := boat.Velocity.X*boat.Velocity.X + boat.Velocity.Y*boat.Velocity.Y + boat.Velocity.Z*boat.Velocity.Z
 
 	rejected := movedDistanceSquared-expectedDistanceSquared > boatMaximumClientMoveSquared
@@ -1386,6 +1380,7 @@ func (session *Session) handleMoveVehicle(move protocol.MoveVehicle) {
 
 	if !rejected {
 		boat.State.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
+		session.vehicleLastGood = boat.State.Position
 		boat.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
 		boat.OnGround = move.OnGround
 		boat.checkFallDamageLocked(runtime, delta.Y, move.OnGround)
@@ -1415,6 +1410,23 @@ func (session *Session) handleMoveVehicle(move protocol.MoveVehicle) {
 			session.Log.Warnf("[play] failed to correct vehicle movement: %v\n", err)
 		}
 	}
+}
+
+func (session *Session) resetVehicleMovementWindowLocked() {
+	runtime := session.Runtime
+
+	boat := runtime.controlledBoat(session)
+	if boat == nil {
+		session.vehicleLastID = 0
+
+		return
+	}
+
+	boat.State.mu.RLock()
+	session.vehicleFirstGood = boat.State.Position
+	session.vehicleLastGood = boat.State.Position
+	session.vehicleLastID = boat.State.ID
+	boat.State.mu.RUnlock()
 }
 
 func clampVehicleHorizontal(value float64) float64 {

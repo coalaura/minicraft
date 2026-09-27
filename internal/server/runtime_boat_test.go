@@ -73,9 +73,9 @@ func TestBoatStatusAndFloatTrace(t *testing.T) {
 
 	boat.Tick(runtime, nil)
 
-	wantSurface := 8.0 / 9.0
+	wantSurface := float64(float32(8.0 / 9.0))
 
-	wantLevel := 8.0 / 9.0
+	wantLevel := float64(float32(8.0 / 9.0))
 	if boat.Status != boatStatusWater || boat.WaterLevel != wantLevel {
 		t.Fatalf("water status = %v at level %v, want water at %v", boat.Status, boat.WaterLevel, wantLevel)
 	}
@@ -150,8 +150,10 @@ func TestBoatLongQuantitativeTraces(t *testing.T) {
 			boat.Tick(runtime, nil)
 		}
 
-		assertBoatFloatClose(t, boat.State.Position.X, 1.4999451570198654)
-		assertBoatFloatClose(t, boat.Velocity.X, math.Pow(0.6, 20))
+		// AbstractBoat accumulates block friction in float: four contacts at ticks 1, 3-5,
+		// and six contacts at tick 2 and ticks 6-20 round to different momenta.
+		assertBoatFloatClose(t, boat.State.Position.X, 1.4999451883119415)
+		assertBoatFloatClose(t, boat.Velocity.X, 0.000036561555344103465)
 
 		if boat.Status != boatStatusLand || boat.Velocity.Y != 0 {
 			t.Fatalf("land trace status/vertical velocity = %v/%v", boat.Status, boat.Velocity.Y)
@@ -189,14 +191,15 @@ func TestBoatBlockFrictionMatchesVanillaOverrides(t *testing.T) {
 		{name: "stone", block: game.Stone, want: 0.6},
 		{name: "ice", block: game.Ice, want: 0.98},
 		{name: "packed ice", block: game.PackedIce, want: 0.98},
+		{name: "frosted ice", block: game.FrostedIce, want: 0.98},
 		{name: "blue ice", block: game.BlueIce, want: 0.989},
 		{name: "slime", block: game.SlimeBlock, want: 0.8},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := boatBlockFriction(test.block)
-			if got != test.want {
+			got := test.block.Friction()
+			if got != float32(test.want) {
 				t.Fatalf("friction = %v, want %v", got, test.want)
 			}
 		})
@@ -391,6 +394,47 @@ func TestBoatMoveVehicleAcceptsClearMovementAndCorrectsRejection(t *testing.T) {
 
 	if yaw != 45 || pitch != 10 {
 		t.Fatalf("correction rotation = %v/%v, want rejected packet rotation 45/10", yaw, pitch)
+	}
+}
+
+func TestBoatMoveVehicleLimitsCumulativeMovementPerTick(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	controller, connection := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000057", "controller")
+
+	runtime.AssignEntityID(controller)
+	runtime.addSession(controller)
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{Y: 5})
+	if !runtime.MountPassenger(boat, controller) {
+		t.Fatal("controller mount failed")
+	}
+
+	connection.reset()
+
+	controller.handleMoveVehicle(protocol.MoveVehicle{X: 6, Y: 5})
+
+	assertBoatPositionClose(t, boat.State.Position, game.Position{X: 6, Y: 5})
+
+	controller.handleMoveVehicle(protocol.MoveVehicle{X: 11, Y: 5})
+
+	assertBoatPositionClose(t, boat.State.Position, game.Position{X: 6, Y: 5})
+
+	if len(packetsByID(t, connection, protocol.ClientboundMoveVehicleID)) != 1 {
+		t.Fatal("cumulative movement beyond 10 blocks did not send a correction")
+	}
+
+	// ServerGamePacketListenerImpl.tick records a fresh first/last good position each server tick.
+	runtime.Tick()
+
+	connection.reset()
+
+	controller.handleMoveVehicle(protocol.MoveVehicle{X: 11, Y: 5})
+
+	assertBoatPositionClose(t, boat.State.Position, game.Position{X: 11, Y: 5})
+
+	if len(packetsByID(t, connection, protocol.ClientboundMoveVehicleID)) != 0 {
+		t.Fatal("movement within a new tick's window was corrected")
 	}
 }
 
@@ -744,6 +788,24 @@ func TestBoatDismountSelectsPoseUnderLowCeiling(t *testing.T) {
 
 	if player.Position.Z < 1 || player.Position.Y != 1 {
 		t.Fatalf("dismount position = %+v, want side position under slab", player.Position)
+	}
+}
+
+func TestBoatDismountFloorRejectsUnsupportedPartialBlock(t *testing.T) {
+	world := &game.World{}
+	slab := mustBlockState(t, game.StoneSlab, game.BlockPropertyValue{Name: "type", Value: "bottom"})
+	world.SetBlock(game.BlockPosition{}, slab)
+
+	runtime := NewRuntime(world)
+	floorHeight, valid := runtime.boatDismountFloorHeight(game.BlockPosition{Y: 1})
+
+	if valid {
+		t.Fatalf("air above bottom slab has floor height %v, want no valid floor", floorHeight)
+	}
+
+	floorHeight, valid = runtime.boatDismountFloorHeight(game.BlockPosition{})
+	if !valid || floorHeight != 0.5 {
+		t.Fatalf("bottom slab floor height = %v, valid %t, want 0.5, true", floorHeight, valid)
 	}
 }
 

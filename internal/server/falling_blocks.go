@@ -169,15 +169,15 @@ func (entity *runtimeFallingBlockEntity) Tick(runtime *Runtime, _ *ActiveChunk) 
 	}
 
 	blockY := int32(math.Floor(position.Y))
-	maximumY := int32(protocol.OverworldMinY + protocol.OverworldSectionCount*game.ChunkWidth)
+	maximumY := int32(protocol.OverworldMinY + protocol.OverworldSectionCount*game.ChunkWidth - 1)
 
-	timedOut := time > fallingBlockMaximumTime || time > fallingBlockVoidTime && (blockY <= protocol.OverworldMinY || blockY >= maximumY)
+	timedOut := time > fallingBlockMaximumTime || time > fallingBlockVoidTime && (blockY <= protocol.OverworldMinY || blockY > maximumY)
 	if timedOut {
-		runtime.removeRuntimeEntity(entityID)
-
 		if dropItem {
 			runtime.dropFallingBlockItem(block, position)
 		}
+
+		runtime.removeRuntimeEntity(entityID)
 
 		return
 	}
@@ -280,7 +280,7 @@ func (runtime *Runtime) landFallingBlock(entity *runtimeFallingBlockEntity, enti
 
 	below.Y--
 
-	canPlace := fallingBlockMayReplace(target, block, landingPosition) && (!fallingBlockFree(runtime.World.BlockAt(below)) || falling.Kind == game.FallingBlockKindConcretePowder && touchesWater)
+	canPlace := fallingBlockMayReplace(target) && (!fallingBlockFree(runtime.World.BlockAt(below)) || falling.Kind == game.FallingBlockKindConcretePowder && touchesWater)
 	if canPlace {
 		replacement := block
 
@@ -397,61 +397,90 @@ func (runtime *Runtime) concretePowderSolidifies(position game.BlockPosition, bl
 }
 
 func (runtime *Runtime) clipSourceWaterSegment(from, to game.Position) (game.BlockPosition, bool) {
-	deltaX := to.X - from.X
-	deltaY := to.Y - from.Y
-	deltaZ := to.Z - from.Z
+	if from == to {
+		return game.BlockPosition{}, false
+	}
 
-	minimumX := int32(math.Floor(min(from.X, to.X)))
-	minimumY := int32(math.Floor(min(from.Y, to.Y)))
-	minimumZ := int32(math.Floor(min(from.Z, to.Z)))
-	maximumX := int32(math.Floor(max(from.X, to.X)))
-	maximumY := int32(math.Floor(max(from.Y, to.Y)))
-	maximumZ := int32(math.Floor(max(from.Z, to.Z)))
+	// BlockGetter.traverseBlocks nudges both endpoints inward before stepping the grid.
+	start := game.Position{
+		X: math.FMA(-1e-7, from.X-to.X, from.X),
+		Y: math.FMA(-1e-7, from.Y-to.Y, from.Y),
+		Z: math.FMA(-1e-7, from.Z-to.Z, from.Z),
+	}
 
-	nearestFraction := math.Inf(1)
+	end := game.Position{
+		X: math.FMA(-1e-7, to.X-from.X, to.X),
+		Y: math.FMA(-1e-7, to.Y-from.Y, to.Y),
+		Z: math.FMA(-1e-7, to.Z-from.Z, to.Z),
+	}
 
-	var (
-		nearestPosition game.BlockPosition
-		nearestWater    bool
-	)
+	position := toBlockPosition(start)
 
-	for y := minimumY; y <= maximumY; y++ {
-		for x := minimumX; x <= maximumX; x++ {
-			for z := minimumZ; z <= maximumZ; z++ {
-				position := game.BlockPosition{X: x, Y: y, Z: z}
-				block := runtime.World.BlockAt(position)
+	hit, water := runtime.sourceWaterClipCell(from, to, position)
+	if hit {
+		return position, water
+	}
 
-				var boxBuffer [7]game.AABB
+	stepX, distanceX, deltaX := rayStep(start.X, end.X-start.X)
+	stepY, distanceY, deltaY := rayStep(start.Y, end.Y-start.Y)
+	stepZ, distanceZ, deltaZ := rayStep(start.Z, end.Z-start.Z)
 
-				boxes := block.AppendCollisionBoxes(boxBuffer[:0], position)
+	for distanceX <= 1 || distanceY <= 1 || distanceZ <= 1 {
+		if distanceX < distanceY && distanceX < distanceZ {
+			position.X += stepX
+			distanceX += deltaX
+		} else if distanceY < distanceZ {
+			position.Y += stepY
+			distanceY += deltaY
+		} else {
+			position.Z += stepZ
+			distanceZ += deltaZ
+		}
 
-				for _, box := range boxes {
-					fraction, _, intersects := raycastAABB(from, deltaX, deltaY, deltaZ, box)
-					if intersects && fraction >= 0 && fraction <= 1 && fraction < nearestFraction {
-						nearestFraction = fraction
-						nearestPosition = position
-						nearestWater = false
-					}
-				}
-
-				fluid := runtime.World.FluidAt(position)
-				if fluid.Type() != game.FluidTypeWater || !fluid.IsSource() {
-					continue
-				}
-
-				box := fluidRaycastBox(runtime.World, block, position)
-
-				fraction, _, intersects := raycastAABB(from, deltaX, deltaY, deltaZ, box)
-				if intersects && fraction >= 0 && fraction <= 1 && fraction < nearestFraction {
-					nearestFraction = fraction
-					nearestPosition = position
-					nearestWater = true
-				}
-			}
+		hit, water = runtime.sourceWaterClipCell(from, to, position)
+		if hit {
+			return position, water
 		}
 	}
 
-	return nearestPosition, nearestWater
+	return game.BlockPosition{}, false
+}
+
+func (runtime *Runtime) sourceWaterClipCell(from, to game.Position, position game.BlockPosition) (bool, bool) {
+	block := runtime.World.BlockAt(position)
+
+	directionX := to.X - from.X
+	directionY := to.Y - from.Y
+	directionZ := to.Z - from.Z
+
+	nearestBlock := math.Inf(1)
+
+	var collisionBuffer [7]game.AABB
+
+	for _, box := range block.AppendCollisionBoxes(collisionBuffer[:0], position) {
+		fraction, _, hit := raycastAABB(from, directionX, directionY, directionZ, box)
+		if hit && fraction <= 1 && fraction < nearestBlock {
+			nearestBlock = fraction
+		}
+	}
+
+	nearestWater := math.Inf(1)
+
+	fluid := runtime.World.FluidAt(position)
+	if fluid.Type() == game.FluidTypeWater && fluid.IsSource() {
+		box := fluidRaycastBox(runtime.World, block, position)
+
+		fraction, _, hit := raycastAABB(from, directionX, directionY, directionZ, box)
+		if hit && fraction <= 1 {
+			nearestWater = fraction
+		}
+	}
+
+	if nearestBlock <= nearestWater && !math.IsInf(nearestBlock, 1) {
+		return true, false
+	}
+
+	return !math.IsInf(nearestWater, 1), !math.IsInf(nearestWater, 1)
 }
 
 func (entity *runtimeFallingBlockEntity) runtimeEntityViewLocked() runtimeEntityView {
@@ -490,10 +519,39 @@ func fallingBlockFree(block game.Block) bool {
 	return block == game.Air || !block.FluidState().Empty() || block.Replaceable()
 }
 
-func fallingBlockMayReplace(target, block game.Block, position game.BlockPosition) bool {
-	context := protocol.UseItemOn{Position: position, Face: protocol.BlockFaceUp}
+func fallingBlockMayReplace(target game.Block) bool {
+	// DirectionalPlaceContext carries an empty item stack: block-specific stacking
+	// rules for slabs, candles, snow and scaffolding cannot use the falling block.
+	definition, valid := target.Definition()
+	if !valid {
+		return false
+	}
 
-	return blockCanBeReplaced(target, block, game.ItemPlacementDefault, context, true, false)
+	switch definition.ID {
+	case game.ScaffoldingID:
+		return false
+	case game.GlowLichenID, game.SculkVeinID:
+		return true
+	case game.VineID:
+		faces := [...]string{"up", "north", "south", "east", "west"}
+
+		for _, face := range faces {
+			value, _ := target.Property(face)
+			if value != "true" {
+				return true
+			}
+		}
+
+		return false
+	case game.SnowID:
+		return blockPropertyInt(target, "layers") == 1
+	default:
+		if definition.Behavior == game.BlockBehaviorSlab {
+			return false
+		}
+
+		return target.Replaceable()
+	}
 }
 
 func preserveFallingBlockFacing(block, replacement game.Block) game.Block {

@@ -40,6 +40,9 @@ type Session struct {
 	shuttingDown    bool
 	mining          miningState
 	playerInput     byte
+	vehicleFirstGood game.Position
+	vehicleLastGood  game.Position
+	vehicleLastID    int32
 
 	chunkMx               sync.Mutex
 	centerChunk           LoadedChunk
