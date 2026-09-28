@@ -392,8 +392,8 @@ func TestBoatMoveVehicleAcceptsClearMovementAndCorrectsRejection(t *testing.T) {
 
 	assertBoatPositionClose(t, correction, boat.State.Position)
 
-	if yaw != 45 || pitch != 10 {
-		t.Fatalf("correction rotation = %v/%v, want rejected packet rotation 45/10", yaw, pitch)
+	if yaw != 30 || pitch != 5 || boat.Rotation.Yaw != 30 || boat.Rotation.Pitch != 5 {
+		t.Fatalf("too-fast correction rotation = %v/%v, boat rotation = %+v; want previous rotation 30/5", yaw, pitch, boat.Rotation)
 	}
 }
 
@@ -436,6 +436,230 @@ func TestBoatMoveVehicleLimitsCumulativeMovementPerTick(t *testing.T) {
 	if len(packetsByID(t, connection, protocol.ClientboundMoveVehicleID)) != 0 {
 		t.Fatal("movement within a new tick's window was corrected")
 	}
+}
+
+func TestBoatMoveVehicleAcceptsMultiplePacketsAndKeepsLastGoodAfterRejection(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	controller, connection := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000065", "controller")
+
+	runtime.AssignEntityID(controller)
+	runtime.addSession(controller)
+
+	boat := runtime.SpawnBoat(game.EntityBambooRaft, game.Position{Y: 5})
+	if !runtime.MountPassenger(boat, controller) {
+		t.Fatal("mount controller")
+	}
+
+	connection.reset()
+
+	controller.handleMoveVehicle(protocol.MoveVehicle{X: 2, Y: 5, Yaw: 20})
+	controller.handleMoveVehicle(protocol.MoveVehicle{X: 4, Y: 5, Yaw: 40})
+
+	assertBoatPositionClose(t, boat.State.Position, game.Position{X: 4, Y: 5})
+
+	if controller.vehicleLastGood != boat.State.Position || len(packetsByID(t, connection, protocol.ClientboundMoveVehicleID)) != 0 {
+		t.Fatal("two accepted movements did not advance last-good without correction")
+	}
+
+	controller.handleMoveVehicle(protocol.MoveVehicle{X: 11, Y: 5, Yaw: 70})
+
+	assertBoatPositionClose(t, boat.State.Position, game.Position{X: 4, Y: 5})
+
+	if controller.vehicleLastGood != boat.State.Position || boat.Rotation.Yaw != 40 {
+		t.Fatal("too-fast movement advanced last-good or changed rotation")
+	}
+
+	controller.handleMoveVehicle(protocol.MoveVehicle{X: 5, Y: 5, Yaw: 50})
+
+	assertBoatPositionClose(t, boat.State.Position, game.Position{X: 5, Y: 5})
+
+	if controller.vehicleLastGood != boat.State.Position || len(packetsByID(t, connection, protocol.ClientboundMoveVehicleID)) != 1 {
+		t.Fatal("accepted packet after rejection did not use the last accepted position")
+	}
+}
+
+func TestBoatMoveVehicleNewCollisionAndOverlappingOldCollision(t *testing.T) {
+	world := &game.World{}
+
+	world.SetBlock(game.BlockPosition{X: -3}, game.Stone)
+	world.SetBlock(game.BlockPosition{}, game.Stone)
+
+	runtime := NewRuntime(world)
+
+	controller, connection := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000066", "controller")
+
+	runtime.AssignEntityID(controller)
+	runtime.addSession(controller)
+
+	start := game.Position{X: -2.5}
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, start)
+	if !runtime.MountPassenger(boat, controller) {
+		t.Fatal("mount controller")
+	}
+
+	connection.reset()
+
+	controller.handleMoveVehicle(protocol.MoveVehicle{X: 2, Yaw: 30})
+
+	assertBoatPositionClose(t, boat.State.Position, game.Position{X: 2})
+
+	if len(packetsByID(t, connection, protocol.ClientboundMoveVehicleID)) != 0 {
+		t.Fatal("residual was rejected despite pre-existing collision and clear destination")
+	}
+
+	controller.handleMoveVehicle(protocol.MoveVehicle{X: 0.5, Yaw: 65, Pitch: 12})
+
+	assertBoatPositionClose(t, boat.State.Position, game.Position{X: 2})
+
+	if boat.Rotation.Yaw != 65 || boat.Rotation.Pitch != 12 || controller.vehicleLastGood != (game.Position{X: 2}) {
+		t.Fatalf("newly colliding packet did not restore position, retain packet rotation and preserve last-good: %+v %+v", boat.State.Position, boat.Rotation)
+	}
+
+	if len(packetsByID(t, connection, protocol.ClientboundMoveVehicleID)) != 1 {
+		t.Fatal("new collision did not send vehicle correction")
+	}
+}
+
+func TestBoatMoveVehicleRejectsNewEntityCollision(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	controller, connection := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000067", "controller")
+
+	runtime.AssignEntityID(controller)
+	runtime.addSession(controller)
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{X: -2})
+
+	runtime.SpawnCow(game.Position{X: 0.5})
+
+	if !runtime.MountPassenger(boat, controller) {
+		t.Fatal("mount controller")
+	}
+
+	connection.reset()
+
+	controller.handleMoveVehicle(protocol.MoveVehicle{X: -0.5, Yaw: 80})
+
+	assertBoatPositionClose(t, boat.State.Position, game.Position{X: -2})
+
+	if boat.Rotation.Yaw != 80 || len(packetsByID(t, connection, protocol.ClientboundMoveVehicleID)) != 1 {
+		t.Fatal("new entity collision did not correct position with packet rotation")
+	}
+}
+
+func TestBoatPassengerRotationFollowsBoatSeatRules(t *testing.T) {
+	t.Run("one player", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		player, _ := newMovementTestSession(runtime, "00000000-0000-0000-0000-000000000068", "passenger")
+
+		runtime.AssignEntityID(player)
+		runtime.addSession(player)
+
+		boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{Y: 5})
+		if !runtime.MountPassenger(boat, player) {
+			t.Fatal("mount player")
+		}
+
+		player.Player.Rotation.Yaw = 170
+
+		runtime.updateBoatPassengerPositionsLocked(boat.State.ID, boat.State.Position, 90, 30, false, false)
+
+		view := player.playerView()
+
+		assertBoatPositionClose(t, view.Position, boatPassengerPosition(boat.State.Position, 90, 0, 1, false))
+
+		if view.Rotation.Yaw != 195 || view.Rotation.HeadYaw != 195 || view.Rotation.BodyYaw != 90 {
+			t.Fatalf("player rotation = %+v, want yaw/head 195 and body 90", view.Rotation)
+		}
+
+		boat.Rotation.Yaw = 90
+
+		err := player.handleMovePlayerRotation(protocol.MovePlayerRotation{Yaw: 260})
+		if err != nil || player.playerView().Rotation.Yaw != 195 {
+			t.Fatalf("onPassengerTurned clamp = %v, rotation %+v", err, player.playerView().Rotation)
+		}
+	})
+
+	t.Run("one animal", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		boat := runtime.SpawnBoat(game.EntityBambooRaft, game.Position{Y: 5})
+		cow := runtime.SpawnCow(game.Position{Y: 5})
+
+		if !runtime.MountPassenger(boat, cow) {
+			t.Fatal("mount animal")
+		}
+
+		cow.Rotation.Yaw = 180
+
+		runtime.updateBoatPassengerPositionsLocked(boat.State.ID, boat.State.Position, 60, 20, true, false)
+
+		assertBoatPositionClose(t, cow.State.Position, boatPassengerPositionFor(boat.State.Position, 60, 0, 1, true, true))
+
+		if cow.Rotation.Yaw != 165 || cow.Rotation.HeadYaw != 165 || cow.Rotation.BodyYaw != 60 {
+			t.Fatalf("single animal rotation = %+v", cow.Rotation)
+		}
+	})
+
+	t.Run("two animals", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{Y: 5})
+		cow := runtime.SpawnCow(game.Position{Y: 5})
+		sheep := runtime.SpawnSheep(game.Position{Y: 5})
+
+		if !runtime.MountPassenger(boat, cow) || !runtime.MountPassenger(boat, sheep) {
+			t.Fatal("mount two animals")
+		}
+
+		cow.Rotation.Yaw = 0
+		sheep.Rotation.Yaw = 180
+
+		runtime.updateBoatPassengerPositionsLocked(boat.State.ID, boat.State.Position, 90, 0, false, false)
+
+		assertBoatPositionClose(t, cow.State.Position, boatPassengerPositionFor(boat.State.Position, 90, 0, 2, false, true))
+		assertBoatPositionClose(t, sheep.State.Position, boatPassengerPositionFor(boat.State.Position, 90, 1, 2, false, true))
+
+		cowOffset := float32(270)
+
+		if cow.State.ID%2 == 0 {
+			cowOffset = 90
+		}
+
+		sheepOffset := float32(270)
+
+		if sheep.State.ID%2 == 0 {
+			sheepOffset = 90
+		}
+
+		if cow.Rotation.Yaw != 0 || cow.Rotation.BodyYaw != 90+cowOffset || cow.Rotation.HeadYaw != cowOffset || sheep.Rotation.Yaw != 180 || sheep.Rotation.BodyYaw != 90+sheepOffset || sheep.Rotation.HeadYaw != 180+sheepOffset {
+			t.Fatalf("two-animal rotations = %+v / %+v", cow.Rotation, sheep.Rotation)
+		}
+	})
+
+	t.Run("normal hostile", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{Y: 5})
+		zombie := runtime.SpawnZombie(game.Position{Y: 5})
+
+		if !runtime.MountPassenger(boat, zombie) {
+			t.Fatal("mount zombie")
+		}
+
+		zombie.Rotation.Yaw = 220
+
+		runtime.updateBoatPassengerPositionsLocked(boat.State.ID, boat.State.Position, 30, 10, false, false)
+
+		assertBoatPositionClose(t, zombie.State.Position, boatPassengerPositionFor(boat.State.Position, 30, 0, 1, false, false))
+
+		if zombie.Rotation.Yaw != -75 || zombie.Rotation.HeadYaw != -75 || zombie.Rotation.BodyYaw != 30 {
+			t.Fatalf("hostile passenger rotation = %+v", zombie.Rotation)
+		}
+	})
 }
 
 func TestBoatMoveVehicleAcceptsVerticalCollision(t *testing.T) {
@@ -685,7 +909,7 @@ func TestBoatAnimalPassengerOffsets(t *testing.T) {
 		t.Fatal("mount animal passengers")
 	}
 
-	runtime.updateBoatPassengerPositionsLocked(boat.State.ID, boat.State.Position, 0, false, false)
+	runtime.updateBoatPassengerPositionsLocked(boat.State.ID, boat.State.Position, 0, 0, false, false)
 
 	assertBoatPositionClose(t, first.State.Position, boatPassengerPositionFor(boat.State.Position, 0, 0, 2, false, true))
 	assertBoatPositionClose(t, second.State.Position, boatPassengerPositionFor(boat.State.Position, 0, 1, 2, false, true))
@@ -1061,6 +1285,111 @@ func TestBoatCollisionPushesUnoccupiedBoatsOnBothSides(t *testing.T) {
 	}
 }
 
+func TestBoatCollisionDoesNotMoveOccupiedBoats(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	first := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+	second := runtime.SpawnBoat(game.EntityBambooRaft, game.Position{X: 0.5})
+
+	passenger := runtime.SpawnCow(game.Position{})
+	if !runtime.MountPassenger(first, passenger) {
+		t.Fatal("mount first boat passenger")
+	}
+
+	runtime.pushBoatEntities(first.State.ID, first.State.Position)
+
+	if first.Velocity.X != 0 || second.Velocity.X <= 0 {
+		t.Fatalf("occupied vs empty boat velocities = %v/%v", first.Velocity.X, second.Velocity.X)
+	}
+
+	otherPassenger := runtime.SpawnSheep(game.Position{X: 0.5})
+	if !runtime.MountPassenger(second, otherPassenger) {
+		t.Fatal("mount second boat passenger")
+	}
+
+	second.Velocity = game.Velocity{}
+
+	runtime.pushBoatEntities(first.State.ID, first.State.Position)
+
+	if first.Velocity.X != 0 || second.Velocity.X != 0 {
+		t.Fatalf("occupied vs occupied boat velocities = %v/%v", first.Velocity.X, second.Velocity.X)
+	}
+}
+
+func TestBoatAutoBoardingFullSubmergedAndVerticallySeparated(t *testing.T) {
+	t.Run("full", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+		first := runtime.SpawnCow(game.Position{})
+		second := runtime.SpawnSheep(game.Position{})
+		candidate := runtime.SpawnChicken(game.Position{X: 0.5})
+
+		if !runtime.MountPassenger(boat, first) || !runtime.MountPassenger(boat, second) {
+			t.Fatal("fill boat")
+		}
+
+		runtime.pushBoatEntities(boat.State.ID, boat.State.Position)
+
+		if runtime.passengerVehicleID(candidate.State.ID) != 0 || candidate.Living.Velocity.X <= 0 {
+			t.Fatalf("full boat boarding/push = %d/%v", runtime.passengerVehicleID(candidate.State.ID), candidate.Living.Velocity.X)
+		}
+	})
+
+	t.Run("submerged", func(t *testing.T) {
+		world := &game.World{}
+
+		world.SetBlock(game.BlockPosition{}, game.Water)
+
+		runtime := NewRuntime(world)
+
+		boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+		candidate := runtime.SpawnCow(game.Position{X: 0.5})
+
+		if runtime.MountPassenger(boat, candidate) {
+			t.Fatal("submerged boat accepted passenger")
+		}
+
+		runtime.pushBoatEntities(boat.State.ID, boat.State.Position)
+
+		if runtime.passengerVehicleID(candidate.State.ID) != 0 || candidate.Living.Velocity.X <= 0 {
+			t.Fatalf("submerged boat boarding/push = %d/%v", runtime.passengerVehicleID(candidate.State.ID), candidate.Living.Velocity.X)
+		}
+	})
+
+	t.Run("vertically offset", func(t *testing.T) {
+		runtime := NewRuntime(&game.World{})
+
+		boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+		candidate := runtime.SpawnCow(game.Position{X: 0.5, Y: boatHeight + 0.1})
+
+		runtime.pushBoatEntities(boat.State.ID, boat.State.Position)
+
+		if runtime.passengerVehicleID(candidate.State.ID) != 0 || candidate.Living.Velocity != (game.Velocity{}) {
+			t.Fatal("entity above query volume was boarded or pushed")
+		}
+	})
+}
+
+func TestBoatDoesNotAutoBoardAlreadyMountedEntity(t *testing.T) {
+	runtime := NewRuntime(&game.World{})
+
+	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
+
+	otherBoat := runtime.SpawnBoat(game.EntityBambooRaft, game.Position{X: 0.5})
+	candidate := runtime.SpawnCow(game.Position{X: 0.5})
+
+	if !runtime.MountPassenger(otherBoat, candidate) {
+		t.Fatal("mount on other boat")
+	}
+
+	runtime.pushBoatEntities(boat.State.ID, boat.State.Position)
+
+	if runtime.passengerVehicleID(candidate.State.ID) != otherBoat.State.ID {
+		t.Fatal("already mounted entity transferred to a different boat")
+	}
+}
+
 func TestBoatProximityDoesNotBoardPlayersOrExcludedEntities(t *testing.T) {
 	t.Run("player", func(t *testing.T) {
 		runtime := NewRuntime(&game.World{})
@@ -1113,7 +1442,7 @@ func TestBoatProximityDoesNotBoardPlayersOrExcludedEntities(t *testing.T) {
 
 		passenger := spawnTestRuntimeLivingEntity(runtime, game.Position{X: 0.5, Y: 0.1}, 20)
 
-		passenger.State.Type = game.EntityPig
+		passenger.State.Type = game.EntityCow
 
 		runtime.pushBoatEntities(boat.State.ID, boat.State.Position)
 
@@ -1124,7 +1453,9 @@ func TestBoatProximityDoesNotBoardPlayersOrExcludedEntities(t *testing.T) {
 }
 
 func TestBoatUnderwaterEjectionDoesNotDeadlock(t *testing.T) {
-	runtime := NewRuntime(&game.World{Generator: blockMutationTestGenerator{block: game.Water}})
+	world := &game.World{}
+
+	runtime := NewRuntime(world)
 
 	boat := runtime.SpawnBoat(game.EntityOakBoat, game.Position{})
 
@@ -1133,6 +1464,8 @@ func TestBoatUnderwaterEjectionDoesNotDeadlock(t *testing.T) {
 	if !runtime.MountPassenger(boat, passenger) {
 		t.Fatal("mount passenger")
 	}
+
+	world.SetBlock(game.BlockPosition{}, game.Water)
 
 	boat.Status = boatStatusUnderWater
 	boat.OutOfControlTicks = 59
@@ -1301,7 +1634,7 @@ func TestBoatDestructionPreservesClientPassengerRemovalState(t *testing.T) {
 		t.Fatal("mount rider")
 	}
 
-	runtime.updateBoatPassengerPositionsLocked(boat.State.ID, boat.State.Position, 0, false, false)
+	runtime.updateBoatPassengerPositionsLocked(boat.State.ID, boat.State.Position, 0, 0, false, false)
 
 	riderPosition := rider.playerView().Position
 

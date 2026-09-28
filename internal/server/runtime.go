@@ -627,6 +627,22 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 
 	update(session.Player)
 
+	if session.Player.Rotation != previous.Rotation {
+		vehicleID := r.passengerVehicleID(session.Player.EntityID)
+
+		r.entityMu.RLock()
+		boat, mountedBoat := r.entities[vehicleID].(*runtimeBoatEntity)
+		r.entityMu.RUnlock()
+
+		if mountedBoat {
+			boat.State.mu.RLock()
+			yaw := boat.Rotation.Yaw
+			boat.State.mu.RUnlock()
+
+			rotateBoatPassenger(&session.Player.Rotation, yaw, 0, 0)
+		}
+	}
+
 	r.updatePlayerSwimmingState(session.Player)
 
 	session.Player.Pose = r.calculatedPlayerPose(*session.Player)

@@ -51,6 +51,10 @@ func (r *Runtime) mountPassengerLocked(vehicleID, passengerID int32) bool {
 		capacity = configured.maximumPassengers()
 	}
 
+	if boat, valid := vehicle.(*runtimeBoatEntity); valid && r.boatEyeInWater(boat) {
+		return false
+	}
+
 	r.passengerMu.Lock()
 
 	if r.passengerVehicles[passengerID] != 0 || r.passengerWouldCycleLocked(vehicleID, passengerID) {

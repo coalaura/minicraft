@@ -125,7 +125,7 @@ func (entity *runtimeBoatEntity) RuntimeEntityInteract(runtime *Runtime, session
 		raft := entity.Raft
 		entity.State.mu.RUnlock()
 
-		runtime.updateBoatPassengerPositionsLocked(vehicleID, position, yaw, raft, true)
+		runtime.updateBoatPassengerPositionsLocked(vehicleID, position, yaw, 0, raft, true)
 	}
 
 	return mounted
@@ -337,7 +337,7 @@ func (entity *runtimeBoatEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 
 	runtime.runtimeEntityMoved(entity, previousPosition)
 
-	runtime.updateBoatPassengerPositionsLocked(entityID, position, rotation.Yaw, entity.Raft, true)
+	runtime.updateBoatPassengerPositionsLocked(entityID, position, rotation.Yaw, entity.DeltaRotation, entity.Raft, true)
 	runtime.pushBoatEntities(entityID, position)
 
 	runtime.synchronizeRuntimeEntity(entity)
@@ -848,7 +848,7 @@ func (runtime *Runtime) boatPositionClear(position game.Position) bool {
 	return !slices.ContainsFunc(boxes, box.Intersects)
 }
 
-func (runtime *Runtime) boatIntroducesCollision(previous, target game.Position) bool {
+func (runtime *Runtime) boatIntroducesCollision(vehicleID int32, previous, target game.Position) bool {
 	previousBox := entityBox(previous, boatWidth, boatHeight)
 	previousBox.MinX += boatCollisionEpsilon
 	previousBox.MinY += boatCollisionEpsilon
@@ -868,6 +868,7 @@ func (runtime *Runtime) boatIntroducesCollision(previous, target game.Position) 
 	var collisionBuffer [128]game.AABB
 
 	boxes := runtime.appendEntityCollisionBoxes(collisionBuffer[:0], targetBox, game.Velocity{})
+	boxes = runtime.appendBoatEntityCollisionBoxes(boxes, vehicleID, targetBox)
 
 	for _, box := range boxes {
 		if targetBox.Intersects(box) && !previousBox.Intersects(box) {
@@ -876,6 +877,99 @@ func (runtime *Runtime) boatIntroducesCollision(previous, target game.Position) 
 	}
 
 	return false
+}
+
+func (runtime *Runtime) boatHasNoCollision(vehicleID int32, position game.Position) bool {
+	box := entityBox(position, boatWidth, boatHeight)
+
+	var collisionBuffer [128]game.AABB
+
+	boxes := runtime.appendEntityCollisionBoxes(collisionBuffer[:0], box, game.Velocity{})
+	boxes = runtime.appendBoatEntityCollisionBoxes(boxes, vehicleID, box)
+
+	return !slices.ContainsFunc(boxes, box.Intersects)
+}
+
+func (runtime *Runtime) moveBoatVehicle(vehicleID int32, position game.Position, velocity game.Velocity) game.Position {
+	box := entityBox(position, boatWidth, boatHeight)
+
+	var collisionBuffer [128]game.AABB
+
+	boxes := runtime.appendEntityCollisionBoxes(collisionBuffer[:0], box, velocity)
+
+	query := box
+
+	query.MinX += min(velocity.X, 0)
+	query.MaxX += max(velocity.X, 0)
+	query.MinY += min(velocity.Y, 0)
+	query.MaxY += max(velocity.Y, 0)
+	query.MinZ += min(velocity.Z, 0)
+	query.MaxZ += max(velocity.Z, 0)
+
+	boxes = runtime.appendBoatEntityCollisionBoxes(boxes, vehicleID, query)
+
+	actual := collideAABBWithBlocks(box, boxes, velocity)
+
+	position.X += actual.X
+	position.Y += actual.Y
+	position.Z += actual.Z
+
+	return position
+}
+
+func (runtime *Runtime) appendBoatEntityCollisionBoxes(boxes []game.AABB, vehicleID int32, query game.AABB) []game.AABB {
+	for iterator := runtime.runtimeEntitiesInBox(query); ; {
+		candidate, present := iterator.Next()
+		if !present {
+			break
+		}
+
+		state := candidate.RuntimeEntityState()
+
+		state.mu.RLock()
+		candidateID := state.ID
+		position := state.Position
+		removed := state.Removed
+		state.mu.RUnlock()
+
+		if removed || candidateID == vehicleID || runtime.passengersShareRootVehicle(vehicleID, candidateID) {
+			continue
+		}
+
+		var collision game.AABB
+
+		switch entity := candidate.(type) {
+		case *runtimeBoatEntity:
+			collision = entityBox(position, boatWidth, boatHeight)
+		case RuntimeLivingEntity:
+			living := entity.RuntimeLivingState()
+			if living.Dead {
+				continue
+			}
+
+			collision = living.CollisionBox(position)
+		default:
+			continue
+		}
+
+		if query.Intersects(collision) {
+			boxes = append(boxes, collision)
+		}
+	}
+
+	for _, session := range runtime.sessionView() {
+		player := session.playerView()
+		if player.Dead || player.GameMode == game.GameModeSpectator || runtime.passengersShareRootVehicle(vehicleID, player.EntityID) {
+			continue
+		}
+
+		collision := player.collisionBox()
+		if query.Intersects(collision) {
+			boxes = append(boxes, collision)
+		}
+	}
+
+	return boxes
 }
 
 func (runtime *Runtime) boatPlacementClear(position game.Position) bool {
@@ -1060,10 +1154,10 @@ func (runtime *Runtime) boatPassengersChangedLocked(vehicleID int32, worldLocked
 
 	boat.State.mu.Unlock()
 
-	runtime.updateBoatPassengerPositionsLocked(vehicleID, position, yaw, raft, worldLocked)
+	runtime.updateBoatPassengerPositionsLocked(vehicleID, position, yaw, 0, raft, worldLocked)
 }
 
-func (runtime *Runtime) updateBoatPassengerPositionsLocked(vehicleID int32, position game.Position, yaw float32, raft, worldLocked bool) {
+func (runtime *Runtime) updateBoatPassengerPositionsLocked(vehicleID int32, position game.Position, yaw, deltaRotation float32, raft, worldLocked bool) {
 	runtime.passengerMu.RLock()
 	passengers := runtime.vehiclePassengers[vehicleID]
 	runtime.passengerMu.RUnlock()
@@ -1085,11 +1179,80 @@ func (runtime *Runtime) updateBoatPassengerPositionsLocked(vehicleID int32, posi
 		session, playerPassenger := passenger.(*Session)
 		if playerPassenger {
 			session.playerMx.Lock()
-			session.Player.Rotation.Yaw = clampAngleAround(session.Player.Rotation.Yaw, yaw, 105)
+			rotateBoatPassenger(&session.Player.Rotation, yaw, deltaRotation, 0)
 			session.playerMx.Unlock()
 
 			runtime.updateMountedPlayerChunks(session, worldLocked)
+
+			continue
 		}
+
+		living, valid := passenger.(RuntimeLivingEntity)
+		if !valid {
+			continue
+		}
+
+		rotation := boatLivingPassengerRotation(living)
+		if rotation == nil {
+			continue
+		}
+
+		state := living.RuntimeEntityState()
+
+		state.mu.Lock()
+		offset := float32(0)
+
+		if animal && passengers.count == maximumVehiclePassengers {
+			if state.ID%2 == 0 {
+				offset = 90
+			} else {
+				offset = 270
+			}
+		}
+
+		previousRotation := *rotation
+
+		rotateBoatPassenger(rotation, yaw, deltaRotation, offset)
+
+		state.movementSyncDirty = state.movementSyncDirty || previousRotation != *rotation
+		state.mu.Unlock()
+	}
+}
+
+func rotateBoatPassenger(rotation *game.Rotation, yaw, deltaRotation, animalOffset float32) {
+	rotation.Yaw += deltaRotation
+	rotation.HeadYaw += deltaRotation
+	rotation.BodyYaw = yaw + animalOffset
+	rotation.Yaw = clampAngleAround(rotation.Yaw, yaw, 105)
+	rotation.HeadYaw = rotation.Yaw + animalOffset
+}
+
+func boatLivingPassengerRotation(entity RuntimeLivingEntity) *game.Rotation {
+	switch passenger := entity.(type) {
+	case *runtimeCowEntity:
+		return &passenger.Rotation
+	case *runtimeSheepEntity:
+		return &passenger.Rotation
+	case *runtimeChickenEntity:
+		return &passenger.Rotation
+	case *runtimeZombieEntity:
+		return &passenger.Rotation
+	case *runtimeSkeletonEntity:
+		return &passenger.Rotation
+	case *runtimeCreeperEntity:
+		return &passenger.Rotation
+	case *runtimeBatEntity:
+		return &passenger.Rotation
+	case *runtimeCodEntity:
+		return &passenger.Rotation
+	case *runtimeSalmonEntity:
+		return &passenger.Rotation
+	case *runtimeTropicalFishEntity:
+		return &passenger.Rotation
+	case *runtimePufferfishEntity:
+		return &passenger.Rotation
+	default:
+		return nil
 	}
 }
 
@@ -1341,6 +1504,8 @@ func (session *Session) handleMoveVehicle(move protocol.MoveVehicle) {
 	move.X = clampVehicleHorizontal(move.X)
 	move.Y = clampVehicleVertical(move.Y)
 	move.Z = clampVehicleHorizontal(move.Z)
+	move.Yaw = wrapDegrees(move.Yaw)
+	move.Pitch = wrapDegrees(move.Pitch)
 
 	runtime.worldMutationMu.Lock()
 	runtime.lifecycleMu.Lock()
@@ -1367,16 +1532,26 @@ func (session *Session) handleMoveVehicle(move protocol.MoveVehicle) {
 
 	movedDistanceSquared := firstDelta.X*firstDelta.X + firstDelta.Y*firstDelta.Y + firstDelta.Z*firstDelta.Z
 	expectedDistanceSquared := boat.Velocity.X*boat.Velocity.X + boat.Velocity.Y*boat.Velocity.Y + boat.Velocity.Z*boat.Velocity.Z
+	entityID := boat.State.ID
+	boat.State.mu.Unlock()
 
-	rejected := movedDistanceSquared-expectedDistanceSquared > boatMaximumClientMoveSquared
-	if !rejected {
-		movement := runtime.moveGroundEntity(previousPosition, delta, boatWidth, boatHeight, 0, false)
-		residualX := move.X - movement.Position.X
-		residualZ := move.Z - movement.Position.Z
+	tooFast := movedDistanceSquared-expectedDistanceSquared > boatMaximumClientMoveSquared
+	rejected := tooFast
+
+	if !tooFast {
+		movement := runtime.moveBoatVehicle(entityID, previousPosition, delta)
+		residualX := move.X - movement.X
+		residualZ := move.Z - movement.Z
 		residualSquared := residualX*residualX + residualZ*residualZ
 		targetPosition := game.Position{X: move.X, Y: move.Y, Z: move.Z}
-		rejected = residualSquared > boatMovementResidualSquared || runtime.boatIntroducesCollision(previousPosition, targetPosition)
+		rejected = residualSquared > boatMovementResidualSquared && runtime.boatHasNoCollision(entityID, previousPosition)
+
+		if !rejected {
+			rejected = runtime.boatIntroducesCollision(entityID, previousPosition, targetPosition)
+		}
 	}
+
+	boat.State.mu.Lock()
 
 	if !rejected {
 		boat.State.Position = game.Position{X: move.X, Y: move.Y, Z: move.Z}
@@ -1385,18 +1560,17 @@ func (session *Session) handleMoveVehicle(move protocol.MoveVehicle) {
 		boat.OnGround = move.OnGround
 		boat.checkFallDamageLocked(runtime, delta.Y, move.OnGround)
 		boat.State.movementSyncDirty = previousPosition != boat.State.Position
-	} else {
+	} else if !tooFast {
 		boat.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
 	}
 
 	position := boat.State.Position
 	rotation := boat.Rotation
-	entityID := boat.State.ID
 	boat.State.mu.Unlock()
 
 	if !rejected {
 		runtime.runtimeEntityMoved(boat, previousPosition)
-		runtime.updateBoatPassengerPositionsLocked(entityID, position, rotation.Yaw, boat.Raft, true)
+		runtime.updateBoatPassengerPositionsLocked(entityID, position, rotation.Yaw, 0, boat.Raft, true)
 		runtime.pushBoatEntities(entityID, position)
 		runtime.synchronizeRuntimeEntity(boat)
 	}
