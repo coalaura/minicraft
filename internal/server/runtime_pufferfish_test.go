@@ -266,7 +266,7 @@ func TestPufferfishDryOutFlopAndInactiveChunkPause(t *testing.T) {
 		return 0.5
 	}
 
-	session := addRuntimeMobTestPlayer(t, runtime, game.Position{X: 100}, game.GameModeSurvival)
+	session := addRuntimeMobTestPlayer(t, runtime, game.Position{X: 50}, game.GameModeSurvival)
 
 	runtime.setSessionActiveChunks(session, []LoadedChunk{{}})
 

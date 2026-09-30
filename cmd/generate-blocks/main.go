@@ -332,7 +332,7 @@ func generate(blocks []BlockDefinition, miningTags MiningTags, lootPrograms Bloc
 	fmt.Fprintln(&output, "}")
 	fmt.Fprintln(&output)
 
-	fmt.Fprintln(&output, "var stateFluidStates = [...]fluidStateData{")
+	fmt.Fprintln(&output, "var stateFluidStates = [MaxBlockState + 1]fluidStateData{")
 
 	for _, block := range blocks {
 		for state := block.MinState; state <= block.MaxState; state++ {

@@ -72,6 +72,7 @@ type Runtime struct {
 	entitiesByChunk           map[LoadedChunk][]RuntimeEntity
 	entityRandomMu            sync.Mutex
 	entityRandom              func() float32
+	naturalSpawning           naturalSpawnState
 	groundPathfindStarted     func()
 	groundPathWorkspace       groundPathWorkspace
 	swimPathWorkspace         swimPathWorkspace

@@ -44,6 +44,7 @@ type World struct {
 	overrideMx    sync.RWMutex
 	overrides     map[ChunkPosition]map[LocalBlockPosition]Block
 	overrideView  atomic.Pointer[blockOverrideSnapshot]
+	blockRevision atomic.Uint64
 	blockEntities map[ChunkPosition]map[LocalBlockPosition]blockEntityOverride
 }
 
@@ -579,11 +580,17 @@ func (w *World) copyBlockOverrideChunk(snapshot blockOverrideSnapshot, chunk Chu
 func (w *World) storeBlockOverrideSnapshot(snapshot blockOverrideSnapshot) {
 	if len(snapshot) == 0 {
 		w.overrideView.Store(nil)
+		w.blockRevision.Add(1)
 
 		return
 	}
 
 	w.overrideView.Store(&snapshot)
+	w.blockRevision.Add(1)
+}
+
+func (w *World) BlockRevision() uint64 {
+	return w.blockRevision.Load()
 }
 
 func resolvedBlockEntityOverride(override blockEntityOverride) (BlockEntity, bool) {

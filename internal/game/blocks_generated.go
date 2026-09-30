@@ -4695,7 +4695,7 @@ var stateRandomlyTicks = [MaxBlockState + 1]bool{
 	14611: true,
 }
 
-var stateFluidStates = [...]fluidStateData{
+var stateFluidStates = [MaxBlockState + 1]fluidStateData{
 	45:    {fluidType: FluidTypeWater, level: 0},
 	47:    {fluidType: FluidTypeWater, level: 0},
 	49:    {fluidType: FluidTypeWater, level: 0},

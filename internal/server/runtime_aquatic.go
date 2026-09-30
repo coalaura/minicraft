@@ -139,7 +139,7 @@ func (entity *runtimeAquatic) RuntimeMob() *RuntimeMobState {
 func (entity *runtimeAquatic) RuntimeMobDespawnConfig() RuntimeMobDespawnConfig {
 	return RuntimeMobDespawnConfig{
 		NoDespawnDistance: runtimeMobNoDespawnDistance,
-		DespawnDistance:   runtimeMobDespawnDistance,
+		DespawnDistance:   naturalCategories[naturalWaterAmbient].Distance,
 		AllowedInPeaceful: true,
 	}
 }

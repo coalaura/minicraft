@@ -292,7 +292,7 @@ func TestAquaticFollowerStopsFollowingDeadLeader(t *testing.T) {
 func TestAquaticInactiveChunkPausesMovementAndAir(t *testing.T) {
 	runtime := NewRuntime(&game.World{Generator: blockMutationTestGenerator{block: game.Air}})
 
-	session := addRuntimeMobTestPlayer(t, runtime, game.Position{X: 100}, game.GameModeSurvival)
+	session := addRuntimeMobTestPlayer(t, runtime, game.Position{X: 50}, game.GameModeSurvival)
 
 	runtime.setSessionActiveChunks(session, []LoadedChunk{{}})
 

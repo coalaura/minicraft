@@ -54,6 +54,7 @@ func (r *Runtime) Tick() game.TimeState {
 	r.tickActiveChunks()
 
 	r.cleanupInactiveRuntimeMobs()
+	r.tickNaturalSpawning(state)
 
 	swimmingChanges := r.updateActivePlayerSwimmingLocked()
 
