@@ -197,7 +197,7 @@ func (entity *runtimeAnimal) EntityMetadata() []protocol.EntityMetadataEntry {
 	entity.State.mu.RLock()
 	defer entity.State.mu.RUnlock()
 
-	return runtimeMobMetadata(entity.Living.EntityFlags(), entity.Living.Health, 0)
+	return runtimeMobMetadata(entity.Living.EntityFlags(), entity.Living.Health, entity.MetadataFlags())
 }
 
 func (entity *runtimeAnimal) EntityVelocity() game.Velocity {
@@ -289,7 +289,7 @@ func (entity *runtimeSheepEntity) EntityMetadata() []protocol.EntityMetadataEntr
 	entity.State.mu.RLock()
 	defer entity.State.mu.RUnlock()
 
-	metadata := runtimeMobMetadata(entity.Living.EntityFlags(), entity.Living.Health, 0)
+	metadata := runtimeMobMetadata(entity.Living.EntityFlags(), entity.Living.Health, entity.MetadataFlags())
 
 	wool := entity.WoolColor & 0x0f
 
@@ -337,30 +337,55 @@ func (entity *runtimeAnimal) runtimeEntityViewLocked() runtimeEntityView {
 }
 
 func (runtime *Runtime) SpawnCow(position game.Position) *runtimeCowEntity {
+	entity := runtime.newCow()
+	if entity != nil {
+		runtime.registerRuntimeEntity(entity, game.EntityCow, position)
+	}
+
+	return entity
+}
+
+func (runtime *Runtime) newCow() *runtimeCowEntity {
 	entity := &runtimeCowEntity{}
 	if !runtime.initializeAnimal(&entity.runtimeAnimal, &cowAnimalSpec) {
 		return nil
 	}
 
 	runtime.configureAnimalGoals(&entity.runtimeAnimal)
-	runtime.registerRuntimeEntity(entity, game.EntityCow, position)
 
 	return entity
 }
 
 func (runtime *Runtime) SpawnSheep(position game.Position) *runtimeSheepEntity {
+	entity := runtime.newSheep()
+	if entity != nil {
+		runtime.registerRuntimeEntity(entity, game.EntitySheep, position)
+	}
+
+	return entity
+}
+
+func (runtime *Runtime) newSheep() *runtimeSheepEntity {
 	entity := &runtimeSheepEntity{}
 	if !runtime.initializeAnimal(&entity.runtimeAnimal, &sheepAnimalSpec) {
 		return nil
 	}
 
 	runtime.configureAnimalGoals(&entity.runtimeAnimal)
-	runtime.registerRuntimeEntity(entity, game.EntitySheep, position)
 
 	return entity
 }
 
 func (runtime *Runtime) SpawnChicken(position game.Position) *runtimeChickenEntity {
+	entity := runtime.newChicken()
+	if entity != nil {
+		runtime.registerRuntimeEntity(entity, game.EntityChicken, position)
+	}
+
+	return entity
+}
+
+func (runtime *Runtime) newChicken() *runtimeChickenEntity {
 	entity := &runtimeChickenEntity{
 		EggTime:  chickenEggMinimumTicks + int32(runtime.nextEntityRandom()*chickenEggRandomTicks),
 		Flapping: 1,
@@ -372,7 +397,6 @@ func (runtime *Runtime) SpawnChicken(position game.Position) *runtimeChickenEnti
 	}
 
 	runtime.configureAnimalGoals(&entity.runtimeAnimal)
-	runtime.registerRuntimeEntity(entity, game.EntityChicken, position)
 
 	return entity
 }
@@ -694,7 +718,7 @@ func animalRandomStrollPath(runtime *Runtime, entity *runtimeAnimal) []game.Posi
 
 		goal := game.Position{X: position.X + float64(offsetX), Y: position.Y + float64(offsetY), Z: position.Z + float64(offsetZ)}
 
-		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, animalFollowRange)
+		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.FollowRange(animalFollowRange))
 		if len(path) > 0 {
 			return path
 		}

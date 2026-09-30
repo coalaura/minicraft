@@ -848,39 +848,14 @@ func (runtime *Runtime) boatPositionClear(position game.Position) bool {
 	return !slices.ContainsFunc(boxes, box.Intersects)
 }
 
-func (runtime *Runtime) boatIntroducesCollision(vehicleID int32, previous, target game.Position) bool {
-	previousBox := entityBox(previous, boatWidth, boatHeight)
-	previousBox.MinX += boatCollisionEpsilon
-	previousBox.MinY += boatCollisionEpsilon
-	previousBox.MinZ += boatCollisionEpsilon
-	previousBox.MaxX -= boatCollisionEpsilon
-	previousBox.MaxY -= boatCollisionEpsilon
-	previousBox.MaxZ -= boatCollisionEpsilon
-
-	targetBox := entityBox(target, boatWidth, boatHeight)
-	targetBox.MinX += boatCollisionEpsilon
-	targetBox.MinY += boatCollisionEpsilon
-	targetBox.MinZ += boatCollisionEpsilon
-	targetBox.MaxX -= boatCollisionEpsilon
-	targetBox.MaxY -= boatCollisionEpsilon
-	targetBox.MaxZ -= boatCollisionEpsilon
-
-	var collisionBuffer [128]game.AABB
-
-	boxes := runtime.appendEntityCollisionBoxes(collisionBuffer[:0], targetBox, game.Velocity{})
-	boxes = runtime.appendBoatEntityCollisionBoxes(boxes, vehicleID, targetBox)
-
-	for _, box := range boxes {
-		if targetBox.Intersects(box) && !previousBox.Intersects(box) {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (runtime *Runtime) boatHasNoCollision(vehicleID int32, position game.Position) bool {
 	box := entityBox(position, boatWidth, boatHeight)
+	box.MinX += 0.0625
+	box.MinY += 0.0625
+	box.MinZ += 0.0625
+	box.MaxX -= 0.0625
+	box.MaxY -= 0.0625
+	box.MaxZ -= 0.0625
 
 	var collisionBuffer [128]game.AABB
 
@@ -1192,7 +1167,7 @@ func (runtime *Runtime) updateBoatPassengerPositionsLocked(vehicleID int32, posi
 			continue
 		}
 
-		rotation := boatLivingPassengerRotation(living)
+		rotation := runtimeLivingRotation(living)
 		if rotation == nil {
 			continue
 		}
@@ -1227,7 +1202,7 @@ func rotateBoatPassenger(rotation *game.Rotation, yaw, deltaRotation, animalOffs
 	rotation.HeadYaw = rotation.Yaw + animalOffset
 }
 
-func boatLivingPassengerRotation(entity RuntimeLivingEntity) *game.Rotation {
+func runtimeLivingRotation(entity RuntimeLivingEntity) *game.Rotation {
 	switch passenger := entity.(type) {
 	case *runtimeCowEntity:
 		return &passenger.Rotation
@@ -1539,16 +1514,24 @@ func (session *Session) handleMoveVehicle(move protocol.MoveVehicle) {
 	rejected := tooFast
 
 	if !tooFast {
+		preClear := runtime.boatHasNoCollision(entityID, previousPosition)
 		movement := runtime.moveBoatVehicle(entityID, previousPosition, delta)
+
+		boat.State.mu.Lock()
+		boat.State.Position = movement
+		boat.State.mu.Unlock()
+
 		residualX := move.X - movement.X
 		residualZ := move.Z - movement.Z
 		residualSquared := residualX*residualX + residualZ*residualZ
 		targetPosition := game.Position{X: move.X, Y: move.Y, Z: move.Z}
-		rejected = residualSquared > boatMovementResidualSquared && runtime.boatHasNoCollision(entityID, previousPosition)
 
-		if !rejected {
-			rejected = runtime.boatIntroducesCollision(entityID, previousPosition, targetPosition)
-		}
+		boat.State.mu.Lock()
+		boat.State.Position = targetPosition
+		boat.State.mu.Unlock()
+
+		postClear := runtime.boatHasNoCollision(entityID, targetPosition)
+		rejected = preClear && (residualSquared > boatMovementResidualSquared || !postClear)
 	}
 
 	boat.State.mu.Lock()
@@ -1561,6 +1544,7 @@ func (session *Session) handleMoveVehicle(move protocol.MoveVehicle) {
 		boat.checkFallDamageLocked(runtime, delta.Y, move.OnGround)
 		boat.State.movementSyncDirty = previousPosition != boat.State.Position
 	} else if !tooFast {
+		boat.State.Position = previousPosition
 		boat.Rotation = game.Rotation{Yaw: move.Yaw, Pitch: move.Pitch}
 	}
 

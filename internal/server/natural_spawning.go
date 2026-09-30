@@ -1,3 +1,5 @@
+//go:generate go run ../../cmd/generate-spawns -input ../../data/worldgen_biome -tags ../../data/biome_tags -output natural_spawn_data_generated.go
+
 package server
 
 import (
@@ -210,9 +212,7 @@ func (r *Runtime) prepareNaturalSpawnState() {
 }
 
 func (r *Runtime) spawnNaturalPack(origin LoadedChunk, category int) {
-	position := game.BlockPosition{X: origin.X*16 + int32(runtimeMobRandomInt(r, 16)), Z: origin.Z*16 + int32(runtimeMobRandomInt(r, 16))}
-
-	position.Y = -64 + int32(runtimeMobRandomInt(r, int(r.naturalSurfaceHeight(position)+1+64)+1))
+	position := r.naturalRandomPosition(origin)
 
 	if position.Y < -63 || r.World.BlockAt(position).IsRedstoneConductor() {
 		return
@@ -225,10 +225,9 @@ func (r *Runtime) spawnNaturalPack(origin LoadedChunk, category int) {
 		attempts := int(math.Ceil(float64(r.nextEntityRandom() * 4)))
 
 		var (
-			selected       naturalSpawnEntry
-			schoolLeader   schoolingFish
-			groupCount     int
-			tropicalSchool bool
+			selected   naturalSpawnEntry
+			group      naturalSpawnGroup
+			groupCount int
 		)
 
 		for attempt := 0; attempt < attempts; attempt++ {
@@ -269,17 +268,9 @@ func (r *Runtime) spawnNaturalPack(origin LoadedChunk, category int) {
 				continue
 			}
 
-			entity, spawned := r.SpawnEntity(selected.Type, spawnPosition)
-			if !spawned {
+			entity := r.spawnNaturalEntity(selected.Type, spawnPosition, &group)
+			if entity == nil {
 				continue
-			}
-
-			if fish, schooling := entity.(schoolingFish); schooling {
-				if schoolLeader == nil {
-					schoolLeader = fish
-				} else {
-					connectAquaticFollower(fish, schoolLeader)
-				}
 			}
 
 			r.naturalSpawning.addCount(LoadedChunk{X: blockChunkCoordinate(candidate.X), Z: blockChunkCoordinate(candidate.Z)}, category)
@@ -304,11 +295,8 @@ func (r *Runtime) spawnNaturalPack(origin LoadedChunk, category int) {
 				return
 			}
 
-			if selected.Type == game.EntityTropicalFish && !tropicalSchool {
-				tropicalSchool = r.nextEntityRandom() < 0.9
-				if !tropicalSchool {
-					break
-				}
+			if selected.Type == game.EntityTropicalFish && !group.CommonTropical {
+				break
 			}
 
 			if category != naturalWaterAmbient && groupCount >= 4 {
@@ -316,6 +304,14 @@ func (r *Runtime) spawnNaturalPack(origin LoadedChunk, category int) {
 			}
 		}
 	}
+}
+
+func (r *Runtime) naturalRandomPosition(origin LoadedChunk) game.BlockPosition {
+	position := game.BlockPosition{X: origin.X*16 + int32(runtimeMobRandomInt(r, 16)), Z: origin.Z*16 + int32(runtimeMobRandomInt(r, 16))}
+	// WORLD_SURFACE's first empty Y is already the inclusive upper bound.
+	position.Y = -64 + int32(runtimeMobRandomInt(r, int(r.naturalSurfaceHeight(position)+64)+1))
+
+	return position
 }
 
 func (r *Runtime) naturalDistanceAllows(candidate game.BlockPosition, position game.Position, category int) bool {

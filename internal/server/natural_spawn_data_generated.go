@@ -847,3 +847,58 @@ var naturalBiomeSpawns = [game.BiomeCount][naturalCategoryCount][]naturalSpawnEn
 		3: {},
 	},
 }
+
+var naturalWarmFarmBiomes = [game.BiomeCount]bool{
+	game.BiomeBadlands:          true,
+	game.BiomeBambooJungle:      true,
+	game.BiomeBasaltDeltas:      true,
+	game.BiomeCrimsonForest:     true,
+	game.BiomeDeepLukewarmOcean: true,
+	game.BiomeDesert:            true,
+	game.BiomeErodedBadlands:    true,
+	game.BiomeJungle:            true,
+	game.BiomeLukewarmOcean:     true,
+	game.BiomeMangroveSwamp:     true,
+	game.BiomeNetherWastes:      true,
+	game.BiomeSavanna:           true,
+	game.BiomeSavannaPlateau:    true,
+	game.BiomeSoulSandValley:    true,
+	game.BiomeSparseJungle:      true,
+	game.BiomeWarmOcean:         true,
+	game.BiomeWarpedForest:      true,
+	game.BiomeWindsweptSavanna:  true,
+	game.BiomeWoodedBadlands:    true,
+}
+
+var naturalColdFarmBiomes = [game.BiomeCount]bool{
+	game.BiomeColdOcean:              true,
+	game.BiomeDeepColdOcean:          true,
+	game.BiomeDeepDark:               true,
+	game.BiomeDeepFrozenOcean:        true,
+	game.BiomeEndBarrens:             true,
+	game.BiomeEndHighlands:           true,
+	game.BiomeEndMidlands:            true,
+	game.BiomeFrozenOcean:            true,
+	game.BiomeFrozenPeaks:            true,
+	game.BiomeFrozenRiver:            true,
+	game.BiomeGrove:                  true,
+	game.BiomeIceSpikes:              true,
+	game.BiomeJaggedPeaks:            true,
+	game.BiomeOldGrowthPineTaiga:     true,
+	game.BiomeOldGrowthSpruceTaiga:   true,
+	game.BiomeSmallEndIslands:        true,
+	game.BiomeSnowyBeach:             true,
+	game.BiomeSnowyPlains:            true,
+	game.BiomeSnowySlopes:            true,
+	game.BiomeSnowyTaiga:             true,
+	game.BiomeStonyPeaks:             true,
+	game.BiomeTaiga:                  true,
+	game.BiomeTheEnd:                 true,
+	game.BiomeWindsweptForest:        true,
+	game.BiomeWindsweptGravellyHills: true,
+	game.BiomeWindsweptHills:         true,
+}
+
+var naturalTropicalAnyHeightBiomes = [game.BiomeCount]bool{
+	game.BiomeLushCaves: true,
+}

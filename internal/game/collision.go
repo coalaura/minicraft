@@ -128,6 +128,8 @@ func (block Block) appendCollisionBoxesUncached(boxes []AABB) []AABB {
 		boxes = appendHopperCollisionBoxes(boxes, block)
 	case BlockCollisionBed:
 		boxes = appendBedCollisionBoxes(boxes, block)
+	case BlockCollisionCampfire:
+		boxes = append(boxes, unitBox(0, 0, 0, 16, 7, 16))
 	}
 
 	return boxes

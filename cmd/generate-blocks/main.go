@@ -838,6 +838,8 @@ func blockCollision(block BlockDefinition) string {
 	switch {
 	case strings.HasSuffix(block.Name, "_bed"):
 		return "BlockCollisionBed"
+	case block.Name == "campfire" || block.Name == "soul_campfire":
+		return "BlockCollisionCampfire"
 	case block.Name == "chest" || block.Name == "trapped_chest" || isCopperChest(block.Name):
 		return "BlockCollisionChest"
 	case block.Name == "hopper":

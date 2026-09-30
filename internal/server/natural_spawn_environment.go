@@ -174,7 +174,7 @@ func (r *Runtime) naturalEnvironmentAllows(position game.BlockPosition, entityTy
 			return false
 		}
 
-		anyHeight := entityType == game.EntityTropicalFish && r.naturalBiomeAt(position) == game.BiomeLushCaves
+		anyHeight := entityType == game.EntityTropicalFish && naturalTropicalAnyHeightBiomes[r.naturalBiomeAt(position)]
 		if !anyHeight && (position.Y < r.World.SeaLevel-13 || position.Y > r.World.SeaLevel) {
 			return false
 		}
@@ -266,6 +266,10 @@ func buildNaturalSpawnBlocks() [game.MaxBlockState + 1]naturalSpawnBlock {
 		animals   [game.MaxBlockID + 1]bool
 		bats      [game.MaxBlockID + 1]bool
 		prevented [game.MaxBlockID + 1]bool
+		noSupport [game.MaxBlockID + 1]bool
+		signals   [game.MaxBlockID + 1]bool
+		fire      [game.MaxBlockID + 1]bool
+		campfires [game.MaxBlockID + 1]bool
 	)
 
 	for _, registry := range protocol.ConfigurationTags {
@@ -282,6 +286,14 @@ func buildNaturalSpawnBlocks() [game.MaxBlockState + 1]naturalSpawnBlock {
 					bats[identifier] = true
 				case "minecraft:prevent_mob_spawning_inside":
 					prevented[identifier] = true
+				case "minecraft:leaves", "minecraft:trapdoors":
+					noSupport[identifier] = true
+				case "minecraft:buttons", "minecraft:pressure_plates", "minecraft:lightning_rods":
+					signals[identifier] = true
+				case "minecraft:fire":
+					fire[identifier] = true
+				case "minecraft:campfires":
+					campfires[identifier] = true
 				}
 			}
 		}
@@ -302,22 +314,22 @@ func buildNaturalSpawnBlocks() [game.MaxBlockState + 1]naturalSpawnBlock {
 		switch name {
 		case "soul_sand", "mud", "carved_pumpkin", "jack_o_lantern", "redstone_lamp":
 			support = true
-		case "bedrock", "glass", "tinted_glass", "ice", "frosted_ice", "magma_block", "barrier":
+		case "bedrock", "glass", "tinted_glass", "ice", "frosted_ice", "magma_block", "barrier", "scaffolding":
 			support = false
 		}
 
-		if strings.HasSuffix(name, "_leaves") || strings.HasSuffix(name, "_trapdoor") || strings.HasSuffix(name, "_stained_glass") || strings.HasSuffix(name, "copper_grate") {
+		if noSupport[definition.ID] || strings.HasSuffix(name, "_stained_glass") || strings.HasSuffix(name, "copper_grate") {
 			support = false
 		}
 
-		dangerous := name == "fire" || name == "soul_fire" || name == "lava" || name == "magma_block" || name == "wither_rose" || name == "sweet_berry_bush" || name == "cactus" || name == "powder_snow"
+		dangerous := fire[definition.ID] || name == "lava" || name == "lava_cauldron" || name == "magma_block" || name == "wither_rose" || name == "sweet_berry_bush" || name == "cactus" || name == "powder_snow"
 
-		if name == "campfire" || name == "soul_campfire" {
+		if campfires[definition.ID] {
 			lit, _ := block.Property("lit")
 			dangerous = lit == "true"
 		}
 
-		empty := !full && !naturalSignalSource(name) && block.FluidState().Empty() && !prevented[definition.ID] && !dangerous
+		empty := !full && !signals[definition.ID] && !naturalSignalSource(name) && block.FluidState().Empty() && !prevented[definition.ID] && !dangerous
 
 		result[block] = naturalSpawnBlock{Support: support, Full: full, Empty: empty, Animals: animals[definition.ID], Bats: bats[definition.ID]}
 	}
@@ -326,10 +338,6 @@ func buildNaturalSpawnBlocks() [game.MaxBlockState + 1]naturalSpawnBlock {
 }
 
 func naturalSignalSource(name string) bool {
-	if strings.HasSuffix(name, "_button") || strings.HasSuffix(name, "_pressure_plate") || strings.HasSuffix(name, "lightning_rod") {
-		return true
-	}
-
 	switch name {
 	case "daylight_detector", "detector_rail", "repeater", "comparator", "jukebox", "lectern", "lever", "observer", "redstone_block", "redstone_torch", "redstone_wall_torch", "redstone_wire", "sculk_sensor", "calibrated_sculk_sensor", "target", "trapped_chest", "tripwire_hook":
 		return true

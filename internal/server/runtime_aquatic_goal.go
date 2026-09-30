@@ -200,7 +200,7 @@ func (goal *aquaticAvoidPlayerGoal) selectPath(runtime *Runtime) bool {
 			continue
 		}
 
-		goal.Path = runtime.findSwimPathInto(goal.Path, position, candidate, entity.Living.Width, entity.Living.Height, aquaticFollowRange)
+		goal.Path = runtime.findSwimPathInto(goal.Path, position, candidate, entity.Living.Width, entity.Living.Height, entity.FollowRange(aquaticFollowRange))
 		if len(goal.Path) > 0 {
 			return true
 		}
@@ -342,7 +342,7 @@ func (goal *aquaticFollowSchoolGoal) Tick(runtime *Runtime) {
 	goalPosition := leaderState.Position
 	leaderState.mu.RUnlock()
 
-	path := runtime.findSwimPathInto(entity.Navigation.Path, position, goalPosition, entity.Living.Width, entity.Living.Height, aquaticFollowRange)
+	path := runtime.findSwimPathInto(entity.Navigation.Path, position, goalPosition, entity.Living.Width, entity.Living.Height, entity.FollowRange(aquaticFollowRange))
 
 	entity.State.mu.Lock()
 	entity.Navigation.SetPath(path, 1, goalPosition)
@@ -567,7 +567,7 @@ func aquaticRandomSwimPath(runtime *Runtime, entity *runtimeAquatic, destination
 
 		goal := game.Position{X: position.X + float64(offsetX), Y: position.Y + float64(offsetY), Z: position.Z + float64(offsetZ)}
 
-		destination = runtime.findSwimPathInto(destination, position, goal, entity.Living.Width, entity.Living.Height, aquaticFollowRange)
+		destination = runtime.findSwimPathInto(destination, position, goal, entity.Living.Width, entity.Living.Height, entity.FollowRange(aquaticFollowRange))
 		if len(destination) > 0 {
 			return destination
 		}

@@ -283,6 +283,15 @@ func (entity *runtimePufferfishEntity) stingTouchingPlayers(runtime *Runtime) {
 }
 
 func (runtime *Runtime) SpawnPufferfish(position game.Position) *runtimePufferfishEntity {
+	entity := runtime.newPufferfish()
+	if entity != nil {
+		runtime.registerRuntimeEntity(entity, game.EntityPufferfish, position)
+	}
+
+	return entity
+}
+
+func (runtime *Runtime) newPufferfish() *runtimePufferfishEntity {
 	entity := &runtimePufferfishEntity{}
 	if !runtime.initializeAquatic(&entity.runtimeAquatic, &pufferfishAquaticSpec) {
 		return nil
@@ -297,8 +306,6 @@ func (runtime *Runtime) SpawnPufferfish(position game.Position) *runtimePufferfi
 	runtime.configureAquaticGoals(entity, &entity.runtimeAquatic)
 
 	entity.Goals.Add(1, 0, &pufferfishInflateGoal{Fish: entity})
-
-	runtime.registerRuntimeEntity(entity, game.EntityPufferfish, position)
 
 	return entity
 }

@@ -80,7 +80,7 @@ func TestNaturalSpawnTablesMatchPinnedSource(t *testing.T) {
 	for biome := range game.BiomeCount {
 		name := strings.TrimPrefix(game.BiomeNames[biome], "minecraft:")
 
-		contents, err := os.ReadFile("../../../reference/client_source/data/minecraft/worldgen/biome/" + name + ".json")
+		contents, err := os.ReadFile("../../data/worldgen_biome/" + name + ".json")
 		if err != nil {
 			t.Fatal(err)
 		}

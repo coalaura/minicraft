@@ -31,13 +31,18 @@ type biomeData struct {
 	Costs    map[string]spawnCost    `json:"spawn_costs"`
 }
 
+type biomeTag struct {
+	Values []string `json:"values"`
+}
+
 var supported = map[string]bool{
 	"zombie": true, "skeleton": true, "creeper": true, "cow": true, "sheep": true, "chicken": true,
 	"bat": true, "cod": true, "salmon": true, "tropical_fish": true, "pufferfish": true,
 }
 
 func main() {
-	input := flag.String("input", "../reference/client_source/data/minecraft/worldgen/biome", "pinned biome directory")
+	input := flag.String("input", "data/worldgen_biome", "committed pinned biome directory")
+	tags := flag.String("tags", "data/biome_tags", "committed pinned biome tags")
 	output := flag.String("output", "internal/server/natural_spawn_data_generated.go", "generated Go file")
 
 	flag.Parse()
@@ -80,10 +85,54 @@ func main() {
 
 	buffer.WriteString("}\n")
 
+	biomeTags := []string{"spawns_warm_variant_farm_animals", "spawns_cold_variant_farm_animals", "allows_tropical_fish_spawns_at_any_height"}
+	variables := []string{"naturalWarmFarmBiomes", "naturalColdFarmBiomes", "naturalTropicalAnyHeightBiomes"}
+
+	for index, name := range biomeTags {
+		members := make(map[string]bool, len(game.BiomeNames))
+
+		resolveBiomeTag(*tags, name, members, make(map[string]bool))
+
+		fmt.Fprintf(&buffer, "\nvar %s = [game.BiomeCount]bool{\n", variables[index])
+
+		for _, biome := range game.BiomeNames {
+			if members[biome] {
+				fmt.Fprintf(&buffer, "game.Biome%s: true,\n", identifier(biome))
+			}
+		}
+
+		buffer.WriteString("}\n")
+	}
+
 	formatted, err := format.Source(buffer.Bytes())
 	must(err)
 
 	must(os.WriteFile(*output, formatted, 0o644))
+}
+
+func resolveBiomeTag(directory string, name string, members map[string]bool, visiting map[string]bool) {
+	if visiting[name] {
+		panic("cyclic biome tag: " + name)
+	}
+
+	visiting[name] = true
+
+	contents, err := os.ReadFile(filepath.Join(directory, name+".json"))
+	must(err)
+
+	var tag biomeTag
+
+	must(json.Unmarshal(contents, &tag))
+
+	for _, value := range tag.Values {
+		if strings.HasPrefix(value, "#") {
+			resolveBiomeTag(directory, strings.TrimPrefix(value[1:], "minecraft:"), members, visiting)
+		} else {
+			members[strings.TrimPrefix(value, "minecraft:")] = true
+		}
+	}
+
+	delete(visiting, name)
 }
 
 func identifier(name string) string {

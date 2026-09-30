@@ -179,7 +179,7 @@ func (goal *creeperMeleeGoal) Tick(runtime *Runtime) {
 		return
 	}
 
-	path := runtime.findGroundPathInto(entity.Navigation.Path[:0], position, target.position(), entity.Living.Width, entity.Living.Height, creeperFollowRange)
+	path := runtime.findGroundPathInto(entity.Navigation.Path[:0], position, target.position(), entity.Living.Width, entity.Living.Height, entity.FollowRange(creeperFollowRange))
 
 	entity.Navigation.MoveTo(path, 1)
 
@@ -343,7 +343,7 @@ func (entity *runtimeCreeperEntity) EntityMetadata() []protocol.EntityMetadataEn
 	return []protocol.EntityMetadataEntry{
 		{Index: protocol.EntityFlagsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(entity.Living.EntityFlags())},
 		{Index: protocol.LivingHealthMetadataIndex, Type: protocol.MetadataTypeFloat, Value: protocol.MetadataFloat(entity.Living.Health)},
-		{Index: protocol.MobFlagsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(0)},
+		{Index: protocol.MobFlagsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(entity.MetadataFlags())},
 		{Index: protocol.CreeperSwellMetadataIndex, Type: protocol.MetadataTypeInt, Value: protocol.MetadataVarInt(entity.SwellDirection)},
 		{Index: protocol.CreeperPoweredMetadataIndex, Type: protocol.MetadataTypeBoolean, Value: protocol.MetadataBoolean(entity.Powered)},
 		{Index: protocol.CreeperIgnitedMetadataIndex, Type: protocol.MetadataTypeBoolean, Value: protocol.MetadataBoolean(entity.Ignited)},
@@ -573,7 +573,7 @@ func (entity *runtimeCreeperEntity) tickTarget(runtime *Runtime, fullGoalTick bo
 		entity.Target.HasRetaliationStamp = true
 		candidate := runtime.runtimeLivingTargetByID(causeID)
 
-		if candidate.valid(runtime, position, creeperFollowRange) {
+		if candidate.valid(runtime, position, entity.FollowRange(creeperFollowRange)) {
 			entity.Target.Target = candidate
 			entity.Target.UnseenChecks = 0
 			entity.Target.Retaliating = true
@@ -581,7 +581,7 @@ func (entity *runtimeCreeperEntity) tickTarget(runtime *Runtime, fullGoalTick bo
 	}
 
 	target := entity.Target.Target
-	if target.present() && target.valid(runtime, position, creeperFollowRange) {
+	if target.present() && target.valid(runtime, position, entity.FollowRange(creeperFollowRange)) {
 		if fullGoalTick {
 			if target.hasLineOfSight(runtime, position, creeperEyeHeight) {
 				entity.Target.UnseenChecks = 0
@@ -609,7 +609,7 @@ func (entity *runtimeCreeperEntity) tickTarget(runtime *Runtime, fullGoalTick bo
 		return
 	}
 
-	nearest := runtime.nearestValidPlayer(position, creeperEyeHeight, creeperFollowRange)
+	nearest := runtime.nearestValidPlayer(position, creeperEyeHeight, entity.FollowRange(creeperFollowRange))
 	if nearest != nil {
 		entity.Target.Target = runtimeLivingTarget{session: nearest}
 	}
@@ -627,7 +627,7 @@ func (entity *runtimeCreeperEntity) randomStrollPath(runtime *Runtime) []game.Po
 	for range 10 {
 		goal := game.Position{X: position.X + float64(creeperRandomInt(runtime, 21)-10), Y: position.Y + float64(creeperRandomInt(runtime, 15)-7), Z: position.Z + float64(creeperRandomInt(runtime, 21)-10)}
 
-		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, creeperFollowRange)
+		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.FollowRange(creeperFollowRange))
 		if len(path) == 0 {
 			continue
 		}
@@ -709,6 +709,15 @@ func (entity *runtimeCreeperEntity) RuntimeEntityInteract(runtime *Runtime, sess
 }
 
 func (runtime *Runtime) SpawnCreeper(position game.Position) *runtimeCreeperEntity {
+	entity := runtime.newCreeper()
+	if entity != nil {
+		runtime.registerRuntimeEntity(entity, game.EntityCreeper, position)
+	}
+
+	return entity
+}
+
+func (runtime *Runtime) newCreeper() *runtimeCreeperEntity {
 	definition, valid := game.EntityCreeper.Definition()
 	if !valid {
 		return nil
@@ -726,8 +735,6 @@ func (runtime *Runtime) SpawnCreeper(position game.Position) *runtimeCreeperEnti
 	entity.Goals.Add(5, runtimeGoalMove, &creeperStrollGoal{Entity: entity})
 	entity.Goals.Add(6, runtimeGoalLook, &creeperLookPlayerGoal{Entity: entity})
 	entity.Goals.Add(6, runtimeGoalLook, &creeperRandomLookGoal{Entity: entity})
-
-	runtime.registerRuntimeEntity(entity, game.EntityCreeper, position)
 
 	return entity
 }

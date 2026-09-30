@@ -35,15 +35,22 @@ type directoryImport struct {
 }
 
 type armorMaterial struct {
-	defense             map[string]int
-	equipSound          string
-	toughness           float32
-	knockbackResistance float32
+	Defense             map[string]int `json:"defense"`
+	EquipSound          string         `json:"equipSound"`
+	Toughness           float32        `json:"toughness"`
+	KnockbackResistance float32        `json:"knockbackResistance"`
 }
 
 type armorRegistration struct {
-	material  string
-	armorType string
+	Material  string `json:"material"`
+	ArmorType string `json:"armorType"`
+}
+
+type equipmentSourceManifest struct {
+	Version            string                            `json:"version"`
+	Materials          map[string]armorMaterial          `json:"materials"`
+	ArmorRegistrations map[string]armorRegistration      `json:"armorRegistrations"`
+	DirectEquippables  map[string]itemEquippableMetadata `json:"directEquippables"`
 }
 
 type armorAttributesManifest struct {
@@ -86,7 +93,7 @@ var (
 )
 
 func main() {
-	referencePath := flag.String("reference", "../reference", "path containing client_source and minecraft-data")
+	referencePath := flag.String("reference", "", "optional source import path containing client_source and minecraft-data")
 	dataPath := flag.String("output", "data", "data directory to replace")
 
 	flag.Parse()
@@ -99,6 +106,10 @@ func main() {
 }
 
 func syncData(referencePath string, dataPath string) error {
+	if referencePath == "" {
+		return regenerateManifests(dataPath)
+	}
+
 	clientPath := filepath.Join(referencePath, "client_source")
 	cataloguePath := filepath.Join(referencePath, "minecraft-data")
 
@@ -108,6 +119,8 @@ func syncData(referencePath string, dataPath string) error {
 	}
 
 	imports := []directoryImport{
+		{source: filepath.Join(clientPath, "data", "minecraft", "worldgen", "biome"), target: filepath.Join(dataPath, "worldgen_biome")},
+		{source: filepath.Join(clientPath, "data", "minecraft", "tags", "worldgen", "biome"), target: filepath.Join(dataPath, "biome_tags")},
 		{source: filepath.Join(clientPath, "data", "minecraft", "loot_table", "blocks"), target: filepath.Join(dataPath, "block_loot")},
 		{source: filepath.Join(clientPath, "data", "minecraft", "tags", "block"), target: filepath.Join(dataPath, "block_tags")},
 		{source: filepath.Join(clientPath, "data", "minecraft", "enchantment"), target: filepath.Join(dataPath, "enchantments")},
@@ -137,17 +150,53 @@ func syncData(referencePath string, dataPath string) error {
 		return err
 	}
 
-	javaPath := filepath.Join(clientPath, "net", "minecraft", "world", "item", "enchantment", "Enchantments.java")
-	orderPath := filepath.Join(dataPath, "enchantment_order.json")
-
-	err = writeEnchantmentOrder(javaPath, orderPath)
+	err = writeEnchantmentOrder(filepath.Join(clientPath, "net", "minecraft", "world", "item", "enchantment", "Enchantments.java"), filepath.Join(dataPath, "enchantment_order.json"))
 	if err != nil {
 		return err
 	}
 
-	err = writeEquipmentManifests(clientPath, dataPath)
+	err = importEquipmentSource(clientPath, dataPath)
 	if err != nil {
 		return err
+	}
+
+	return regenerateManifests(dataPath)
+}
+
+func regenerateManifests(dataPath string) error {
+	err := validateEnchantmentOrder(dataPath)
+	if err != nil {
+		return err
+	}
+
+	return writeEquipmentManifests(dataPath)
+}
+
+func validateEnchantmentOrder(dataPath string) error {
+	var order []string
+
+	err := readJSON(filepath.Join(dataPath, "enchantment_order.json"), &order)
+	if err != nil {
+		return err
+	}
+
+	if len(order) != 43 {
+		return fmt.Errorf("enchantment order contains %d entries, want 43", len(order))
+	}
+
+	seen := make(map[string]bool, len(order))
+
+	for _, name := range order {
+		if seen[name] {
+			return fmt.Errorf("enchantment order repeats %q", name)
+		}
+
+		seen[name] = true
+
+		_, err = os.Stat(filepath.Join(dataPath, "enchantments", name+".json"))
+		if err != nil {
+			return fmt.Errorf("enchantment order references %q: %w", name, err)
+		}
 	}
 
 	return nil
@@ -341,8 +390,8 @@ func enchantmentOrder(data []byte) ([]string, error) {
 	return order, nil
 }
 
-func writeEquipmentManifests(clientPath string, dataPath string) error {
-	equipment, armor, err := equipmentManifests(clientPath)
+func writeEquipmentManifests(dataPath string) error {
+	equipment, armor, err := equipmentManifests(dataPath)
 	if err != nil {
 		return err
 	}
@@ -355,33 +404,75 @@ func writeEquipmentManifests(clientPath string, dataPath string) error {
 	return writeJSON(filepath.Join(dataPath, "item_equippables.json"), equipment)
 }
 
-func equipmentManifests(clientPath string) (equippableManifest, armorAttributesManifest, error) {
+func importEquipmentSource(clientPath string, dataPath string) error {
 	materialsPath := filepath.Join(clientPath, "net", "minecraft", "world", "item", "equipment", "ArmorMaterials.java")
 	itemsPath := filepath.Join(clientPath, "net", "minecraft", "world", "item", "Items.java")
 
 	materialsSource, err := os.ReadFile(materialsPath)
 	if err != nil {
-		return equippableManifest{}, armorAttributesManifest{}, err
+		return err
 	}
 
 	itemsSource, err := os.ReadFile(itemsPath)
 	if err != nil {
-		return equippableManifest{}, armorAttributesManifest{}, err
+		return err
 	}
 
 	materials, err := parseArmorMaterials(materialsSource)
 	if err != nil {
-		return equippableManifest{}, armorAttributesManifest{}, err
+		return err
 	}
 
 	registrations, err := parseArmorRegistrations(itemsSource)
 	if err != nil {
+		return err
+	}
+
+	tagsPath := filepath.Join(dataPath, "item_tags")
+
+	names, err := resolveItemTag(tagsPath, "enchantable/equippable", nil)
+	if err != nil {
+		return err
+	}
+
+	directEquippables := make(map[string]itemEquippableMetadata, len(names)-len(registrations))
+
+	for _, name := range names {
+		if _, isArmor := registrations[name]; isArmor {
+			continue
+		}
+
+		direct, directErr := parseDirectEquippable(itemsSource, name)
+		if directErr != nil {
+			return directErr
+		}
+
+		directEquippables[name] = direct
+	}
+
+	source := equipmentSourceManifest{
+		Version:            expectedMinecraftVersion,
+		Materials:          materials,
+		ArmorRegistrations: registrations,
+		DirectEquippables:  directEquippables,
+	}
+
+	return writeJSON(filepath.Join(dataPath, "equipment_source.json"), source)
+}
+
+func equipmentManifests(dataPath string) (equippableManifest, armorAttributesManifest, error) {
+	var source equipmentSourceManifest
+
+	err := readJSON(filepath.Join(dataPath, "equipment_source.json"), &source)
+	if err != nil {
 		return equippableManifest{}, armorAttributesManifest{}, err
 	}
 
-	tagsPath := filepath.Join(clientPath, "data", "minecraft", "tags", "item")
+	if source.Version != expectedMinecraftVersion || len(source.Materials) != 9 || len(source.ArmorRegistrations) != 29 || len(source.DirectEquippables) != 9 {
+		return equippableManifest{}, armorAttributesManifest{}, errors.New("equipment source manifest does not match the pinned version or registration counts")
+	}
 
-	names, err := resolveItemTag(tagsPath, "enchantable/equippable", nil)
+	names, err := resolveItemTag(filepath.Join(dataPath, "item_tags"), "enchantable/equippable", nil)
 	if err != nil {
 		return equippableManifest{}, armorAttributesManifest{}, err
 	}
@@ -390,28 +481,29 @@ func equipmentManifests(clientPath string) (equippableManifest, armorAttributesM
 	armor := armorAttributesManifest{Version: expectedMinecraftVersion}
 
 	for _, name := range names {
-		registration, isArmor := registrations[name]
+		registration, isArmor := source.ArmorRegistrations[name]
 		if isArmor {
-			material, exists := materials[registration.material]
+			material, exists := source.Materials[registration.Material]
 			if !exists {
-				return equippableManifest{}, armorAttributesManifest{}, fmt.Errorf("armor item %q uses unknown material %s", name, registration.material)
+				return equippableManifest{}, armorAttributesManifest{}, fmt.Errorf("armor item %q uses unknown material %s", name, registration.Material)
 			}
 
-			slot, exists := armorTypeSlot(registration.armorType)
+			slot, exists := armorTypeSlot(registration.ArmorType)
 			if !exists {
-				return equippableManifest{}, armorAttributesManifest{}, fmt.Errorf("armor item %q uses unsupported type %s", name, registration.armorType)
+				return equippableManifest{}, armorAttributesManifest{}, fmt.Errorf("armor item %q uses unsupported type %s", name, registration.ArmorType)
 			}
 
 			armor.Attributes = append(armor.Attributes, itemArmorMetadata{
 				Name:                name,
-				Defense:             material.defense[registration.armorType],
-				Toughness:           material.toughness,
-				KnockbackResistance: material.knockbackResistance,
+				Defense:             material.Defense[registration.ArmorType],
+				Toughness:           material.Toughness,
+				KnockbackResistance: material.KnockbackResistance,
 			})
+
 			equipment.Equippables = append(equipment.Equippables, itemEquippableMetadata{
 				Name:         name,
 				Slot:         slot,
-				EquipSound:   material.equipSound,
+				EquipSound:   material.EquipSound,
 				Swappable:    true,
 				DamageOnHurt: true,
 			})
@@ -419,9 +511,9 @@ func equipmentManifests(clientPath string) (equippableManifest, armorAttributesM
 			continue
 		}
 
-		direct, directErr := parseDirectEquippable(itemsSource, name)
-		if directErr != nil {
-			return equippableManifest{}, armorAttributesManifest{}, directErr
+		direct, exists := source.DirectEquippables[name]
+		if !exists || direct.Name != name {
+			return equippableManifest{}, armorAttributesManifest{}, fmt.Errorf("equippable item %q has no matching source registration", name)
 		}
 
 		equipment.Equippables = append(equipment.Equippables, direct)
@@ -470,10 +562,10 @@ func parseArmorMaterials(source []byte) (map[string]armorMaterial, error) {
 		}
 
 		materials[string(match[1])] = armorMaterial{
-			defense:             map[string]int{"BOOTS": boots, "LEGGINGS": legs, "CHESTPLATE": chest, "HELMET": helm},
-			equipSound:          armorEquipSound(string(match[6])),
-			toughness:           float32(toughness),
-			knockbackResistance: float32(knockback),
+			Defense:             map[string]int{"BOOTS": boots, "LEGGINGS": legs, "CHESTPLATE": chest, "HELMET": helm},
+			EquipSound:          armorEquipSound(string(match[6])),
+			Toughness:           float32(toughness),
+			KnockbackResistance: float32(knockback),
 		}
 	}
 
@@ -489,7 +581,7 @@ func parseArmorRegistrations(source []byte) (map[string]armorRegistration, error
 	registrations := make(map[string]armorRegistration, len(matches))
 
 	for _, match := range matches {
-		registrations[string(match[1])] = armorRegistration{material: string(match[2]), armorType: string(match[3])}
+		registrations[string(match[1])] = armorRegistration{Material: string(match[2]), ArmorType: string(match[3])}
 	}
 
 	if len(registrations) != 29 {

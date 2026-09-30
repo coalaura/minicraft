@@ -16,6 +16,8 @@ const (
 type RuntimeMobState struct {
 	NoActionTime        int32
 	PersistenceRequired bool
+	FollowRangeBonus    float64
+	LeftHanded          bool
 }
 
 type RuntimeMobDespawnConfig struct {
@@ -30,6 +32,18 @@ type RuntimeMobEntity interface {
 	RuntimeMobDespawnConfig() RuntimeMobDespawnConfig
 	RuntimeMobRemoveWhenFarAway(float64) bool
 	RuntimeMobRequiresCustomPersistence() bool
+}
+
+func (state *RuntimeMobState) FollowRange(base float64) float64 {
+	return base * (1 + state.FollowRangeBonus)
+}
+
+func (state *RuntimeMobState) MetadataFlags() byte {
+	if state.LeftHanded {
+		return 0x02
+	}
+
+	return 0
 }
 
 func (r *Runtime) checkRuntimeMobDespawn(entity RuntimeMobEntity) bool {

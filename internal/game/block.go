@@ -81,6 +81,7 @@ const (
 	BlockCollisionChest
 	BlockCollisionHopper
 	BlockCollisionBed
+	BlockCollisionCampfire
 )
 
 const (

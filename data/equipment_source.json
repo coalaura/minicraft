@@ -1,0 +1,287 @@
+{
+  "version": "1.21.11",
+  "materials": {
+    "ARMADILLO_SCUTE": {
+      "defense": {
+        "BOOTS": 3,
+        "CHESTPLATE": 8,
+        "HELMET": 3,
+        "LEGGINGS": 6
+      },
+      "equipSound": "minecraft:item.armor.equip_wolf",
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    "CHAINMAIL": {
+      "defense": {
+        "BOOTS": 1,
+        "CHESTPLATE": 5,
+        "HELMET": 2,
+        "LEGGINGS": 4
+      },
+      "equipSound": "minecraft:item.armor.equip_chain",
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    "COPPER": {
+      "defense": {
+        "BOOTS": 1,
+        "CHESTPLATE": 4,
+        "HELMET": 2,
+        "LEGGINGS": 3
+      },
+      "equipSound": "minecraft:item.armor.equip_copper",
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    "DIAMOND": {
+      "defense": {
+        "BOOTS": 3,
+        "CHESTPLATE": 8,
+        "HELMET": 3,
+        "LEGGINGS": 6
+      },
+      "equipSound": "minecraft:item.armor.equip_diamond",
+      "toughness": 2,
+      "knockbackResistance": 0
+    },
+    "GOLD": {
+      "defense": {
+        "BOOTS": 1,
+        "CHESTPLATE": 5,
+        "HELMET": 2,
+        "LEGGINGS": 3
+      },
+      "equipSound": "minecraft:item.armor.equip_gold",
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    "IRON": {
+      "defense": {
+        "BOOTS": 2,
+        "CHESTPLATE": 6,
+        "HELMET": 2,
+        "LEGGINGS": 5
+      },
+      "equipSound": "minecraft:item.armor.equip_iron",
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    "LEATHER": {
+      "defense": {
+        "BOOTS": 1,
+        "CHESTPLATE": 3,
+        "HELMET": 1,
+        "LEGGINGS": 2
+      },
+      "equipSound": "minecraft:item.armor.equip_leather",
+      "toughness": 0,
+      "knockbackResistance": 0
+    },
+    "NETHERITE": {
+      "defense": {
+        "BOOTS": 3,
+        "CHESTPLATE": 8,
+        "HELMET": 3,
+        "LEGGINGS": 6
+      },
+      "equipSound": "minecraft:item.armor.equip_netherite",
+      "toughness": 3,
+      "knockbackResistance": 0.1
+    },
+    "TURTLE_SCUTE": {
+      "defense": {
+        "BOOTS": 2,
+        "CHESTPLATE": 6,
+        "HELMET": 2,
+        "LEGGINGS": 5
+      },
+      "equipSound": "minecraft:item.armor.equip_turtle",
+      "toughness": 0,
+      "knockbackResistance": 0
+    }
+  },
+  "armorRegistrations": {
+    "chainmail_boots": {
+      "material": "CHAINMAIL",
+      "armorType": "BOOTS"
+    },
+    "chainmail_chestplate": {
+      "material": "CHAINMAIL",
+      "armorType": "CHESTPLATE"
+    },
+    "chainmail_helmet": {
+      "material": "CHAINMAIL",
+      "armorType": "HELMET"
+    },
+    "chainmail_leggings": {
+      "material": "CHAINMAIL",
+      "armorType": "LEGGINGS"
+    },
+    "copper_boots": {
+      "material": "COPPER",
+      "armorType": "BOOTS"
+    },
+    "copper_chestplate": {
+      "material": "COPPER",
+      "armorType": "CHESTPLATE"
+    },
+    "copper_helmet": {
+      "material": "COPPER",
+      "armorType": "HELMET"
+    },
+    "copper_leggings": {
+      "material": "COPPER",
+      "armorType": "LEGGINGS"
+    },
+    "diamond_boots": {
+      "material": "DIAMOND",
+      "armorType": "BOOTS"
+    },
+    "diamond_chestplate": {
+      "material": "DIAMOND",
+      "armorType": "CHESTPLATE"
+    },
+    "diamond_helmet": {
+      "material": "DIAMOND",
+      "armorType": "HELMET"
+    },
+    "diamond_leggings": {
+      "material": "DIAMOND",
+      "armorType": "LEGGINGS"
+    },
+    "golden_boots": {
+      "material": "GOLD",
+      "armorType": "BOOTS"
+    },
+    "golden_chestplate": {
+      "material": "GOLD",
+      "armorType": "CHESTPLATE"
+    },
+    "golden_helmet": {
+      "material": "GOLD",
+      "armorType": "HELMET"
+    },
+    "golden_leggings": {
+      "material": "GOLD",
+      "armorType": "LEGGINGS"
+    },
+    "iron_boots": {
+      "material": "IRON",
+      "armorType": "BOOTS"
+    },
+    "iron_chestplate": {
+      "material": "IRON",
+      "armorType": "CHESTPLATE"
+    },
+    "iron_helmet": {
+      "material": "IRON",
+      "armorType": "HELMET"
+    },
+    "iron_leggings": {
+      "material": "IRON",
+      "armorType": "LEGGINGS"
+    },
+    "leather_boots": {
+      "material": "LEATHER",
+      "armorType": "BOOTS"
+    },
+    "leather_chestplate": {
+      "material": "LEATHER",
+      "armorType": "CHESTPLATE"
+    },
+    "leather_helmet": {
+      "material": "LEATHER",
+      "armorType": "HELMET"
+    },
+    "leather_leggings": {
+      "material": "LEATHER",
+      "armorType": "LEGGINGS"
+    },
+    "netherite_boots": {
+      "material": "NETHERITE",
+      "armorType": "BOOTS"
+    },
+    "netherite_chestplate": {
+      "material": "NETHERITE",
+      "armorType": "CHESTPLATE"
+    },
+    "netherite_helmet": {
+      "material": "NETHERITE",
+      "armorType": "HELMET"
+    },
+    "netherite_leggings": {
+      "material": "NETHERITE",
+      "armorType": "LEGGINGS"
+    },
+    "turtle_helmet": {
+      "material": "TURTLE_SCUTE",
+      "armorType": "HELMET"
+    }
+  },
+  "directEquippables": {
+    "carved_pumpkin": {
+      "name": "carved_pumpkin",
+      "slot": "HEAD",
+      "equipSound": "minecraft:item.armor.equip_generic",
+      "swappable": false,
+      "damageOnHurt": true
+    },
+    "creeper_head": {
+      "name": "creeper_head",
+      "slot": "HEAD",
+      "equipSound": "minecraft:item.armor.equip_generic",
+      "swappable": false,
+      "damageOnHurt": true
+    },
+    "dragon_head": {
+      "name": "dragon_head",
+      "slot": "HEAD",
+      "equipSound": "minecraft:item.armor.equip_generic",
+      "swappable": false,
+      "damageOnHurt": true
+    },
+    "elytra": {
+      "name": "elytra",
+      "slot": "CHEST",
+      "equipSound": "minecraft:item.armor.equip_elytra",
+      "swappable": true,
+      "damageOnHurt": false
+    },
+    "piglin_head": {
+      "name": "piglin_head",
+      "slot": "HEAD",
+      "equipSound": "minecraft:item.armor.equip_generic",
+      "swappable": false,
+      "damageOnHurt": true
+    },
+    "player_head": {
+      "name": "player_head",
+      "slot": "HEAD",
+      "equipSound": "minecraft:item.armor.equip_generic",
+      "swappable": false,
+      "damageOnHurt": true
+    },
+    "skeleton_skull": {
+      "name": "skeleton_skull",
+      "slot": "HEAD",
+      "equipSound": "minecraft:item.armor.equip_generic",
+      "swappable": false,
+      "damageOnHurt": true
+    },
+    "wither_skeleton_skull": {
+      "name": "wither_skeleton_skull",
+      "slot": "HEAD",
+      "equipSound": "minecraft:item.armor.equip_generic",
+      "swappable": false,
+      "damageOnHurt": true
+    },
+    "zombie_head": {
+      "name": "zombie_head",
+      "slot": "HEAD",
+      "equipSound": "minecraft:item.armor.equip_generic",
+      "swappable": false,
+      "damageOnHurt": true
+    }
+  }
+}

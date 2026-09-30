@@ -209,7 +209,7 @@ func (entity *runtimeZombieEntity) EntityMetadata() []protocol.EntityMetadataEnt
 	entity.State.mu.RLock()
 	defer entity.State.mu.RUnlock()
 
-	mobFlags := byte(0)
+	mobFlags := entity.MetadataFlags()
 
 	if entity.Aggressive {
 		mobFlags |= protocol.MobFlagAggressive
@@ -496,7 +496,7 @@ func (entity *runtimeZombieEntity) tickTarget(runtime *Runtime, fullGoalTick boo
 
 		player := current.playerView()
 
-		if runtime.playerTargetValid(current, position, zombieFollowRange) {
+		if runtime.playerTargetValid(current, position, entity.FollowRange(zombieFollowRange)) {
 			if runtime.playerTargetHasLineOfSight(position, zombieEyeHeight, player.Position) {
 				entity.Target.UnseenTicks = 0
 			} else {
@@ -517,7 +517,7 @@ func (entity *runtimeZombieEntity) tickTarget(runtime *Runtime, fullGoalTick boo
 		return nil
 	}
 
-	nearest := runtime.nearestZombieTarget(position)
+	nearest := runtime.nearestZombieTarget(position, entity.FollowRange(zombieFollowRange))
 	if nearest == nil {
 		return nil
 	}
@@ -549,7 +549,7 @@ func (entity *runtimeZombieEntity) tickMeleeGoal(runtime *Runtime, target *Sessi
 
 		entity.Melee.LastCanUseCheck = gameTime
 
-		path := runtime.findGroundPathInto(entity.Navigation.Path[:0], entity.State.Position, player.Position, entity.Living.Width, entity.Living.Height, zombieFollowRange)
+		path := runtime.findGroundPathInto(entity.Navigation.Path[:0], entity.State.Position, player.Position, entity.Living.Width, entity.Living.Height, entity.FollowRange(zombieFollowRange))
 
 		withinReach := zombieMeleeBoxesIntersect(entity.Living.CollisionBox(entity.State.Position), player.collisionBox())
 
@@ -591,7 +591,7 @@ func (entity *runtimeZombieEntity) tickMeleeGoal(runtime *Runtime, target *Sessi
 			entity.Melee.TicksUntilNextPathRecalculation += 5
 		}
 
-		path := runtime.findGroundPathInto(entity.Navigation.Path[:0], entity.State.Position, player.Position, entity.Living.Width, entity.Living.Height, zombieFollowRange)
+		path := runtime.findGroundPathInto(entity.Navigation.Path[:0], entity.State.Position, player.Position, entity.Living.Width, entity.Living.Height, entity.FollowRange(zombieFollowRange))
 		if !entity.Navigation.MoveTo(path, 1) {
 			entity.Melee.TicksUntilNextPathRecalculation += 15
 		}
@@ -694,7 +694,7 @@ func (entity *runtimeZombieEntity) randomStrollPathCandidates(runtime *Runtime, 
 		offsetZ := zombieRandomInt(runtime, horizontalRange*2+1) - horizontalRange
 
 		goal := game.Position{X: position.X + float64(offsetX), Y: position.Y + float64(offsetY), Z: position.Z + float64(offsetZ)}
-		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, zombieFollowRange)
+		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.FollowRange(zombieFollowRange))
 
 		if len(path) == 0 {
 			continue
@@ -832,6 +832,15 @@ func (entity *runtimeZombieEntity) setAggressive(aggressive bool) {
 }
 
 func (r *Runtime) SpawnZombie(position game.Position) *runtimeZombieEntity {
+	entity := r.newZombie()
+	if entity != nil {
+		r.registerRuntimeEntity(entity, game.EntityZombie, position)
+	}
+
+	return entity
+}
+
+func (r *Runtime) newZombie() *runtimeZombieEntity {
 	definition, valid := game.EntityZombie.Definition()
 	if !valid {
 		return nil
@@ -853,13 +862,11 @@ func (r *Runtime) SpawnZombie(position game.Position) *runtimeZombieEntity {
 	entity.Goals.Add(2, runtimeGoalMove|runtimeGoalLook, &zombieMeleeGoal{Entity: entity})
 	entity.Goals.Add(7, runtimeGoalMove|runtimeGoalLook, &zombieIdleGoal{Entity: entity})
 
-	r.registerRuntimeEntity(entity, game.EntityZombie, position)
-
 	return entity
 }
 
-func (r *Runtime) nearestZombieTarget(position game.Position) *Session {
-	return r.nearestValidPlayer(position, zombieEyeHeight, zombieFollowRange)
+func (r *Runtime) nearestZombieTarget(position game.Position, followRange float64) *Session {
+	return r.nearestValidPlayer(position, zombieEyeHeight, followRange)
 }
 
 func (r *Runtime) zombieTarget(entity *runtimeZombieEntity) *Session {
@@ -867,13 +874,13 @@ func (r *Runtime) zombieTarget(entity *runtimeZombieEntity) *Session {
 	current := entity.Target.Session
 
 	if current != nil {
-		if r.playerTargetValid(current, position, zombieFollowRange) {
+		if r.playerTargetValid(current, position, entity.FollowRange(zombieFollowRange)) {
 			return current
 		}
 	}
 
 	entity.Target = zombieTargetState{}
-	entity.Target.Session = r.nearestZombieTarget(position)
+	entity.Target.Session = r.nearestZombieTarget(position, entity.FollowRange(zombieFollowRange))
 
 	return entity.Target.Session
 }

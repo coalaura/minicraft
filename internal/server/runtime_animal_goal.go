@@ -92,7 +92,7 @@ func (goal *animalPanicGoal) Start(runtime *Runtime) {
 	position := goal.Entity.State.Position
 	goal.Entity.State.mu.Unlock()
 
-	path := runtime.findGroundPath(position, goal.Goal, goal.Entity.Living.Width, goal.Entity.Living.Height, animalFollowRange)
+	path := runtime.findGroundPath(position, goal.Goal, goal.Entity.Living.Width, goal.Entity.Living.Height, goal.Entity.FollowRange(animalFollowRange))
 
 	goal.Entity.State.mu.Lock()
 	goal.Entity.Navigation.MoveTo(path, goal.Speed)
@@ -139,7 +139,7 @@ func (goal *animalTemptGoal) Tick(runtime *Runtime) {
 	goal.Entity.LookControl.SetWanted(player.eyePosition(), animalMoveMaximumTurn, animalIdleLookMaximumPitch)
 	goal.Entity.State.mu.Unlock()
 
-	path := runtime.findGroundPath(position, player.Position, goal.Entity.Living.Width, goal.Entity.Living.Height, animalFollowRange)
+	path := runtime.findGroundPath(position, player.Position, goal.Entity.Living.Width, goal.Entity.Living.Height, goal.Entity.FollowRange(animalFollowRange))
 
 	goal.Entity.State.mu.Lock()
 	goal.Entity.Navigation.MoveTo(path, goal.Speed)

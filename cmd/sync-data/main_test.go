@@ -69,25 +69,53 @@ private static void register() {}
 	}
 }
 
-func TestEquipmentManifestsMatchPinnedClientSource(t *testing.T) {
-	clientPath := filepath.Join("..", "..", "..", "reference", "client_source")
+func TestEquipmentManifestsMatchPinnedSourceInputs(t *testing.T) {
+	dataPath := filepath.Join("..", "..", "data")
 
-	_, err := os.Stat(clientPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			t.Skip("pinned client source is not available")
-		}
-
-		t.Fatalf("inspect pinned client source: %v", err)
-	}
-
-	equipment, armor, err := equipmentManifests(clientPath)
+	equipment, armor, err := equipmentManifests(dataPath)
 	if err != nil {
 		t.Fatalf("derive equipment manifests: %v", err)
 	}
 
 	assertCurrentManifest(t, filepath.Join("..", "..", "data", "item_equippables.json"), equipment)
 	assertCurrentManifest(t, filepath.Join("..", "..", "data", "item_armor_attributes.json"), armor)
+}
+
+func TestRegenerateManifestsWithoutReference(t *testing.T) {
+	dataPath := filepath.Join("..", "..", "data")
+
+	standalonePath := t.TempDir()
+
+	inputs := []string{"equipment_source.json", "enchantment_order.json"}
+
+	for _, name := range inputs {
+		err := copyFile(filepath.Join(dataPath, name), filepath.Join(standalonePath, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	directories := []string{"enchantments", "item_tags"}
+
+	for _, name := range directories {
+		err := os.CopyFS(filepath.Join(standalonePath, name), os.DirFS(filepath.Join(dataPath, name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	err := syncData("", standalonePath)
+	if err != nil {
+		t.Fatalf("regenerate with only committed JSON inputs: %v", err)
+	}
+
+	equipment, armor, err := equipmentManifests(dataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertCurrentManifest(t, filepath.Join(standalonePath, "item_equippables.json"), equipment)
+	assertCurrentManifest(t, filepath.Join(standalonePath, "item_armor_attributes.json"), armor)
 }
 
 func assertCurrentManifest(t *testing.T, path string, value any) {
@@ -106,6 +134,6 @@ func assertCurrentManifest(t *testing.T, path string, value any) {
 	}
 
 	if !bytes.Equal(got, want) {
-		t.Fatalf("%s is stale; run go run ./cmd/sync-data -reference ../reference", path)
+		t.Fatalf("%s is stale; run go run ./cmd/sync-data", path)
 	}
 }

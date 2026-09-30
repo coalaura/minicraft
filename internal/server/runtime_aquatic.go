@@ -281,7 +281,7 @@ func (entity *runtimeAquatic) runtimeEntityViewLocked() runtimeEntityView {
 }
 
 func (entity *runtimeAquatic) entityMetadataLocked() []protocol.EntityMetadataEntry {
-	metadata := runtimeMobMetadata(entity.Living.EntityFlags(), entity.Living.Health, 0)
+	metadata := runtimeMobMetadata(entity.Living.EntityFlags(), entity.Living.Health, entity.MetadataFlags())
 
 	metadata = append(metadata,
 		protocol.EntityMetadataEntry{Index: protocol.EntityAirMetadataIndex, Type: protocol.MetadataTypeInt, Value: protocol.MetadataVarInt(entity.AirSupply)},
@@ -292,6 +292,15 @@ func (entity *runtimeAquatic) entityMetadataLocked() []protocol.EntityMetadataEn
 }
 
 func (runtime *Runtime) SpawnCod(position game.Position) *runtimeCodEntity {
+	entity := runtime.newCod()
+	if entity != nil {
+		runtime.registerRuntimeEntity(entity, game.EntityCod, position)
+	}
+
+	return entity
+}
+
+func (runtime *Runtime) newCod() *runtimeCodEntity {
 	entity := &runtimeCodEntity{}
 	if !runtime.initializeAquatic(&entity.runtimeAquatic, &codAquaticSpec) {
 		return nil
@@ -300,12 +309,20 @@ func (runtime *Runtime) SpawnCod(position game.Position) *runtimeCodEntity {
 	initializeSchoolingFish(&entity.runtimeSchoolingFish, aquaticDefaultSchoolSize)
 
 	runtime.configureSchoolingAquaticGoals(entity, &entity.runtimeAquatic)
-	runtime.registerRuntimeEntity(entity, game.EntityCod, position)
 
 	return entity
 }
 
 func (runtime *Runtime) SpawnSalmon(position game.Position) *runtimeSalmonEntity {
+	entity := runtime.newSalmon()
+	if entity != nil {
+		runtime.registerRuntimeEntity(entity, game.EntitySalmon, position)
+	}
+
+	return entity
+}
+
+func (runtime *Runtime) newSalmon() *runtimeSalmonEntity {
 	entity := &runtimeSalmonEntity{Variant: 1}
 	if !runtime.initializeAquatic(&entity.runtimeAquatic, &salmonAquaticSpec) {
 		return nil
@@ -314,12 +331,20 @@ func (runtime *Runtime) SpawnSalmon(position game.Position) *runtimeSalmonEntity
 	initializeSchoolingFish(&entity.runtimeSchoolingFish, salmonMaximumSchoolSize)
 
 	runtime.configureSchoolingAquaticGoals(entity, &entity.runtimeAquatic)
-	runtime.registerRuntimeEntity(entity, game.EntitySalmon, position)
 
 	return entity
 }
 
 func (runtime *Runtime) SpawnTropicalFish(position game.Position) *runtimeTropicalFishEntity {
+	entity := runtime.newTropicalFish()
+	if entity != nil {
+		runtime.registerRuntimeEntity(entity, game.EntityTropicalFish, position)
+	}
+
+	return entity
+}
+
+func (runtime *Runtime) newTropicalFish() *runtimeTropicalFishEntity {
 	entity := &runtimeTropicalFishEntity{}
 	if !runtime.initializeAquatic(&entity.runtimeAquatic, &tropicalFishAquaticSpec) {
 		return nil
@@ -328,7 +353,6 @@ func (runtime *Runtime) SpawnTropicalFish(position game.Position) *runtimeTropic
 	initializeSchoolingFish(&entity.runtimeSchoolingFish, aquaticDefaultSchoolSize)
 
 	runtime.configureSchoolingAquaticGoals(entity, &entity.runtimeAquatic)
-	runtime.registerRuntimeEntity(entity, game.EntityTropicalFish, position)
 
 	return entity
 }

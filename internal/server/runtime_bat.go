@@ -84,7 +84,7 @@ func (entity *runtimeBatEntity) EntityMetadata() []protocol.EntityMetadataEntry 
 	entity.State.mu.RLock()
 	defer entity.State.mu.RUnlock()
 
-	metadata := runtimeMobMetadata(entity.Living.EntityFlags(), entity.Living.Health, 0)
+	metadata := runtimeMobMetadata(entity.Living.EntityFlags(), entity.Living.Health, entity.MetadataFlags())
 	flags := byte(0)
 
 	if entity.Resting {
@@ -165,6 +165,15 @@ func (entity *runtimeBatEntity) setRestingLocked(resting bool) {
 }
 
 func (runtime *Runtime) SpawnBat(position game.Position) *runtimeBatEntity {
+	entity := runtime.newBat()
+	if entity != nil {
+		runtime.registerRuntimeEntity(entity, game.EntityBat, position)
+	}
+
+	return entity
+}
+
+func (runtime *Runtime) newBat() *runtimeBatEntity {
 	definition, valid := game.EntityBat.Definition()
 	if !valid {
 		return nil
@@ -173,8 +182,6 @@ func (runtime *Runtime) SpawnBat(position game.Position) *runtimeBatEntity {
 	entity := &runtimeBatEntity{Resting: true}
 	entity.Living = RuntimeLivingState{Width: definition.Width, Height: definition.Height}
 	entity.Living.Reset(batMaxHealth)
-
-	runtime.registerRuntimeEntity(entity, game.EntityBat, position)
 
 	return entity
 }

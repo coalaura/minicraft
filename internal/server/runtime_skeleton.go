@@ -308,7 +308,7 @@ func (entity *runtimeSkeletonEntity) EntityMetadata() []protocol.EntityMetadataE
 	entity.State.mu.RLock()
 	defer entity.State.mu.RUnlock()
 
-	mobFlags := byte(0)
+	mobFlags := entity.MetadataFlags()
 
 	if entity.Aggressive {
 		mobFlags |= protocol.MobFlagAggressive
@@ -559,7 +559,7 @@ func (entity *runtimeSkeletonEntity) tickTarget(runtime *Runtime, fullGoalTick b
 		entity.Target.HasRetaliationStamp = true
 
 		candidate := runtime.runtimeLivingTargetByID(causeID)
-		if candidate.valid(runtime, position, skeletonFollowRange) {
+		if candidate.valid(runtime, position, entity.FollowRange(skeletonFollowRange)) {
 			entity.Target.Target = candidate
 			entity.Target.UnseenChecks = 0
 			entity.Target.Retaliating = true
@@ -567,7 +567,7 @@ func (entity *runtimeSkeletonEntity) tickTarget(runtime *Runtime, fullGoalTick b
 	}
 
 	target := entity.Target.Target
-	if target.present() && target.valid(runtime, position, skeletonFollowRange) {
+	if target.present() && target.valid(runtime, position, entity.FollowRange(skeletonFollowRange)) {
 		if fullGoalTick {
 			if target.hasLineOfSight(runtime, position, skeletonEyeHeight) {
 				entity.Target.UnseenChecks = 0
@@ -595,7 +595,7 @@ func (entity *runtimeSkeletonEntity) tickTarget(runtime *Runtime, fullGoalTick b
 		return
 	}
 
-	nearest := runtime.nearestValidPlayer(position, skeletonEyeHeight, skeletonFollowRange)
+	nearest := runtime.nearestValidPlayer(position, skeletonEyeHeight, entity.FollowRange(skeletonFollowRange))
 	if nearest != nil {
 		entity.Target.Target = runtimeLivingTarget{session: nearest}
 	}
@@ -646,7 +646,7 @@ func (entity *runtimeSkeletonEntity) findSunShelterPath(runtime *Runtime) []game
 			Z: position.Z + float64(skeletonRandomInt(runtime, 20)-10),
 		}
 
-		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, skeletonFollowRange)
+		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.FollowRange(skeletonFollowRange))
 		if len(path) == 0 {
 			continue
 		}
@@ -845,7 +845,7 @@ func (entity *runtimeSkeletonEntity) randomStrollPath(runtime *Runtime) []game.P
 			Z: position.Z + float64(skeletonRandomInt(runtime, 21)-10),
 		}
 
-		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, skeletonFollowRange)
+		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.FollowRange(skeletonFollowRange))
 		if len(path) == 0 {
 			continue
 		}
@@ -887,7 +887,7 @@ func (entity *runtimeSkeletonEntity) moveToTarget(runtime *Runtime, target game.
 		return
 	}
 
-	path := runtime.findGroundPath(position, target, entity.Living.Width, entity.Living.Height, skeletonFollowRange)
+	path := runtime.findGroundPath(position, target, entity.Living.Width, entity.Living.Height, entity.FollowRange(skeletonFollowRange))
 	path = entity.restrictSunPath(runtime, path)
 
 	if len(path) > 0 {
@@ -1008,6 +1008,15 @@ func (entity *runtimeSkeletonEntity) applyEnvironmentDamage(runtime *Runtime, da
 }
 
 func (runtime *Runtime) SpawnSkeleton(position game.Position) *runtimeSkeletonEntity {
+	entity := runtime.newSkeleton()
+	if entity != nil {
+		runtime.registerRuntimeEntity(entity, game.EntitySkeleton, position)
+	}
+
+	return entity
+}
+
+func (runtime *Runtime) newSkeleton() *runtimeSkeletonEntity {
 	definition, valid := game.EntitySkeleton.Definition()
 	if !valid {
 		return nil
@@ -1030,8 +1039,6 @@ func (runtime *Runtime) SpawnSkeleton(position game.Position) *runtimeSkeletonEn
 	entity.Goals.Add(4, runtimeGoalMove|runtimeGoalLook, &skeletonBowGoal{Entity: entity})
 	entity.Goals.Add(4, runtimeGoalMove|runtimeGoalLook, &skeletonMeleeGoal{Entity: entity})
 	entity.Goals.Add(5, runtimeGoalMove, &skeletonIdleGoal{Entity: entity})
-
-	runtime.registerRuntimeEntity(entity, game.EntitySkeleton, position)
 
 	return entity
 }
