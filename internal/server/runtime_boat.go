@@ -1553,6 +1553,11 @@ func (session *Session) handleMoveVehicle(move protocol.MoveVehicle) {
 	boat.State.mu.Unlock()
 
 	if !rejected {
+		session.playerMx.Lock()
+		session.knownMovement = game.Velocity{X: position.X - previousPosition.X, Y: position.Y - previousPosition.Y, Z: position.Z - previousPosition.Z}
+		session.receivedMovementThisTick = true
+		session.playerMx.Unlock()
+
 		runtime.runtimeEntityMoved(boat, previousPosition)
 		runtime.updateBoatPassengerPositionsLocked(entityID, position, rotation.Yaw, 0, boat.Raft, true)
 		runtime.pushBoatEntities(entityID, position)

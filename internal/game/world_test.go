@@ -217,6 +217,66 @@ func TestSetBlockRemovesGeneratorEquivalentOverride(t *testing.T) {
 	}
 }
 
+func TestClearBlockOverrideRevisions(t *testing.T) {
+	world := &World{Generator: solidGenerator{block: Stone}}
+	position := BlockPosition{X: -17, Y: 12, Z: 16}
+	chunk, local := blockIndex(position)
+
+	world.SetBlock(position, Air)
+
+	before := world.ChunkRevisions(chunk)
+
+	world.ClearBlockOverride(position)
+
+	after := world.ChunkRevisions(chunk)
+	if after.Blocks != before.Blocks+1 || after.Light != before.Light+1 || world.BlockAt(position) != Stone {
+		t.Fatalf("clearing changed override: revisions %+v -> %+v, block %v", before, after, world.BlockAt(position))
+	}
+
+	world.ClearBlockOverride(position)
+
+	if world.ChunkRevisions(chunk) != after {
+		t.Fatal("clearing absent override invalidated caches")
+	}
+
+	world.overrides = map[ChunkPosition]map[LocalBlockPosition]Block{chunk: {local: Stone}}
+	world.publishBlockOverrideChunk(chunk)
+	world.ClearBlockOverride(position)
+
+	if world.ChunkRevisions(chunk) != after || len(world.SnapshotChunkOverrides(chunk)) != 0 {
+		t.Fatal("clearing generator-equivalent override changed revisions or retained snapshot")
+	}
+}
+
+func TestClearBlockOverrideNeighborLightRevisions(t *testing.T) {
+	world := NewOverworld(nil)
+	position := BlockPosition{X: -1, Y: 70, Z: 16}
+	chunk := blockChunk(position)
+	minimum, maximum := AffectedLightChunks(position)
+
+	world.SetBlock(position, Glowstone)
+	world.ClearBlockOverride(position)
+
+	for chunkZ := minimum.Z - 1; chunkZ <= maximum.Z+1; chunkZ++ {
+		for chunkX := minimum.X - 1; chunkX <= maximum.X+1; chunkX++ {
+			neighbor := ChunkPosition{X: chunkX, Z: chunkZ}
+			expected := ChunkRevisions{}
+
+			if neighbor == chunk {
+				expected.Blocks = 2
+			}
+
+			if chunkX >= minimum.X && chunkX <= maximum.X && chunkZ >= minimum.Z && chunkZ <= maximum.Z {
+				expected.Light = 2
+			}
+
+			if world.ChunkRevisions(neighbor) != expected {
+				t.Fatalf("chunk %+v revisions = %+v, want %+v", neighbor, world.ChunkRevisions(neighbor), expected)
+			}
+		}
+	}
+}
+
 func TestSetBlockDoesNotStoreGeneratedAir(t *testing.T) {
 	world := &World{}
 

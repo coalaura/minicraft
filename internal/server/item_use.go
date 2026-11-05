@@ -57,6 +57,10 @@ func (s *Session) handleUseItem(interaction protocol.UseItem) (err error) {
 		return nil
 	}
 
+	if stack.Item == game.ItemBow {
+		return s.Runtime.startUsingBow(s, interaction.Hand, stack)
+	}
+
 	handler, handled := itemUseHandlers[stack.Item]
 	if handled {
 		s.Runtime.stopUsingItem(s)
@@ -71,6 +75,8 @@ func (s *Session) handleUseItem(interaction protocol.UseItem) (err error) {
 	}
 
 	if definition.Consumable.Duration != 0 {
+		s.cancelBowUse()
+
 		return s.Runtime.startUsingConsumable(s, interaction.Hand, stack, definition.Food, definition.Consumable)
 	}
 
@@ -208,7 +214,7 @@ func (r *Runtime) startUsingConsumable(session *Session, hand int32, stack game.
 
 		player.UsingItem = true
 		player.UsingOffhand = hand == protocol.OffHand
-		player.UseRemainingTicks = consumable.Duration
+		player.UseRemainingTicks = uint32(consumable.Duration)
 		player.UseAnimation = consumable.Animation
 		player.UseStack = stack.Clone()
 
@@ -270,6 +276,18 @@ func (r *Runtime) tickUsingItemLocked(session *Session) ([]playerSurvivalUpdate,
 			return true
 		}
 
+		if player.UseStack.Item == game.ItemBow {
+			if player.Dead || player.GameMode == game.GameModeSpectator || !held.Equal(player.UseStack) || player.UseRemainingTicks <= 1 {
+				player.StopUsingItem()
+
+				useEnded = true
+			} else {
+				player.UseRemainingTicks--
+			}
+
+			return true
+		}
+
 		player.UseStack = held.Clone()
 
 		definition, valid := held.Item.Definition()
@@ -282,8 +300,8 @@ func (r *Runtime) tickUsingItemLocked(session *Session) ([]playerSurvivalUpdate,
 		}
 
 		if player.UseRemainingTicks > 1 {
-			usedTicks := definition.Consumable.Duration - player.UseRemainingTicks
-			waitTicks := uint16(float32(definition.Consumable.Duration) * consumeEffectsStartFraction)
+			usedTicks := uint32(definition.Consumable.Duration) - player.UseRemainingTicks
+			waitTicks := uint32(float32(definition.Consumable.Duration) * consumeEffectsStartFraction)
 
 			// Vanilla clients derive consume particles from synchronized using-item state; only sound is server-broadcast.
 			if usedTicks > waitTicks && player.UseRemainingTicks%consumeEffectsTickInterval == 0 {

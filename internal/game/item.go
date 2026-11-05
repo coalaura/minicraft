@@ -54,6 +54,7 @@ const (
 	ItemUseAnimationNone ItemUseAnimation = iota
 	ItemUseAnimationEat
 	ItemUseAnimationDrink
+	ItemUseAnimationBow
 )
 
 const (

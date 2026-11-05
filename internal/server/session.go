@@ -26,23 +26,25 @@ type Session struct {
 	Log     Logger
 	Runtime *Runtime
 
-	Player          *game.Player
-	offlineProfiles *offlineProfileResolver
-	playerMx        sync.RWMutex
-	writeMx         sync.Mutex
-	packetWriter    protocol.PacketWriter
-	chatMx          sync.Mutex
-	chatState       *sessionChatState
-	inventoryMenu   *menu
-	containerMenu   *menu
-	nextWindowID    int32
-	protocolState   int32
-	shuttingDown    bool
-	mining          miningState
-	playerInput     byte
-	vehicleFirstGood game.Position
-	vehicleLastGood  game.Position
-	vehicleLastID    int32
+	Player                   *game.Player
+	offlineProfiles          *offlineProfileResolver
+	playerMx                 sync.RWMutex
+	writeMx                  sync.Mutex
+	packetWriter             protocol.PacketWriter
+	chatMx                   sync.Mutex
+	chatState                *sessionChatState
+	inventoryMenu            *menu
+	containerMenu            *menu
+	nextWindowID             int32
+	protocolState            int32
+	shuttingDown             bool
+	mining                   miningState
+	playerInput              byte
+	knownMovement            game.Velocity
+	receivedMovementThisTick bool
+	vehicleFirstGood         game.Position
+	vehicleLastGood          game.Position
+	vehicleLastID            int32
 
 	chunkMx               sync.Mutex
 	centerChunk           LoadedChunk

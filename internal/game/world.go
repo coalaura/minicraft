@@ -289,9 +289,14 @@ func (w *World) BlockEntityOverrideCount() int {
 
 func (w *World) ClearBlockOverride(position BlockPosition) {
 	chunk, local := blockIndex(position)
+	generated := w.generatedBlockAt(position)
 
 	w.overrideMx.Lock()
 	defer w.overrideMx.Unlock()
+
+	if w.blockAtLocked(position, generated) != generated {
+		w.invalidateBlockCaches(position)
+	}
 
 	w.clearBlockOverride(chunk, local)
 	w.clearBlockEntityOverride(chunk, local)

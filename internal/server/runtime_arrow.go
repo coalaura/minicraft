@@ -24,6 +24,14 @@ const (
 	arrowSweepQueryEpsilon            = 1e-7
 )
 
+const (
+	arrowPickupDisallowed arrowPickup = iota
+	arrowPickupAllowed
+	arrowPickupCreativeOnly
+)
+
+type arrowPickup uint8
+
 type runtimeProjectileState struct {
 	Velocity  game.Velocity
 	OwnerID   int32
@@ -35,15 +43,19 @@ type runtimeArrowEntity struct {
 	State RuntimeEntityState
 	runtimeProjectileState
 
-	Rotation      game.Rotation
-	Life          int32
-	ShakeTime     int32
-	PierceLevel   byte
-	Critical      bool
-	baseDamage    float64
-	InGround      bool
-	EmbeddedAt    game.BlockPosition
-	EmbeddedBlock game.Block
+	Rotation           game.Rotation
+	Life               int32
+	ShakeTime          int32
+	PierceLevel        byte
+	Critical           bool
+	baseDamage         float64
+	InGround           bool
+	EmbeddedAt         game.BlockPosition
+	EmbeddedBlock      game.Block
+	Weapon             game.ItemStack
+	PickupStack        game.ItemStack
+	Pickup             arrowPickup
+	RemainingFireTicks int32
 }
 
 type arrowTarget struct {
@@ -82,11 +94,24 @@ func (entity *runtimeArrowEntity) EntityMetadata() []protocol.EntityMetadataEntr
 		flags |= protocol.ArrowFlagCritical
 	}
 
-	return []protocol.EntityMetadataEntry{
+	entityFlags := byte(0)
+
+	if entity.RemainingFireTicks > 0 {
+		entityFlags = protocol.EntityFlagOnFire
+	}
+
+	metadata := []protocol.EntityMetadataEntry{
 		{Index: protocol.ArrowFlagsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(flags)},
 		{Index: protocol.ArrowPierceLevelMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(entity.PierceLevel)},
 		{Index: protocol.ArrowInGroundMetadataIndex, Type: protocol.MetadataTypeBoolean, Value: protocol.MetadataBoolean(entity.InGround)},
+		{Index: protocol.EntityFlagsMetadataIndex, Type: protocol.MetadataTypeByte, Value: protocol.MetadataByte(entityFlags)},
 	}
+
+	if entity.Weapon.Empty() {
+		return metadata[:3]
+	}
+
+	return metadata
 }
 
 func (entity *runtimeArrowEntity) SetBaseDamage(baseDamage float64) {
@@ -119,6 +144,17 @@ func (entity *runtimeArrowEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 	entity.TickCount++
 	pushedByFluid := !entity.InGround
 
+	if entity.RemainingFireTicks > 0 {
+		entity.RemainingFireTicks--
+		if runtime.fluidContact(arrowBox(entity.State.Position), game.FluidTypeWater, false).Depth > fluidContactDepth {
+			entity.RemainingFireTicks = 0
+		}
+
+		if entity.RemainingFireTicks == 0 {
+			entity.State.metadataDirty = true
+		}
+	}
+
 	if entity.ShakeTime > 0 {
 		entity.ShakeTime--
 	}
@@ -135,6 +171,9 @@ func (entity *runtimeArrowEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 
 			if remove {
 				runtime.removeRuntimeEntity(entityID)
+			} else {
+				runtime.synchronizeDirtyRuntimeEntityMetadata(entity)
+				runtime.pickUpArrow(entity)
 			}
 
 			return
@@ -185,6 +224,15 @@ func (entity *runtimeArrowEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		velocity.Z *= -0.2
 
 		if arrowVelocityLength(velocity) < arrowFailedHitSpeed {
+			entity.State.mu.RLock()
+			pickup := entity.Pickup
+			stack := entity.PickupStack
+			entity.State.mu.RUnlock()
+
+			if pickup == arrowPickupAllowed {
+				runtime.SpawnItemEntity(stack, from, game.Velocity{}, 0)
+			}
+
 			runtime.removeRuntimeEntity(entity.State.ID)
 
 			return
@@ -213,6 +261,8 @@ func (entity *runtimeArrowEntity) Tick(runtime *Runtime, _ *ActiveChunk) {
 		entity.EmbeddedAt = blockHit.BlockPosition
 		entity.EmbeddedBlock = blockHit.Block
 		entity.ShakeTime = arrowShakeTicks
+		entity.Critical = false
+		entity.PierceLevel = 0
 	} else {
 		entity.State.Position = to
 		entity.Velocity = velocity
@@ -244,6 +294,12 @@ func (runtime *Runtime) damageArrowTarget(target arrowTarget, arrowID, ownerID i
 
 	baseDamage := arrowBaseDamage
 
+	var (
+		critical bool
+		burning  bool
+		punch    int32
+	)
+
 	runtime.entityMu.RLock()
 	entity := runtime.entities[arrowID]
 	runtime.entityMu.RUnlock()
@@ -251,10 +307,18 @@ func (runtime *Runtime) damageArrowTarget(target arrowTarget, arrowID, ownerID i
 	if arrow, isArrow := entity.(*runtimeArrowEntity); isArrow {
 		arrow.State.mu.RLock()
 		baseDamage = arrow.baseDamage
+		critical = arrow.Critical
+		burning = arrow.RemainingFireTicks > 0
+		power := arrow.Weapon.EnchantmentLevel(game.EnchantmentPower)
+		punch = arrow.Weapon.EnchantmentLevel(game.EnchantmentPunch)
 		arrow.State.mu.RUnlock()
 
 		if baseDamage <= 0 {
 			baseDamage = arrowBaseDamage
+		}
+
+		if power > 0 {
+			baseDamage += float64(power+1) * 0.5
 		}
 	}
 
@@ -264,8 +328,33 @@ func (runtime *Runtime) damageArrowTarget(target arrowTarget, arrowID, ownerID i
 		causeID = arrowID
 	}
 
-	damage := game.Damage{Type: game.DamageArrow, Amount: float32(math.Ceil(speed * baseDamage)), CauseEntityID: causeID, DirectEntityID: arrowID}
+	amount := min(math.Ceil(speed*baseDamage), float64(math.MaxInt32))
 
+	if critical {
+		bonus := math.Floor(float64(runtime.nextEntityRandom()) * (math.Floor(amount/2) + 2))
+		amount = min(amount+bonus, float64(math.MaxInt32))
+	}
+
+	damage := game.Damage{Type: game.DamageArrow, Amount: float32(amount), CauseEntityID: causeID, DirectEntityID: arrowID}
+	previousFire := int32(0)
+
+	if burning {
+		previousFire = runtime.setArrowTargetFire(target, 100, true)
+	}
+
+	applied := runtime.hurtArrowTarget(target, damage, ownerID)
+	if !applied && burning {
+		runtime.setArrowTargetFire(target, previousFire, false)
+	}
+
+	if applied && punch > 0 {
+		runtime.pushArrowTarget(target, velocity, punch)
+	}
+
+	return applied
+}
+
+func (runtime *Runtime) hurtArrowTarget(target arrowTarget, damage game.Damage, ownerID int32) bool {
 	if target.session != nil {
 		if runtime.arrowOwnedByRuntimeLiving(ownerID) {
 			damage.Amount = arrowPlayerDamageForDifficulty(runtime.Difficulty, damage.Amount)
@@ -273,6 +362,11 @@ func (runtime *Runtime) damageArrowTarget(target arrowTarget, arrowID, ownerID i
 
 		update, applied := runtime.damagePlayerLocked(target.session, damage)
 		if applied {
+			owner := runtime.playerSessionByEntityIDLocked(ownerID)
+			if owner != nil {
+				update.attackerName = owner.playerView().Name
+			}
+
 			runtime.sendPlayerSurvivalUpdate(target.session, update)
 		}
 
@@ -308,7 +402,7 @@ func (runtime *Runtime) arrowNearestTarget(from, to game.Position, ownerID int32
 
 	for _, session := range runtime.sessionView() {
 		player := session.playerView()
-		if player.Dead {
+		if player.Dead || player.GameMode == game.GameModeSpectator {
 			continue
 		}
 

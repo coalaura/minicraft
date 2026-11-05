@@ -443,16 +443,24 @@ func (r *Runtime) sendPlayerAttackInventoryUpdate(session *Session, before game.
 		return
 	}
 
+	r.sendPlayerItemBreakEvent(session, protocol.MainHand)
+}
+
+func (r *Runtime) sendPlayerItemBreakEvent(session *Session, hand int32) {
 	player := session.snapshotPlayer()
 
 	event := protocol.EntityEvent{EntityID: player.EntityID, Event: 47}
+
+	if hand == protocol.OffHand {
+		event.Event = 48
+	}
 
 	for _, recipient := range r.sessionView() {
 		if recipient != session && !playerViewSeesPlayer(recipient.playerView(), player, recipient.renderDistance()) {
 			continue
 		}
 
-		err = recipient.writePacket(protocol.ClientboundEntityEventID, event)
+		err := recipient.writePacket(protocol.ClientboundEntityEventID, event)
 		if err != nil && recipient.Log != nil {
 			recipient.Log.Warnf("[play] failed to send weapon break event: %v\n", err)
 		}

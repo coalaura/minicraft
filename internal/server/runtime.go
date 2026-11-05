@@ -313,6 +313,10 @@ func (r *Runtime) LeaveSession(session *Session) {
 
 	r.cancelMiningLocked(session)
 
+	session.mutatePlayer(func(player *game.Player) bool {
+		return player != nil && player.StopUsingItem()
+	})
+
 	r.removePassenger(session.passengerID())
 
 	r.closeMenuWithRemovalStateLocked(session, false, true)
@@ -627,10 +631,9 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 	}
 
 	update(session.Player)
+	vehicleID := r.passengerVehicleID(session.Player.EntityID)
 
 	if session.Player.Rotation != previous.Rotation {
-		vehicleID := r.passengerVehicleID(session.Player.EntityID)
-
 		r.entityMu.RLock()
 		boat, mountedBoat := r.entities[vehicleID].(*runtimeBoatEntity)
 		r.entityMu.RUnlock()
@@ -655,6 +658,11 @@ func (r *Runtime) updatePlayerMovement(session *Session, update func(*game.Playe
 	horizontalDeltaX := session.Player.Position.X - previous.Position.X
 	horizontalDeltaZ := session.Player.Position.Z - previous.Position.Z
 	verticalDelta := session.Player.Position.Y - previous.Position.Y
+
+	if vehicleID == 0 {
+		session.knownMovement = game.Velocity{X: horizontalDeltaX, Y: verticalDelta, Z: horizontalDeltaZ}
+		session.receivedMovementThisTick = true
+	}
 
 	horizontalDistance := math.Hypot(horizontalDeltaX, horizontalDeltaZ)
 	fullDistance := math.Sqrt(horizontalDeltaX*horizontalDeltaX + verticalDelta*verticalDelta + horizontalDeltaZ*horizontalDeltaZ)

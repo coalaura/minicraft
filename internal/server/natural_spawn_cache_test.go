@@ -143,3 +143,40 @@ func TestNaturalSpawnNeighborLightInvalidation(t *testing.T) {
 		}
 	}
 }
+
+func TestClearBlockOverrideInvalidatesSpawnCaches(t *testing.T) {
+	runtime := NewRuntime(&game.World{Generator: spawnTestGenerator{Floor: game.Stone, Roof: true}, Lighting: game.LightingNormal})
+	edit := game.BlockPosition{X: 31, Y: -59, Z: 8}
+	neighbor := game.BlockPosition{X: 32, Y: -59, Z: 8}
+
+	runtime.World.SetBlock(edit, game.Glowstone)
+	runtime.naturalSurfaceHeight(edit)
+	runtime.naturalSurfaceHeight(neighbor)
+	runtime.naturalLightAt(neighbor)
+
+	localQuery := runtime.naturalChunkAt(edit)
+	neighborQuery := runtime.naturalChunkAt(neighbor)
+	neighborColumn := int(neighbor.Z&15)*16 + int(neighbor.X&15)
+
+	runtime.World.ClearBlockOverride(edit)
+	runtime.naturalChunkAt(edit)
+	runtime.naturalChunkAt(neighbor)
+
+	if localQuery.HeightKnown[int(edit.Z&15)*16+int(edit.X&15)] || len(neighborQuery.Light) != 0 || !neighborQuery.HeightKnown[neighborColumn] {
+		t.Fatal("clear must invalidate local height and neighboring light while preserving neighboring height")
+	}
+
+	_, block, ready := runtime.naturalLightAt(neighbor)
+	if !ready || block != 0 || runtime.naturalSurfaceHeight(edit) != -59 {
+		t.Fatal("cleared override was not reflected in height/light queries")
+	}
+
+	revisions := neighborQuery.Revisions
+
+	runtime.World.ClearBlockOverride(edit)
+	runtime.naturalChunkAt(neighbor)
+
+	if neighborQuery.Revisions != revisions || len(neighborQuery.Light) == 0 {
+		t.Fatal("unchanged clear invalidated neighboring lighting")
+	}
+}

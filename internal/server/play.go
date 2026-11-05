@@ -156,7 +156,12 @@ func (s *Session) handlePlayPacket(packet *protocol.Packet) error {
 			return s.Runtime.RespawnPlayer(s)
 		}
 	case protocol.ServerboundClientTickEndID:
-		return protocol.DecodeEmptyPacket(packet.Data, "client tick end")
+		err := protocol.DecodeEmptyPacket(packet.Data, "client tick end")
+		if err != nil {
+			return err
+		}
+
+		s.handleClientTickEnd()
 	case protocol.ServerboundPlayClientInformationID:
 		information, err := protocol.DecodeClientInformation(packet.Data)
 		if err != nil {
@@ -534,6 +539,17 @@ func (s *Session) handleMovePlayerPosition(move protocol.MovePlayerPosition) err
 	return err
 }
 
+func (s *Session) handleClientTickEnd() {
+	s.playerMx.Lock()
+	defer s.playerMx.Unlock()
+
+	if !s.receivedMovementThisTick {
+		s.knownMovement = game.Velocity{}
+	}
+
+	s.receivedMovementThisTick = false
+}
+
 func (s *Session) handleMovePlayerPositionRotation(move protocol.MovePlayerPositionRotation) error {
 	if !validPlayerPosition(move.X, move.Y, move.Z) || !validPlayerRotation(move.Yaw, move.Pitch) {
 		return fmt.Errorf("invalid player position or rotation")
@@ -624,7 +640,7 @@ func (s *Session) handlePlayerAction(action protocol.PlayerAction) error {
 	case protocol.PlayerActionDropItem:
 		s.handleDropHeldItem(false)
 	case protocol.PlayerActionReleaseUseItem:
-		s.Runtime.stopUsingItem(s)
+		s.Runtime.releaseUsingItem(s)
 	case protocol.PlayerActionSwapWithOffhand:
 		s.handleSwapWithOffhand()
 	default:

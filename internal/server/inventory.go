@@ -313,6 +313,8 @@ func (s *Session) handleContainerClick(click protocol.ContainerClick) error {
 			s.Runtime.spawnPlayerDroppedItem(player, stack, false, true)
 		}
 
+		s.cancelInvalidBowUse()
+
 		if len(changedBackings) != 0 && currentMenu.backing != nil {
 			currentMenu.backing.Changed(s.Runtime, s, changedBackings)
 		}
@@ -483,6 +485,8 @@ func (s *Session) synchronizePlayerInventoryMutation(before game.PlayerInventory
 }
 
 func (s *Session) synchronizePlayerInventoryMutationSlot(before game.PlayerInventory, preferredPlayerSlot *int) error {
+	s.cancelInvalidBowUse()
+
 	player := s.snapshotPlayer()
 
 	changedSlots := inventoryChanges(before, player.Inventory)
@@ -540,6 +544,8 @@ func (s *Session) synchronizePlayerInventoryMutationSlot(before game.PlayerInven
 }
 
 func (s *Session) synchronizePlayerInventoryJournal(mutation *playerInventoryMutation) error {
+	s.cancelInvalidBowUse()
+
 	journal := &mutation.journal
 	if journal.touched == 0 {
 		return nil

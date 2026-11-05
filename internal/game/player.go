@@ -79,7 +79,7 @@ type Player struct {
 
 	UsingItem         bool
 	UsingOffhand      bool
-	UseRemainingTicks uint16
+	UseRemainingTicks uint32
 	UseAnimation      ItemUseAnimation
 	UseStack          ItemStack
 }
