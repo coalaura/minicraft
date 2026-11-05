@@ -179,7 +179,7 @@ func (goal *creeperMeleeGoal) Tick(runtime *Runtime) {
 		return
 	}
 
-	path := runtime.findGroundPathInto(entity.Navigation.Path[:0], position, target.position(), entity.Living.Width, entity.Living.Height, entity.FollowRange(creeperFollowRange))
+	path := runtime.findGroundPathInto(entity.Navigation.Path[:0], position, target.position(), entity.Living.Width, entity.Living.Height, entity.NavigationRange(creeperFollowRange))
 
 	entity.Navigation.MoveTo(path, 1)
 
@@ -627,7 +627,7 @@ func (entity *runtimeCreeperEntity) randomStrollPath(runtime *Runtime) []game.Po
 	for range 10 {
 		goal := game.Position{X: position.X + float64(creeperRandomInt(runtime, 21)-10), Y: position.Y + float64(creeperRandomInt(runtime, 15)-7), Z: position.Z + float64(creeperRandomInt(runtime, 21)-10)}
 
-		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.FollowRange(creeperFollowRange))
+		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.NavigationRange(creeperFollowRange))
 		if len(path) == 0 {
 			continue
 		}

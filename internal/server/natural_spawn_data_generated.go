@@ -902,3 +902,8 @@ var naturalColdFarmBiomes = [game.BiomeCount]bool{
 var naturalTropicalAnyHeightBiomes = [game.BiomeCount]bool{
 	game.BiomeLushCaves: true,
 }
+
+var naturalReducedWaterAmbientBiomes = [game.BiomeCount]bool{
+	game.BiomeFrozenRiver: true,
+	game.BiomeRiver:       true,
+}

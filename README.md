@@ -31,7 +31,8 @@ It currently targets **Minecraft Java Edition 1.21.11** (protocol 774).
 - Furnaces, smokers and blast furnaces with generated cooking recipes and fuel values, ticking, menus and synchronized progress
 - Stateful barrels and single/double normal, trapped and copper chest variants, including container contents drops on removal
 - Vanilla-like hoppers with sided container automation, item suction, persisted cooldowns and synchronized five-slot menus
-- Generic runtime entities, dropped items and item pickup
+- Runtime entities, dropped items and pickup, arrows/projectiles, TNT/explosions, falling blocks and normal boats/rafts
+- Natural mob spawning with zombies, skeletons, creepers, cows, sheep, chickens, bats, cod, salmon, tropical fish and pufferfish
 - Basic commands, including `/enchant`, with client-side declarations and suggestions
 - Biomes, lighting, world time and a day/night cycle
 - Vanilla-like derived water and lava flow in active world chunks, with scheduled ticks intentionally paused in inactive chunks, waterlogging, buckets and item fluid motion
@@ -79,6 +80,7 @@ Set `world.generator` in `config.toml` to one of:
 babel
 backrooms
 fractal-vaults
+grand-canyon
 maze
 menger-sponge
 natural
@@ -110,7 +112,7 @@ Minicraft is a focused protocol and procedural-world server, not a drop-in repla
 - Timed item use continues across same-item count, component and backing-stack changes, but cancels when the active hand becomes empty or changes item.
 - Ordinary drinkable potions are implemented; splash and lingering potions, brewing, tipped-arrow mechanics, area-effect clouds and potion swirls remain deferred.
 - Suspicious-stew effects, chorus-fruit teleportation and `USE_EFFECTS` movement or vibration behavior remain explicitly deferred.
-- Base player melee and armor are implemented; mobs, shields, projectiles, broader combat mechanics, XP, bed placement/sleeping, respawn anchors and gamerule configuration are not implemented.
+- Shields, player ranged combat, broader combat mechanics, XP, bed placement/sleeping, respawn anchors and gamerule configuration are not implemented.
 - Honey-block side sliding is deferred; honey landing damage is implemented.
 
 ## Todo
@@ -118,7 +120,7 @@ Minicraft is a focused protocol and procedural-world server, not a drop-in repla
 - Broader block placement and interaction support
 - Other inventory blocks
 - Recipe-book and special crafting recipe parity
-- Broader survival and combat mechanics such as mobs, shields and projectiles
+- Broader survival and combat mechanics, including shields and player ranged combat
 - Adventure map features
 
 ## License

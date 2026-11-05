@@ -252,7 +252,7 @@ func (r *Runtime) spawnNaturalPack(origin LoadedChunk, category int) {
 			entries := naturalBiomeSpawns[biome][category]
 
 			if selected.Weight == 0 {
-				if category == naturalWaterAmbient && (biome == game.BiomeRiver || biome == game.BiomeFrozenRiver) && r.nextEntityRandom() < 0.98 {
+				if category == naturalWaterAmbient && naturalReducedWaterAmbientBiomes[biome] && r.nextEntityRandom() < 0.98 {
 					break
 				}
 

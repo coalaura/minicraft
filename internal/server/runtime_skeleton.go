@@ -646,7 +646,7 @@ func (entity *runtimeSkeletonEntity) findSunShelterPath(runtime *Runtime) []game
 			Z: position.Z + float64(skeletonRandomInt(runtime, 20)-10),
 		}
 
-		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.FollowRange(skeletonFollowRange))
+		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.NavigationRange(skeletonFollowRange))
 		if len(path) == 0 {
 			continue
 		}
@@ -845,7 +845,7 @@ func (entity *runtimeSkeletonEntity) randomStrollPath(runtime *Runtime) []game.P
 			Z: position.Z + float64(skeletonRandomInt(runtime, 21)-10),
 		}
 
-		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.FollowRange(skeletonFollowRange))
+		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.NavigationRange(skeletonFollowRange))
 		if len(path) == 0 {
 			continue
 		}
@@ -887,7 +887,7 @@ func (entity *runtimeSkeletonEntity) moveToTarget(runtime *Runtime, target game.
 		return
 	}
 
-	path := runtime.findGroundPath(position, target, entity.Living.Width, entity.Living.Height, entity.FollowRange(skeletonFollowRange))
+	path := runtime.findGroundPath(position, target, entity.Living.Width, entity.Living.Height, entity.NavigationRange(skeletonFollowRange))
 	path = entity.restrictSunPath(runtime, path)
 
 	if len(path) > 0 {

@@ -7,17 +7,11 @@ go run ./cmd/sync-data
 go generate ./...
 ```
 
-To refresh the committed source inputs from the pinned Minecraft Java Edition 1.21.11 development references, explicitly supply their location:
-
-```sh
-go run ./cmd/sync-data -reference ../reference
-```
-
-The source-import command validates Minecraft version 1.21.11 and protocol 774 before replacing these inputs. It reads Java reference source only to extract compact JSON manifests; no Java files are copied into this repository. The reference tree is only needed for this explicit source refresh, not normal generation. Run `go generate ./...` afterward to update the Go sources that consume them.
+Repository tooling reads only committed local inputs, primarily under `data/`; `cmd/sync-data` regenerates derived manifests and has no external-reference import mode. Refreshing pinned Minecraft Java Edition 1.21.11 (protocol 774) inputs is a separate development-workspace task: research the workspace's `reference/` sources there, then copy or derive the required inputs into `minicraft/data/`. External-source readers and import tooling do not belong in this repository.
 
 ## Exact copies
 
-These paths are copied byte-for-byte from `reference/client_source/data/minecraft`:
+These inputs originate from the pinned client data pack's `data/minecraft` tree; retained files are byte-for-byte copies:
 
 | Local path | Client data path |
 | --- | --- |
@@ -30,18 +24,18 @@ These paths are copied byte-for-byte from `reference/client_source/data/minecraf
 | `recipes/` | `recipe/` |
 | `worldgen_biome/` | `worldgen/biome/` |
 
-`biomes.json`, `blocks.json`, and `entities.json` are copied byte-for-byte from `reference/minecraft-data`. That catalogue supplies protocol registry IDs and properties which the client data pack does not expose as equivalent flat JSON files.
+`biomes.json`, `blocks.json`, and `entities.json` are byte-for-byte copies from the pinned minecraft-data catalogue. That catalogue supplies protocol registry IDs and properties which the client data pack does not expose as equivalent flat JSON files.
 
 ## Natural spawning
 
-`cmd/generate-spawns` defaults to `data/worldgen_biome/` and `data/biome_tags/`. It reads the original biome JSON spawners and potential costs, filters to supported entities, and resolves biome tags for sheep colors and tropical-fish placement. `go generate ./internal/server` regenerates `internal/server/natural_spawn_data_generated.go` using these same local inputs. Spawn lists are not hand-transcribed.
+`cmd/generate-spawns` defaults to `data/worldgen_biome/` and `data/biome_tags/`. It reads the original biome JSON spawners and potential costs, filters to supported entities, and resolves biome tags for sheep colors, tropical-fish placement and reduced water-ambient spawning. Only used biome tags and their recursive dependencies are retained; the full biome JSON spawn catalogue is preserved. `go generate ./internal/server` regenerates `internal/server/natural_spawn_data_generated.go` using these same local inputs. Spawn lists are not hand-transcribed.
 
 ## Derived files
 
-`items.json` is copied from `reference/minecraft-data/items.json` with only its non-vanilla `enchantCategories` metadata removed. Canonical enchantment item applicability comes from `item_tags/enchantable/` instead.
+`items.json` comes from the pinned minecraft-data catalogue with only its non-vanilla `enchantCategories` metadata removed. Canonical enchantment item applicability comes from `item_tags/enchantable/` instead.
 
-`enchantment_order.json` is a committed input extracted during explicit source refresh from the `register` calls in `Enchantments.bootstrap`. It records registry raw-ID order, which is not stored in the individual enchantment JSON files. Java field declaration order is not the registry order. Normal generation validates and consumes this local manifest.
+`enchantment_order.json` is a committed input derived from the `register` calls in `Enchantments.bootstrap`. It records registry raw-ID order, which is not stored in the individual enchantment JSON files. Java field declaration order is not the registry order. Normal generation validates and consumes this local manifest.
 
-`equipment_source.json` contains only the armor materials, humanoid armor registrations, and direct Equippable registrations extracted from the pinned Java sources during explicit source refresh. `cmd/sync-data` combines this local input with `item_tags/enchantable/equippable` to regenerate `item_armor_attributes.json` and `item_equippables.json`. The former contains defensive attributes; the latter independently records player equipment slots and server-relevant equip behavior. Item generation remains self-contained within `data/`.
+`equipment_source.json` contains only the armor materials, humanoid armor registrations, and direct Equippable registrations derived from the pinned Java sources. `cmd/sync-data` combines this local input with `item_tags/enchantable/equippable` to regenerate `item_armor_attributes.json` and `item_equippables.json`. The former contains defensive attributes; the latter independently records player equipment slots and server-relevant equip behavior. Item generation remains self-contained within `data/`.
 
 `mob_effects.json` and `potions.json` contain their ordered registry definitions and their generators require no files outside `data/`.

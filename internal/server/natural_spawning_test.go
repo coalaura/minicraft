@@ -441,7 +441,7 @@ func TestNaturalSpawnLightCacheInvalidation(t *testing.T) {
 		runtime.naturalEnvironmentAllows(position, game.EntityZombie)
 	})
 
-	if allocations != 0 || len(query.Sky) == 0 {
+	if allocations != 0 || len(query.Light) == 0 {
 		t.Fatalf("warm candidate allocations=%g, expected zero with prepared lighting", allocations)
 	}
 }
@@ -528,11 +528,12 @@ func BenchmarkNaturalSpawnPrepareLight(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		query.Sky = query.Sky[:0]
-		query.Block = query.Block[:0]
+		query.Light = query.Light[:0]
 
 		runtime.naturalLightAt(position)
 	}
+
+	b.ReportMetric(float64(cap(query.Light)), "light-B/chunk")
 }
 
 func TestNaturalSpawnPassiveIntervalAndCategoryCaps(t *testing.T) {

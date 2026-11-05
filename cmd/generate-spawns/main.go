@@ -85,8 +85,8 @@ func main() {
 
 	buffer.WriteString("}\n")
 
-	biomeTags := []string{"spawns_warm_variant_farm_animals", "spawns_cold_variant_farm_animals", "allows_tropical_fish_spawns_at_any_height"}
-	variables := []string{"naturalWarmFarmBiomes", "naturalColdFarmBiomes", "naturalTropicalAnyHeightBiomes"}
+	biomeTags := []string{"spawns_warm_variant_farm_animals", "spawns_cold_variant_farm_animals", "allows_tropical_fish_spawns_at_any_height", "reduce_water_ambient_spawns"}
+	variables := []string{"naturalWarmFarmBiomes", "naturalColdFarmBiomes", "naturalTropicalAnyHeightBiomes", "naturalReducedWaterAmbientBiomes"}
 
 	for index, name := range biomeTags {
 		members := make(map[string]bool, len(game.BiomeNames))

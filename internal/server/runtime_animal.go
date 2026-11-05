@@ -718,7 +718,7 @@ func animalRandomStrollPath(runtime *Runtime, entity *runtimeAnimal) []game.Posi
 
 		goal := game.Position{X: position.X + float64(offsetX), Y: position.Y + float64(offsetY), Z: position.Z + float64(offsetZ)}
 
-		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.FollowRange(animalFollowRange))
+		path := runtime.findGroundPath(position, goal, entity.Living.Width, entity.Living.Height, entity.NavigationRange(animalFollowRange))
 		if len(path) > 0 {
 			return path
 		}

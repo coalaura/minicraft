@@ -41,14 +41,19 @@ type World struct {
 	dayTime  atomic.Int64
 	dayCycle atomic.Bool
 
-	overrideMx    sync.RWMutex
-	overrides     map[ChunkPosition]map[LocalBlockPosition]Block
-	overrideView  atomic.Pointer[blockOverrideSnapshot]
-	blockRevision atomic.Uint64
-	blockEntities map[ChunkPosition]map[LocalBlockPosition]blockEntityOverride
+	overrideMx     sync.RWMutex
+	overrides      map[ChunkPosition]map[LocalBlockPosition]Block
+	overrideView   atomic.Pointer[blockOverrideSnapshot]
+	chunkRevisions map[ChunkPosition]ChunkRevisions
+	blockEntities  map[ChunkPosition]map[LocalBlockPosition]blockEntityOverride
 }
 
 type ChunkOverrides map[LocalBlockPosition]Block
+
+type ChunkRevisions struct {
+	Blocks uint64
+	Light  uint64
+}
 
 type blockEntityOverride struct {
 	entity            BlockEntity
@@ -496,6 +501,12 @@ func (w *World) clearBlockEntityOverride(chunk ChunkPosition, local LocalBlockPo
 }
 
 func (w *World) setBlock(position BlockPosition, block, generated Block) {
+	if w.blockAtLocked(position, generated) == block {
+		return
+	}
+
+	w.invalidateBlockCaches(position)
+
 	chunk, local := blockIndex(position)
 
 	if block == generated {
@@ -580,17 +591,51 @@ func (w *World) copyBlockOverrideChunk(snapshot blockOverrideSnapshot, chunk Chu
 func (w *World) storeBlockOverrideSnapshot(snapshot blockOverrideSnapshot) {
 	if len(snapshot) == 0 {
 		w.overrideView.Store(nil)
-		w.blockRevision.Add(1)
 
 		return
 	}
 
 	w.overrideView.Store(&snapshot)
-	w.blockRevision.Add(1)
 }
 
-func (w *World) BlockRevision() uint64 {
-	return w.blockRevision.Load()
+func (w *World) ChunkRevisions(chunk ChunkPosition) ChunkRevisions {
+	w.overrideMx.RLock()
+	revisions := w.chunkRevisions[chunk]
+	w.overrideMx.RUnlock()
+
+	return revisions
+}
+
+// Called under overrideMx so revisions become visible with the block snapshot.
+func (w *World) invalidateBlockCaches(position BlockPosition) {
+	if w.chunkRevisions == nil {
+		w.chunkRevisions = make(map[ChunkPosition]ChunkRevisions, 9)
+	}
+
+	chunk := blockChunk(position)
+	revisions := w.chunkRevisions[chunk]
+	revisions.Blocks++
+	w.chunkRevisions[chunk] = revisions
+
+	minimum, maximum := AffectedLightChunks(position)
+
+	for chunkZ := minimum.Z; chunkZ <= maximum.Z; chunkZ++ {
+		for chunkX := minimum.X; chunkX <= maximum.X; chunkX++ {
+			neighbor := ChunkPosition{X: chunkX, Z: chunkZ}
+			revisions = w.chunkRevisions[neighbor]
+			revisions.Light++
+			w.chunkRevisions[neighbor] = revisions
+		}
+	}
+}
+
+// AffectedLightChunks bounds the chunks reachable by nonzero propagated light.
+// Both client light updates and spawn caches must use this same region.
+func AffectedLightChunks(position BlockPosition) (ChunkPosition, ChunkPosition) {
+	minimum := ChunkPosition{X: blockChunkCoordinate(position.X - 14), Z: blockChunkCoordinate(position.Z - 14)}
+	maximum := ChunkPosition{X: blockChunkCoordinate(position.X + 14), Z: blockChunkCoordinate(position.Z + 14)}
+
+	return minimum, maximum
 }
 
 func resolvedBlockEntityOverride(override blockEntityOverride) (BlockEntity, bool) {

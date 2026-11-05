@@ -11,10 +11,10 @@ import (
 
 type naturalSpawnChunk struct {
 	Prepared    preparedChunkGeneration
-	Revision    uint64
+	Revisions   game.ChunkRevisions
 	Heights     [256]int32
 	HeightKnown [256]bool
-	Sky, Block  []byte
+	Light       []byte // Sky in the high nibble, block light in the low nibble.
 }
 
 type naturalSpawnBlock struct {
@@ -30,22 +30,25 @@ func (r *Runtime) naturalChunkAt(position game.BlockPosition) *naturalSpawnChunk
 	}
 
 	chunk := LoadedChunk{X: blockChunkCoordinate(position.X), Z: blockChunkCoordinate(position.Z)}
+	worldChunk := game.ChunkPosition{X: chunk.X, Z: chunk.Z}
+	revisions := r.World.ChunkRevisions(worldChunk)
 
 	query := state.Queries[chunk]
 	if query == nil {
-		query = &naturalSpawnChunk{Prepared: prepareChunkGeneration(r.World, game.ChunkPosition{X: chunk.X, Z: chunk.Z}), Revision: r.World.BlockRevision()}
+		query = &naturalSpawnChunk{Prepared: prepareChunkGeneration(r.World, worldChunk), Revisions: revisions}
 
 		state.Queries[chunk] = query
 	}
 
-	if query.Revision != r.World.BlockRevision() {
-		query.Revision = r.World.BlockRevision()
-
+	if query.Revisions.Blocks != revisions.Blocks {
 		clear(query.HeightKnown[:])
-
-		query.Sky = query.Sky[:0]
-		query.Block = query.Block[:0]
 	}
+
+	if query.Revisions.Light != revisions.Light {
+		query.Light = query.Light[:0]
+	}
+
+	query.Revisions = revisions
 
 	return query
 }
@@ -94,7 +97,7 @@ func (r *Runtime) naturalLightAt(position game.BlockPosition) (byte, byte, bool)
 	}
 
 	query := r.naturalChunkAt(position)
-	if len(query.Sky) == 0 {
+	if len(query.Light) == 0 {
 		state := &r.naturalSpawning
 		if state.InTick {
 			if state.LightPreparations == 0 {
@@ -116,12 +119,10 @@ func (r *Runtime) naturalLightAt(position game.BlockPosition) (byte, byte, bool)
 		calculateLight(buffer, characteristics)
 
 		volume := 16 * 16 * lightingHeight
-		if cap(query.Sky) < volume {
-			query.Sky = make([]byte, volume)
-			query.Block = make([]byte, volume)
+		if cap(query.Light) < volume {
+			query.Light = make([]byte, volume)
 		} else {
-			query.Sky = query.Sky[:volume]
-			query.Block = query.Block[:volume]
+			query.Light = query.Light[:volume]
 		}
 
 		for worldY := range lightingHeight {
@@ -131,8 +132,7 @@ func (r *Runtime) naturalLightAt(position game.BlockPosition) (byte, byte, bool)
 
 					source := lightingIndex(localX+lightingHalo, worldY, localZ+lightingHalo)
 
-					query.Sky[destination] = buffer.sky[source]
-					query.Block[destination] = buffer.block[source]
+					query.Light[destination] = buffer.sky[source]<<4 | buffer.block[source]
 				}
 			}
 		}
@@ -141,7 +141,9 @@ func (r *Runtime) naturalLightAt(position game.BlockPosition) (byte, byte, bool)
 	}
 
 	index := chunkBlockIndex(int(position.X&15), int(position.Y+64), int(position.Z&15))
-	return query.Sky[index], query.Block[index], true
+	light := query.Light[index]
+
+	return light >> 4, light & 15, true
 }
 
 func (r *Runtime) naturalEnvironmentAllows(position game.BlockPosition, entityType game.EntityType) bool {

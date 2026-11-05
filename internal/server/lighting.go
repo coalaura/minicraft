@@ -187,14 +187,10 @@ func buildChangedLightUpdatesWith(world *game.World, changes []game.BlockChange,
 	affectedSet := make(map[LoadedChunk]struct{}, len(changes)*4)
 
 	for _, change := range changes {
-		minChunkX := blockChunkCoordinate(change.Position.X - 14)
-		maxChunkX := blockChunkCoordinate(change.Position.X + 14)
+		minimum, maximum := game.AffectedLightChunks(change.Position)
 
-		minChunkZ := blockChunkCoordinate(change.Position.Z - 14)
-		maxChunkZ := blockChunkCoordinate(change.Position.Z + 14)
-
-		for chunkZ := minChunkZ; chunkZ <= maxChunkZ; chunkZ++ {
-			for chunkX := minChunkX; chunkX <= maxChunkX; chunkX++ {
+		for chunkZ := minimum.Z; chunkZ <= maximum.Z; chunkZ++ {
+			for chunkX := minimum.X; chunkX <= maximum.X; chunkX++ {
 				affectedSet[LoadedChunk{X: chunkX, Z: chunkZ}] = struct{}{}
 			}
 		}

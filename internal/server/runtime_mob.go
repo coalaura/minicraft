@@ -38,6 +38,11 @@ func (state *RuntimeMobState) FollowRange(base float64) float64 {
 	return base * (1 + state.FollowRangeBonus)
 }
 
+func (state *RuntimeMobState) NavigationRange(base float64) float64 {
+	// PathNavigation's default requiredPathLength floors navigation, not FOLLOW_RANGE.
+	return max(state.FollowRange(base), 16)
+}
+
 func (state *RuntimeMobState) MetadataFlags() byte {
 	if state.LeftHanded {
 		return 0x02
